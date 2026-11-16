@@ -88,6 +88,31 @@ Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动
 
 定期进行恢复演练。
 
+### OpenBao 单节点部署与恢复
+
+仓库提供 [Compose 配置](../deploy/openbao/compose.yaml) 和 [服务配置](../deploy/openbao/server.hcl)。镜像按 2.7.2 的摘要固定，进程以镜像自带的非 root 用户运行。宿主端口仅绑定回环，Raft 与审计分别使用独立卷。服务端以 TLS 接受连接。审计设备由 HCL 配置并使用 HMAC 记录敏感字段。[官方镜像](https://openbao.org/docs/install/) · [声明式审计配置](https://openbao.org/docs/configuration/audit/)
+
+1. 准备 `server.crt` 和 `server.key`，证书需包含客户端实际访问的地址。把 `FORGEOS_BAO_TLS_DIR` 设置为该目录的绝对路径，并只向服务用户授予私钥读权限。在项目根目录执行 `docker compose -p forgeos-bao -f deploy/openbao/compose.yaml up -d`。
+2. 在管理终端设置 `BAO_ADDR=https://127.0.0.1:8200`、`BAO_CACERT=<签发 CA 证书路径>`。使用 `bao operator init -key-shares=3 -key-threshold=2` 初始化，份额分交保管人离线保管。两名持有人分别在提示符下执行 `bao operator unseal`。初始化时的 Root Token 仅用于引导独立的运行身份和底层策略，完成后撤销或离线封存。
+3. 首次初始化后用 `bao audit list` 检查 `forgeos-file/`，用 `bao secrets enable -path=secret kv-v2` 安装版本化 KV。为业务身份只授予所需的项目、环境和操作；备份身份只需对 `sys/storage/raft/snapshot` 具有 read、sudo。使用独立登录角色签发限时凭据。验收中的限时 orphan token 在引导 Root Token 撤销后仍按其原策略工作。
+4. 在权限为 0700 的临时加密卷或 tmpfs 中，使用备份身份执行 `bao operator raft snapshot save raft.snap`。单独归档文件审计设备的已关闭日志段。使用离线恢复方的**公钥证书**分别加密两个文件；下面以 OpenSSL 3 为例。备份仓库只接收两个 CMS 文件及其校验值。恢复私钥与解封份额由恢复方分开保管。
+
+```sh
+set -eu
+umask 077
+openssl cms -encrypt -binary -outform DER -aes-256-gcm -in raft.snap -out raft.cms "$RECOVERY_CERT"
+openssl cms -encrypt -binary -outform DER -aes-256-gcm -in audit.jsonl -out audit.cms "$RECOVERY_CERT"
+sha256sum raft.cms audit.cms > SHA256SUMS
+```
+
+5. 恢复演练使用独立的 Compose 项目名、空数据卷和不同的 `FORGEOS_BAO_PORT`。初始化并解封这一恢复目标。核对校验值，用恢复私钥解密出快照和审计文件。将管理终端的 `BAO_ADDR` 指向恢复目标并核对地址，在该空实例执行 `bao operator raft snapshot restore -force raft.snap`。该操作覆盖目标的现有状态。恢复后的节点用**源实例**的份额解封。用业务身份验证旧版本、当前版本和跨项目、跨环境的拒绝结果，另核对解密后的审计文件。生产切换前复核快照时间点之后的令牌撤销和凭据轮换记录。[Raft 快照命令](https://openbao.org/docs/commands/operator/raft/)
+
+```sh
+sha256sum -c SHA256SUMS
+openssl cms -decrypt -binary -inform DER -in raft.cms -recip "$RECOVERY_CERT" -inkey "$RECOVERY_KEY" -out raft.snap
+openssl cms -decrypt -binary -inform DER -in audit.cms -recip "$RECOVERY_CERT" -inkey "$RECOVERY_KEY" -out audit.jsonl
+```
+
 ### PostgreSQL 恢复演练
 
 使用与服务端主版本匹配的 PostgreSQL 客户端。以下示例使用 libpq 的两个 service 配置，`forgeos-source` 指向应用数据库，`forgeos-restore` 指向隔离实例中的空数据库。连接密码通过权限为 0600 的 passfile 提供。备份含项目内容、内部事件和执行租约，保存在仅备份账号可读的目录中。

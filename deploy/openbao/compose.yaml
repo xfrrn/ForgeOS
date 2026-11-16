@@ -1,0 +1,20 @@
+services:
+  bao:
+    image: ghcr.io/openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+    command: ["server", "-config=/etc/forgeos/bao.hcl"]
+    ports:
+      - "127.0.0.1:${FORGEOS_BAO_PORT:-8200}:8200"
+    volumes:
+      - "./server.hcl:/etc/forgeos/bao.hcl:ro"
+      - "${FORGEOS_BAO_TLS_DIR:?set the directory containing server.crt and server.key}:/openbao/tls:ro"
+      - data:/openbao/file
+      - audit:/openbao/logs
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    memswap_limit: 512m
+    restart: unless-stopped
+
+volumes:
+  data:
+  audit:

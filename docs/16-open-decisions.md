@@ -16,7 +16,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 6. 本地 CI 状态回传 GitHub Checks/Commit Status 的实现方式。
 7. Tailscale 私有 DNS、Caddy 和动态 Preview 路由。
 8. 浏览器扩展在不同前端技术栈、iframe、Canvas 下的元素定位能力。
-9. OpenBao 部署、解封、备份和恢复方案。
+9. OpenBao 2.7.2 已在非 root TLS 单节点环境验证 2/3 解封、KV v2 权限、独立加密的 Raft/审计备份及恢复。Go Secret Manager、Broker 与执行身份的集成仍待验收。
 10. PostgreSQL 队列与事件存储在实际任务量下的性能。
 
 ## B. 需要进一步细化
