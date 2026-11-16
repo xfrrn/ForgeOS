@@ -21,6 +21,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		var capabilities struct {
 			Shares    bool `json:"supports_shares"`
 			TestPlans bool `json:"supports_test_plans"`
+			Feedback  bool `json:"supports_feedback"`
 		}
 		if r.ContentLength != 0 && !decode(w, r, &capabilities) {
 			return
@@ -34,6 +35,13 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			plan, err = data.ClaimTestPlan(r.Context(), id, "management")
 			if plan != nil {
 				job = &store.ManagementJob{TestPlan: plan}
+			}
+		}
+		if err == nil && job == nil && capabilities.Feedback {
+			var f *store.FeedbackJob
+			f, err = data.ClaimFeedback(r.Context(), id)
+			if f != nil {
+				job = &store.ManagementJob{Feedback: f}
 			}
 		}
 		if err == nil && job == nil {
@@ -66,5 +74,15 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		respond(w, http.StatusNoContent, nil, err)
 	}))
 	registerTestPlanResult(mux, "/internal/management/test-plans/result", data, token, id, "management")
+	mux.HandleFunc("POST /internal/management/feedback/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var out struct {
+			ID             int64                        `json:"id"`
+			Lease          string                       `json:"lease"`
+			Classification store.FeedbackClassification `json:"classification"`
+		}
+		if decodeLimited(w, r, &out, 32<<10) {
+			respond(w, 204, nil, data.ClassifyFeedback(r.Context(), id, out.ID, out.Lease, out.Classification))
+		}
+	}))
 	return nil
 }

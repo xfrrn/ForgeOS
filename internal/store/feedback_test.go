@@ -66,6 +66,50 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 	if _, err = s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, f); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed replay: %v", err)
 	}
+	t.Run("management lease and provenance", func(t *testing.T) {
+		if j, err := s.ClaimFeedback(ctx, p.ID+1); err != nil || j != nil {
+			t.Fatalf("other project: %v %v", j, err)
+		}
+		j, err := s.ClaimFeedback(ctx, p.ID)
+		if err != nil || j == nil || j.ID != first {
+			t.Fatalf("claim: %v %v", j, err)
+		}
+		if second, err := s.ClaimFeedback(ctx, p.ID); err != nil || second != nil {
+			t.Fatalf("duplicate claim: %v %v", second, err)
+		}
+		c := FeedbackClassification{Category: "acceptance", Rationale: "The observer verified the displayed count.", Evidence: "Observed the count.", Session: "qa-triage"}
+		if _, err := db.ExecContext(ctx, `UPDATE preview_feedback SET review_until=now()-interval '1 second' WHERE id=$1`, first); err != nil {
+			t.Fatal(err)
+		}
+		if err = s.ClassifyFeedback(ctx, p.ID, first, j.Lease, c); !errors.Is(err, ErrConflict) {
+			t.Fatalf("expired result: %v", err)
+		}
+		next, err := s.ClaimFeedback(ctx, p.ID)
+		if err != nil || next == nil || next.Lease == j.Lease {
+			t.Fatalf("renewal: %v %v", next, err)
+		}
+		invalid := c
+		invalid.Evidence = "unreported evidence"
+		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(err, ErrConflict) {
+			t.Fatalf("unreported evidence: %v", err)
+		}
+		if err = s.ClassifyFeedback(ctx, p.ID+1, first, next.Lease, c); !errors.Is(err, ErrConflict) {
+			t.Fatalf("wrong project result: %v", err)
+		}
+		for range 2 {
+			if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, c); err != nil {
+				t.Fatal(err)
+			}
+		}
+		invalid = c
+		invalid.Category = "bug"
+		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(err, ErrConflict) {
+			t.Fatalf("changed classification: %v", err)
+		}
+		if err = db.QueryRowContext(ctx, `SELECT count(*) FROM task_events WHERE task_id=$1 AND type='preview_feedback_classified'`, task.ID).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("classification events %d: %v", count, err)
+		}
+	})
 }
 
 func TestFeedbackContextValidation(t *testing.T) {

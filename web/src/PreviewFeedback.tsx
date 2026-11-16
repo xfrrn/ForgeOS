@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-type Note = { id: number; created_at: string; body: { path: string; note: string; element?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Note = { id: number; created_at: string; state: string; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
 type Page = { preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
 export function PreviewFeedback({ task, preview, captureQuery, request }: { task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
@@ -50,11 +51,14 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         <label>观察结果或修改意见<textarea required maxLength={8192} value={note} onChange={e => setNote(e.target.value)} /></label>
         <button className="button" disabled={busy || mismatch || !note.trim()}>提交反馈</button>
       </fieldset></form><h2>该预览的反馈</h2>
+      <button className="detail-text-button" onClick={() => { setError(''); setVersion(n => n + 1) }}>刷新反馈分类</button>
       {!page.feedback.length && <p>尚无反馈。</p>}
-      {page.feedback.map(f => <article key={f.id}><h3>反馈 #{f.id}</h3><p>待 Management 分类 · {formatTime(f.created_at)} · <code>{f.body.path}</code>
+      {page.feedback.map(f => <article key={f.id}><h3>反馈 #{f.id}</h3><p>{f.classification ? 'Management 分类 · ' + categories[f.classification.category] : f.state === 'in_review' ? 'Management 正在分类' : '待 Management 分类'} · {formatTime(f.created_at)} · <code>{f.body.path}</code>
         {f.body.case_id && ` · 计划 v${f.body.plan_revision} · ${f.body.case_id}`}</p><p>{f.body.note}</p>
         {f.body.element && <p>元素 <code>{f.body.element}</code></p>}
-        {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}</article>)}
+        {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
+        {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
+          <p>Management 会话　<code>{f.classification.session_id}</code></p></details>}</article>)}
     </>}
   </section>
 }

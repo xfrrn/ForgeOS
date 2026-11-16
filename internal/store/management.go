@@ -11,6 +11,7 @@ import (
 )
 
 type ManagementJob struct {
+	Feedback     *FeedbackJob      `json:"feedback,omitempty"`
 	TestPlan     *TestPlanJob      `json:"test_plan,omitempty"`
 	Share        *ShareReviewInput `json:"share,omitempty"`
 	TaskID       int64             `json:"task_id"`

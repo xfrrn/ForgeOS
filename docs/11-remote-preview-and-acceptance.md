@@ -162,7 +162,9 @@ Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 
 
 Owner 使用 `GET /tasks/{id}/previews/{preview}/feedback` 读取预览上下文、测试计划和反馈历史。向同一地址 POST 时提供 `request_id`（UUID）、`execution_id`、`commit`、`path`、`note`，关联用例时另提供 `plan_revision` 和 `case_id`。可选采集字段为浏览器系列与主版本 `browser`、视口 `width` 与 `height`、纯结构定位器 `element`。页面路径省略查询和片段，定位器由标签及同类型序号组成。后端核对版本和来源；同一请求重试复用编号并只写一次任务事件。
 
-收到的记录进入 awaiting_review，等待 Management 分类。登记反馈本身保留原任务的验收状态。
+收到的记录进入 awaiting_review。配置相应项目的 Management 专用身份，运行 `worker management` 后，节点会领取反馈并启动独立只读会话。输入包括反馈原文、固定提交、页面上下文和关联用例。状态在有效租约内为 in_review。分类结果包含六类之一、理由、引用的原始观察片段和原生会话 ID。控制面核对项目、租约和原文引用，写入 classified 状态与任务事件。
+
+在“预览反馈”点击“刷新反馈分类”，展开“分类依据”可核对理由和引用。历史预览同样可以查询。分类为验收通过时，候选仍需要通过工作项的逐用例和 Owner 验收条件。分类为需求变更或新工作项时，后续处理需遵循原有的需求变更和派发流程。
 
 ## 8. 验收版本约束
 

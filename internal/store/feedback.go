@@ -62,7 +62,9 @@ func (f PreviewFeedback) Valid() bool {
 func (s *Store) PreviewFeedbackPage(ctx context.Context, task int64, preview string) (json.RawMessage, error) {
 	var out json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('preview',to_jsonb(r),
-        'feedback',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',f.id,'created_at',f.created_at,'author','owner','state','awaiting_review','body',f.body) ORDER BY f.id DESC) FROM preview_feedback f WHERE f.preview_id=r.id),'[]'),
+        'feedback',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',f.id,'created_at',f.created_at,'author','owner',
+            'state',CASE WHEN f.classified_at IS NOT NULL THEN 'classified' WHEN f.review_until>now() THEN 'in_review' ELSE 'awaiting_review' END,
+            'classification',f.classification,'classified_at',f.classified_at,'body',f.body) ORDER BY f.id DESC) FROM preview_feedback f WHERE f.preview_id=r.id),'[]'),
         'plan',(SELECT jsonb_build_object('revision',p.revision,'cases',p.plan->'cases') FROM candidate_test_plan_receipts p
                  WHERE p.execution_id=r.execution_id AND p.plan IS NOT NULL ORDER BY p.revision DESC LIMIT 1))
         FROM static_preview_receipts r WHERE r.task_id=$1 AND r.id=$2`, task, preview).Scan(&out)
