@@ -141,6 +141,7 @@ func (w *worker) run(ctx context.Context) error {
 	claim := map[string]any{"worker": w.id, "workspace_root": w.workspaceRoot}
 	if w.codex != "" {
 		claim["supports_codex"] = true
+		claim["supports_checkpoints"] = true
 		claim["supports_rework"] = true
 		if w.planner {
 			claim["supports_planner"] = true

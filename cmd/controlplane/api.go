@@ -21,6 +21,7 @@ import (
 
 func routes(data *store.Store, root, owner, worker string, delivery deliveryPolicy) *http.ServeMux {
 	mux := http.NewServeMux()
+	registerCheckpoints(mux, data, owner, worker)
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
@@ -121,11 +122,12 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 
 	mux.HandleFunc("POST /internal/claim", authorized(worker, func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			Worker          string `json:"worker"`
-			WorkspaceRoot   string `json:"workspace_root"`
-			SupportsCodex   bool   `json:"supports_codex"`
-			SupportsRework  bool   `json:"supports_rework"`
-			SupportsPlanner bool   `json:"supports_planner"`
+			Worker              string `json:"worker"`
+			WorkspaceRoot       string `json:"workspace_root"`
+			SupportsCheckpoints bool   `json:"supports_checkpoints"`
+			SupportsCodex       bool   `json:"supports_codex"`
+			SupportsRework      bool   `json:"supports_rework"`
+			SupportsPlanner     bool   `json:"supports_planner"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -134,7 +136,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 			problem(w, http.StatusBadRequest, "provide a worker identity and absolute workspace_root")
 			return
 		}
-		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner)
+		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return

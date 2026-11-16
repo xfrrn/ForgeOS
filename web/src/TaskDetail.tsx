@@ -6,7 +6,7 @@ type Validation = { profile: string; commit: string; exit_code: number; output: 
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   id: number; status: string; worker: string; workspace: string; lease_until: string
-  requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
+  uses_checkpoints?: boolean; requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
 }
 type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string }
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string }
@@ -122,6 +122,29 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
   </div>
 }
 
+type Checkpoint = { sequence: number; through_event: number; comment_count: number; at: string; session_id?: string }
+
+function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: Attempt; request: ApiRequest }) {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<Checkpoint[]>([])
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    setFailed(false)
+    request<Checkpoint[]>(`/tasks/${task.id}/checkpoints?execution_id=${attempt.id}`, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setRows(value) })
+      .catch(() => { if (!controller.signal.aborted) setFailed(true) })
+    return () => controller.abort()
+  }, [open, task, attempt.id, request])
+  return <div><button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起执行检查点' : '查看执行检查点'}</button>
+    {open && (failed ? <p role="alert">无法读取执行检查点。</p> : <ol>{rows.map(row => <li key={row.sequence}>
+      <strong>{row.sequence === 0 ? '回合开始' : '提交前'} · {row.comment_count} 条评论</strong> · {formatTime(row.at)}
+      <dl><Fact label="截至评论事件">{row.through_event}</Fact>
+        {row.session_id && <Fact label="处理会话" code>{row.session_id}</Fact>}</dl>
+    </li>)}</ol>)}</div>
+}
+
 function Execution({ attempt, task, latest, request }: { attempt: Attempt; task: Task; latest: boolean; request: ApiRequest }) {
   const result = attempt.result
   const validation = result?.validation
@@ -139,6 +162,7 @@ function Execution({ attempt, task, latest, request }: { attempt: Attempt; task:
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
+    {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
     {result?.error && <p className="detail-problem" role="status">{result.error}</p>}
     {validation ? <section className={'detail-validation ' + (validation.exit_code === 0 ? 'passed' : 'failed')}>
       <div><Icon name={validation.exit_code === 0 ? 'CheckCircle2' : 'AlertCircle'} size={16} />

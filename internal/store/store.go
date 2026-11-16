@@ -61,6 +61,9 @@ var requirementSchema string
 //go:embed 013_comments.sql
 var commentSchema string
 
+//go:embed 014_checkpoints.sql
+var checkpointSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -90,6 +93,7 @@ type Task struct {
 }
 
 type Execution struct {
+	UsesCheckpoints     bool       `json:"uses_checkpoints,omitempty"`
 	RequirementID       int64      `json:"requirement_id,omitempty"`
 	RequirementRevision int        `json:"requirement_revision,omitempty"`
 	ID                  int64      `json:"id"`
@@ -111,14 +115,15 @@ type Event struct {
 }
 
 type Job struct {
-	Kind        string     `json:"kind"`
-	Spec        *IssueSpec `json:"spec,omitempty"`
-	Rework      *Review    `json:"rework,omitempty"`
-	ExecutionID int64      `json:"execution_id"`
-	TaskID      int64      `json:"task_id"`
-	RepoPath    string     `json:"repo_path"`
-	Workspace   string     `json:"workspace"`
-	LeaseToken  string     `json:"lease_token"`
+	SupportsCheckpoints bool       `json:"supports_checkpoints,omitempty"`
+	Kind                string     `json:"kind"`
+	Spec                *IssueSpec `json:"spec,omitempty"`
+	Rework              *Review    `json:"rework,omitempty"`
+	ExecutionID         int64      `json:"execution_id"`
+	TaskID              int64      `json:"task_id"`
+	RepoPath            string     `json:"repo_path"`
+	Workspace           string     `json:"workspace"`
+	LeaseToken          string     `json:"lease_token"`
 }
 
 type Result struct {
@@ -154,7 +159,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -203,7 +208,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
-		        'id', e.id, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
+		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'abandoned_at', e.abandoned_at,
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
@@ -291,14 +296,16 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	canRunIssue := len(capabilities) > 0 && capabilities[0]
 	canRework := len(capabilities) > 1 && capabilities[1]
 	canPlan := len(capabilities) > 2 && capabilities[2]
+	canCheckpoint := len(capabilities) > 3 && capabilities[3]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1)
+		  AND ($4 OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -312,11 +319,12 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
 		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
 		            AND (w.kind = 'git_head' OR $2)
+		            AND ($5 OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -324,6 +332,7 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		return nil, err
 	}
 	if spec != nil {
+		j.SupportsCheckpoints = canCheckpoint
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
 			return nil, err
 		}
@@ -347,9 +356,9 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	hash := sha256.Sum256([]byte(j.LeaseToken))
 	j.Workspace = filepath.Join(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, lease_until)
-		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2), now() + CASE WHEN $6 = 'codex_issue'
-		    THEN interval '25 minutes' ELSE interval '2 minutes' END)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.Kind)
+		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, lease_until)
+		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7, now() + CASE WHEN $6 = 'codex_issue'
+		    THEN interval '25 minutes' ELSE interval '2 minutes' END)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.Kind, j.SupportsCheckpoints)
 	if err != nil {
 		return nil, err
 	}
@@ -370,12 +379,12 @@ func (s *Store) Complete(ctx context.Context, id int64, token string, result Res
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned bool
+	var abandoned, usesCheckpoints bool
 	var expectedHash, stored, spec []byte
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec
+		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints
 		FROM executions e JOIN work_items t ON t.id = e.task_id
-		WHERE e.id = $1 FOR UPDATE OF e`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec)
+		WHERE e.id = $1 FOR UPDATE OF e`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -405,6 +414,22 @@ func (s *Store) Complete(ctx context.Context, id int64, token string, result Res
 			return ErrConflict
 		}
 		if result.succeeded() {
+			if usesCheckpoints {
+				var confirmed bool
+				err = tx.QueryRowContext(ctx, `SELECT EXISTS(
+					SELECT 1 FROM execution_checkpoints turn LEFT JOIN execution_checkpoints next
+					ON next.execution_id=turn.execution_id AND next.sequence=turn.sequence+1
+					WHERE turn.execution_id=$1 AND turn.session_id=$2
+					AND CASE WHEN $3 THEN turn.sequence=0 ELSE next.sequence IS NOT NULL AND next.session_id IS NULL
+					AND NOT EXISTS(SELECT 1 FROM checkpoint_comments c WHERE c.execution_id=$1 AND c.sequence=next.sequence) END)`,
+					id, result.SessionID, issue.Mode == "plan").Scan(&confirmed)
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					return ErrConflict
+				}
+			}
 			var reused bool
 			err = tx.QueryRowContext(ctx, `SELECT EXISTS (
 			    SELECT 1 FROM acceptance_reviews r JOIN executions previous ON previous.id=r.execution_id
