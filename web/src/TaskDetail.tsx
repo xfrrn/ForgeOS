@@ -12,7 +12,19 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     log_digest?: { bytes: number; sha256: string }
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
-type HarnessProcess = { instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
+type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'completed' | 'failed'; at: number }
+type HarnessProcess = { tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
+function ToolActivity({events}: {events?: ToolEvent[]}) {
+  if (!events?.length) return null
+  const phases = {started: '开始', completed: '完成', failed: '失败'}
+  return <section><h5>工具调用</h5>
+    {events[0].seq > 1 && <p>显示最近 {events.length} 条，共 {events[events.length - 1].seq} 条事件。</p>}
+    <ol start={events[0].seq}>{events.map(e => <li key={e.seq}>
+      <time dateTime={new Date(e.at * 1000).toISOString()}>{formatTime(new Date(e.at * 1000).toISOString())}</time>
+      {' · 调用 #'}{e.call}{' · '}<code>{e.tool}</code>{' · '}{phases[e.phase]}
+    </li>)}</ol>
+  </section>
+}
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
@@ -308,17 +320,17 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         <Fact label="开始时间">{formatTime(observed.started_at)}</Fact>
         {observed.session_id && <Fact label="原生会话" code>{observed.session_id}</Fact>}
         {observed.exited_at && <><Fact label="退出时间">{formatTime(observed.exited_at)}</Fact><Fact label="进程退出码" code>{observed.exit_code}</Fact></>}
-      </dl></section>}
+      </dl><ToolActivity events={observed.tools}/></section>}
     {result?.processes && result.processes.length > 0 && <details>
       <summary>Harness 进程记录（{result.processes.length}）</summary>
-      {result.processes.map(p => <dl className="detail-facts" key={p.instance}>
+      {result.processes.map(p => <div key={p.instance}><dl className="detail-facts">
         <Fact label="进程 PID" code>{p.pid}</Fact>
         <Fact label="Harness 版本">{p.harness} {p.version}</Fact>
         <Fact label="开始时间">{formatTime(p.started_at)}</Fact>
         <Fact label="退出时间">{formatTime(p.exited_at)}</Fact>
         <Fact label="进程退出码" code>{p.exit_code}</Fact>
         {p.session_id && <Fact label="原生会话" code>{p.session_id}</Fact>}
-      </dl>)}
+      </dl><ToolActivity events={p.tools}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
     {result?.error && <p className="detail-problem" role="status">{result.error}</p>}

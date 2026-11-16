@@ -6,18 +6,19 @@ import (
 )
 
 type HarnessProcess struct {
-	Instance int64      `json:"instance"`
-	PID      int        `json:"pid"`
-	Harness  string     `json:"harness"`
-	Version  string     `json:"version"`
-	Session  string     `json:"session_id,omitempty"`
-	Started  time.Time  `json:"started_at"`
-	Exited   *time.Time `json:"exited_at,omitempty"`
-	ExitCode *int       `json:"exit_code"`
+	Instance int64       `json:"instance"`
+	PID      int         `json:"pid"`
+	Harness  string      `json:"harness"`
+	Version  string      `json:"version"`
+	Session  string      `json:"session_id,omitempty"`
+	Started  time.Time   `json:"started_at"`
+	Exited   *time.Time  `json:"exited_at,omitempty"`
+	ExitCode *int        `json:"exit_code"`
+	Tools    []ToolEvent `json:"tools,omitempty"`
 }
 
 func (p HarnessProcess) Valid() bool {
-	return p.Instance > 0 && p.PID > 0 && ValidHarnessVersion(p.Harness, p.Version) && !p.Started.IsZero() &&
+	return p.validTools() && p.Instance > 0 && p.PID > 0 && ValidHarnessVersion(p.Harness, p.Version) && !p.Started.IsZero() &&
 		(p.Exited == nil && p.ExitCode == nil || p.Exited != nil && !p.Exited.Before(p.Started) && p.ExitCode != nil && *p.ExitCode >= -1) &&
 		len(p.Session) <= 128 && strings.Trim(p.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
 }

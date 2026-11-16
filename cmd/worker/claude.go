@@ -94,7 +94,7 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 var errClaudeInterrupted = errors.New("Claude Code exited before the turn result")
 var errClaudeTurnFailed = errors.New("Claude Code reported a failed turn")
 
-func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error) (session string, completed bool, err error) {
+func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error) (session string, completed bool, err error) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	var outcome error
@@ -117,6 +117,10 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 				return "", false, err
 			}
 			session = event.Session
+		case activity != nil && session != "" && event.Session == session && !completed && (event.Type == "assistant" || event.Type == "user"):
+			if err := activity(event.Type, scanner.Bytes()); err != nil {
+				return session, completed, err
+			}
 		case event.Type == "result":
 			if completed || session == "" || session != event.Session {
 				return session, false, errors.New("mismatched Claude Code result")
@@ -148,7 +152,7 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 	}
 	stop := context.AfterFunc(ctx, func() { stream.Close() })
 	defer stop()
-	session, completed, parseErr := readClaudeEvents(stream, resume, process.session)
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool)
 	if parseErr != nil && !errors.Is(parseErr, errClaudeTurnFailed) {
 		stream.Close()
 		_ = cmd.Process.Kill()

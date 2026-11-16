@@ -1433,3 +1433,16 @@ Windows 正式 Worker、PostgreSQL 18、Chrome 与私有 beta 的两条真实 Is
 | 以错误租约、过期租约或其他节点回报，重放旧实例、旧会话字段和退出前状态 | 只接受任务授权范围内的新观察；旧状态不得覆盖现值 | PostgreSQL 和 HTTP 回归分别核对冲突、越权、非模型任务以及相同退出回报的重试。两次真实交付均在 acceptance-check 和 forgeos/local-ci 成功后合并 |
 
 全量 Go 回归启用 PostgreSQL 18 和 Docker，164 项通过，零跳过。增加节点权限断言后再运行了控制面节点测试。Go vet、TypeScript 检查与 Web 生产构建通过。本项验证控制面重启；Worker 自身重启后的在途会话恢复另行验收。
+
+### 专题 07、13、16 C.3 · 运行中的工具调用
+
+正式 Windows Worker、PostgreSQL 18、Chrome 和私有 beta 仓库。两个任务均从工作台对照原生进程，在执行中重启控制面，最终经固定候选验收、必需检查、合并和来源 Issue 关闭。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 打开 Codex 任务的进程报告，在原生进程退出前查看工具，再在最终回执展开该进程 | 已开始的调用可辨识，终态关联原调用 | 收到 8 条事件。3 次命令执行有 2 次完成、1 次失败；1 次文件修改完成。模型退出码 0。候选 `05e25448bf5457db2d0866b50903c0117d40b3d1`，合并 `587aed1fe547445029fb3e2000bd495830b656f3`。[PR #62](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/62) · [Issue #61 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/61#issuecomment-6932170930) |
+| 在 Claude Code 任务执行时查看工具，再核对失败与并行工具的回报 | 每个结果对应发起它的调用，单次读取失败可与整个任务的结果区分 | 收到 20 条事件，含 Glob、Read 和 Write。一条读取失败，后续调用完成。候选 `5b9bef0e70a3e18f05064528d2be299da925a27f`，合并 `fd2950a3218f2a9b9fd044167d39197cef42dbec`。[PR #64](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/64) · [Issue #63 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/63#issuecomment-6932287848) |
+| 对照浏览器运行中读取的样本、控制面保留的最后观察、最终回执与节点 SQLite | 样本应是完整序列的前缀，终态字段和顺序与节点相符 | 两个样本均为对应终态序列的前缀。两份最后观察、最终回执与节点记录逐字段相同。每个工具事件只有序号、调用号、类型、状态和节点时间。两个 PR 的 acceptance-check 与 forgeos/local-ci 均成功 |
+| 分别写入 64 条带私有命令、输入、ID 或输出的模拟原生事件，重读节点与上报窗口；向真实 PostgreSQL 重放旧窗口和改写的调用记录 | 节点保留 64 条，回执只取后 32 条并保持编号，原文不进入回执，旧窗口或历史改写被拒绝 | 回归断言通过。启用 PostgreSQL 18、Docker 的全量 Go 回归 165 项通过，零跳过。Go vet、TypeScript 与 Web 生产构建通过 |
+
+当前回执和工作台各显示每个进程最近 32 条事件。更早的工具记录可在所属节点的 SQLite 中查询。通用实时文本日志仍待实现。

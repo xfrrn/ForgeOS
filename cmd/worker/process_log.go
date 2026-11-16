@@ -18,11 +18,16 @@ type processLog struct {
 	version string
 	updates chan struct{}
 	id      int64
+	tools   *toolRecorder
 }
 
 func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {
 	updates, _ := ctx.Value(processUpdatesKey{}).(chan struct{})
-	return processLog{updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
+	var recorder *toolRecorder
+	if job.RecordToolActivity && w.journal != nil {
+		recorder = &toolRecorder{pending: make(map[string]toolCall)}
+	}
+	return processLog{tools: recorder, updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
 }
 
 func (p *processLog) notify() {

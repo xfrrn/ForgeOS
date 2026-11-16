@@ -126,10 +126,10 @@ func TestClaudeStreamRejectsWrongSessionAndStructuredFailure(t *testing.T) {
 	init := fmt.Sprintf(`{"type":"system","subtype":"init","session_id":"%s"}`, testClaudeID)
 	failed := fmt.Sprintf(`{"type":"result","subtype":"error","is_error":true,"session_id":"%s"}`, testClaudeID)
 	confirm := func(string) error { return nil }
-	if _, _, err := readClaudeEvents(strings.NewReader(init), "00000000-0000-0000-0000-000000000000", confirm); err == nil {
+	if _, _, err := readClaudeEvents(strings.NewReader(init), "00000000-0000-0000-0000-000000000000", confirm, nil); err == nil {
 		t.Fatal("accepted an unrelated resumed session")
 	}
-	if _, terminal, err := readClaudeEvents(strings.NewReader(init+"\n"+failed), "", confirm); !terminal || !errors.Is(err, errClaudeTurnFailed) {
+	if _, terminal, err := readClaudeEvents(strings.NewReader(init+"\n"+failed), "", confirm, nil); !terminal || !errors.Is(err, errClaudeTurnFailed) {
 		t.Fatal("lost terminal model failure", err)
 	}
 }

@@ -23,7 +23,7 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 	if p.Instance != last.Instance {
 		return p.Instance > last.Instance
 	}
-	if p.PID != last.PID || p.Harness != last.Harness || p.Version != last.Version || !p.Started.Equal(last.Started) || (last.Session != "" && p.Session != last.Session) {
+	if !p.toolsFollow(last) || p.PID != last.PID || p.Harness != last.Harness || p.Version != last.Version || !p.Started.Equal(last.Started) || (last.Session != "" && p.Session != last.Session) {
 		return false
 	}
 	return last.Exited == nil || (p.Exited != nil && p.Exited.Equal(*last.Exited) && *p.ExitCode == *last.ExitCode)

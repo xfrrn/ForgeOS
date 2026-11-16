@@ -147,6 +147,10 @@ func runCodexTurn(ctx context.Context, process processLog, bin, workspace, sandb
 				session = event.ThreadID
 				err = process.session(session)
 			}
+		case "item.started", "item.completed":
+			if session != "" && process.tools != nil {
+				err = process.codexTool(event.Type, scanner.Bytes())
+			}
 		case "turn.completed":
 			complete = true
 		case "error":

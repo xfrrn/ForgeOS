@@ -39,6 +39,27 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 	post(p, job.LeaseToken, true)
 	p.Session = "thread-a"
 	post(p, job.LeaseToken, true)
+	first := ToolEvent{Seq: 1, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "started"}
+	p.Tools = []ToolEvent{first}
+	post(p, job.LeaseToken, true)
+	for _, bad := range []ToolEvent{
+		{Seq: 1, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "completed"},
+		{Seq: 2, Call: 2, At: now.Unix(), Tool: "Read", Phase: "started"},
+		{Seq: 2, Call: 2, At: 1 << 60, Tool: "command_execution", Phase: "started"},
+	} {
+		modified := p
+		if bad.Seq == 1 {
+			modified.Tools = []ToolEvent{bad}
+		} else {
+			modified.Tools = []ToolEvent{first, bad}
+		}
+		post(modified, job.LeaseToken, false)
+	}
+	p.Tools = append(p.Tools, ToolEvent{Seq: 2, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "completed"})
+	post(p, job.LeaseToken, true)
+	stale := p
+	stale.Tools = p.Tools[:1]
+	post(stale, job.LeaseToken, false)
 	changed := p
 	changed.PID++
 	post(changed, job.LeaseToken, false)

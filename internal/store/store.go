@@ -242,6 +242,7 @@ type Event struct {
 }
 
 type Job struct {
+	RecordToolActivity  bool         `json:"record_tool_activity,omitempty"`
 	ReportLiveProcess   bool         `json:"report_live_process,omitempty"`
 	ReportCICandidate   bool         `json:"report_ci_candidate,omitempty"`
 	Startup             *StartupSpec `json:"startup,omitempty"`
@@ -570,6 +571,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		j.RecordProcesses = j.Spec.VerifyCommit == ""
 		j.ReportLiveProcess = j.RecordProcesses
+		j.RecordToolActivity = j.RecordProcesses
 		j.ManageResources = registered != nil && caps.SupportsResources
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1

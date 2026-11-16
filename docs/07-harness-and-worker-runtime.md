@@ -94,6 +94,10 @@ Codex 写入回合与只读 Planner 从 CLI 的 `thread.started` 获取 Thread I
 
 具备实时上报能力的控制面在模型任务的 claim 响应中返回 `report_live_process`。Worker 在 SQLite 记录启动、原生会话和退出后通知上报循环，并每 15 秒重读最近进程。通过 `POST /internal/executions/{id}/process` 发送执行租约令牌和 process 对象。节点需要对应项目与执行权限；控制面核对租约、任务指定的 Harness、进程身份与时间顺序，拒绝过期租约和旧状态重放。上报失败时，下一次从本地日志重读。此请求独立于租约续约和最终回执。
 
+控制面在普通模型任务中通过 `record_tool_activity` 请求采集工具事件。在“最近的节点进程报告”查看工具名、调用编号、节点时间和开始、完成或失败状态。调用编号取第一次观察到该调用的事件序号，同一进程中的并行调用可分别追踪。只有终态事件的工具也会显示。执行结束后，在“Harness 进程记录”展开对应进程继续查看。每个进程显示最近 32 条事件，窗口移过开头时显示事件总数。Worker 本地 SQLite 保存该进程从开始采集起的全部工具事件。
+
+Codex 从 `item.started` 和 `item.completed` 识别命令执行、文件修改等已知类型。Claude Code 从 `tool_use` 和同一调用的 `tool_result` 记录已授权工具。事件字段只含序号、调用编号、工具类型、状态和时间；命令、参数、路径、正文与工具输出均不进入此记录。旧版 Worker 留下的进程记录可继续读取。
+
 正式 Worker 通过 Claude Code 的 `stream-json` 读取原生初始化和终态事件。SQLite 的 `harness_processes` 为每个启动的适配器进程记录本地实例号、PID、探测到的版本、开始时间、CLI 确认的 Session、退出时间与退出码。使用原生可执行文件时，该 PID 即 Claude 进程的 PID。通过租约摘要关联 `attempts` 下的同一次执行。
 
 若已确认 Session 的进程以非零状态退出，且没有收到终态，Worker 等待旧进程退出，向控制面确认原租约，核对原工作区、分离 HEAD、Git 目录和起始提交后，使用相同工具权限与 `--resume <session>` 恢复一次。恢复提示要求先检查现有编辑，再完成剩余工作。已报告的模型失败、身份不符、失去租约、变更起始提交或取消中的任务保留失败状态。一个执行无需为这次恢复创建新的 Worktree。

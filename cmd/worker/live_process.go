@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,13 +13,17 @@ import (
 	"forgeos/internal/store"
 )
 
-const readHarnessProcess = `SELECT instance,pid,harness,version,coalesce(session_id,''),started_at,exited_at,exit_code FROM harness_processes`
+var readHarnessProcess = fmt.Sprintf(`SELECT instance,pid,harness,version,coalesce(session_id,''),started_at,exited_at,exit_code,
+ (SELECT json_group_array(json_object('seq',seq,'call',call,'tool',tool,'phase',phase,'at',at) ORDER BY seq)
+  FROM (SELECT * FROM harness_tool_events e WHERE e.instance=p.instance ORDER BY seq DESC LIMIT %d))
+ FROM harness_processes p`, store.ToolWindow)
 
 func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProcess, error) {
 	var p store.HarnessProcess
 	var started string
 	var exited sql.NullString
-	err := row.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &started, &exited, &p.ExitCode)
+	var raw []byte
+	err := row.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &started, &exited, &p.ExitCode, &raw)
 	if err != nil {
 		return p, err
 	}
@@ -33,7 +38,7 @@ func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProce
 		}
 		p.Exited = &end
 	}
-	return p, nil
+	return p, json.Unmarshal(raw, &p.Tools)
 }
 
 type processUpdatesKey struct{}
