@@ -1,6 +1,10 @@
 package validation
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+)
 
 const LogLimit = 1 << 20
 const LogTruncation = "\n[remaining CI output omitted]\n"
@@ -42,6 +46,24 @@ type CheckResult struct {
 type FileDigest struct {
 	Bytes  int64  `json:"bytes"`
 	SHA256 string `json:"sha256"`
+}
+
+func DigestBytes(data []byte) FileDigest {
+	sum := sha256.Sum256(data)
+	return FileDigest{Bytes: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}
+}
+
+func (r *Run) Files() map[string]FileDigest {
+	files := make(map[string]FileDigest)
+	for _, c := range r.Checks {
+		if c.LogDigest != nil {
+			files[c.Log] = *c.LogDigest
+		}
+		for _, o := range c.Outputs {
+			files[o.File] = FileDigest{Bytes: o.Bytes, SHA256: o.SHA256}
+		}
+	}
+	return files
 }
 
 type Output struct {

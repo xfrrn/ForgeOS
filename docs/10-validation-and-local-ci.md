@@ -99,7 +99,9 @@ Runner 读取基础提交的配置，在候选文件的隔离副本中运行。�
 
 命令输出 JSON，必需检查未通过时返回非零。工作区根下的 `ci-run-*/run.json` 保存运行身份、配置版本及 blob、候选 SHA、等级、镜像、时间、各检查退出码、状态和文件引用。超时检查的退出码为 null。每项日志保留前 1 MiB，发生截断时另加一行提示。检查的 `log_digest` 保存最终日志文件的字节数和 SHA-256，空日志也有摘要。每个输出文件上限 8 MiB，每次运行最多收集 64 MiB。输出记录包含来源、大小和 SHA-256。缺少承诺的报告或产物会令该检查失败。每次重跑使用新的运行目录。
 
-在工作台的“逐项检查”可核对日志文件名、字节数及摘要。备份或恢复后，用同次运行的独立回执调用 `worker verify-ci-run`，核对元数据和实际文件。[CI 归档恢复步骤](14-deployment-and-operations.md#核对恢复的-ci-运行目录)
+在工作台的“逐项检查”可核对日志文件名、字节数及摘要，点击文件名旁的下载按钮即可取回日志、报告和产物。Owner API 为 `GET /tasks/{task}/executions/{execution}/ci/{run}/{file}`，其中 `file` 取回执内的归档文件名。返回下载附件，每次发送前核对大小与 SHA-256。任务、执行、运行号或文件名不匹配时返回 404，已登记的文件暂缺或损坏时返回 503。历史日志缺少摘要时只显示原有文件名。
+
+支持集中归档的控制面确认执行结果后，Worker 在清除待报正文的同一 SQLite 事务中登记待传文件。后台独立传输，失败的文件在 30 秒后可重试。控制面只保存与该执行回执完全一致的字节；具名 Worker 的项目与执行授权同样适用于上传。旧控制面或旧 Worker 仍可上报原有验证结果。需要补传历史文件或修复损坏副本时，使用该节点的 Worker 凭据向上述路径前加 `/internal`，以 PUT 发送原文件字节。成功和重传均返回 204。备份或恢复本地运行目录时，用独立回执调用 `worker verify-ci-run`。[CI 归档恢复步骤](14-deployment-and-operations.md#核对恢复的-ci-运行目录)
 
 从正常 Issue 入口指定 `{"validation":"auto","task_type":"documentation","target":"pull_request"}` 可按候选变化选级。项目基础提交包含 validation.yaml 或 acceptance.yaml 时，显式指定 V1–V4、docs 或 go-test 也会启用风险评估。指定等级作为最低要求，docs 和 go-test 分别对应 V1 和 V2。GitHub Issue 以 PR 为最低交付目标，可指定 staging 提高要求。没有仓库配置且按原方式请求 docs 或 go-test 的任务继续使用原检查。手动导入与按标签轮询采用相同规则，Goal 子项继承策略，修订或重新验证会针对新的 SHA 重新计算。
 

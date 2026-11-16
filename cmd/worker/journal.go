@@ -83,6 +83,11 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		pid INTEGER NOT NULL, started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, session_id TEXT, exited_at TEXT, exit_code INTEGER
 	);
 	CREATE INDEX IF NOT EXISTS harness_processes_attempt ON harness_processes(lease_hash,instance);
+	CREATE TABLE IF NOT EXISTS ci_uploads (
+		lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), run_id TEXT NOT NULL,
+		file TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, retry_at INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (lease_hash,file)
+	);
 	CREATE INDEX IF NOT EXISTS pending_attempts ON attempts(execution_id) WHERE report IS NOT NULL`)
 	if err != nil {
 		db.Close()
@@ -174,7 +179,15 @@ func (w *worker) replayReceipts(ctx context.Context) error {
 func (w *worker) sendReceipt(ctx context.Context, key []byte, id int64, report json.RawMessage) error {
 	path := fmt.Sprintf("/internal/executions/%d/result", id)
 	for {
-		status, _ := w.post(context.WithoutCancel(ctx), path, report, nil)
+		confirmCtx := context.WithoutCancel(ctx)
+		resp, err := w.postJSON(confirmCtx, path, report)
+		var status int
+		var archive bool
+		if err == nil {
+			status = resp.StatusCode
+			archive = resp.Header.Get("ForgeOS-CI-Archive") == "1" && status == http.StatusNoContent
+			resp.Body.Close()
+		}
 		outcome := ""
 		switch status {
 		case http.StatusNoContent:
@@ -183,9 +196,22 @@ func (w *worker) sendReceipt(ctx context.Context, key []byte, id int64, report j
 			outcome = "conflict"
 		}
 		if outcome != "" {
-			_, err := w.journal.ExecContext(context.WithoutCancel(ctx), `UPDATE attempts SET outcome=?,settled_at=CURRENT_TIMESTAMP,
+			tx, err := w.journal.BeginTx(confirmCtx, nil)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+			if archive {
+				if err = queueCIFiles(confirmCtx, tx, key, report); err != nil {
+					return err
+				}
+			}
+			_, err = tx.ExecContext(confirmCtx, `UPDATE attempts SET outcome=?,settled_at=CURRENT_TIMESTAMP,
 				conflicting_result=CASE WHEN ?='conflict' THEN json_remove(CAST(report AS TEXT),'$.lease_token') END,
 				report=NULL WHERE lease_hash=? AND report IS NOT NULL`, outcome, outcome, key)
+			if err == nil {
+				err = tx.Commit()
+			}
 			if err == nil {
 				log.Printf("execution %d result %s", id, outcome)
 			}

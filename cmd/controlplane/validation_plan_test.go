@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,8 +94,39 @@ func TestDeclaredChecksRequiredForIssue(t *testing.T) {
 	_, err = verify(ctx, repo, store.IssueSpec{Validation: "auto", BaseCommit: base, Policy: &policy}, result)
 	conflict(err)
 	run.Decision = nil
+	content := "format passed\n"
+	digest := validation.DigestBytes([]byte(content))
+	run.Checks[0].LogDigest = &digest
 	must(complete())
 	must(complete())
+	t.Run("read the accepted file by task and execution", func(t *testing.T) {
+		t.Setenv("FORGEOS_ARTIFACT_ROOT", t.TempDir())
+		api := routes(data, root, "owner", legacyWorker("runner"), nil)
+		file := fmt.Sprintf("/tasks/%d/executions/%d/ci/%s/format.log", task.ID, job.ExecutionID, run.ID)
+		do := func(method, path, token, body string, status int) *httptest.ResponseRecorder {
+			t.Helper()
+			req := httptest.NewRequest(method, path, strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			got := httptest.NewRecorder()
+			api.ServeHTTP(got, req)
+			if got.Code != status {
+				t.Fatalf("%s %s: %d (expected %d)", method, path, got.Code, status)
+			}
+			return got
+		}
+		do("GET", file, "owner", "", 503)
+		do("PUT", "/internal"+file, "runner", strings.Repeat("x", len(content)), 422)
+		do("PUT", "/internal"+file, "runner", content, 204)
+		do("PUT", "/internal"+file, "runner", content, 204)
+		got := do("GET", file, "owner", "", 200)
+		if got.Body.String() != content || got.Header().Get("Content-Disposition") != `attachment; filename="format.log"` {
+			t.Fatal("invalid archive download")
+		}
+		do("GET", file, "runner", "", 401)
+		do("GET", strings.Replace(file, run.ID, "ci-run-999", 1), "owner", "", 404)
+		do("PUT", "/internal"+file, "runner", content+"x", 422)
+		do("PUT", "/internal"+strings.Replace(file, "format.log", "extra.bin", 1), "runner", content, 404)
+	})
 	tk, err := data.Task(ctx, task.ID)
 	must(err)
 	if tk.Status != "WAITING_ACCEPTANCE" || tk.Execution.CodeReviewState != "pending" {

@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +43,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	registerCheckpoints(mux, data, owner, workers)
 	registerHistory(mux, data, owner, workers)
 	registerValidationPlan(mux, data, root, owner, workers)
+	registerCIFiles(mux, data, owner, workers)
 	registerDecisions(mux, data, owner, workers)
 	registerMaterials(mux, data, owner, workers)
 	registerShares(mux, data, owner, workers)
@@ -157,7 +157,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		if !decode(w, r, &input) {
 			return
 		}
-		if strings.TrimSpace(input.Worker) == "" || len(input.Worker) > 128 || !filepath.IsAbs(input.WorkspaceRoot) {
+		if strings.TrimSpace(input.Worker) == "" || len(input.Worker) > 128 || !store.ValidWorkspaceRoot(input.WorkspaceRoot) {
 			problem(w, http.StatusBadRequest, "provide a worker identity and absolute workspace_root")
 			return
 		}
@@ -256,6 +256,9 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			result.Validation = &store.ValidationResult{Profile: v.Profile, Commit: v.Commit, ExitCode: *v.ExitCode, Output: v.Output, Run: v.Run}
 		}
 		err = data.CompleteWithChecks(r.Context(), id, input.LeaseToken, result, verifyDeclaredChecks(root))
+		if err == nil && input.Validation != nil && input.Validation.Run != nil {
+			w.Header().Set("ForgeOS-CI-Archive", "1")
+		}
 		respond(w, http.StatusNoContent, nil, err)
 	}))
 	return mux

@@ -74,7 +74,19 @@ function Fact({ label, children, code = false }: { label: string; children: Reac
   return <div className="detail-fact"><dt>{label}</dt><dd className={code ? 'mono' : undefined}>{children}</dd></div>
 }
 
-function DeclaredChecks({ run }: { run: CheckRun }) {
+function DeclaredChecks({ run, path, request }: { run: CheckRun; path: string; request: ApiRequest }) {
+  const [error, setError] = useState('')
+  const download = async (file: string) => {
+    setError('')
+    try {
+      const blob = await request<Blob>(path + '/' + encodeURIComponent(run.id) + '/' + encodeURIComponent(file), undefined, 'blob')
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = file
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+    } catch (e) { setError(e instanceof Error ? e.message : '文件下载失败') }
+  }
   return <details><summary>逐项检查</summary>
     <dl className="detail-facts"><Fact label="运行编号" code>{run.id}</Fact><Fact label="Runner" code>{run.runner}</Fact>
       {run.profile && <Fact label="验证方案">{run.level} · {run.profile}</Fact>}
@@ -88,9 +100,11 @@ function DeclaredChecks({ run }: { run: CheckRun }) {
       <dl className="detail-facts"><Fact label="退出码" code>{c.exit_code ?? '无退出码'}</Fact>
         <Fact label="检查时间">{formatTime(c.started_at)} — {formatTime(c.finished_at)}</Fact><Fact label="本地日志" code>{c.log}{c.log_digest && ` · ${c.log_digest.bytes} 字节`}</Fact>
         {c.log_digest && <Fact label="日志 SHA-256" code>{c.log_digest.sha256}</Fact>}</dl>
+      {c.log_digest && <button type="button" onClick={() => download(c.log)}>下载 {c.log}</button>}
       {c.outputs?.map(o => <dl key={o.file} className="detail-facts"><Fact label={o.kind === 'report' ? '报告' : '产物'}>{o.source} · {o.bytes} 字节</Fact>
-        <Fact label="归档文件" code>{o.file}</Fact><Fact label="SHA-256" code>{o.sha256}</Fact></dl>)}
+        <Fact label="归档文件" code><button type="button" onClick={() => download(o.file)}>下载 {o.file}</button></Fact><Fact label="SHA-256" code>{o.sha256}</Fact></dl>)}
     </li>)}</ol>
+    {error && <p role="alert">{error}</p>}
   </details>
 }
 
@@ -292,7 +306,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       </div>
       <dl className="detail-facts"><Fact label="验证 SHA" code>{validation.commit}</Fact><Fact label="验证退出码" code>{validation.exit_code}</Fact></dl>
       {validation.output && <pre>{validation.output}</pre>}
-      {validation.run && <DeclaredChecks run={validation.run} />}
+      {validation.run && <DeclaredChecks run={validation.run} path={`/tasks/${task.id}/executions/${attempt.id}/ci`} request={request} />}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
     {task.spec && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&

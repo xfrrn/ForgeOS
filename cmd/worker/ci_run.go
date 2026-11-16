@@ -168,7 +168,7 @@ func runCheck(parent context.Context, docker localDocker, image, snapshot, dir s
 			result.Status, result.Failure = "FAILED", "INFRA_FAILURE"
 			return
 		}
-		digest := fileDigest(data)
+		digest := validation.DigestBytes(data)
 		result.LogDigest = &digest
 	}()
 	options, name, err := ciContainerOptions(snapshot)

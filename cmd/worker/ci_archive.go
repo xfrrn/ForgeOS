@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,11 +32,6 @@ func archivedFile(dir, name string, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("%s exceeds the size limit", name)
 	}
 	return data, err
-}
-
-func fileDigest(data []byte) validation.FileDigest {
-	sum := sha256.Sum256(data)
-	return validation.FileDigest{Bytes: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}
 }
 
 func readRun(in io.Reader, run *validation.Run) error {
@@ -78,7 +71,7 @@ func verifyCIRun(root string, in io.Reader, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if fileDigest(data) != want {
+		if validation.DigestBytes(data) != want {
 			return fmt.Errorf("%s does not match the stored size and SHA-256", name)
 		}
 		return nil

@@ -10,6 +10,25 @@ import (
 	"forgeos/internal/validation"
 )
 
+func TestWorkerWorkspaceUsesNodePaths(t *testing.T) {
+	for root, want := range map[string]string{
+		"/var/work/":          "/var/work/execution-1",
+		"/":                   "/execution-1",
+		`C:\work`:             `C:\work\execution-1`,
+		"C:/":                 `C:\execution-1`,
+		`\\server\share\work`: `\\server\share\work\execution-1`,
+	} {
+		if !ValidWorkspaceRoot(root) || workerWorkspace(root, "execution-1") != want {
+			t.Errorf("workspace under %q: expected %q", root, want)
+		}
+	}
+	for _, root := range []string{"", "work", "C:work", `\relative`, "\x00/work"} {
+		if ValidWorkspaceRoot(root) {
+			t.Errorf("accepted workspace root %q", root)
+		}
+	}
+}
+
 func TestExecutionLeaseRenewal(t *testing.T) {
 	ctx := context.Background()
 	db := isolatedDatabase(t)

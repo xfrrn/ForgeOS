@@ -136,18 +136,22 @@ func fromEnv(role string) (*worker, error) {
 	return w, nil
 }
 
-func (w *worker) post(ctx context.Context, path string, body any, out any) (int, error) {
+func (w *worker) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.api+path, bytes.NewReader(payload))
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+w.token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := w.client.Do(req)
+	return w.client.Do(req)
+}
+
+func (w *worker) post(ctx context.Context, path string, body any, out any) (int, error) {
+	resp, err := w.postJSON(ctx, path, body)
 	if err != nil {
 		return 0, err
 	}
@@ -220,6 +224,11 @@ func (w *worker) run(ctx context.Context) error {
 		return err
 	}
 	child, stop := context.WithCancel(ctx)
+	filesDone := make(chan struct{})
+	go func() {
+		defer close(filesDone)
+		w.publishCIFiles(child)
+	}()
 	done := make(chan error, 1)
 	go func() {
 		t := time.NewTicker(15 * time.Second)
@@ -242,6 +251,7 @@ func (w *worker) run(ctx context.Context) error {
 		err = w.runQueue(child, caps)
 	}
 	stop()
+	<-filesDone
 	return errors.Join(err, <-done)
 }
 

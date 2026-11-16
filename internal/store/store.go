@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"time"
@@ -396,7 +395,7 @@ func (s *Store) WorkerOwnsExecution(ctx context.Context, id int64, worker string
 }
 
 func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot string, projects []int64, caps WorkerCapabilities) (*Job, error) {
-	if !filepath.IsAbs(workspaceRoot) || worker == "" {
+	if !ValidWorkspaceRoot(workspaceRoot) || worker == "" {
 		return nil, errors.New("worker and absolute workspace root required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -497,7 +496,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	}
 	j.LeaseToken = hex.EncodeToString(token[:])
 	hash := sha256.Sum256([]byte(j.LeaseToken))
-	j.Workspace = filepath.Join(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
+	j.Workspace = workerWorkspace(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	j.LeaseSeconds = executionLeaseSeconds(j.Kind)
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until)

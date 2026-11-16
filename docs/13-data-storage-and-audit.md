@@ -87,6 +87,8 @@ ORDER BY p.instance;
 
 ## 6. 保留策略
 
+CI 日志、报告与产物的中央副本位于 `FORGEOS_ARTIFACT_ROOT/ci/<任务号>/<执行号>/<运行号>/<归档文件名>`。执行结果 JSON 保存对应的大小与 SHA-256。Worker 的 SQLite 表 `ci_uploads` 只保存待传文件引用和重试时间，确认上传后清除。可以用 `SELECT run_id,file,bytes,retry_at FROM ci_uploads` 查看积压。源文件损坏时，恢复与回执匹配的本地文件后，待传项会继续重试。已确认上传的副本可由 Owner 独立下载。
+
 预览反馈的 PNG 存放在控制面账号私有目录。可用绝对路径 `FORGEOS_ARTIFACT_ROOT` 指定，默认是该账号 HOME 下的 `.forgeos/artifacts`。PostgreSQL 保存反馈编号、文件键、类型、大小和 SHA-256，经原反馈关联任务、执行和候选。Owner 从原反馈读取文件时会重新校验长度和摘要，损坏返回 503。重传同一份已脱敏图片可修复文件并复用原回执。截图清理期限和跨节点存储仍待验收。
 
 - 重要决策和任务元数据长期保留；

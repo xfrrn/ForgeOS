@@ -6,9 +6,24 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"path"
 	"regexp"
 	"strings"
 )
+
+var windowsWorkspaceRoot = regexp.MustCompile(`^([A-Za-z]:/|//[^/]+/[^/]+(/|$))`)
+
+func ValidWorkspaceRoot(root string) bool {
+	return !strings.ContainsAny(root, "\x00\r\n") && (strings.HasPrefix(root, "/") || windowsWorkspaceRoot.MatchString(strings.ReplaceAll(root, "\\", "/")))
+}
+
+// Workspace paths refer to the Worker filesystem, which can use a different OS.
+func workerWorkspace(root, name string) string {
+	if windowsWorkspaceRoot.MatchString(strings.ReplaceAll(root, "\\", "/")) {
+		return strings.TrimRight(strings.ReplaceAll(root, "/", "\\"), "\\") + "\\" + name
+	}
+	return path.Join(root, name)
+}
 
 func executionLeaseSeconds(kind string) int {
 	if kind == "codex_issue" {
