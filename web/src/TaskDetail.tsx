@@ -14,7 +14,7 @@ type Delivery = { state: string; detail?: string; branch: string; target_branch:
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
-type Plan = { revision: number; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
+type Plan = { revision: number; review?: { level: string; effective_level: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
   id: number; project_id: number; status: string; kind: string
   spec?: { issue: Issue; base_commit: string; validation: string }
@@ -33,6 +33,7 @@ const events: Record<string, string> = {
   dependencies_delivered: '前置交付已确认',
   decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
   goal_delivered: '全部子项已交付，父 Issue 已关闭',
+  management_reviewed: 'Management 已审核本版计划',
   planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
@@ -201,7 +202,7 @@ function Detail({ id, request, onChanged }: Props) {
         if (controller.signal.aborted || epoch !== generation.current) return
         setTask(fresh)
         setError('')
-        if (['ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'WAITING_INPUT', 'WAITING_ACCEPTANCE'].includes(fresh.status) || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
+        if (['PLANNING', 'ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'WAITING_INPUT', 'WAITING_ACCEPTANCE'].includes(fresh.status) || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
           timer = setTimeout(read, 8000)
         }
       } catch (cause) {
@@ -254,6 +255,11 @@ function Detail({ id, request, onChanged }: Props) {
         {task.plan && <section className="panel detail-card">
           <h2>Goal 计划 · 修订 {task.plan.revision}</h2>
           <p>{task.plan.plan.objective}</p>
+          {task.plan.review && <div><h3>Management 审核 · {task.plan.review.effective_level}</h3>
+            <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[task.plan.review.verdict] ?? task.plan.review.verdict}</Fact>
+              <Fact label="理由">{task.plan.review.rationale}</Fact><Fact label="依据">{task.plan.review.evidence}</Fact>
+              <Fact label="审核会话" code>{task.plan.review.session_id}</Fact></dl>
+          </div>}
           {task.plan.plan.milestones.map((milestone, index) => <div key={index}>
             <h3>{milestone.name}</h3>
             <ul>{milestone.items?.map(item => <li key={item.key}>

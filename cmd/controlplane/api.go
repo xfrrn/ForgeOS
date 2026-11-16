@@ -19,7 +19,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func routes(data *store.Store, root, owner, worker string, delivery deliveryPolicy) http.Handler {
+func routes(data *store.Store, root, owner, worker string, delivery deliveryPolicy) *http.ServeMux {
 	mux := http.NewServeMux()
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)

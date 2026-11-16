@@ -72,9 +72,13 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("apply database migration: %w", err)
 	}
 
+	mux := routes(data, root, owner, worker, delivery)
+	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), os.Getenv("FORGEOS_MANAGEMENT_TOKEN"), owner, worker); err != nil {
+		return err
+	}
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           routes(data, root, owner, worker, delivery),
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      25 * time.Second,

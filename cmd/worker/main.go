@@ -28,7 +28,7 @@ type worker struct {
 	client                                  *http.Client
 }
 
-func fromEnv() (*worker, error) {
+func fromEnv(management bool) (*worker, error) {
 	if os.Geteuid() == 0 {
 		return nil, errors.New("worker requires a non-root user")
 	}
@@ -50,6 +50,20 @@ func fromEnv() (*worker, error) {
 		return nil, errors.New("FORGEOS_API_URL must be a loopback HTTP(S) origin")
 	}
 	w.api = strings.TrimRight(w.api, "/")
+	if management {
+		w.token = os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
+		if strings.TrimSpace(w.token) == "" {
+			return nil, errors.New("set FORGEOS_MANAGEMENT_TOKEN")
+		}
+		w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
+		if err != nil {
+			return nil, err
+		}
+		if !w.planner {
+			return nil, errors.New("management requires local Codex with structured output")
+		}
+		return w, nil
+	}
 	if w.id == "" {
 		w.id, err = os.Hostname()
 		if err != nil {
@@ -173,13 +187,22 @@ func (w *worker) run(ctx context.Context) error {
 }
 
 func main() {
-	w, err := fromEnv()
+	management := len(os.Args) == 2 && os.Args[1] == "management"
+	if len(os.Args) > 1 && !management {
+		log.Fatal("usage: worker [management]")
+	}
+	w, err := fromEnv(management)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := w.run(ctx); err != nil {
+	if management {
+		err = w.runManagement(ctx)
+	} else {
+		err = w.run(ctx)
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }

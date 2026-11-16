@@ -32,11 +32,14 @@ type PlanItem struct {
 }
 
 type PlanRevision struct {
-	TaskID    int64     `json:"task_id"`
-	Revision  int       `json:"revision"`
-	Plan      Plan      `json:"plan"`
-	At        time.Time `json:"at"`
-	GitCommit string    `json:"git_commit,omitempty"`
+	Review       *ManagementReview `json:"review,omitempty"`
+	MinimumLevel string            `json:"minimum_level,omitempty"`
+	ReviewedAt   *time.Time        `json:"reviewed_at,omitempty"`
+	TaskID       int64             `json:"task_id"`
+	Revision     int               `json:"revision"`
+	Plan         Plan              `json:"plan"`
+	At           time.Time         `json:"at"`
+	GitCommit    string            `json:"git_commit,omitempty"`
 }
 
 var planItemKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -93,8 +96,12 @@ func (p Plan) Validate() error {
 }
 
 func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan Plan) (PlanRevision, error) {
+	return s.SavePlanWithPolicy(ctx, taskID, previous, plan, "")
+}
+
+func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous int, plan Plan, level string) (PlanRevision, error) {
 	var rev PlanRevision
-	if previous < 0 || previous >= 2147483647 || plan.Validate() != nil {
+	if (level != "" && !decisionLevel(level)) || previous < 0 || previous >= 2147483647 || plan.Validate() != nil {
 		return rev, ErrConflict
 	}
 	doc, err := json.Marshal(plan)
@@ -106,20 +113,23 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 		return rev, err
 	}
 	defer tx.Rollback()
-	var kind, status string
-	err = tx.QueryRowContext(ctx, `SELECT kind,status FROM work_items WHERE id=$1 AND goal_id IS NULL FOR UPDATE`, taskID).Scan(&kind, &status)
+	var kind, status, validation string
+	err = tx.QueryRowContext(ctx, `SELECT kind,status,COALESCE(spec->>'validation','') FROM work_items WHERE id=$1 AND goal_id IS NULL FOR UPDATE`, taskID).Scan(&kind, &status, &validation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrNotFound
 	}
 	if err != nil {
 		return rev, err
 	}
-	rev = PlanRevision{TaskID: taskID, Revision: previous + 1, Plan: plan}
+	if level == "D1" && validation != "docs" {
+		return rev, ErrConflict
+	}
+	rev = PlanRevision{MinimumLevel: level, TaskID: taskID, Revision: previous + 1, Plan: plan}
 	var same bool
-	err = tx.QueryRowContext(ctx, `SELECT at,plan=$3::jsonb,COALESCE(git_commit,'') FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
-		taskID, rev.Revision, string(doc)).Scan(&rev.At, &same, &rev.GitCommit)
+	err = tx.QueryRowContext(ctx, `SELECT at,plan=$3::jsonb,COALESCE(git_commit,''),COALESCE(minimum_level,'') FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
+		taskID, rev.Revision, string(doc)).Scan(&rev.At, &same, &rev.GitCommit, &rev.MinimumLevel)
 	if err == nil {
-		if !same {
+		if !same || (level != "" && rev.MinimumLevel != level) {
 			return rev, ErrConflict
 		}
 		return rev, tx.Commit()
@@ -130,9 +140,9 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 	if kind != "codex_issue" || (status != "READY" && status != "FAILED" && status != "WAITING_ACCEPTANCE" && status != "PLANNING") {
 		return rev, ErrConflict
 	}
-	err = tx.QueryRowContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan)
-		SELECT $1,$2,$3 WHERE $2::integer=(SELECT COALESCE(MAX(revision),0)+1 FROM plan_revisions WHERE task_id=$1)
-		RETURNING at`, taskID, rev.Revision, string(doc)).Scan(&rev.At)
+	err = tx.QueryRowContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan,minimum_level)
+		SELECT $1,$2,$3,NULLIF($4,'') WHERE $2::integer=(SELECT COALESCE(MAX(revision),0)+1 FROM plan_revisions WHERE task_id=$1)
+		RETURNING at`, taskID, rev.Revision, string(doc), level).Scan(&rev.At)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrConflict
 	}
@@ -151,15 +161,15 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 func (s *Store) PlanRevision(ctx context.Context, taskID int64, revision int64) (PlanRevision, error) {
 	var rev PlanRevision
 	var doc []byte
-	err := s.db.QueryRowContext(ctx, `SELECT task_id,revision,at,plan,COALESCE(git_commit,'') FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
-		taskID, revision).Scan(&rev.TaskID, &rev.Revision, &rev.At, &doc, &rev.GitCommit)
+	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) - 'review_lease' FROM plan_revisions r WHERE task_id=$1 AND revision=$2`,
+		taskID, revision).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrNotFound
 	}
 	if err != nil {
 		return rev, err
 	}
-	err = json.Unmarshal(doc, &rev.Plan)
+	err = json.Unmarshal(doc, &rev)
 	return rev, err
 }
 

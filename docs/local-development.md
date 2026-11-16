@@ -160,3 +160,11 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 ## 测试
 
 `go test ./...` 运行 HTTP、GitHub 接入和 Worker 测试。交付测试向临时裸 Git 仓库推送，并模拟 GitHub 合并门禁与响应丢失。设置 `FORGEOS_TEST_DATABASE_URL` 为独立测试库连接串后运行 `go test -count=1 ./...`，还会验证旧数据迁移、派发、重报、失联与重试、验收退回和交付队列恢复。若本地已备好 Docker 引擎和 Go 镜像，设置 `FORGEOS_TEST_DOCKER=1` 同时验证真实 Go 测试通过和失败的情形。
+
+## Management 审核进程
+
+控制面设置 `FORGEOS_MANAGEMENT_PROJECT_ID` 和独立的 `FORGEOS_MANAGEMENT_TOKEN` 后，为指定项目开放审核队列。用普通用户启动 `go run ./cmd/worker management`，给这个进程设置同一 Management 令牌和回环 `FORGEOS_API_URL`。它只需已登录的本地 Codex CLI，无需仓库目录、数据库密码或 Owner、Worker、GitHub 令牌。
+
+管理进程自动领取最新的待规划修订，在单独的只读会话中审阅冻结的 Issue 和草案。任务详情显示建议、判定等级、理由、依据和原生会话 ID。Owner 可通过 `GET /tasks/{id}/plans/{revision}` 查阅历史版本。模型执行限时五分钟，领取租约六分钟；进程退出后可重新领取。
+
+未指定策略时，最低决定等级为 D2。Owner 保存修订时可附加 `minimum_level`，也可在首次领取前向 `POST /tasks/{id}/plans/{revision}/policy` 提交该字段。已指定的等级绑定当前修订。D1 只开放给 docs 验证的低风险范围；管理建议只能提高等级。D1 通过会在同一事务中激活子任务；退回、请求人工决定、D2 或 D3 均保留草案，Owner 可保存下一版或通过现有激活入口明确批准。代码交付仍经过独立的候选验收与 GitHub 门禁。

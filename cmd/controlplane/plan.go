@@ -10,14 +10,30 @@ import (
 )
 
 func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner string) {
+	mux.HandleFunc("POST /tasks/{id}/plans/{revision}/policy", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		n, ok := planRevisionNumber(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			MinimumLevel string `json:"minimum_level"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		respond(w, http.StatusNoContent, nil, data.SetPlanMinimum(r.Context(), id, int(n), input.MinimumLevel))
+	}))
 	mux.HandleFunc("POST /tasks/{id}/plans/{revision}/activate", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		revision, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
-		if err != nil || revision < 1 {
-			problem(w, http.StatusBadRequest, "provide a positive plan revision")
+		revision, ok := planRevisionNumber(w, r)
+		if !ok {
 			return
 		}
 		task, err := data.ActivatePlan(r.Context(), id, int(revision))
@@ -29,8 +45,9 @@ func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner strin
 			return
 		}
 		var input struct {
-			Previous *int       `json:"previous_revision"`
-			Plan     store.Plan `json:"plan"`
+			MinimumLevel string     `json:"minimum_level"`
+			Previous     *int       `json:"previous_revision"`
+			Plan         store.Plan `json:"plan"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -43,7 +60,7 @@ func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner strin
 			problem(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		rev, err := data.SavePlan(r.Context(), id, *input.Previous, input.Plan)
+		rev, err := data.SavePlanWithPolicy(r.Context(), id, *input.Previous, input.Plan, input.MinimumLevel)
 		respond(w, http.StatusOK, rev, err)
 	}))
 	mux.HandleFunc("GET /tasks/{id}/plans/{revision}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
@@ -51,9 +68,8 @@ func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner strin
 		if !ok {
 			return
 		}
-		n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
-		if err != nil || n < 1 {
-			problem(w, http.StatusBadRequest, "provide a positive plan revision")
+		n, ok := planRevisionNumber(w, r)
+		if !ok {
 			return
 		}
 		rev, err := data.PlanRevision(r.Context(), id, n)
@@ -64,9 +80,8 @@ func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner strin
 		if !ok {
 			return
 		}
-		n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
-		if err != nil || n < 1 {
-			problem(w, http.StatusBadRequest, "provide a positive plan revision")
+		n, ok := planRevisionNumber(w, r)
+		if !ok {
 			return
 		}
 		ctx := r.Context()
@@ -104,4 +119,13 @@ func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner strin
 		rev.GitCommit = sha
 		respond(w, http.StatusOK, rev, err)
 	}))
+}
+
+func planRevisionNumber(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
+	if err != nil || n < 1 {
+		problem(w, http.StatusBadRequest, "provide a positive plan revision")
+		return 0, false
+	}
+	return n, true
 }
