@@ -105,7 +105,7 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='WAITING_INPUT' WHERE id=$1`, id); err != nil {
 		return Task{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES ($1,$2,'decision_requested')`, id, r.ExecutionID); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,question_id) VALUES ($1,$2,'decision_requested',$3)`, id, r.ExecutionID, qID); err != nil {
 		return Task{}, err
 	}
 	if err = tx.Commit(); err != nil {

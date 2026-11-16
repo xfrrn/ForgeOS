@@ -150,7 +150,7 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	if _, err = tx.ExecContext(ctx, `UPDATE plan_revisions SET review=$3, reviewed_at=now() WHERE task_id=$1 AND revision=$2`, id, revision, string(doc)); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'management_reviewed')`, id); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,plan_revision) VALUES ($1,'management_reviewed',$2)`, id, revision); err != nil {
 		return err
 	}
 	if review.EffectiveLevel == "D1" && review.Verdict == "approve" {

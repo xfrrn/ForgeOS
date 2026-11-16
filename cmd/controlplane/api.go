@@ -59,6 +59,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
+	registerNotifications(mux, data, owner)
 	registerWebRoutes(mux, data, root, owner)
 	registerPreviewFeedback(mux, data, owner)
 	mux.HandleFunc("POST /tasks/{id}/delivery/refresh", authorized(owner, delivery.refresh(data, root)))

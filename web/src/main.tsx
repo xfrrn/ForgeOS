@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
+import { NotificationCount, Notifications } from './Notifications'
 import TaskDetail from './TaskDetail'
 import { PreviewFeedback } from './PreviewFeedback'
 import TaskList from './TaskList'
@@ -59,6 +60,8 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const queue = route === '/review'
+  const [notificationRevision, setNotificationRevision] = useState(0)
+  const notifications = route === '/notifications'
   const nodes = route === '/workers'
   const questions = route === '/questions'
   const projectRoute = /^\/projects\/([1-9]\d*)\/(materials|decisions|shares(?:\/[1-9]\d*)?)$/.exec(route)
@@ -71,9 +74,9 @@ function App() {
   const projects = route === '/projects' || Boolean(materials || decisions || shares)
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9}))?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
-  const valid = Boolean(id || queue || nodes || questions || projects || route === '/tasks')
+  const valid = Boolean(id || queue || notifications || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
-  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
+  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
   }, [])
@@ -100,10 +103,11 @@ function App() {
       <a className="brand-link" aria-label="ForgeOS 任务列表" href="#/tasks"><Brand/></a>
       <div className="work-label">工作区</div>
       <nav aria-label="工作台导航">
-        <a className={!queue && !nodes && !questions && !projects ? 'active' : ''} aria-current={!queue && !nodes && !questions && !projects ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
+        <a className={!queue && !notifications && !nodes && !questions && !projects ? 'active' : ''} aria-current={!queue && !notifications && !nodes && !questions && !projects ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
         <a className={projects ? 'active' : ''} aria-current={projects ? 'page' : undefined} href="#/projects" onClick={() => setMobileNav(false)}><Icon name="GitBranch"/>项目接入</a>
         <a className={queue ? 'active' : ''} aria-current={queue ? 'page' : undefined} href="#/review" onClick={() => setMobileNav(false)}><Icon name="ClipboardCheck"/>验收队列
           {counts.WAITING_ACCEPTANCE > 0 && <span className="nav-count">{counts.WAITING_ACCEPTANCE}</span>}</a>
+        <a className={notifications ? 'active' : ''} aria-current={notifications ? 'page' : undefined} href="#/notifications"><Icon name="Inbox"/>通知<NotificationCount request={request} revision={notificationRevision}/></a>
         <a className={nodes ? 'active' : ''} aria-current={nodes ? 'page' : undefined} href="#/workers"><Icon name="Terminal"/>执行节点</a>
         <a className={questions ? 'active' : ''} aria-current={questions ? 'page' : undefined} href="#/questions" onClick={() => setMobileNav(false)}><Icon name="MessageSquare"/>待答问题
           {counts.WAITING_INPUT > 0 && <span className="nav-count">{counts.WAITING_INPUT}</span>}</a>
@@ -121,6 +125,7 @@ function App() {
     <main id="content" tabIndex={-1} className="content">
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
+        notifications ? <Notifications request={request} onRead={() => setNotificationRevision(n => n + 1)}/> :
         nodes ? <WorkerNodes request={request}/> :
         shares && projectID ? <ProjectShares key={route} project={projectID} receipt={shareID} request={request}/> :
         decisions && projectID ? <ProjectDecisions key={projectID} project={projectID} request={request}/> :

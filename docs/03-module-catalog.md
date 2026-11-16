@@ -19,6 +19,13 @@
 | Delivery Manager | PR、合并、Issue 关闭 | 生产部署 |
 | Notification Service | 站内、Telegram、飞书等通知 | 承担任务状态事实源 |
 
+### Owner 站内通知
+
+候选进入人工验收、验收检查点产生问题、执行失败或失联结算，以及 Management 返回需要人工处理的计划审核时，工作台可从任务事件读取对应通知。导航每 8 秒刷新仍待处理且未读的数量。通知页列出当前待处理项，也可切换到全部记录。任务与计划链接分别打开原任务与具体修订。
+
+`GET /tasks/notifications` 返回待处理项，`?scope=history` 包含已离开处理阶段的记录。每页最多 30 条，用 `next_before` 读取更早记录。`GET /tasks/notifications/unread` 返回待处理未读数。`POST /tasks/notifications/{event_id}/read` 将首次阅读时间持久化到 PostgreSQL。工作台只有一个 Owner 身份，各浏览器共享已读状态。重复标记保留首次时间。任务处理状态取自执行、问题、计划及其修订。
+
+
 ## 2. Worker 模块
 
 | 模块 | 职责 |
