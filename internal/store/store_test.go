@@ -17,6 +17,58 @@ func isolatedDatabase(t *testing.T) *sql.DB {
 	return testdb.Open(t)
 }
 
+func TestClaimRechecksTaskAfterPlanningLock(t *testing.T) {
+	db := isolatedDatabase(t)
+	s := New(db)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{ID: 7, Number: 1, RepositoryID: 8}, BaseCommit: strings.Repeat("a", 40), Validation: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var holder int
+	if err := tx.QueryRowContext(ctx, `UPDATE work_items SET status='PLANNING' WHERE id=$1 RETURNING pg_backend_pid()`, task.ID).Scan(&holder); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	root := t.TempDir()
+	go func() {
+		j, err := s.Claim(ctx, "worker", root, true)
+		if j != nil {
+			err = errors.New("worker claimed an item already in planning")
+		}
+		done <- err
+	}()
+	for {
+		var waiting bool
+		if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))`, holder).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDispatchAndReplay(t *testing.T) {
 	db := isolatedDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

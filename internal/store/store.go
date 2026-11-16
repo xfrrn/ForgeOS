@@ -289,7 +289,7 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	var spec []byte
 	err = tx.QueryRowContext(ctx, `
 		UPDATE work_items SET status = 'RUNNING'
-		WHERE id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
+		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
 		            AND (w.kind = 'git_head' OR $2)
 		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=w.id AND r.decision='reject'))
 		            ORDER BY w.id LIMIT 1)
