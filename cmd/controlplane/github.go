@@ -38,14 +38,17 @@ type issueStore interface {
 type githubGET func(context.Context, string, any) error
 
 func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner string) {
-	mux.HandleFunc("GET /tasks/{id}/requirements/{revision}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		id, ok := pathID(w, r)
+	mux.HandleFunc("POST /tasks/{id}/requirements/{revision}/apply", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, n, ok := requirementPath(w, r)
 		if !ok {
 			return
 		}
-		n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
-		if err != nil || n < 1 {
-			problem(w, http.StatusBadRequest, "provide a positive requirement revision")
+		task, err := data.AdoptRequirement(r.Context(), id, n)
+		respond(w, http.StatusOK, task, err)
+	}))
+	mux.HandleFunc("GET /tasks/{id}/requirements/{revision}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, n, ok := requirementPath(w, r)
+		if !ok {
 			return
 		}
 		rev, err := data.RequirementRevision(r.Context(), id, n)
@@ -236,4 +239,17 @@ func (repo githubProject) issue(remote githubIssue, number int64) (store.Issue, 
 	}
 	return store.Issue{RepositoryID: repo.ID, Repository: repo.FullName, ID: remote.ID, Number: number,
 		URL: htmlURL, Title: remote.Title, Body: remote.Body, UpdatedAt: remote.UpdatedAt}, nil
+}
+
+func requirementPath(w http.ResponseWriter, r *http.Request) (int64, int64, bool) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return 0, 0, false
+	}
+	n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
+	if err != nil || n < 1 {
+		problem(w, http.StatusBadRequest, "provide a positive requirement revision")
+		return 0, 0, false
+	}
+	return id, n, true
 }

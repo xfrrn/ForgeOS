@@ -34,6 +34,7 @@ const events: Record<string, string> = {
   decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
   goal_delivered: '全部子项已交付，父 Issue 已关闭',
   goal_item_superseded: '已从后续计划移除', goal_item_revised: '已更新待执行工作项',
+  requirement_adopted: '已采用新的需求修订',
   requirement_observed: '已记录新的 Issue 需求版本',
   management_reviewed: 'Management 已审核本版计划',
   planner_completed: '只读 Planner 已提交草案',
@@ -83,10 +84,20 @@ function CandidateDiff({ taskID, attempt, request }: { taskID: number; attempt: 
   </div>
 }
 
-function RequirementHistory({ id, latest, request }: { id: number; latest: number; request: ApiRequest }) {
+function RequirementHistory({ id, latest, request, canApply, onApply }: { id: number; latest: number; request: ApiRequest; canApply: boolean; onApply: (message: string) => void }) {
   const [revision, setRevision] = useState<number | null>(null)
   const [value, setValue] = useState<{ revision: number; issue: Issue } | null>(null)
   const [failed, setFailed] = useState(false)
+  const [applying, setApplying] = useState(false)
+  async function apply() {
+    setApplying(true)
+    try {
+      await request(`/tasks/${id}/requirements/${revision}/apply`, { method: 'POST' })
+      onApply(`任务已采用需求修订 ${revision}。`)
+    } catch {
+      onApply('请核对最新需求修订与任务状态。')
+    } finally { setApplying(false) }
+  }
   useEffect(() => {
     if (revision === null) return
     const controller = new AbortController()
@@ -106,6 +117,8 @@ function RequirementHistory({ id, latest, request }: { id: number; latest: numbe
     {failed ? <p role="alert">无法读取此需求版本。</p> : value?.revision === revision
       ? <><h4>{value.issue.title}</h4><p className="detail-issue-text">{value.issue.body}</p><p>GitHub 更新时间 · {formatTime(value.issue.updated_at)}</p></>
       : <p role="status">正在读取需求修订…</p>}
+    {canApply && revision === latest && value?.revision === latest &&
+      <button className="button primary" disabled={applying} onClick={() => void apply()}>采用修订 {revision} 并排队执行</button>}
   </div>
 }
 
@@ -304,7 +317,9 @@ function Detail({ id, request, onChanged }: Props) {
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}
           <div className="detail-issue-text" tabIndex={0} aria-label="Issue 正文">{issue.body || '此 Issue 没有正文。'}</div>
-          {task.latest_requirement && <RequirementHistory id={id} latest={task.latest_requirement} request={request}/>}</section>}
+          {task.latest_requirement && <RequirementHistory id={id} latest={task.latest_requirement} request={request}
+            canApply={!task.plan && !task.goal_id && task.latest_requirement !== task.requirement_revision && ['READY','FAILED','WAITING_ACCEPTANCE'].includes(task.status)}
+            onApply={message => { refresh(message); onChanged() }}/>}</section>}
         <section className="panel detail-card"><h2><Icon name="Terminal" size={18} />Worker 执行记录<span className="detail-count">{task.attempts.length}</span></h2>
           {task.attempts.length ? <div className="detail-attempts">{[...task.attempts].reverse().map(attempt =>
             <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} request={request} />)}</div>

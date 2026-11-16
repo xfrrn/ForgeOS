@@ -100,3 +100,47 @@ func (s *Store) RequirementRevision(ctx context.Context, taskID int64, revision 
 	err = json.Unmarshal(doc, &r.Issue)
 	return r, err
 }
+
+// AdoptRequirement starts new work at a completed turn boundary. Existing executions keep their own requirement IDs.
+func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+	var status string
+	var bound int64
+	var planned bool
+	err = tx.QueryRowContext(ctx, `SELECT status,requirement_id,EXISTS(SELECT 1 FROM plan_revisions WHERE task_id=t.id)
+		FROM work_items t WHERE id=$1 AND github_issue_id IS NOT NULL FOR UPDATE`, id).Scan(&status, &bound, &planned)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrNotFound
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	var newest, rid int64
+	var issue []byte
+	err = tx.QueryRowContext(ctx, `SELECT revision,id,issue FROM requirement_revisions WHERE task_id=$1 ORDER BY revision DESC LIMIT 1`, id).Scan(&newest, &rid, &issue)
+	if err != nil {
+		return Task{}, err
+	}
+	if newest != revision {
+		return Task{}, ErrConflict
+	}
+	if rid != bound {
+		if planned || (status != "READY" && status != "WAITING_ACCEPTANCE" && status != "FAILED") {
+			return Task{}, ErrConflict
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2,spec=jsonb_set(spec,'{issue}',$3::jsonb),status='READY' WHERE id=$1`, id, rid, string(issue)); err != nil {
+			return Task{}, err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'requirement_adopted')`, id); err != nil {
+			return Task{}, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return Task{}, err
+	}
+	return s.Task(ctx, id)
+}

@@ -292,7 +292,7 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1)
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
-		  AND ($2 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=candidate.id AND r.decision='reject'))
+		  AND ($2 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
 		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan).Scan(&projectID, &j.RepoPath)
@@ -310,7 +310,7 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
 		            AND (w.kind = 'git_head' OR $2)
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
-		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=w.id AND r.decision='reject'))
+		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
 		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
@@ -325,8 +325,8 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 			return nil, err
 		}
 		var review []byte
-		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r WHERE task_id = $1
-			AND decision = 'reject' ORDER BY execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
+		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
+			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}

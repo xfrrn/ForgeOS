@@ -24,6 +24,8 @@
 
 任务详情显示任务绑定版本与可浏览的需求历史。Owner 可以调用 `GET /tasks/{id}/requirements/{revision}` 获取完整快照。从子项访问时返回父 Goal 的原始需求。执行领取时冻结需求 ID；观察到新版本会记录事件，已有候选、验收和执行记录保持其原版本。
 
+对于尚未转为 Goal 的 Issue，Owner 可在任务详情查看最新正文，选择“采用修订并排队执行”。API 是 `POST /tasks/{id}/requirements/{revision}/apply`。适用检查点为待领取、执行失败或待验收；运行中返回 409。采用版本后，Work Item 保留原 ID，新 Execution 从同一基础提交和新需求开始，旧候选、退回意见与旧 Execution 保持关联。已创建计划的 Goal 通过计划修订处理子项范围。
+
 ## 3. PR 流程
 
 人工验收通过后：

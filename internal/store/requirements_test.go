@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -60,5 +61,64 @@ func TestRequirementHistoryIgnoresDelayedPolls(t *testing.T) {
 	history, err := s.RequirementRevision(ctx, child, 2)
 	if err != nil || history.ID != observed.ID {
 		t.Fatal(history, err)
+	}
+}
+
+func TestAdoptRequirementAfterTurn(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, "adoption")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := IssueSpec{Issue: Issue{ID: 7, Number: 1, RepositoryID: 42, Body: "original"}, BaseCommit: strings.Repeat("a", 40), Validation: "docs"}
+	task, err := s.ImportIssue(ctx, p.ID, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	job, err := s.Claim(ctx, "worker", root, true)
+	if err != nil || job == nil {
+		t.Fatal(job, err)
+	}
+	issue := spec.Issue
+	issue.Body = "clarification"
+	if err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.AdoptRequirement(ctx, task.ID, 2); !errors.Is(err, ErrConflict) {
+		t.Fatal("changed running input", err)
+	}
+	candidate := strings.Repeat("b", 40)
+	result := Result{Commit: candidate, BaseCommit: spec.BaseCommit, SessionID: "original", Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}
+	if err = s.Complete(ctx, job.ExecutionID, job.LeaseToken, result); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Review(ctx, task.ID, job.ExecutionID, candidate, "reject", "old wording", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	issue.Body = "updated requirements"
+	if err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.AdoptRequirement(ctx, task.ID, 2); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted stale source", err)
+	}
+	for range 2 {
+		updated, err := s.AdoptRequirement(ctx, task.ID, 3)
+		if err != nil || updated.Status != "READY" || updated.RequirementRevision != 3 || updated.Execution.RequirementRevision != 1 {
+			t.Fatal(updated, err)
+		}
+	}
+	next, err := s.Claim(ctx, "worker", root, true, false)
+	if err != nil || next == nil || next.Rework != nil || next.Spec.Issue.Body != issue.Body {
+		t.Fatal("carried stale rejection", next, err)
+	}
+	updated, err := s.Task(ctx, task.ID)
+	if err != nil || updated.Execution.RequirementRevision != 3 || len(updated.Attempts) != 2 || updated.Attempts[0].Result.Commit != candidate {
+		t.Fatal(updated, err)
 	}
 }
