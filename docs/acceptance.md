@@ -50,7 +50,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840` | 运行时事件批处理和安全中断 |
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session、真实失联租约、评论检查点；Ubuntu 非 root systemd 服务实测见下文 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f` | App Server、Claude Code 原生恢复、Linux Harness 登录复用、多节点恢复 |
-| 08 项目知识 | Planner 在固定版本引用 README 和 CI 工程事实；Owner 和两个节点从真实项目历史检索需求与评论版本 | `cc2011f`、`a31c02c` | 导入资料、决策索引、语义检索、脱敏审批和共享副本 |
+| 08 项目知识 | Planner 引用固定版本工程事实；按项目检索需求和评论版本；Owner 确认、替代或失效正式决定 | `cc2011f`、`a31c02c`，决策索引见下文 | 导入资料、语义检索、脱敏审批和共享副本 |
 | 09 权限与密钥 | Owner/Worker 分权，两个 Worker 按项目领取，持另一节点有效租约的越权回报返回 403 | `1a17822`、`319aa65`、`70781ba`、`c513401` | 环境授权、OpenBao、Secret Broker、短期凭据与恢复 |
 | 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、失败的 Actions 门禁、候选变化后重新验证 | `1a17822`、`32c0fa0` | 只读审查、V1–V4、仓库验证 Schema、检查报告与 GitHub 状态回传 |
 | 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
@@ -189,3 +189,18 @@ Claude Code 原生探测对应提交 `1d9617e11095434c41f68956f6e8a0d45c014108`�
 | 初始化、新建只读 Thread，发送携带随机标识的文本，关联原生事件 | 服务确认只读和 never 审批，首轮正常完成 | PID 1580 建立线程 `01a1e385-6183-7192-8b93-23dee8be39b2`。首轮 `01a1e385-63fe-7372-927d-1b0f9de0850b` 收到 started、agentMessage 和 completed |
 | 关闭服务器，在新服务器按原 Thread ID 恢复，上下文不重发 | 返回同一线程，模型能答出上一进程提供的标识 | PID 47960 的轮次 `01a1e385-8d3d-7fb3-8ca3-b5526ebdd9cd` 返回完全相同的随机值，服务确认轮次完成 |
 | 对第三轮发送中断，核对同一 Thread/Turn 的最终状态 | 运行中的 Turn 变为 interrupted | 在 start 响应后立即中断曾得到协议错误 -32600。改在收到 turn/started 后发送，轮次 `01a1e385-b2b7-7c41-83b9-f563f4d56966` 的 turn/completed 状态为 interrupted |
+
+上述 App Server 协议验收对应提交 `fe35218b32cf0bb296173ef0bc18b9a8a7e17d4a`。
+
+## 专题 08、ADR-018 · 有明确确认和依据的项目决策索引
+
+在已有真实项目和交付记录的 PostgreSQL 18 实例上升级迁移，从控制面 HTTP API 执行以下操作。提案依据为 beta 任务 15 的第 1 个业务问题及其交付记录。[依据 PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/6)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 提交有依据和适用范围的提案，重报后查询默认索引 | 提案唯一，Owner 确认前不进入有效决策集 | 提案 1 为 PROPOSED，decided_by 为空。相同请求返回相同提案，改写同一 key 返回 409。Worker 尝试确认返回 401 |
+| 通过 Owner 入口确认，再用两个节点读取；尝试从其他项目引用旧决定 | 只有获准项目的节点可读，确认身份可追溯 | beta 可读，返回 decided_by=owner；alpha 查 beta 返回 403。在项目 2 创建替代 beta 决策的提案返回 404 |
+| 提案 5 替代决定 1；再尝试确认另一份指向决定 1 的提案 6 | 替代关系仅在确认时生效，原决定只能被替代一次 | 提案 5 创建后决定 1 仍然有效。确认 5 后，1 的历史依次为 PROPOSED、CONFIRMED、SUPERSEDED。确认 6 返回 409，Owner 可将 6 退为 REJECTED |
+| 将决定 5 置为 EXPIRED，重启控制面并按状态查询 | 失效决定退出默认索引，历史和依据完整保留 | 重启前后 Owner 的完整历史响应相同，beta 节点读取结果也一致。真实数据库测试另覆盖两个替代提案并发确认和截止时间自动失效 |
+
+该功能启用 PostgreSQL 与 Docker 的全套 Go 回归为 64 项通过、零跳过。`go vet ./...` 通过。

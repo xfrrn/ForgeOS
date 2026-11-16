@@ -30,12 +30,16 @@ func registerHistory(mux *http.ServeMux, data *store.Store, owner string, worker
 		rows, err := data.SearchHistory(r.Context(), project, task, source, text)
 		respond(w, http.StatusOK, rows, err)
 	}
-	mux.HandleFunc("GET /projects/{id}/history", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+	registerProjectRead(mux, "history", owner, workers, search)
+}
+
+func registerProjectRead(mux *http.ServeMux, resource, owner string, workers workerAccess, read func(http.ResponseWriter, *http.Request, int64)) {
+	mux.HandleFunc("GET /projects/{id}/"+resource, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pathID(w, r); ok {
-			search(w, r, id)
+			read(w, r, id)
 		}
 	}))
-	mux.HandleFunc("GET /internal/projects/{id}/history", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	mux.HandleFunc("GET /internal/projects/{id}/"+resource, workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -44,6 +48,6 @@ func registerHistory(mux *http.ServeMux, data *store.Store, owner string, worker
 			problem(w, http.StatusForbidden, "project is outside this Worker's grant")
 			return
 		}
-		search(w, r, id)
+		read(w, r, id)
 	}))
 }

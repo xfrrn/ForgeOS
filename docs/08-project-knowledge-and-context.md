@@ -54,6 +54,12 @@ Agent 在执行时自主读取当前任务所需文档，不由中台预先复�
 
 重要决策包含 source、decided_by、validity、supersedes、evidence_refs。
 
+Owner 向 `POST /projects/{id}/decisions` 提交提案。必填字段为 `request_key`、`statement`、`source`、`validity` 和非空的 `evidence_refs` 数组。可选的 `valid_until` 为带时区的 RFC 3339 时间，`supersedes` 为本项目已有决策的 ID。相同 key 和内容重报返回同一提案；同一 key 改写内容返回 409。
+
+通过 `POST /projects/{id}/decisions/{decision}/status` 提交 `{"status":"CONFIRMED"}` 或 `REJECTED`。确认替代提案时，旧决定必须仍然有效，旧记录变为 SUPERSEDED 与新确认在同一事务完成。Owner 可将有效决定置为 EXPIRED。有截止时间的待确认或已确认记录到期自动显示 EXPIRED。每条记录保留有关操作的身份、状态、时间和原始依据。截止时间自然到期可由 `valid_until` 核对。
+
+Owner 用 `GET /projects/{id}/decisions` 查询，项目节点用 `GET /internal/projects/{id}/decisions` 查询。默认只返回当前有效的已确认决定。使用 `status=ALL` 或一个状态名查历史。按 ID 倒序每页最多 30 条，下一页传 `before=<本页最后一个 ID>`。
+
 ## 5. 检索方式
 
 混合检索：
