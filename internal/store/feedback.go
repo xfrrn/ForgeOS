@@ -12,23 +12,28 @@ import (
 )
 
 type PreviewFeedback struct {
-	Request   string `json:"request_id"`
-	Execution int64  `json:"execution_id"`
-	Commit    string `json:"commit"`
-	Path      string `json:"path"`
-	Browser   string `json:"browser,omitempty"`
-	Width     int    `json:"width,omitempty"`
-	Height    int    `json:"height,omitempty"`
-	Element   string `json:"element,omitempty"`
-	Note      string `json:"note"`
-	Revision  int    `json:"plan_revision,omitempty"`
-	Case      string `json:"case_id,omitempty"`
+	Request     string `json:"request_id"`
+	Execution   int64  `json:"execution_id"`
+	Commit      string `json:"commit"`
+	Path        string `json:"path"`
+	Browser     string `json:"browser,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Element     string `json:"element,omitempty"`
+	CanvasPoint string `json:"canvas_point,omitempty"`
+	Note        string `json:"note"`
+	Revision    int    `json:"plan_revision,omitempty"`
+	Case        string `json:"case_id,omitempty"`
 }
 
 var feedbackRequest = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
 var feedbackBrowser = regexp.MustCompile(`^(Chrome|Chromium|Firefox|Safari|Edge)/[0-9]{1,3}$`)
 var elementStep = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}:nth-of-type\([1-9][0-9]{0,5}\)$`)
 var feedbackCase = regexp.MustCompile(`^TC-[0-9]{3}$`)
+
+const percentage = `((0|[1-9][0-9]?)\.[0-9]{2}|100\.00)%`
+
+var canvasPoint = regexp.MustCompile("^" + percentage + " " + percentage + "$")
 
 func (f PreviewFeedback) Valid() bool {
 	if !feedbackRequest.MatchString(f.Request) || f.Execution <= 0 || !validCommit(f.Commit) ||
@@ -45,6 +50,12 @@ func (f PreviewFeedback) Valid() bool {
 	}
 	if (f.Browser != "" && !feedbackBrowser.MatchString(f.Browser)) || (f.Width == 0) != (f.Height == 0) || f.Width < 0 || f.Width > 32768 || f.Height < 0 || f.Height > 32768 {
 		return false
+	}
+	if f.CanvasPoint != "" {
+		steps := strings.Split(f.Element, " > ")
+		if !strings.HasPrefix(steps[len(steps)-1], "canvas:nth-of-type(") || !canvasPoint.MatchString(f.CanvasPoint) {
+			return false
+		}
 	}
 	if f.Element != "" {
 		if len(f.Element) > 2048 {

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-type Note = { id: number; created_at: string; state: string; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Note = { id: number; created_at: string; state: string; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
 const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
 type Page = { at_acceptance: boolean; preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
@@ -35,6 +35,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         execution_id: page.preview.execution_id, commit: page.preview.commit, path: path.trim(), note: note.trim(),
         case_id: caseID, plan_revision: caseID ? page.plan?.revision : 0,
         element: capture.get('element') || '', browser: capture.get('browser') || '',
+        canvas_point: capture.get('canvas_point') || '',
         width: Number(capture.get('width')), height: Number(capture.get('height')) }) })
       setMessage(`反馈 #${result.id} 已登记。`); setNote(''); setKey(crypto.randomUUID()); setVersion(n => n + 1)
     } catch (e) { setError(e instanceof Error ? e.message : '反馈提交失败。') }
@@ -57,7 +58,8 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
       <form onSubmit={submit}><fieldset><legend>记录观察</legend>
         {mismatch && <p role="alert">捕获页面的候选或执行与此预览不一致，请返回预览重新选择。</p>}
         {captureQuery && <div><p>采集环境　{capture.get('browser')} · {capture.get('width')} × {capture.get('height')}</p>
-          {capture.get('element') && <p>所选元素　<code>{capture.get('element')}</code></p>}</div>}
+          {capture.get('element') && <p>所选元素　<code>{capture.get('element')}</code></p>}
+          {capture.get('canvas_point') && <p>画布位置（左、上）　{capture.get('canvas_point')}</p>}</div>}
         <label>页面路径（省略查询参数和片段）<input required maxLength={2048} value={path} onChange={e => setPath(e.target.value)} /></label>
         <label>关联测试用例<select value={caseID} onChange={e => setCaseID(e.target.value)}><option value="">无关联用例</option>
           {page.plan?.cases.map(c => <option key={c.id} value={c.id}>{c.id} · {c.objective}</option>)}</select></label>
@@ -69,6 +71,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
       {page.feedback.map(f => <article key={f.id}><h3>反馈 #{f.id}</h3><p>{f.classification ? 'Management 分类 · ' + categories[f.classification.category] : f.state === 'in_review' ? 'Management 正在分类' : '待 Management 分类'} · {formatTime(f.created_at)} · <code>{f.body.path}</code>
         {f.body.case_id && ` · 计划 v${f.body.plan_revision} · ${f.body.case_id}`}</p><p>{f.body.note}</p>
         {f.body.element && <p>元素 <code>{f.body.element}</code></p>}
+        {f.body.canvas_point && <p>画布位置（左、上）　{f.body.canvas_point}</p>}
         {f.review ? <p>Owner 已{f.review.decision === 'approve' ? '通过验收' : '退回修改'}　{f.review.note}</p> :
           page.at_acceptance && ['acceptance', 'bug', 'ui_change'].includes(f.classification?.category ?? '') &&
           <a href={`#/tasks/${task}`}>在候选验收中引用</a>}

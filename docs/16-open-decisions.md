@@ -15,7 +15,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 5. 本次实测使用已登录的 GitHub CLI 账号。GitHub App 或细粒度 Token 所需的最小权限，以及要求第二位维护者批准 PR 时的交付行为，仍待实测。
 6. 已在私有 beta 仓库验证 GitHub Commit Status 的成功、失败、并发重报和丢失确认后的恢复。将 `forgeos/local-ci` 临时设为必需检查后，真实 PR 已与 Actions 一同通过并合并。使用当前 GitHub CLI 身份，GitHub App 最小授权仍见 A.5。
 7. 本机静态预览已验证隔离、持久化与撤销。已在本机经真实 Caddy 和双向 TLS 验证工作台、独立的候选子域名、Owner 鉴权与停止后回收。动态应用、独立 Staging 仍待实现或验收。Tailscale 分流 DNS 和 ACL 需在真实 tailnet 与第二台设备验收，两者当前缺失。
-8. 已在 Chrome for Testing 验证顶层 DOM 元素定位、整页反馈、Esc 取消、隐私字段排除及错版本阻断。不同前端技术栈、iframe、Canvas 的定位，截图遮挡和录屏仍待验收。
+8. 已在 Chrome for Testing 验证顶层 DOM 元素定位、整页反馈、Esc 取消、隐私字段排除及错版本阻断。Canvas 批注已从真实静态候选验证到反馈历史，包括底层像素与显示尺寸不同时的相对位置。不同前端技术栈、iframe 定位、截图遮挡和录屏仍待验收。
 9. OpenBao 2.7.2 已验证 2/3 解封、KV v2 权限、分开加密的 Raft/审计备份及恢复。Secret Manager 已验证环境状态与身份轮换；Secret Broker 已通过真实 OpenBao 验证固定 KV 版本、运行中节点租约、用途、次数、有效期和一次性解包。
 10. PostgreSQL 队列与事件存储在实际任务量下的性能。
 

@@ -22,7 +22,8 @@ class Site(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.do_HEAD()
-        self.wfile.write(b'<main><input type="password" id="private-id" name="private-name" value="private-value"></main>')
+        self.wfile.write(b'<main><input type="password" id="private-id" name="private-name" value="private-value">'
+                         b'<canvas width="400" height="200" style="width:200px;height:100px"></canvas></main>')
 
     def log_message(self, *args):
         pass
@@ -56,7 +57,7 @@ def press_action(context, page, extension_id, button):
             number = len(replies) + 1
             command = {"id": number, "method": "Runtime.evaluate", "params": {"expression": expression, "returnByValue": True}}
             root.send("Target.sendMessageToTarget", {"sessionId": channel, "message": json.dumps(command)})
-            for _ in range(50):
+            for _ in range(200):
                 if number in replies:
                     return replies[number]["result"]["result"].get("value")
                 page.wait_for_timeout(50)
@@ -77,7 +78,14 @@ def press_action(context, page, extension_id, button):
             else:
                 raise AssertionError("The workbench was not paired")
             evaluate("setTimeout(() => window.close(), 50)")
+        # The picker can already be visible while Chrome is still closing this popup.
+        for _ in range(100):
+            pages = root.send("Target.getTargets", {"filter": [{"type": "page"}]})["targetInfos"]
+            if all(p["targetId"] != popup["targetId"] for p in pages):
+                break
             page.wait_for_timeout(100)
+        else:
+            raise AssertionError("The toolbar action did not close its popup")
     finally:
         root.detach()
 
@@ -118,6 +126,17 @@ def main():
             fields = parse_qs(urlsplit(destination.url).fragment.split("?", 1)[1])
             assert fields["commit"] == ["a" * 40] and fields["execution"] == ["2"] and fields["path"] == ["/"]
             assert p.locator(fields["element"][0]).get_attribute("type") == "password"
+            assert "canvas_point" not in fields
+            press_action(context, p, extension_id, "pick")
+            expect(tip).to_be_visible()
+            with context.expect_page() as handoff:
+                p.locator("canvas").click(position={"x": 50, "y": 75})
+            canvas_draft = handoff.value
+            canvas_draft.wait_for_load_state()
+            fields = parse_qs(urlsplit(canvas_draft.url).fragment.split("?", 1)[1])
+            assert fields["canvas_point"] == ["25.00% 75.00%"]
+            assert p.locator(fields["element"][0]).evaluate("el => el.tagName") == "CANVAS"
+            print("PASS: scaled Canvas selection retained its relative position")
             print("PASS: paired origin, cancellation, structural locator, candidate, path and privacy")
         finally:
             context.close()

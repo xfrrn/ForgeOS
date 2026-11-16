@@ -49,12 +49,13 @@ async function startCapture(workbench, origin, preview, elementMode) {
   if (!response.ok || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit) || !/^[1-9]\d*$/.test(task) || !/^[1-9]\d*$/.test(execution)) {
     return {error: '当前预览已停止或缺少候选信息。'}
   }
-  function destination(element) {
+  function destination(element, canvasPoint = '') {
     const edge = /Edg\/(\d+)/.exec(navigator.userAgent)
     const chrome = /Chrome\/(\d+)/.exec(navigator.userAgent)
     const browser = edge ? 'Edge/' + edge[1] : chrome ? 'Chrome/' + chrome[1] : ''
     const capture = new URLSearchParams({commit, execution, path: location.pathname, browser,
       width: String(innerWidth), height: String(innerHeight), element})
+    if (canvasPoint) capture.set('canvas_point', canvasPoint)
     return workbench + '/#/tasks/' + task + '/previews/' + preview + '/feedback?' + capture
   }
   if (!elementMode) return {ok: true, destination: destination('')}
@@ -82,8 +83,14 @@ async function startCapture(workbench, origin, preview, elementMode) {
       for (let prev = el.previousElementSibling; prev; prev = prev.previousElementSibling) if (prev.localName === el.localName) index++
       steps.unshift(el.localName + ':nth-of-type(' + index + ')')
     }
+    let point = ''
+    if (e.target instanceof HTMLCanvasElement) {
+      const box = e.target.getBoundingClientRect()
+      const percent = ratio => Math.max(0, Math.min(100, ratio * 100)).toFixed(2) + '%'
+      if (box.width && box.height) point = percent((e.clientX - box.left) / box.width) + ' ' + percent((e.clientY - box.top) / box.height)
+    }
     cleanup()
-    window.open(destination(steps.join(' > ')), '_blank', 'noopener,noreferrer')
+    window.open(destination(steps.join(' > '), point), '_blank', 'noopener,noreferrer')
   }
   window.addEventListener('click', select, true)
   window.addEventListener('keydown', cancel, true)

@@ -119,6 +119,20 @@ func TestFeedbackContextValidation(t *testing.T) {
 	if !f.Valid() {
 		t.Fatal("rejected valid feedback")
 	}
+	canvas := f
+	canvas.Element = "main:nth-of-type(1) > canvas:nth-of-type(2)"
+	for _, point := range []string{"0.00% 100.00%", "25.00% 75.00%"} {
+		canvas.CanvasPoint = point
+		if !canvas.Valid() {
+			t.Errorf("rejected canvas point %q", point)
+		}
+	}
+	for _, point := range []string{"25.00%", "100.01% 50.00%", "-1.00% 0.00%", "private-data"} {
+		canvas.CanvasPoint = point
+		if canvas.Valid() {
+			t.Errorf("accepted canvas point %q", point)
+		}
+	}
 	for _, p := range []string{"/?session=x", "/page%23secret", "//other.example/path", "/../other", "/%2e", "/a%5cb", "not/a/path"} {
 		bad := f
 		bad.Path = p
@@ -130,6 +144,7 @@ func TestFeedbackContextValidation(t *testing.T) {
 		func(f *PreviewFeedback) { f.Request = "no-key" }, func(f *PreviewFeedback) { f.Height = 0 },
 		func(f *PreviewFeedback) { f.Element = "input[value=private]" }, func(f *PreviewFeedback) { f.Revision = 0 },
 		func(f *PreviewFeedback) { f.Browser = "raw user agent string" },
+		func(f *PreviewFeedback) { f.CanvasPoint = "50.00% 50.00%" },
 	} {
 		test := f
 		bad(&test)

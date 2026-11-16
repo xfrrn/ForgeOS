@@ -144,6 +144,8 @@ Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 
 
 安装 Python Playwright 后，可以用 `python scripts/probe_preview_extension.py --browser <Chrome-for-Testing可执行文件>` 重跑工具栏、取消、选择和隐私回归。探针启动一次性浏览器配置与两个本机页面，不需要项目凭据。验收工作台与数据库的完整场景见[验收记录](acceptance.md)。
 
+点击 Canvas 时，草案还显示点击位置距画布可见边界框左边和上边的百分比。两个百分比写入反馈的 `canvas_point` 字段，例如 `25.00% 75.00%`。位置相对于 CSS 显示尺寸，浏览器缩放或画布底层像素尺寸不影响其含义。扩展读取点击事件和元素边界框，不采集画布像素。
+
 ## 7. 反馈流转
 
 反馈先进入 Feedback Manager，由 Management Agent 分类：
