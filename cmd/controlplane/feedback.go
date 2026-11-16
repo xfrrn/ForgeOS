@@ -8,6 +8,7 @@ import (
 
 func registerPreviewFeedback(mux *http.ServeMux, data *store.Store, owner string) {
 	const path = "/tasks/{id}/previews/{preview}/feedback"
+	registerFeedbackArtifacts(mux, data, owner, path)
 	mux.HandleFunc("POST "+path+"/requirements", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

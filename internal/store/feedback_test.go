@@ -66,6 +66,31 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 	if _, err = s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, f); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed replay: %v", err)
 	}
+	t.Run("screenshot receipt follows storage and scope", func(t *testing.T) {
+		digest := strings.Repeat("a", 64)
+		diskErr := errors.New("storage unavailable")
+		if _, err := s.SaveFeedbackScreenshot(ctx, task.ID, preview.ID, first, digest, 42, func(string) error { return diskErr }); !errors.Is(err, diskErr) {
+			t.Fatal(err)
+		}
+		var count int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM feedback_artifacts").Scan(&count); err != nil || count != 0 {
+			t.Fatal(count, err)
+		}
+		var id int64
+		for range 2 {
+			a, err := s.SaveFeedbackScreenshot(ctx, task.ID, preview.ID, first, digest, 42, func(string) error { return nil })
+			if err != nil || (id != 0 && id != a.ID) {
+				t.Fatal(a, err)
+			}
+			id = a.ID
+		}
+		if _, err := s.FeedbackArtifact(ctx, task.ID+1, preview.ID, first, id); !errors.Is(err, ErrNotFound) {
+			t.Fatal("cross-task read", err)
+		}
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM task_events WHERE type='feedback_screenshot_saved'").Scan(&count); err != nil || count != 1 {
+			t.Fatal(count, err)
+		}
+	})
 	t.Run("management lease and provenance", func(t *testing.T) {
 		if j, err := s.ClaimFeedback(ctx, p.ID+1); err != nil || j != nil {
 			t.Fatalf("other project: %v %v", j, err)

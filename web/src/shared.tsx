@@ -42,17 +42,17 @@ export function safeGitHubURL(value?: string): string | undefined {
   } catch { /* Ignore malformed evidence links. */ }
 }
 
-export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>
+export type ApiRequest = <T>(path: string, init?: RequestInit, format?: 'blob') => Promise<T>
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
 export function requestWith(token: string, onUnauthorized: () => void): ApiRequest {
-  return async <T,>(path: string, init: RequestInit = {}) => {
+  return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
     if (!/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects\/[1-9]\d*\/issues\/[1-9]\d*$/.test(path)) throw new Error('无效的任务接口')
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + token)
-    if (init.body) headers.set('Content-Type', 'application/json')
+    if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
     let response: Response
     try { response = await fetch(path, { ...init, headers, redirect: 'error', credentials: 'omit', cache: 'no-store' }) }
     catch (err) {
@@ -66,6 +66,7 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
         response.status === 409 ? '任务状态或候选版本已变化，请刷新记录。' :
         response.status === 404 ? '找不到这条记录。' : (info?.error || '请求失败，请稍后重试。'))
     }
+    if (format === 'blob') return await response.blob() as T
     return response.status === 204 ? undefined as T : await response.json() as T
   }
 }

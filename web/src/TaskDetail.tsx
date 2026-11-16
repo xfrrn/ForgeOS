@@ -52,6 +52,7 @@ const events: Record<string, string> = {
   requirement_observed: '已记录新的 Issue 需求版本',
   requirement_revised_from_feedback: 'Owner 已从预览反馈修订需求',
   feedback_work_item_dispatched: '已从反馈派发独立工作项',
+  feedback_screenshot_saved: '已归档预览反馈截图',
   management_reviewed: 'Management 已审核本版计划',
   planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
