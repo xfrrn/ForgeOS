@@ -29,6 +29,15 @@ func TestWorkerProjectGrants(t *testing.T) {
 		return loadWorkers(file, "", "owner", "manager")
 	}
 	g := grant("A", "alpha", "[1]")
+	for _, scope := range []string{
+		`[{"project_id":2,"environment":"local-mock"}]`,
+		`[{"project_id":1,"environment":"invalid"}]`,
+		`[{"project_id":1,"environment":"production"},{"project_id":1,"environment":"production"}]`,
+	} {
+		if _, err := config("[" + g[:len(g)-1] + `,"environments":` + scope + "}]"); err == nil {
+			t.Fatal("invalid Worker environment grant accepted")
+		}
+	}
 	for _, bad := range []string{"[]", "[" + g + "," + g + "]", "[" + g + "," + grant("B", "alpha", "[2]") + "]", "[" + grant("A", "owner", "[1]") + "]", "[" + grant("A", "manager", "[1]") + "]", "[" + grant("A", "a", "[]") + "]", "[" + grant("A", "a", "[1,1]") + "]", "[" + g + "]{}"} {
 		if _, err := config(bad); err == nil {
 			t.Fatal("invalid grant accepted")

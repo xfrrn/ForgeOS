@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"forgeos/internal/bao"
 	"forgeos/internal/store"
 	_ "github.com/lib/pq"
 )
@@ -74,6 +75,11 @@ func run(ctx context.Context) error {
 	}
 
 	mux := routes(data, root, owner, workers, delivery)
+	vault, err := bao.New(os.Getenv("FORGEOS_BAO_ADDR"), os.Getenv("FORGEOS_BAO_METADATA_TOKEN_FILE"), os.Getenv("FORGEOS_BAO_CA_FILE"))
+	if err != nil {
+		return err
+	}
+	registerSecrets(mux, data, owner, workers, vault)
 	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), manager, owner, workers); err != nil {
 		return err
 	}

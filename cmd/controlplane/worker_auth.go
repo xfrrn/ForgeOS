@@ -17,9 +17,14 @@ import (
 )
 
 type workerGrant struct {
-	id       string
-	digest   [sha256.Size]byte
-	projects []int64
+	environments map[environmentGrant]bool
+	id           string
+	digest       [sha256.Size]byte
+	projects     []int64
+}
+type environmentGrant struct {
+	Project     int64  `json:"project_id"`
+	Environment string `json:"environment"`
 }
 type workerAccess []workerGrant
 
@@ -45,9 +50,10 @@ func loadWorkers(file, legacy, owner, manager string) (workerAccess, error) {
 		return nil, errors.New("could not read FORGEOS_WORKERS_FILE")
 	}
 	var rows []struct {
-		ID       string  `json:"worker_id"`
-		Hash     string  `json:"token_sha256"`
-		Projects []int64 `json:"projects"`
+		ID           string             `json:"worker_id"`
+		Hash         string             `json:"token_sha256"`
+		Projects     []int64            `json:"projects"`
+		Environments []environmentGrant `json:"environments"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(doc))
 	dec.DisallowUnknownFields()
@@ -72,6 +78,13 @@ func loadWorkers(file, legacy, owner, manager string) (workerAccess, error) {
 				return nil, errors.New("Worker project IDs must be positive and distinct")
 			}
 			projects[id] = true
+		}
+		grant.environments = map[environmentGrant]bool{}
+		for _, scope := range r.Environments {
+			if !projects[scope.Project] || !store.ValidEnvironment(scope.Environment) || grant.environments[scope] {
+				return nil, errors.New("Worker environment grants must be distinct and belong to an allowed project")
+			}
+			grant.environments[scope] = true
 		}
 		ids[r.ID], used[grant.digest] = true, true
 		access = append(access, grant)

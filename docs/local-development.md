@@ -174,3 +174,5 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 控制面可用 `FORGEOS_WORKERS_FILE` 代替单一 `FORGEOS_WORKER_TOKEN`。文件是 JSON 数组，每项含 `worker_id`、`token_sha256`（原始随机令牌的 SHA-256 十六进制摘要）与 `projects`（允许领取的项目 ID 数组）。在对应 Worker 上设置相同的 `FORGEOS_WORKER_ID` 和该节点自己的原始 `FORGEOS_WORKER_TOKEN`。控制面读取摘要，Owner 与 Management 继续使用各自身份。更换文件后重启控制面生效。
 
 多身份模式下，控制面先限制候选项目再领取任务。节点只能读自己执行的检查点和回报自己的结果，后续请求仍校验执行租约。使用不同的本地仓库根目录与工作区根目录，可进一步限制各节点可解析的 Git 工作区。历史单令牌配置适用于共用信任域。
+
+节点使用密钥状态接口时，在该节点的配置中添加 `"environments":[{"project_id":2,"environment":"local-mock"}]`。所列项目必须已在该节点的 `projects` 数组内。未列出环境的节点仍可领取已有授权项目的普通任务。OpenBao 连接、只读策略与状态接口见[密钥管理](09-security-and-secrets.md)。

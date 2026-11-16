@@ -20,6 +20,20 @@
 
 路径建议：`secret/projects/{project_id}/{environment}/{secret_name}`。
 
+### Secret Manager 元数据和状态
+
+控制面使用 `FORGEOS_BAO_ADDR` 指定 HTTPS origin，`FORGEOS_BAO_METADATA_TOKEN_FILE` 指定只读身份的令牌文件绝对路径，私有 CA 使用 `FORGEOS_BAO_CA_FILE`。令牌文件由控制面独占读取，可原子替换。身份策略只授予已配置项目和环境的 KV v2 **metadata** read 权限。以下为项目 2 单个测试键的示例。
+
+```hcl
+path "secret/metadata/projects/2/local-mock/example" {
+  capabilities = ["read"]
+}
+```
+
+Owner 通过 `PUT /projects/{id}/environments/{environment}/secrets/{name}` 登记 `{"risk":"S1"}`。环境标识为 `local-mock`、`local-integrated`、`ci-test`、`staging`、`production`。风险独立选择 S0–S3。PostgreSQL 只记录项目、环境、名称、风险和更新时间。实际值由具有相应权限的操作者写入 OpenBao KV v2。
+
+在同一路径执行 GET 可读取 `state` 和当前 `version`。可用状态为 MISSING、AVAILABLE、DELETED 和 DESTROYED。未登记返回 404；OpenBao 不可连接、拒绝身份或返回无效数据时返回 503。节点使用带 `/internal` 前缀的 GET 入口，需额外取得项目与环境的成对授权。这一接口只查询 KV 元数据。
+
 ## 3. 风险等级
 
 - S0：非敏感配置；
