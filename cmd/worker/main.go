@@ -24,6 +24,7 @@ import (
 type worker struct {
 	api, token, id, repoRoot, workspaceRoot string
 	codex                                   string
+	claude                                  claudeCLI
 	planner                                 bool
 	client                                  *http.Client
 }
@@ -102,6 +103,10 @@ func fromEnv(role string) (*worker, error) {
 	if err != nil {
 		return nil, err
 	}
+	w.claude, err = findClaude(os.Getenv("FORGEOS_CLAUDE_BIN"))
+	if err != nil {
+		return nil, err
+	}
 	return w, nil
 }
 
@@ -152,11 +157,16 @@ func (w *worker) run(ctx context.Context) error {
 	claim := map[string]any{"worker": w.id, "workspace_root": w.workspaceRoot, "supports_validation": true, "supports_declared_checks": true, "supports_risk_policy": true}
 	if w.codex != "" {
 		claim["supports_codex"] = true
-		claim["supports_checkpoints"] = true
-		claim["supports_rework"] = true
 		if w.planner {
 			claim["supports_planner"] = true
 		}
+	}
+	if w.claude.bin != "" {
+		claim["supports_claude"] = true
+	}
+	if w.codex != "" || w.claude.bin != "" {
+		claim["supports_checkpoints"] = true
+		claim["supports_rework"] = true
 	}
 	for ctx.Err() == nil {
 		var job store.Job

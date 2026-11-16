@@ -145,6 +145,49 @@ func TestIssueMigrationAndDelivery(t *testing.T) {
 	}
 }
 
+func TestClaimSelectedIssueHarness(t *testing.T) {
+	s := New(isolatedDatabase(t))
+	ctx := context.Background()
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := IssueSpec{Issue: Issue{ID: 71, RepositoryID: 9, Number: 1}, Harness: "claude", BaseCommit: strings.Repeat("a", 40), Validation: "docs"}
+	task, err := s.ImportIssue(ctx, p.ID, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if j, err := s.Claim(ctx, "codex", root, true); err != nil || j != nil {
+		t.Fatal("Codex claimed a Claude task", err)
+	}
+	j, err := s.Claim(ctx, "claude", root, false, true, false, false, true, true, true, true)
+	if err != nil || j == nil || j.TaskID != task.ID || j.Spec.Harness != "claude" {
+		t.Fatal(j, err)
+	}
+	sha := strings.Repeat("b", 40)
+	result := Result{SessionID: "native-session", BaseCommit: spec.BaseCommit, Commit: sha, Validation: &ValidationResult{Profile: "docs", Commit: sha}}
+	if err := s.Complete(ctx, j.ExecutionID, j.LeaseToken, result); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted a misattributed result", err)
+	}
+	result.Harness, result.HarnessVersion = "claude", "2.1.310"
+	if err := s.Complete(ctx, j.ExecutionID, j.LeaseToken, result); err != nil {
+		t.Fatal(err)
+	}
+	spec.Harness = ""
+	spec.Issue.ID++
+	spec.Issue.Number++
+	if _, err := s.ImportIssue(ctx, p.ID, spec); err != nil {
+		t.Fatal(err)
+	}
+	if j, err := s.Claim(ctx, "claude", root, false, true, false, false, true, true, true, true); err != nil || j != nil {
+		t.Fatal("Claude claimed a legacy Codex task", err)
+	}
+}
+
 func TestRetryIssueExecution(t *testing.T) {
 	db := isolatedDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

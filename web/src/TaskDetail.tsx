@@ -10,7 +10,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
   checks: { name: string; required: boolean; status: string; failure?: string; exit_code: number | null; log: string
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
-type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
+type Result = { commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   review_feedback?: { id: number; preview_id: string; decision: 'approve' | 'reject'; note: string }[]
   test_plan_revision?: number; test_plan_state?: string; test_case_state?: string; test_case_attempts?: number; requires_test_plan?: boolean
@@ -261,7 +261,8 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {start && <Fact label="领取时间">{formatTime(start.at)}</Fact>}
       <Fact label="Worktree" code>{attempt.workspace}</Fact>
       {attempt.requirement_revision && <Fact label="执行绑定需求">{attempt.requirement_revision}</Fact>}
-      {result?.session_id && <Fact label="Codex Session" code>{result.session_id}</Fact>}
+      {result?.harness === 'claude' && <Fact label="执行 Harness">Claude Code {result.harness_version}</Fact>}
+      {result?.session_id && <Fact label={result.harness === 'claude' ? 'Claude Code Session' : 'Codex Session'} code>{result.session_id}</Fact>}
       {result?.base_commit && <Fact label="基础 SHA" code>{result.base_commit}</Fact>}
       {result?.commit && <Fact label={task.spec ? '候选 SHA' : '提交 SHA'} code>{result.commit}</Fact>}
       {attempt.commit_status && <Fact label="GitHub 状态" code>{attempt.commit_status.context} · {attempt.commit_status.state} · #{attempt.commit_status.id}</Fact>}

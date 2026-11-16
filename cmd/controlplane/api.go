@@ -138,6 +138,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			SupportsRiskPolicy     bool   `json:"supports_risk_policy"`
 			SupportsCheckpoints    bool   `json:"supports_checkpoints"`
 			SupportsCodex          bool   `json:"supports_codex"`
+			SupportsClaude         bool   `json:"supports_claude"`
 			SupportsRework         bool   `json:"supports_rework"`
 			SupportsPlanner        bool   `json:"supports_planner"`
 		}
@@ -152,7 +153,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			problem(w, http.StatusForbidden, "claim does not match the authenticated Worker")
 			return
 		}
-		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation, input.SupportsDeclaredChecks, input.SupportsRiskPolicy)
+		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation, input.SupportsDeclaredChecks, input.SupportsRiskPolicy, input.SupportsClaude)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -166,14 +167,16 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			return
 		}
 		var input struct {
-			LeaseToken string      `json:"lease_token"`
-			Plan       *store.Plan `json:"plan"`
-			Commit     string      `json:"commit"`
-			ExitCode   *int        `json:"exit_code"`
-			Error      string      `json:"error"`
-			BaseCommit string      `json:"base_commit"`
-			SessionID  string      `json:"session_id"`
-			Validation *struct {
+			LeaseToken     string      `json:"lease_token"`
+			Plan           *store.Plan `json:"plan"`
+			Commit         string      `json:"commit"`
+			ExitCode       *int        `json:"exit_code"`
+			Error          string      `json:"error"`
+			BaseCommit     string      `json:"base_commit"`
+			SessionID      string      `json:"session_id"`
+			Harness        string      `json:"harness"`
+			HarnessVersion string      `json:"harness_version"`
+			Validation     *struct {
 				Profile  string          `json:"profile"`
 				Commit   string          `json:"commit"`
 				ExitCode *int            `json:"exit_code"`
@@ -199,7 +202,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			problem(w, http.StatusBadRequest, "execution evidence exceeds the allowed length")
 			return
 		}
-		result := store.Result{Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error,
+		result := store.Result{Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error, Harness: input.Harness, HarnessVersion: input.HarnessVersion,
 			BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan}
 		if v := input.Validation; v != nil {
 			if v.ExitCode == nil || *v.ExitCode < -1 || *v.ExitCode > 2147483647 {

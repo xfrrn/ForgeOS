@@ -111,6 +111,7 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 		var input struct {
 			Validation string                `json:"validation"`
 			Mode       string                `json:"mode"`
+			Harness    string                `json:"harness"`
 			TaskType   string                `json:"task_type"`
 			Target     string                `json:"target"`
 			Feedback   *store.FeedbackSource `json:"feedback_source"`
@@ -119,6 +120,10 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			return
 		}
 		policy := validation.Policy{TaskType: input.TaskType, Target: input.Target}
+		if !(store.IssueSpec{Harness: input.Harness, Mode: input.Mode}).ValidHarness() {
+			problem(w, http.StatusBadRequest, "select codex or claude for implementation, or codex for planning")
+			return
+		}
 		if !store.ValidValidation(input.Validation) || !policy.Valid() {
 			problem(w, http.StatusBadRequest, "select auto, docs, go-test or V1 through V4 and a supported task type and delivery target")
 			return
@@ -166,7 +171,9 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			problem(w, status, err.Error())
 			return
 		}
-		task, err := data.ImportIssue(ctx, id, source.spec(issue, input.Validation, input.Mode, policy), sources...)
+		spec := source.spec(issue, input.Validation, input.Mode, policy)
+		spec.Harness = input.Harness
+		task, err := data.ImportIssue(ctx, id, spec, sources...)
 		if errors.Is(err, store.ErrConflict) {
 			problem(w, http.StatusConflict, "GitHub issue or repository conflicts with the stored project mapping")
 			return

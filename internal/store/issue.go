@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 
 	"forgeos/internal/validation"
@@ -23,6 +24,7 @@ type Issue struct {
 }
 
 type IssueSpec struct {
+	Harness      string             `json:"harness,omitempty"`
 	VerifyCommit string             `json:"verify_commit,omitempty"`
 	Mode         string             `json:"mode,omitempty"`
 	Issue        Issue              `json:"issue"`
@@ -84,7 +86,7 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 	issue := spec.Issue
 	if len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
 		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
-		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") {
+		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") || !spec.ValidHarness() {
 		return Task{}, ErrConflict
 	}
 	snapshot, err := json.Marshal(spec)
@@ -213,7 +215,22 @@ func validCommit(sha string) bool {
 	return err == nil && strings.ToLower(sha) == sha
 }
 
+func (spec IssueSpec) ValidHarness() bool {
+	return spec.Harness == "" || spec.Harness == "codex" || (spec.Harness == "claude" && spec.Mode != "plan")
+}
+
+var harnessVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
 func (spec IssueSpec) accepts(r Result) bool {
+	if (r.Harness == "") != (r.HarnessVersion == "") || (r.Harness != "" && (len(r.HarnessVersion) > 64 || !harnessVersion.MatchString(r.HarnessVersion))) {
+		return false
+	}
+	if r.Harness != "" && (r.Harness != spec.Harness || r.Harness != "claude" || spec.VerifyCommit != "") {
+		return false
+	}
+	if spec.Harness == "claude" && spec.VerifyCommit == "" && (r.ExitCode == 0 || r.SessionID != "") && r.Harness != "claude" {
+		return false
+	}
 	if spec.Mode == "plan" {
 		if r.Validation != nil || r.Commit != "" || (r.BaseCommit != "" && r.BaseCommit != spec.BaseCommit) {
 			return false

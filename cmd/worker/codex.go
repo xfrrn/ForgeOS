@@ -61,7 +61,7 @@ func harnessEnv() []string {
 	return env
 }
 
-func runCodex(ctx context.Context, bin, workspace string, issue store.Issue, feedback string, comments []store.CommentInput) (string, error) {
+func issuePrompt(issue store.Issue, feedback string, comments []store.CommentInput) (string, error) {
 	source, err := json.Marshal(struct {
 		Issue    store.Issue          `json:"issue"`
 		Feedback string               `json:"acceptance_feedback,omitempty"`
@@ -75,7 +75,7 @@ func runCodex(ctx context.Context, bin, workspace string, issue store.Issue, fee
 		"If acceptance_feedback is present, revise the current candidate to address it. " +
 		"Make only the requested source or documentation changes. Do not access credentials, use network services, push, switch branches, or commit. " +
 		"The Worker will commit and validate the change.\n\nIssue JSON:\n" + string(source)
-	return runCodexTurn(ctx, bin, workspace, "workspace-write", prompt)
+	return prompt, nil
 }
 
 func runCodexTurn(ctx context.Context, bin, workspace, sandbox, prompt string, options ...string) (string, error) {
@@ -187,7 +187,7 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 	_, err = localrepo.Git(ctx, workspace, "symbolic-ref", "-q", "HEAD")
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
-		return "", errors.New("expected a detached worktree after Codex execution")
+		return "", errors.New("expected a detached worktree after harness execution")
 	}
 	tip, err := localrepo.Git(ctx, workspace, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
@@ -206,12 +206,12 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 	}
 	before, err := localrepo.Git(ctx, workspace, "rev-parse", base+"^{tree}")
 	if err != nil || bytes.Equal(before, tree) {
-		return "", errors.New("Codex produced no changes relative to the pinned base")
+		return "", errors.New("harness produced no changes relative to the pinned base")
 	}
 	if start != base {
 		rejected, err := localrepo.Git(ctx, workspace, "rev-parse", start+"^{tree}")
 		if err != nil || bytes.Equal(rejected, tree) {
-			return "", errors.New("Codex did not change the rejected candidate")
+			return "", errors.New("harness did not change the rejected candidate")
 		}
 	}
 	// Keep a single candidate on the pinned base even if the CLI made its own local commits.
@@ -242,8 +242,9 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		}
 		return result
 	}
-	if w.codex == "" || spec == nil || !store.ValidValidation(spec.Validation) {
-		return failed("missing Codex capability or unsupported issue specification", nil)
+	if spec == nil || !spec.ValidHarness() || !store.ValidValidation(spec.Validation) ||
+		(spec.Harness == "claude" && w.claude.bin == "") || (spec.Harness != "claude" && w.codex == "") {
+		return failed("missing harness capability or unsupported issue specification", nil)
 	}
 	result := store.Result{BaseCommit: spec.BaseCommit}
 	comments, err := w.checkpoint(ctx, job, 0, "")
@@ -276,7 +277,17 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 	}
 	dir, err := checkedWorktree(ctx, repo, workspace, start)
 	for seq := 0; err == nil; seq++ {
-		result.SessionID, err = runCodex(ctx, w.codex, workspace, spec.Issue, feedback, comments)
+		var prompt string
+		prompt, err = issuePrompt(spec.Issue, feedback, comments)
+		if err != nil {
+			break
+		}
+		if spec.Harness == "claude" {
+			result.Harness, result.HarnessVersion = "claude", w.claude.version
+			result.SessionID, err = w.claude.turn(ctx, workspace, prompt, result.SessionID)
+		} else {
+			result.SessionID, err = runCodexTurn(ctx, w.codex, workspace, "workspace-write", prompt)
+		}
 		if err != nil || !job.SupportsCheckpoints {
 			break
 		}

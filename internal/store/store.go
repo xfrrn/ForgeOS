@@ -194,13 +194,15 @@ type Job struct {
 }
 
 type Result struct {
-	Plan       *Plan             `json:"plan,omitempty"`
-	Commit     string            `json:"commit"`
-	ExitCode   int               `json:"exit_code"`
-	Error      string            `json:"error"`
-	BaseCommit string            `json:"base_commit,omitempty"`
-	SessionID  string            `json:"session_id,omitempty"`
-	Validation *ValidationResult `json:"validation,omitempty"`
+	Harness        string            `json:"harness,omitempty"`
+	HarnessVersion string            `json:"harness_version,omitempty"`
+	Plan           *Plan             `json:"plan,omitempty"`
+	Commit         string            `json:"commit"`
+	ExitCode       int               `json:"exit_code"`
+	Error          string            `json:"error"`
+	BaseCommit     string            `json:"base_commit,omitempty"`
+	SessionID      string            `json:"session_id,omitempty"`
+	Validation     *ValidationResult `json:"validation,omitempty"`
 }
 
 func (r Result) succeeded() bool {
@@ -397,9 +399,11 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	canVerify := len(capabilities) > 4 && capabilities[4]
 	canRunChecks := len(capabilities) > 5 && capabilities[5]
 	canAssess := canRunChecks && len(capabilities) > 6 && capabilities[6]
+	canClaude := len(capabilities) > 7 && capabilities[7]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
-		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1 OR ($5 AND candidate.spec ? 'verify_commit'))
+		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE'))
+		  AND (candidate.kind = 'git_head' OR ($5 AND candidate.spec ? 'verify_commit') OR CASE WHEN candidate.spec->>'harness'='claude' THEN $9::boolean ELSE $1 END)
 		  AND ($5 OR NOT COALESCE(candidate.spec ? 'verify_commit',false))
 		  AND ($7 OR COALESCE(candidate.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		  AND ($8 OR candidate.spec->>'validation' IS DISTINCT FROM 'auto')
@@ -408,7 +412,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects), canRunChecks, canAssess).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects), canRunChecks, canAssess, canClaude).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -421,7 +425,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		UPDATE work_items SET status = 'RUNNING'
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
 		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
-		            AND (w.kind = 'git_head' OR $2 OR ($6 AND w.spec ? 'verify_commit'))
+		            AND (w.kind = 'git_head' OR ($6 AND w.spec ? 'verify_commit') OR CASE WHEN w.spec->>'harness'='claude' THEN $9::boolean ELSE $2 END)
 		            AND ($6 OR NOT COALESCE(w.spec ? 'verify_commit',false))
 		            AND ($7 OR COALESCE(w.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		            AND ($8 OR w.spec->>'validation' IS DISTINCT FROM 'auto')
@@ -430,7 +434,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, canRunChecks, canAssess).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, canRunChecks, canAssess, canClaude).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -574,7 +578,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 				return ErrConflict
 			}
 		}
-	} else if result.Validation != nil || result.SessionID != "" || result.BaseCommit != "" || result.Plan != nil {
+	} else if result.Validation != nil || result.SessionID != "" || result.BaseCommit != "" || result.Plan != nil || result.Harness != "" || result.HarnessVersion != "" {
 		return ErrConflict
 	}
 	data, err := json.Marshal(result)
