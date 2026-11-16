@@ -47,6 +47,8 @@ Adapter 应报告真实能力，不支持的能力不得伪装支持。
 
 优先评估 Codex App Server，利用其原生 Thread、Turn、事件流、恢复、中断和审批机制。具体协议版本、方法名称和能力必须以实际安装版本的官方文档和探测结果为准。
 
+在已登录的 Harness 用户下执行 `python scripts/probe_codex_app_server.py --bin <原生可执行文件>`，通过本地 stdio 启动两个独立 App Server。探测核对服务返回的只读 sandbox，完成首轮后关闭进程，在第二个进程恢复原 Thread 并读取随机标识，再中断第三轮。以返回的 Turn ID 和 `turn/completed` 状态核对中断。当前实测版本要求先接收 `turn/started` 通知，再调用 `turn/interrupt`。可用 `codex app-server generate-json-schema --out <目录>` 对照安装版本的字段。[App Server 协议说明](https://developers.openai.com/codex/app-server/)
+
 ## 5. Claude Code 接入建议
 
 第一版可评估 Headless CLI + stream-json + Session Resume；复杂交互可后续评估 Agent SDK。必须通过真实环境验证会话恢复、问题交互和权限事件。
