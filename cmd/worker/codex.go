@@ -176,7 +176,7 @@ func checkGitFilters(ctx context.Context, repo string) error {
 	return errors.New("checkout requires a repository without configured executable Git filters")
 }
 
-func commitChanges(ctx context.Context, workspace, base, start string, issueNumber int64, originalGitDir []byte) (string, error) {
+func checkedWorktreeTip(ctx context.Context, workspace string, originalGitDir []byte) (string, error) {
 	dir, err := localrepo.Git(ctx, workspace, "rev-parse", "--show-toplevel", "--absolute-git-dir")
 	if err != nil || !bytes.Equal(dir, originalGitDir) {
 		return "", errors.New("worktree repository changed during execution")
@@ -193,7 +193,14 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 	if err != nil {
 		return "", errors.New("cannot resolve worktree HEAD")
 	}
-	current := strings.TrimSpace(string(tip))
+	return strings.TrimSpace(string(tip)), nil
+}
+
+func commitChanges(ctx context.Context, workspace, base, start string, issueNumber int64, originalGitDir []byte) (string, error) {
+	current, err := checkedWorktreeTip(ctx, workspace, originalGitDir)
+	if err != nil {
+		return "", err
+	}
 	if _, err := localrepo.Git(ctx, workspace, "merge-base", "--is-ancestor", start, current); err != nil {
 		return "", errors.New("worktree history has diverged from the execution's starting commit")
 	}
@@ -284,7 +291,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		}
 		if spec.Harness == "claude" {
 			result.Harness, result.HarnessVersion = "claude", w.claude.version
-			result.SessionID, err = w.claude.turn(ctx, workspace, prompt, result.SessionID)
+			result.SessionID, err = w.claudeTurn(ctx, job, prompt, result.SessionID, start, dir)
 		} else {
 			result.SessionID, err = runCodexTurn(ctx, w.codex, workspace, "workspace-write", prompt)
 		}

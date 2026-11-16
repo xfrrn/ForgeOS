@@ -747,3 +747,15 @@ Worker 断线回报与恢复日志对应提交 `ab36ad9759dbe700098aea7df33bb33c
 实测时间为 2026-11-16 Asia/Shanghai。第一次演练在缩短测试行时使用了另一种数据库客户端的连接参数，修正验收程序后在全新 schema 重跑全部步骤。数据库回归另行验证续约等待行锁时跨过截止时间，Worker 回归验证连续服务不可用直至本地确认期限耗尽。此处验证运行中执行的租约，原生模型会话重连仍待验收。
 
 启用 PostgreSQL 18 和真实 Docker 的全量 Go 回归共 9 个包、112 项通过，零跳过。Go 静态检查通过。
+
+运行中的执行续约对应提交 `6e865cec3ee03cbfb541145230e1d75f60b5dbd1`。
+
+## 阶段四、专题 07 · Claude 适配器中断后的同会话恢复
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在私有 beta #29 通过正式 Worker 调用 Claude Code 2.1.310 编辑手册。验收适配器转发真实事件，在原生 CLI 完成后丢弃终态并以 1 退出 | Worker 确认已有会话及进程退出，核对租约、原工作区和起始提交，只恢复原 Session | 两个原生进程 PID 为 51084、36232，均确认会话 `bc51f9e0-f24b-481f-8a15-c4f9003ef87b`。SQLite 记录其直接启动的两个适配器 PID 47864、14580，退出码分别为 1、0。[Issue #29](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/29) |
+| 对照原编辑与恢复后的文件，检查正式执行回执、本地验证、保护检查和最终回写 | 已有编辑保留；同一工作项、执行和工作区产生一个已验收候选 | 两次文件 SHA-256 均为 `35f73b387974ab65966d11e1ab4199a1aec540c43a2ccd9028104bcd9efb3086`。任务 1 只有执行 1，候选 `b2e8f370cc092e2935d8de3bfb13970cc81265b5`。PR #30 在本地 CI 和 Actions 均成功后合并为 `8e076bfca9fc2bf3ab9231913ae89dc3f9d50b66`。Issue 已关闭，重启控制面后任务 JSON 相同。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/30) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43894562492) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/29#issuecomment-6920510928) |
+| 回归夹具进程写入部分内容后自行以 23 退出，分别允许或拒绝续约；另输入错误会话和明确的模型失败事件 | 续约成功时追加剩余编辑，失败时保留原现场；已报告的模型失败不恢复 | 成功分支在同一文件保留两次编辑，两个进程退出码 23、0；409 分支只有一个进程且没有候选。错误会话和终态失败分别被识别 |
+
+真实环境覆盖适配器在终态传输丢失后退出。自动审批拒绝了验收命令中按 PID 强制终止原生 Claude 的操作，返回“blocked by policy”。原生 CLI 被强制终止、节点重启后恢复及 Codex 的同类场景保持待验收。首次查询两张 SQLite 表时列名有歧义；修正验收查询后复用原候选完成交付。真实交付演练期间补充了结构化失败与异常退出的区分，这一分支由最终版本回归覆盖。PostgreSQL 18 与真实 Docker 上全量回归 9 个包、116 项通过，零跳过；Go 静态检查通过。

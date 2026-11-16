@@ -14,6 +14,9 @@ import (
 
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "-p" {
+		os.Exit(testClaudeProcess())
+	}
 	if len(os.Args) <= 1 || os.Args[1] != "-a" {
 		os.Exit(m.Run())
 	}

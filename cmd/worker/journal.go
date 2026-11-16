@@ -78,6 +78,10 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, buffered_at TEXT, settled_at TEXT,
 		exit_code INTEGER, candidate TEXT, session_id TEXT, outcome TEXT, report BLOB, conflicting_result TEXT
 	);
+	CREATE TABLE IF NOT EXISTS harness_processes (
+		instance INTEGER PRIMARY KEY, lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), harness TEXT NOT NULL, version TEXT NOT NULL,
+		pid INTEGER NOT NULL, started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, session_id TEXT, exited_at TEXT, exit_code INTEGER
+	);
 	CREATE INDEX IF NOT EXISTS pending_attempts ON attempts(execution_id) WHERE report IS NOT NULL`)
 	if err != nil {
 		db.Close()

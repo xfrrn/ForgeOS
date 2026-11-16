@@ -23,6 +23,17 @@ FROM attempts ORDER BY claimed_at, execution_id;
 
 `buffered_at` 有值、`settled_at` 为空表示仍待确认。结果冲突时 `outcome` 为 `conflict`，可在该执行行读取 `conflicting_result`。PostgreSQL 中的正式任务状态与 Owner 决定保持有效。
 
+查询 Claude 原生会话及同一次执行经历的进程：
+
+```sql
+SELECT a.execution_id, p.instance, p.harness, p.version, p.pid,
+       p.session_id, p.started_at, p.exited_at, p.exit_code
+FROM harness_processes p JOIN attempts a ON a.lease_hash=p.lease_hash
+ORDER BY p.instance;
+```
+
+尚未记录退出时间仅表示缺少退出回执。核对正在运行的进程时还需比对节点、可执行文件与实际进程状态。
+
 ## 2. 事件记录
 
 事件建议采用追加式记录，至少包含：
