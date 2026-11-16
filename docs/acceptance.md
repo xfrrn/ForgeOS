@@ -16,7 +16,7 @@
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
 | 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。Claude Code 已交付 Owner 明确选择的 beta #22，以及项目配置和标签自动派发的 #24。持久节点登记、心跳和能力查询见专题 07。数据库、反馈截图和工作区恢复演练见专题 14。 | 普通执行的节点容量、跨项目派发及失联占位已实测，见本页末尾。GitHub 四类写入的响应丢失恢复见 beta #27。CI 与模型的独立资源预算、压力与节点原生会话恢复待验收。 |
 
-MVP 页面验收与 GitHub 门禁证据对应基线、收件箱和交付诊断提交，最后一项为 `32c0fa07cc09eaf98750e588682d0f9701dd92f4`。两个私有项目均已交付。它们共用本机 GitHub 身份，跨项目业务凭据隔离保持待验收。
+MVP 页面验收与 GitHub 门禁证据对应基线、收件箱和交付诊断提交，最后一项为 `32c0fa07cc09eaf98750e588682d0f9701dd92f4`。两个私有项目已在同一 PostgreSQL 中分别派发和交付，并验证项目专用业务凭据的访问边界，见本页阶段四实测。GitHub 操作共用本机 CLI 身份，GitHub App 最小授权仍待验收。
 
 阶段三计划草案实现为 `5d30bcf451d838fae10d684d5c6bd718f5a4f73a`。在 beta 克隆通过 Owner 归档接口分别重复提交修订 1、2，各自返回相同 SHA。Git 快照分别为 `4903725d96065d014e8d4437d6d50b4b71d3bdf5` 和 `933478ea8f00aa0c71797386dc52ec99acd0f0b4`。用 `git show` 读取文件逐字段比对 API 版本成功，工作区状态与 HEAD 前后相同。回归测试还验证了暂存内容保留和引用冲突。
 
@@ -814,3 +814,19 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 | 等待本地 CI 和 Actions，核对受保护分支、Issue 评论和重启后的控制面任务 | 合并已验收的候选，保留原讨论和交付回执 | Actions 第一次按演练失败，重跑成功。唯一的 PR #38 合并为 `ca1953f7d1e8ac05e22b8e82612b2a032503dd18`，Issue 已关闭，保留原评论和一条交付回执，重启后任务 JSON 相同。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/38) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43899626076) · [交付回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/37#issuecomment-6921230220) |
 
 验收代理在下一批次请求前等正式轮询器读取评论，以复现实测时序。原生 Codex 直接由 Worker 启动。启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、123 项通过，零跳过。Go 静态检查通过。
+
+普通评论沿用原生 Thread 对应提交 `97b20b20cb962ecfdc441244dae880858fa3d6b5`。
+
+## 阶段四、专题 09 · 两个交付项目的执行与业务凭据隔离
+
+2026-11-16 至 17 日，Windows 上的两个节点分别领取私有 alpha #14、beta #39。共用 PostgreSQL 18 和正式控制面程序，使用真实 Codex CLI 和 Docker 中启用 TLS 的 OpenBao 2.7.2。两边在 ci-test 环境使用同名 receipt-signing、相同用途和 KV 版本 1，各自生成随机测试密钥。验收代理在两次正式领取后，以对应节点身份调用 Broker；解包和签名比对在受信验收进程内完成。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Owner 为两个运行中的工作项分别批准一次使用。在两个方向试用另一节点身份、另一执行的租约、另一执行编号和 staging 环境 | 均拒绝，不消耗本项目的授权 | alpha 为项目 1、任务 1、执行 2、授权 1；beta 为项目 2、任务 2、执行 1、授权 2。两个方向依次返回 403、409、409、403，随后查询各授权均为零次使用 |
+| 用各自身份和租约领取包装响应，解包并对同一随机挑战计算 HMAC，再次解包；执行结束后重试领取 | 各签名只匹配自己的项目。一次性包装和执行结束门禁生效 | 两份签名分别通过本项目校验，交换预期密钥后均不匹配。第二次解包返回 400，执行结束后领取为 409。两份审计各有一次 ISSUED，任务及审计 JSON 在控制面重启前后相同 |
+| 核对两个候选的文档差异，分别从对应交付入口批准并等待受保护分支 | 每项只改本库指定文件，合并自己的候选、回写并关闭来源 Issue | alpha 的 docs 检查通过，候选 `510365200cdda471b03ffcd01b4d4f4bb9257790` 合并为 `f5db71cfa976dcc019bf06738e531b98f1edbb63`。[PR #15](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/15) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43902625675) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/14#issuecomment-6921648615)。beta 的三个声明式检查通过，候选 `072b5953a9477c8126281794893e693f7a213126` 合并为 `af98f5d6022c3ccf5374cf8cffb0ffe938121c10`。[PR #40](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/40) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43902399671) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/39#issuecomment-6921616298) |
+
+首次将 alpha 配为 auto 校验时，其基础提交缺少 validation.yaml，正式 Worker 返回 CONFIG_FAILURE。另一次将 beta 的批准提交到仅对 alpha 开启交付的控制面，按现有配置只记录本地验收。最终演练使用各自项目的验证配置和交付入口。beta 端口首次绑定失败，经重新确认两个服务均可访问后，复用原候选完成交付。最终演练没有重新扫描数据库导出和日志中的明文；该项既有证据见专题 09 的 Broker 验收。
+
+新增数据库回归还让同一节点同时持有两个项目的租约，交换授权和执行时均被拒，读取另一项目的回执返回未找到。启用 PostgreSQL 18 和真实 Docker 的全量 Go 回归 9 个包、124 项通过，零跳过。Go 静态检查通过。
