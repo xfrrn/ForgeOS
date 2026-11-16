@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { ApiRequest } from './shared'
 
-export type ScreenshotReceipt = { id: number; mime: string; bytes: number; sha256: string; expired?: boolean }
+export type FeedbackArtifactReceipt = { id: number; mime: string; bytes: number; sha256: string; expired?: boolean }
 type Box = { x: number; y: number; width: number; height: number }
 type Mark = Box & { mask: boolean }
 const blank = { x: 0, y: 0, width: 0, height: 0 }
@@ -26,7 +26,7 @@ function paint(canvas: HTMLCanvasElement, image: ImageBitmap, marks: Mark[]) {
 }
 
 export function FeedbackScreenshots({ api, artifacts, request, saved, captured }: {
-  api: string; artifacts: ScreenshotReceipt[]; request: ApiRequest; saved: () => void; captured?: Blob | null
+  api: string; artifacts: FeedbackArtifactReceipt[]; request: ApiRequest; saved: () => void; captured?: Blob | null
 }) {
   const [open, setOpen] = useState(false)
   const [image, setImage] = useState<ImageBitmap | null>(null)
@@ -46,7 +46,7 @@ export function FeedbackScreenshots({ api, artifacts, request, saved, captured }
   function reset() {
     setImage(null); setMarks([]); setBox(blank); setDrag(null); setView(0); start.current = null; setError('')
   }
-  async function load(file?: Blob, receipt?: ScreenshotReceipt) {
+  async function load(file?: Blob, receipt?: FeedbackArtifactReceipt) {
     reset(); setBusy(true)
     try {
       const blob = file ?? await request<Blob>(api + '/' + receipt!.id, {}, 'blob')

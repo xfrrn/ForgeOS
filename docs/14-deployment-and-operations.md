@@ -29,7 +29,7 @@ systemd 必须显式配置 HOME、PATH、工作目录、代理环境和必要变
 
 ### 安装 systemd 服务
 
-在项目根目录构建 Linux 二进制。以下安装命令使用 root，部署前准备可连接的 PostgreSQL。控制面和 Worker 分别使用独立账号，只有项目克隆使用共同的 `forgeos-repos` 组。
+在项目根目录构建 Linux 二进制。以下安装命令使用 root，部署前准备可连接的 PostgreSQL。控制面和 Worker 分别使用独立账号，只有项目克隆使用共同的 `forgeos-repos` 组。启用反馈录屏归档时，在控制面服务的 PATH 中提供 FFmpeg，并使其临时目录可写。原文件由 Owner 确认提交后，控制面提取视频轨并写入附件存储。
 
 ```sh
 install -d /usr/local/libexec/forgeos /etc/forgeos

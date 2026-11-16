@@ -116,12 +116,12 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if _, err := s.SaveFeedbackScreenshot(ctx, task.ID, preview.ID, first, digest, 42, func(string) error { return diskErr }); !errors.Is(err, ErrScreenshotExpired) {
 			t.Fatalf("expired screenshot rewritten: %v", err)
 		}
-		if err := s.PurgeScreenshots(ctx, func(string) error { return diskErr }); !errors.Is(err, diskErr) {
+		if err := s.PurgeFeedbackArtifacts(ctx, func(string) error { return diskErr }); !errors.Is(err, diskErr) {
 			t.Fatal(err)
 		}
 		var removed []string
 		for range 2 {
-			if err := s.PurgeScreenshots(ctx, func(key string) error { removed = append(removed, key); return nil }); err != nil {
+			if err := s.PurgeFeedbackArtifacts(ctx, func(key string) error { removed = append(removed, key); return nil }); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -130,6 +130,34 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		}
 		if _, err := s.FeedbackArtifact(ctx, task.ID, preview.ID, first, fresh.ID); err != nil {
 			t.Fatal(err)
+		}
+	})
+	t.Run("recording expiry is independent of screenshots", func(t *testing.T) {
+		write := func(string) error { return nil }
+		clip, err := s.SaveFeedbackMedia(ctx, task.ID, preview.ID, first, "video/webm", strings.Repeat("c", 64), 128, write)
+		if err != nil || clip.MIME != "video/webm" || !strings.HasSuffix(clip.Key, ".webm") {
+			t.Fatal(clip, err)
+		}
+		still, err := s.SaveFeedbackScreenshot(ctx, task.ID, preview.ID, first, strings.Repeat("d", 64), 16, write)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.ExecContext(ctx, "UPDATE feedback_artifacts SET created_at=now()-interval '1 hour' WHERE id=$1", clip.ID); err != nil {
+			t.Fatal(err)
+		}
+		seconds := int32(1)
+		if _, err = s.RecordingRetention(ctx, p.ID, &seconds); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.FeedbackArtifact(ctx, task.ID, preview.ID, first, clip.ID); !errors.Is(err, ErrRecordingExpired) {
+			t.Fatal(err)
+		}
+		if _, err = s.FeedbackArtifact(ctx, task.ID, preview.ID, first, still.ID); err != nil {
+			t.Fatal(err)
+		}
+		var removed []string
+		if err = s.PurgeFeedbackArtifacts(ctx, func(k string) error { removed = append(removed, k); return nil }); err != nil || len(removed) != 1 || removed[0] != clip.Key {
+			t.Fatal(removed, err)
 		}
 	})
 	t.Run("management lease and provenance", func(t *testing.T) {

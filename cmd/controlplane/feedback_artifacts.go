@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 
@@ -123,28 +125,32 @@ func removeArtifact(key string) error {
 }
 
 func registerFeedbackArtifacts(mux *http.ServeMux, data *store.Store, owner, base string) {
-	policy := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		id, ok := pathID(w, r)
-		if !ok {
-			return
-		}
-		var input struct {
-			Seconds *int32 `json:"seconds"`
-		}
-		if r.Method == http.MethodPut {
-			if !decode(w, r, &input) {
+	registerPolicy := func(path string, update func(context.Context, int64, *int32) (int32, error)) {
+		policy := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+			id, ok := pathID(w, r)
+			if !ok {
 				return
 			}
-			if input.Seconds == nil || *input.Seconds < 0 {
-				problem(w, 400, "provide nonnegative screenshot retention seconds")
-				return
+			var input struct {
+				Seconds *int32 `json:"seconds"`
 			}
-		}
-		seconds, err := data.ScreenshotRetention(r.Context(), id, input.Seconds)
-		respond(w, 200, map[string]int32{"seconds": seconds}, err)
-	})
-	mux.HandleFunc("GET /projects/{id}/screenshot-retention", policy)
-	mux.HandleFunc("PUT /projects/{id}/screenshot-retention", policy)
+			if r.Method == http.MethodPut {
+				if !decode(w, r, &input) {
+					return
+				}
+				if input.Seconds == nil || *input.Seconds < 0 {
+					problem(w, 400, "provide nonnegative retention seconds")
+					return
+				}
+			}
+			seconds, err := update(r.Context(), id, input.Seconds)
+			respond(w, 200, map[string]int32{"seconds": seconds}, err)
+		})
+		mux.HandleFunc("GET "+path, policy)
+		mux.HandleFunc("PUT "+path, policy)
+	}
+	registerPolicy("/projects/{id}/screenshot-retention", data.ScreenshotRetention)
+	registerPolicy("/projects/{id}/recording-retention", data.RecordingRetention)
 	path := base + "/{feedback}/artifacts"
 	mux.HandleFunc("POST "+path, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		task, ok := pathID(w, r)
@@ -156,22 +162,37 @@ func registerFeedbackArtifacts(mux *http.ServeMux, data *store.Store, owner, bas
 			problem(w, 400, "invalid feedback ID")
 			return
 		}
-		if r.Header.Get("Content-Type") != "image/png" {
-			problem(w, 415, "provide an annotated PNG screenshot")
+		mime := r.Header.Get("Content-Type")
+		limit := int64(screenshotLimit)
+		switch mime {
+		case "image/png":
+		case "video/webm":
+			limit = recordingLimit
+		default:
+			problem(w, 415, "provide a PNG screenshot or WebM recording")
 			return
 		}
-		src, err := io.ReadAll(http.MaxBytesReader(w, r.Body, screenshotLimit))
+		src, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 		if err != nil {
-			problem(w, 400, "cannot read screenshot within 16 MiB")
+			problem(w, 400, "attachment exceeds size limit or could not be read")
 			return
 		}
-		content, err := cleanScreenshot(src)
+		var content []byte
+		if mime == "video/webm" {
+			content, err = cleanRecording(r.Context(), src)
+		} else {
+			content, err = cleanScreenshot(src)
+		}
 		if err != nil {
+			if errors.Is(err, exec.ErrNotFound) {
+				problem(w, 503, "录屏归档需要控制面安装 FFmpeg")
+				return
+			}
 			problem(w, 400, err.Error())
 			return
 		}
 		sum := sha256.Sum256(content)
-		a, err := data.SaveFeedbackScreenshot(r.Context(), task, r.PathValue("preview"), fid, hex.EncodeToString(sum[:]), int64(len(content)), func(key string) error { return saveArtifact(key, content) })
+		a, err := data.SaveFeedbackMedia(r.Context(), task, r.PathValue("preview"), fid, mime, hex.EncodeToString(sum[:]), int64(len(content)), func(key string) error { return saveArtifact(key, content) })
 		respond(w, 200, a, err)
 	}))
 	mux.HandleFunc("GET "+path+"/{artifact}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +229,15 @@ func registerFeedbackArtifacts(mux *http.ServeMux, data *store.Store, owner, bas
 			return
 		}
 		defer f.Close()
-		content, err := io.ReadAll(io.LimitReader(f, screenshotLimit+1))
+		limit := int64(screenshotLimit)
+		if a.MIME == "video/webm" {
+			limit = recordingLimit
+		}
+		if a.Bytes <= 0 || a.Bytes > limit {
+			problem(w, 503, "invalid artifact size")
+			return
+		}
+		content, err := io.ReadAll(io.LimitReader(f, a.Bytes+1))
 		sum := sha256.Sum256(content)
 		if err != nil || int64(len(content)) != a.Bytes || hex.EncodeToString(sum[:]) != a.SHA256 {
 			problem(w, 503, "artifact integrity check failed")

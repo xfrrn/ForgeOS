@@ -193,8 +193,8 @@ func sweepArtifacts(ctx context.Context, data *store.Store) {
 		if err := data.PurgeCIFiles(ctx, removeCIFile); err != nil && ctx.Err() == nil {
 			log.Printf("CI archive cleanup: %v", err)
 		}
-		if err := data.PurgeScreenshots(ctx, removeArtifact); err != nil && ctx.Err() == nil {
-			log.Printf("feedback screenshot cleanup: %v", err)
+		if err := data.PurgeFeedbackArtifacts(ctx, removeArtifact); err != nil && ctx.Err() == nil {
+			log.Printf("feedback attachment cleanup: %v", err)
 		}
 		select {
 		case <-ctx.Done():

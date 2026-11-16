@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
-import { FeedbackScreenshots, type ScreenshotReceipt } from './FeedbackScreenshots'
+import { FeedbackRecordings } from './FeedbackRecordings'
+import { FeedbackScreenshots, type FeedbackArtifactReceipt } from './FeedbackScreenshots'
 
-type Note = { id: number; artifacts: ScreenshotReceipt[]; created_at: string; state: string; work_item?: { id: number; number: number }; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; frames?: string[]; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Note = { id: number; artifacts: FeedbackArtifactReceipt[]; created_at: string; state: string; work_item?: { id: number; number: number }; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; frames?: string[]; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
 const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
 function FramePath({ frames }: { frames?: string[] }) {
   return frames?.length ? <div>所属 iframe（从外到内）<ol>{frames.map((frame, i) => <li key={i}><code>{frame}</code></li>)}</ol></div> : null
@@ -138,8 +139,10 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         {f.body.case_id && ` · 计划 v${f.body.plan_revision} · ${f.body.case_id}`}</p><p>{f.body.note}</p>
         <FramePath frames={f.body.frames}/>{f.body.element && <p>元素 <code>{f.body.element}</code></p>}
         {f.body.canvas_point && <p>画布位置（左、上）　{f.body.canvas_point}</p>}
-        <FeedbackScreenshots api={`${api}/${f.id}/artifacts`} artifacts={f.artifacts ?? []} request={request} captured={screenshotFeedback === f.id ? screenshot : null}
+        <FeedbackScreenshots api={`${api}/${f.id}/artifacts`} artifacts={(f.artifacts ?? []).filter(a => a.mime === 'image/png')} request={request} captured={screenshotFeedback === f.id ? screenshot : null}
           saved={() => { setMessage(`已保存反馈 #${f.id} 的截图。`); setVersion(n => n + 1) }}/>
+        <FeedbackRecordings api={`${api}/${f.id}/artifacts`} artifacts={(f.artifacts ?? []).filter(a => a.mime === 'video/webm')} request={request}
+          saved={() => { setMessage(`已保存反馈 #${f.id} 的录屏。`); setVersion(n => n + 1) }}/>
         {f.review ? <p>Owner 已{f.review.decision === 'approve' ? '通过验收' : '退回修改'}　{f.review.note}</p> :
           page.at_acceptance && ['acceptance', 'bug', 'ui_change'].includes(f.classification?.category ?? '') &&
           <a href={`#/tasks/${task}`}>在候选验收中引用</a>}
