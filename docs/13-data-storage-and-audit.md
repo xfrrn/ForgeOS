@@ -36,7 +36,7 @@ ORDER BY p.instance;
 
 新控制面在实现及只读规划任务的领取回执中设置 `record_processes`。Worker 将本次执行的进程记录按本机实例号排序，与结果一同写入 SQLite 待报队列。控制面校验 Harness、版本、会话、退出码和时间后，在同一个完成事务中写入 PostgreSQL。重复回报须与已存回执一致。
 
-从 `GET /tasks/{id}` 的执行结果读取 `processes`；也可在工作台展开对应执行下的“Harness 进程记录”。PID 的含义限定在回执中的执行节点。进程实例号和 Session 分别记录，同一 Session 可以经历多个 PID。没有采集进程数据的历史结果仍按原样展示。运行中尚未完成的进程，可从该节点的本地恢复日志查询。Codex 的每一轮记录其实际 Thread；成功回执的 Session 对应最后完成的进程。版本取自该节点所运行的 `codex --version`，保留预发布标记。
+从 `GET /tasks/{id}` 的执行结果读取 `processes`；也可在工作台展开对应执行下的“Harness 进程记录”。PID 的含义限定在回执中的执行节点。进程实例号和 Session 分别记录，同一 Session 可以经历多个 PID。没有采集进程数据的历史结果仍按原样展示。普通模型任务运行期间，Owner 可从同一接口的 `attempts[].observed_process` 或工作台查看节点最近上报的 PID、原生 Session 和控制面接收时间。节点本地恢复日志保留进程记录，执行结束后完整记录随最终回执归档。Codex 的每一轮记录其实际 Thread；成功回执的 Session 对应最后完成的进程。版本取自该节点所运行的 `codex --version`，保留预发布标记。
 
 ## 2. 事件记录
 
