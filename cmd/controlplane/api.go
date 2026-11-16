@@ -307,6 +307,8 @@ func respond(w http.ResponseWriter, status int, value any, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		problem(w, http.StatusNotFound, "resource not found")
+	case errors.Is(err, store.ErrScreenshotExpired):
+		problem(w, http.StatusGone, err.Error())
 	case errors.Is(err, store.ErrConflict):
 		problem(w, http.StatusConflict, "request conflicts with the current task state or recorded decision")
 	case err != nil:

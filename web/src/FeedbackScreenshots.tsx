@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { ApiRequest } from './shared'
 
-export type ScreenshotReceipt = { id: number; mime: string; bytes: number; sha256: string }
+export type ScreenshotReceipt = { id: number; mime: string; bytes: number; sha256: string; expired?: boolean }
 type Box = { x: number; y: number; width: number; height: number }
 type Mark = Box & { mask: boolean }
 const blank = { x: 0, y: 0, width: 0, height: 0 }
@@ -92,7 +92,8 @@ export function FeedbackScreenshots({ api, artifacts, request, saved }: {
   return <div><button className="detail-text-button" disabled={busy} aria-expanded={open}
     onClick={() => { reset(); setOpen(!open) }}>{open ? '收起截图' : `截图证据（${artifacts.length}）`}</button>
     {open && <fieldset disabled={busy}><legend>截图证据</legend>
-      {artifacts.map(a => <p key={a.id}><button className="detail-text-button" onClick={() => void load(undefined, a)}>查看截图 #{a.id}</button>
+      {artifacts.map(a => <p key={a.id}>{a.expired ? <span>截图 #{a.id} 已到期</span> :
+        <button className="detail-text-button" onClick={() => void load(undefined, a)}>查看截图 #{a.id}</button>}
         {' '}{a.bytes} 字节 · SHA-256 <code>{a.sha256}</code></p>)}
       <label>选择本机 PNG 截图<input type="file" accept="image/png" onChange={e => {
         const f = e.target.files?.[0]; e.target.value = ''; if (f) void load(f)

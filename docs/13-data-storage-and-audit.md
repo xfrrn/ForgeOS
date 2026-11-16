@@ -99,7 +99,9 @@ Owner 可用 `GET /projects/{id}/ci-retention` 读取项目策略，用 `PUT` �
 
 控制面在启动时及每分钟清理已到期的中央文件。存储故障时保留待清理记录，下次扫描重试。运维可用 `SELECT execution_id,file,kind,confirmed_at,expired_at,removed_at FROM ci_archive_files WHERE expired_at IS NOT NULL AND removed_at IS NULL` 查询积压。备份恢复时应配套恢复 PostgreSQL 与同一时点的工件目录。Worker 工作区、离线备份及预览反馈有各自的生命周期。
 
-预览反馈的 PNG 存放在控制面账号私有目录。可用绝对路径 `FORGEOS_ARTIFACT_ROOT` 指定，默认是该账号 HOME 下的 `.forgeos/artifacts`。PostgreSQL 保存反馈编号、文件键、类型、大小和 SHA-256，经原反馈关联任务、执行和候选。Owner 从原反馈读取文件时会重新校验长度和摘要，损坏返回 503。重传同一份已脱敏图片可修复文件并复用原回执。截图清理期限和跨节点存储仍待验收。
+预览反馈的 PNG 存放在控制面账号私有目录。可用绝对路径 `FORGEOS_ARTIFACT_ROOT` 指定，默认是该账号 HOME 下的 `.forgeos/artifacts`。PostgreSQL 保存反馈编号、文件键、类型、大小和 SHA-256，经原反馈关联任务、执行和候选。Owner 从原反馈读取文件时会重新校验长度和摘要，损坏返回 503。在保留期内重传同一份已脱敏图片可修复文件并复用原回执。
+
+Owner 可用 `GET /projects/{id}/screenshot-retention` 查询反馈截图的中央保留期，用 `PUT` 提交 `{"seconds":2592000}` 设为 30 天，或提交 `{"seconds":0}` 设为无限期。默认无限期。期限从每张截图首次归档起算；改变策略会对该项目仍有效的历史截图重新计算到期时间。已到期截图的读取和同反馈同图重传返回 410。工作台的反馈历史显示“已到期”，并保留附件编号、字节数和 SHA-256。控制面启动和每分钟扫描到期 PNG；`feedback_artifacts.expires_at` 记录期限，`removed_at` 记录中央文件清理完成时间。
 
 - 重要决策和任务元数据长期保留；
 - 原始日志按可配置期限保留；

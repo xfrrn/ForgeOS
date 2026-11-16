@@ -128,7 +128,7 @@ func run(ctx context.Context) error {
 	}
 	sweepCtx, stopSweep := context.WithCancel(ctx)
 	defer stopSweep()
-	go sweepCIFiles(sweepCtx, data)
+	go sweepArtifacts(sweepCtx, data)
 	log.Printf("ForgeOS control plane listening on %s", listener.Addr())
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()

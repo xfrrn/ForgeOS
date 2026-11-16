@@ -123,6 +123,28 @@ func removeArtifact(key string) error {
 }
 
 func registerFeedbackArtifacts(mux *http.ServeMux, data *store.Store, owner, base string) {
+	policy := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Seconds *int32 `json:"seconds"`
+		}
+		if r.Method == http.MethodPut {
+			if !decode(w, r, &input) {
+				return
+			}
+			if input.Seconds == nil || *input.Seconds < 0 {
+				problem(w, 400, "provide nonnegative screenshot retention seconds")
+				return
+			}
+		}
+		seconds, err := data.ScreenshotRetention(r.Context(), id, input.Seconds)
+		respond(w, 200, map[string]int32{"seconds": seconds}, err)
+	})
+	mux.HandleFunc("GET /projects/{id}/screenshot-retention", policy)
+	mux.HandleFunc("PUT /projects/{id}/screenshot-retention", policy)
 	path := base + "/{feedback}/artifacts"
 	mux.HandleFunc("POST "+path, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		task, ok := pathID(w, r)
@@ -175,6 +197,13 @@ func registerFeedbackArtifacts(mux *http.ServeMux, data *store.Store, owner, bas
 		}
 		f, err := os.Open(name)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				_, stateErr := data.FeedbackArtifact(r.Context(), task, r.PathValue("preview"), fid, id)
+				if stateErr != nil {
+					respond(w, 0, nil, stateErr)
+					return
+				}
+			}
 			problem(w, 503, "archived file unavailable")
 			return
 		}

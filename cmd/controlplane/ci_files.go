@@ -120,12 +120,15 @@ func removeCIFile(f store.CIArchiveFile) error {
 	return removeArtifact(fmt.Sprintf("ci/%d/%d/%s/%s", f.Task, f.Execution, f.Run, f.File))
 }
 
-func sweepCIFiles(ctx context.Context, data *store.Store) {
+func sweepArtifacts(ctx context.Context, data *store.Store) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
 		if err := data.PurgeCIFiles(ctx, removeCIFile); err != nil && ctx.Err() == nil {
 			log.Printf("CI archive cleanup: %v", err)
+		}
+		if err := data.PurgeScreenshots(ctx, removeArtifact); err != nil && ctx.Err() == nil {
+			log.Printf("feedback screenshot cleanup: %v", err)
 		}
 		select {
 		case <-ctx.Done():

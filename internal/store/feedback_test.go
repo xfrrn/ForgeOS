@@ -90,6 +90,47 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM task_events WHERE type='feedback_screenshot_saved'").Scan(&count); err != nil || count != 1 {
 			t.Fatal(count, err)
 		}
+		_, err := db.Exec("UPDATE feedback_artifacts SET created_at=now()-interval '2 days' WHERE id=$1", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seconds := int32(86400)
+		if _, err := s.ScreenshotRetention(ctx, p.ID, &seconds); err != nil {
+			t.Fatal(err)
+		}
+		fresh, err := s.SaveFeedbackScreenshot(ctx, task.ID, preview.ID, first, strings.Repeat("b", 64), 18, func(string) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		var scheduled bool
+		if err := db.QueryRow("SELECT expires_at=created_at+interval '1 day' FROM feedback_artifacts WHERE id=$1", fresh.ID).Scan(&scheduled); err != nil || !scheduled {
+			t.Fatalf("new screenshot deadline: %v", err)
+		}
+		seconds = 0
+		if _, err := s.ScreenshotRetention(ctx, p.ID, &seconds); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.FeedbackArtifact(ctx, task.ID, preview.ID, first, id); !errors.Is(err, ErrScreenshotExpired) {
+			t.Fatalf("expired screenshot revived: %v", err)
+		}
+		if _, err := s.SaveFeedbackScreenshot(ctx, task.ID, preview.ID, first, digest, 42, func(string) error { return diskErr }); !errors.Is(err, ErrScreenshotExpired) {
+			t.Fatalf("expired screenshot rewritten: %v", err)
+		}
+		if err := s.PurgeScreenshots(ctx, func(string) error { return diskErr }); !errors.Is(err, diskErr) {
+			t.Fatal(err)
+		}
+		var removed []string
+		for range 2 {
+			if err := s.PurgeScreenshots(ctx, func(key string) error { removed = append(removed, key); return nil }); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(removed) != 1 || !strings.HasSuffix(removed[0], "/"+digest+".png") {
+			t.Fatal("unexpected removed screenshots", removed)
+		}
+		if _, err := s.FeedbackArtifact(ctx, task.ID, preview.ID, first, fresh.ID); err != nil {
+			t.Fatal(err)
+		}
 	})
 	t.Run("management lease and provenance", func(t *testing.T) {
 		if j, err := s.ClaimFeedback(ctx, p.ID+1); err != nil || j != nil {
