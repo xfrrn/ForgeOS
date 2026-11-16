@@ -12,15 +12,19 @@ type Issue = { title: string; number: number; body: string; url: string; reposit
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string }
 type Delivery = { state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
+type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
+type Plan = { revision: number; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
   id: number; project_id: number; status: string; kind: string
   spec?: { issue: Issue; base_commit: string; validation: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery
+  plan?: Plan
 }
 type Props = { id: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
+  plan_revised: '已保存计划版本',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
@@ -212,12 +216,25 @@ function Detail({ id, request, onChanged }: Props) {
     {notice && <p className="detail-notice" role="status">{notice}</p>}
     <div className="detail-layout">
       <div className="detail-column">
+        {task.plan && <section className="panel detail-card">
+          <h2>Goal 计划 · 修订 {task.plan.revision}</h2>
+          <p>{task.plan.plan.objective}</p>
+          {task.plan.plan.milestones.map((milestone, index) => <div key={index}>
+            <h3>{milestone.name}</h3>
+            <ul>{milestone.items?.map(item => <li key={item.key}>
+              <strong>{item.key} · {item.objective}</strong>
+              <dl><Fact label="范围">{item.scope}</Fact><Fact label="验收条件">{item.acceptance_criteria}</Fact>
+                <Fact label="交付物">{item.deliverables}</Fact>
+                {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}</dl>
+            </li>)}</ul>
+          </div>)}
+        </section>}
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
           <div className="detail-issue-text" tabIndex={0} aria-label="Issue 正文">{issue.body || '此 Issue 没有正文。'}</div></section>}
         <section className="panel detail-card"><h2><Icon name="Terminal" size={18} />Worker 执行记录<span className="detail-count">{task.attempts.length}</span></h2>
           {task.attempts.length ? <div className="detail-attempts">{[...task.attempts].reverse().map(attempt =>
             <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} request={request} />)}</div>
-            : <p className="detail-empty-text">等待 Worker 领取任务。</p>}</section>
+            : <p className="detail-empty-text">{task.plan ? '尚无执行记录。' : '等待 Worker 领取任务。'}</p>}</section>
       </div>
       <aside className="detail-column">
         {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)} />}

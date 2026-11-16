@@ -1,0 +1,163 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+)
+
+type Plan struct {
+	Objective  string      `json:"objective"`
+	Milestones []Milestone `json:"milestones"`
+}
+
+type Milestone struct {
+	Name  string     `json:"name"`
+	Items []PlanItem `json:"items"`
+}
+
+type PlanItem struct {
+	Key          string   `json:"key"`
+	Objective    string   `json:"objective"`
+	Scope        string   `json:"scope"`
+	Acceptance   string   `json:"acceptance_criteria"`
+	Deliverables string   `json:"deliverables"`
+	Dependencies []string `json:"dependencies,omitempty"`
+	ContextRefs  []string `json:"context_refs,omitempty"`
+}
+
+type PlanRevision struct {
+	TaskID   int64     `json:"task_id"`
+	Revision int       `json:"revision"`
+	Plan     Plan      `json:"plan"`
+	At       time.Time `json:"at"`
+}
+
+var planItemKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
+
+func (p Plan) Validate() error {
+	if strings.TrimSpace(p.Objective) == "" || len(p.Milestones) == 0 {
+		return errors.New("provide a goal objective and milestones")
+	}
+	nodes := map[string][]string{}
+	for _, m := range p.Milestones {
+		if strings.TrimSpace(m.Name) == "" {
+			return errors.New("each milestone needs a name")
+		}
+		for _, item := range m.Items {
+			if !planItemKey.MatchString(item.Key) || strings.TrimSpace(item.Objective) == "" || strings.TrimSpace(item.Scope) == "" ||
+				strings.TrimSpace(item.Acceptance) == "" || strings.TrimSpace(item.Deliverables) == "" {
+				return errors.New("each item needs a key, objective, scope, acceptance criteria and deliverables")
+			}
+			if _, ok := nodes[item.Key]; ok {
+				return fmt.Errorf("duplicate item %s", item.Key)
+			}
+			nodes[item.Key] = item.Dependencies
+		}
+	}
+	if len(nodes) == 0 {
+		return errors.New("detail at least one work item")
+	}
+	visiting, done := map[string]bool{}, map[string]bool{}
+	var visit func(string) error
+	visit = func(key string) error {
+		deps, found := nodes[key]
+		if !found || visiting[key] {
+			return errors.New("unknown dependency or cycle in plan")
+		}
+		if done[key] {
+			return nil
+		}
+		visiting[key] = true
+		for _, dep := range deps {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		delete(visiting, key)
+		done[key] = true
+		return nil
+	}
+	for key := range nodes {
+		if err := visit(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan Plan) (PlanRevision, error) {
+	var rev PlanRevision
+	if previous < 0 || previous >= 2147483647 || plan.Validate() != nil {
+		return rev, ErrConflict
+	}
+	doc, err := json.Marshal(plan)
+	if err != nil {
+		return rev, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return rev, err
+	}
+	defer tx.Rollback()
+	var kind, status string
+	err = tx.QueryRowContext(ctx, `SELECT kind,status FROM work_items WHERE id=$1 FOR UPDATE`, taskID).Scan(&kind, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rev, ErrNotFound
+	}
+	if err != nil {
+		return rev, err
+	}
+	rev = PlanRevision{TaskID: taskID, Revision: previous + 1, Plan: plan}
+	var same bool
+	err = tx.QueryRowContext(ctx, `SELECT at,plan=$3::jsonb FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
+		taskID, rev.Revision, string(doc)).Scan(&rev.At, &same)
+	if err == nil {
+		if !same {
+			return rev, ErrConflict
+		}
+		return rev, tx.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return rev, err
+	}
+	if kind != "codex_issue" || (status != "READY" && status != "FAILED" && status != "WAITING_ACCEPTANCE" && status != "PLANNING") {
+		return rev, ErrConflict
+	}
+	err = tx.QueryRowContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan)
+		SELECT $1,$2,$3 WHERE $2::integer=(SELECT COALESCE(MAX(revision),0)+1 FROM plan_revisions WHERE task_id=$1)
+		RETURNING at`, taskID, rev.Revision, string(doc)).Scan(&rev.At)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rev, ErrConflict
+	}
+	if err != nil {
+		return rev, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='PLANNING' WHERE id=$1`, taskID); err != nil {
+		return rev, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'plan_revised')`, taskID); err != nil {
+		return rev, err
+	}
+	return rev, tx.Commit()
+}
+
+func (s *Store) PlanRevision(ctx context.Context, taskID int64, revision int64) (PlanRevision, error) {
+	var rev PlanRevision
+	var doc []byte
+	err := s.db.QueryRowContext(ctx, `SELECT task_id,revision,at,plan FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
+		taskID, revision).Scan(&rev.TaskID, &rev.Revision, &rev.At, &doc)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rev, ErrNotFound
+	}
+	if err != nil {
+		return rev, err
+	}
+	err = json.Unmarshal(doc, &rev.Plan)
+	return rev, err
+}

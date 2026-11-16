@@ -35,7 +35,7 @@ func TestTaskListPagesAndFilters(t *testing.T) {
 		}
 		return page
 	}
-	if page := get("/tasks"); page.Items == nil || len(page.Items) != 0 || len(page.Counts) != 7 || page.Counts["ALL"] != 0 {
+	if page := get("/tasks"); page.Items == nil || len(page.Items) != 0 || len(page.Counts) != 8 || page.Counts["ALL"] != 0 {
 		t.Fatal("empty list:", page)
 	}
 	project, err := data.CreateProject(ctx, t.TempDir())

@@ -93,6 +93,28 @@ Invoke-RestMethod -NoProxy -Method Post -Uri "$api/tasks/$taskId/acceptance" -He
 
 相同执行、SHA、决定和说明的重发只记录一次。版本不匹配或与已有决定矛盾时返回 HTTP 409。退回后同一工作项重新排队，Worker 在新 Worktree 从被退回版本继续修订。新的候选提交保留原始基础版本为父提交，须重新验证和验收。历次候选和验收决定可从 `attempts`、`reviews` 查阅；工作项结束前保留相关 Worktree，让提交对象有可用的 Git 引用。
 
+## 将 Issue 工作项升级为 Goal 草案
+
+Owner 向 `POST /tasks/{id}/plans` 提交以下结构。首次提交传 `previous_revision: 0`，后续传当前修订号。每次成功返回完整版本。相同版本和内容的重报返回原记录，版本冲突返回 409。支持待执行、执行失败、待验收和规划中的 Issue 任务。运行中的任务先到达安全停止点。
+
+```json
+{
+  "previous_revision": 0,
+  "plan": {
+    "objective": "补齐队列手册",
+    "milestones": [{
+      "name": "使用示例",
+      "items": [
+        {"key":"status","objective":"记录状态命令","scope":"README","acceptance_criteria":"包含可复制的命令","deliverables":"命令示例"},
+        {"key":"waiting","objective":"解释等待状态","scope":"README","acceptance_criteria":"能从示例辨认待执行任务","deliverables":"输出示例","dependencies":["status"]}
+      ]
+    }]
+  }
+}
+```
+
+`GET /tasks/{id}` 和任务详情页展示当前版本，`GET /tasks/{id}/plans/{revision}` 可查询指定历史版本。原执行和验收记录随任务保留。草案进入 PLANNING，Worker 不领取父项。
+
 ## GitHub 交付
 
 默认情况下，通过人工验收只将任务记为 `ACCEPTED`。要让某个项目自动发布，在**批准该候选前**配置控制面的 `FORGEOS_DELIVERY_PROJECT_ID`，使用有权向此仓库推送、管理 PR 和更新 Issue 的 GitHub 身份，再重启控制面。可选 `FORGEOS_DELIVERY_TARGET_BRANCH` 指定目标分支，留空时采用 GitHub 仓库默认分支。使用普通受保护分支权限的凭据。审批发生时会同时保存交付任务，之后更改配置不会把之前的本地验收追溯发布。
