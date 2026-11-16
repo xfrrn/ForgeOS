@@ -18,6 +18,8 @@ import (
 )
 
 type InventoryFile struct {
+	UnresolvedInputs   int                                 `json:"unresolved_inputs,omitempty"`
+	DynamicFields      []string                            `json:"dynamic_fields,omitempty"`
 	Path               string                              `json:"path"`
 	Blob               string                              `json:"blob"`
 	Kind               string                              `json:"kind"`
@@ -43,7 +45,9 @@ func inventoryKind(file string) string {
 		return "node"
 	case "composer.json":
 		return "composer"
-	case "pyproject.toml", "requirements.txt", "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "gemfile":
+	case "pyproject.toml", "requirements.txt":
+		return "python"
+	case "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "gemfile":
 		return "manifest"
 	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "gemfile.lock", "composer.lock":
 		return "lock"
@@ -98,7 +102,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" || kind == "composer" {
+		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" {
 			if readBudget <= 0 {
 				c.Problem = "read_budget"
 			} else {
@@ -150,6 +154,11 @@ func (f *InventoryFile) readManifest(data []byte) {
 			if module.CheckPath(d.Mod.Path) == nil {
 				deps[d.Mod.Path] = true
 			}
+		}
+	} else if f.Kind == "python" {
+		if !f.readPython(data, deps) {
+			f.Problem = "invalid_manifest"
+			return
 		}
 	} else if f.Kind == "composer" {
 		var m struct {

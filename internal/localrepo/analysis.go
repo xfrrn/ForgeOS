@@ -35,7 +35,7 @@ func AnalysisSources(ctx context.Context, repo string, files []InventoryFile) (A
 	out := AnalysisInput{Sources: []AnalysisSource{}}
 	left := 64 << 10
 	for _, f := range ordered {
-		if f.Kind != "guide" && f.Kind != "go" && f.Kind != "node" && f.Kind != "composer" && f.Kind != "manifest" {
+		if f.Kind != "guide" && f.Kind != "go" && f.Kind != "node" && f.Kind != "composer" && f.Kind != "python" && f.Kind != "manifest" {
 			continue
 		}
 		if left == 0 || len(out.Sources) == 48 {
@@ -62,6 +62,8 @@ func AnalysisSources(ctx context.Context, repo string, files []InventoryFile) (A
 					lines = append(lines, "npm run "+s)
 				case "composer":
 					lines = append(lines, "composer run-script "+s)
+				case "python":
+					lines = append(lines, s)
 				}
 			}
 			doc.Text = strings.Join(lines, "\n")

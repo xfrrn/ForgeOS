@@ -38,6 +38,8 @@ Owner 在工作台选择“项目接入”，登记控制面机器上的 Git 仓
 
 对于 `composer.json`，清单列出 `require` 和 `require-dev` 中的包及平台依赖。展开文件可查看 `composer run-script` 入口。扫描只归档名称和来源 blob，脚本内容及仓库地址配置不进入回执。[Composer 项目配置](https://getcomposer.org/doc/04-schema.md) · [Composer 脚本](https://getcomposer.org/doc/articles/scripts.md)
 
+对于 Python，`pyproject.toml` 清单列出运行、可选、构建及依赖组中的包名，以及项目和 Poetry 声明的命令入口。包名按 PyPA 规则统一小写，把连续的点、短横线与下划线合并为短横线。动态依赖或命令字段单独标明。`requirements.txt` 支持具名直接引用、版本标记、续行和哈希选项；缺少可直接确认包名的路径、外部引用、可编辑安装及包含文件计入未解析项。扫描不运行构建后端或安装依赖。[项目元数据](https://packaging.python.org/en/latest/specifications/pyproject-toml/) · [依赖组](https://packaging.python.org/en/latest/specifications/dependency-groups/) · [pip requirements 文件](https://pip.pypa.io/en/stable/reference/requirements-file-format/)
+
 Owner 用 `POST /tasks/{id}/repository-inventory` 生成或复用清单，`GET` 读取归档。首次扫描需要本机克隆仍有对应提交，归档随项目数据库保存。无效或过大的清单会在对应条目标明原因。整棵树的 Git 列表上限为 16 MiB，最多归档 2000 个匹配文件；解析单个包清单最多读取 256 KiB，每次累计 8 MiB。符号链接、子模块、vendor 和 node_modules 目录不作为初始化输入。依赖声明与脚本名称仅作发现依据，启动及测试结果另有实际执行回执。
 
 需要声明项目密钥时，将环境、名称和预期风险写入根配置的 `secret_requirements`。扫描结果附在该文件的条目中。实际元数据登记与执行授权见[密钥需求和授权](09-security-and-secrets.md#项目声明的需求)。

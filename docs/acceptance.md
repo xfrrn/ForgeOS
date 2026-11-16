@@ -1145,3 +1145,18 @@ PHP Composer 清单对应 ForgeOS 提交 `a0b90a45b69f054b8537ccc11ef950b838cff1
 | 将控制面仓库根切到空目录并重启，逐版回读、重复归档；另从数据库并发申请归档 | 无原始克隆也能读取，证据没有变化时不增加版本 | 三版报告均与首次结果相同，重复归档返回第 3 版。数据库回归中四个并发请求均得到第 1 版；新画像资料产生第 2 版，旧版内容保持相同 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 146 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+初始化报告与版本回读对应 ForgeOS 提交 `9a75d9e04a2cdd2be90b833da5f8bd6c38d1e698`。
+
+## 专题 01 · Python 依赖、动态字段与命令入口
+
+使用真实控制面、HEAD Worker 和 Chrome 分别检查同一仓库的两个提交。在 schema `pydeps_9b6d6680` 核对工作台、报告 JSON 和项目专用 Management 领取的数据。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 读取带运行依赖、可选依赖、构建依赖、依赖组、具名 wheel URL、脚本及动态字段的 pyproject.toml | 包名规范化并去重；命令按 Python 入口显示 | T-1 固定 `7460e99bcbfa1b6c22e6b85228c6d412314734a3`。清单列出 http-x、pytest、ruff、setuptools、wheel-pkg，在 Chrome 显示 station-start 和动态字段 gui-scripts |
+| 同时读取 requirements.txt、损坏的 TOML 及 Node.js 清单 | 解析具名要求，明确其余来源；错误只影响对应文件 | 读出 requests，远程包含与本地可编辑安装计入 2 项未解析来源；Chrome 显示损坏清单的格式错误，Node.js 条目仍显示 npm run test |
+| 归档报告并以项目 Management 身份领取归纳输入 | 报告保留清单，Agent 可用依赖和入口名作引用 | 报告的清单逐字段一致。Agent 输入含包名与 station-start；其来源 blob 为 `8933ad4fe3a41824bfec3f0628c59396cf0aff80`。合成的私有 URL 标记和 Python 导入目标均未出现在输入中 |
+| 更新清单，从项目页重新检查，再重启控制面 | 两次回执保留对应版本 | T-2 固定 `d1466a28a293aaf410d0dee951ab65b768f8ed31`，仅有 ruff 与 station-check，清单 blob 为 `3da111b613112a1be544786e5e194a0b9abd4297`。两版重启后回读均与首次相同 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 147 项通过，零测试跳过。Go 静态检查、模块校验、TypeScript 检查和 Web 生产构建通过。
