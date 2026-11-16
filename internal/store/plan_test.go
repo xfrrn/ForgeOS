@@ -67,4 +67,21 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 			t.Fatalf("accepted invalid graph %s: %v", dep, err)
 		}
 	}
+	if _, err := s.ActivatePlan(ctx, task.ID, 1); !errors.Is(err, ErrConflict) {
+		t.Fatalf("activated superseded plan: %v", err)
+	}
+	for range 2 {
+		active, err := s.ActivatePlan(ctx, task.ID, 2)
+		if err != nil || active.Status != "ACTIVE" || len(active.Children) != 2 || len(active.Events) != 6 {
+			t.Fatalf("activation/replay: %+v %v", active, err)
+		}
+	}
+	child, err := s.Claim(ctx, "worker", root, true)
+	if err != nil || child == nil || child.TaskID == task.ID || child.Spec.Issue.Title != first.Objective {
+		t.Fatalf("incorrect ready item: %+v %v", child, err)
+	}
+	detail, err := s.Task(ctx, child.TaskID)
+	if err != nil || detail.GoalID != task.ID || detail.PlanRevision != 2 || detail.PlanKey != "a" {
+		t.Fatalf("missing lineage: %+v %v", detail, err)
+	}
 }

@@ -19,12 +19,15 @@ type Task = {
   spec?: { issue: Issue; base_commit: string; validation: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery
   plan?: Plan
+  goal_id?: number; plan_revision?: number
+  children?: { id: number; key: string; status: string }[]
 }
 type Props = { id: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
   plan_revised: '已保存计划版本',
+  plan_activated: '计划已生效', goal_item_created: '从计划创建工作项',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
@@ -168,7 +171,7 @@ function Detail({ id, request, onChanged }: Props) {
         if (controller.signal.aborted || epoch !== generation.current) return
         setTask(fresh)
         setError('')
-        if (fresh.status === 'READY' || fresh.status === 'RUNNING' || fresh.status === 'WAITING_ACCEPTANCE' || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
+        if (['ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'WAITING_ACCEPTANCE'].includes(fresh.status) || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
           timer = setTimeout(read, 8000)
         }
       } catch (cause) {
@@ -200,6 +203,7 @@ function Detail({ id, request, onChanged }: Props) {
   const result = last?.result
   const delivery = task.delivery
   const reviews = task.reviews ?? []
+  const children = new Map(task.children?.map(child => [child.key, child]))
   const canReview = task.status === 'WAITING_ACCEPTANCE' && task.spec && last?.status === 'COMPLETED' &&
     result?.exit_code === 0 && result.commit && fullSHA.test(result.commit) && result.validation?.commit === result.commit &&
     result.validation.exit_code === 0 && !reviews.some(review => review.execution_id === last.id)
@@ -207,6 +211,7 @@ function Detail({ id, request, onChanged }: Props) {
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
       <h1>{issue?.title || 'Git HEAD 检查'}</h1>
+      {task.goal_id && <a href={`#/tasks/${task.goal_id}`}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
       <div className="detail-subtitle">{issue ? <><Icon name="GitBranch" size={15} /><span>{issue.repository}</span><span aria-hidden="true">/</span>
         <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · git_head</span>}
         <button className="button detail-refresh" disabled={loading} onClick={() => refresh()}><Icon name="RefreshCw" size={15} />刷新</button>
@@ -222,7 +227,8 @@ function Detail({ id, request, onChanged }: Props) {
           {task.plan.plan.milestones.map((milestone, index) => <div key={index}>
             <h3>{milestone.name}</h3>
             <ul>{milestone.items?.map(item => <li key={item.key}>
-              <strong>{item.key} · {item.objective}</strong>
+              {children.has(item.key) ? <a href={`#/tasks/${children.get(item.key)!.id}`}>{item.key} · {item.objective} <Status value={children.get(item.key)!.status}/></a>
+                : <strong>{item.key} · {item.objective}</strong>}
               <dl><Fact label="范围">{item.scope}</Fact><Fact label="验收条件">{item.acceptance_criteria}</Fact>
                 <Fact label="交付物">{item.deliverables}</Fact>
                 {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}</dl>

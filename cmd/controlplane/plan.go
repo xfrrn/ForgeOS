@@ -10,6 +10,19 @@ import (
 )
 
 func registerPlanRoutes(mux *http.ServeMux, data *store.Store, root, owner string) {
+	mux.HandleFunc("POST /tasks/{id}/plans/{revision}/activate", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		revision, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
+		if err != nil || revision < 1 {
+			problem(w, http.StatusBadRequest, "provide a positive plan revision")
+			return
+		}
+		task, err := data.ActivatePlan(r.Context(), id, int(revision))
+		respond(w, http.StatusOK, task, err)
+	}))
 	mux.HandleFunc("POST /tasks/{id}/plans", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

@@ -171,6 +171,9 @@ func advanceRemote(ctx context.Context, repo string, task store.Task, d store.De
 				"title": fmt.Sprintf("Deliver issue #%d", i.Number), "head": d.Branch, "base": target,
 				"body": fmt.Sprintf("Refs #%d\n\nForgeOS task %d, execution %d.\n\nValidated and approved commit: `%s` (%s).", i.Number, task.ID, d.ExecutionID, d.Commit, task.Spec.Validation),
 			}
+			if task.GoalID != 0 {
+				body["body"] = fmt.Sprintf("%s\n\nGoal %d, plan revision %d, work item %s.", body["body"], task.GoalID, task.PlanRevision, task.PlanKey)
+			}
 			if err := api(ctx, "POST", pulls, body, &pr); err != nil {
 				return d, err
 			}
@@ -213,7 +216,7 @@ func advanceRemote(ctx context.Context, repo string, task store.Task, d store.De
 			d.MergeSHA, d.State, d.Detail = pr.MergeSHA, "MERGED", "merge commit recovered from GitHub"
 			return d, nil
 		}
-		if err := finishIssue(ctx, api, issuePath, issue.State, d); err != nil {
+		if err := finishIssue(ctx, api, issuePath, issue.State == "open" && task.GoalID == 0, d); err != nil {
 			return d, err
 		}
 		d.State, d.Detail = "DONE", "merge and issue feedback confirmed"
@@ -332,7 +335,7 @@ func mergeGates(ctx context.Context, api deliveryAPI, i store.Issue, d store.Del
 	return "", nil
 }
 
-func finishIssue(ctx context.Context, api deliveryAPI, path, state string, d store.Delivery) error {
+func finishIssue(ctx context.Context, api deliveryAPI, path string, closeIssue bool, d store.Delivery) error {
 	message := fmt.Sprintf("ForgeOS task %d delivered in %s.\n\nAccepted commit: `%s`\nMerge commit: `%s`", d.TaskID, d.PRURL, d.Commit, d.MergeSHA)
 	found := false
 	for page := 1; !found; page++ {
@@ -355,7 +358,7 @@ func finishIssue(ctx context.Context, api deliveryAPI, path, state string, d sto
 			return err
 		}
 	}
-	if state == "open" {
+	if closeIssue {
 		var closed githubIssue
 		if err := api(ctx, "PATCH", path, map[string]any{"state": "closed", "state_reason": "completed"}, &closed); err != nil {
 			return err

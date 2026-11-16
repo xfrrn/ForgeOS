@@ -107,7 +107,7 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 	}
 	defer tx.Rollback()
 	var kind, status string
-	err = tx.QueryRowContext(ctx, `SELECT kind,status FROM work_items WHERE id=$1 FOR UPDATE`, taskID).Scan(&kind, &status)
+	err = tx.QueryRowContext(ctx, `SELECT kind,status FROM work_items WHERE id=$1 AND goal_id IS NULL FOR UPDATE`, taskID).Scan(&kind, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrNotFound
 	}

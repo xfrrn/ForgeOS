@@ -117,6 +117,8 @@ Owner 向 `POST /tasks/{id}/plans` 提交以下结构。首次提交传 `previou
 
 确定正式计划后，Owner 调用 `POST /tasks/{id}/plans/{revision}/archive`。返回的 `git_commit` 对应项目仓库中的独立快照，以需求冻结的基础提交为父提交。用 `git show refs/forgeos/plans/goal-1/r2:.forgeos/plans/goal-1.json` 可读取任务 1 的第二版计划。每版单独保留，可重复归档；引用内容冲突返回 409。该操作写本地项目 Git。远端交付仍经既有验收流程。
 
+Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/activate`。同一修订重复激活复用已有工作项。目标进入 ACTIVE，无前置依赖的子项进入 READY，其他子项进入 BLOCKED。任务树提供实际工作项链接，子项详情可回到父 Goal。每个子项使用计划中的范围、上下文引用和验收条件，沿用原项目的验证方式。每个子 PR 回写候选和合并 SHA，父 Issue 保持开放。
+
 ## GitHub 交付
 
 默认情况下，通过人工验收只将任务记为 `ACCEPTED`。要让某个项目自动发布，在**批准该候选前**配置控制面的 `FORGEOS_DELIVERY_PROJECT_ID`，使用有权向此仓库推送、管理 PR 和更新 Issue 的 GitHub 身份，再重启控制面。可选 `FORGEOS_DELIVERY_TARGET_BRANCH` 指定目标分支，留空时采用 GitHub 仓库默认分支。使用普通受保护分支权限的凭据。审批发生时会同时保存交付任务，之后更改配置不会把之前的本地验收追溯发布。

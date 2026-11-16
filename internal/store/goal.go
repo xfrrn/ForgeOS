@@ -1,0 +1,114 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+type GoalChild struct {
+	ID     int64  `json:"id"`
+	Key    string `json:"key"`
+	Status string `json:"status"`
+}
+
+// ActivatePlan materializes one reviewed revision and its dependencies in a single transaction.
+func (s *Store) ActivatePlan(ctx context.Context, id int64, revision int) (Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+	var projectID int64
+	var status string
+	var specJSON, planJSON []byte
+	var latest int
+	err = tx.QueryRowContext(ctx, `SELECT t.project_id,t.status,t.spec FROM work_items t WHERE t.id=$1 FOR UPDATE`, id).Scan(&projectID, &status, &specJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrNotFound
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	err = tx.QueryRowContext(ctx, `SELECT revision,plan FROM plan_revisions WHERE task_id=$1 ORDER BY revision DESC LIMIT 1`, id).Scan(&latest, &planJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrConflict
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	if latest != revision {
+		return Task{}, ErrConflict
+	}
+	if status == "ACTIVE" || status == "DONE" {
+		if err := tx.Commit(); err != nil {
+			return Task{}, err
+		}
+		return s.Task(ctx, id)
+	}
+	if status != "PLANNING" {
+		return Task{}, ErrConflict
+	}
+	var plan Plan
+	var spec IssueSpec
+	if err = json.Unmarshal(planJSON, &plan); err != nil {
+		return Task{}, err
+	}
+	if err = json.Unmarshal(specJSON, &spec); err != nil {
+		return Task{}, err
+	}
+	if err = plan.Validate(); err != nil {
+		return Task{}, ErrConflict
+	}
+	ids := make(map[string]int64)
+	for _, m := range plan.Milestones {
+		for _, item := range m.Items {
+			child := spec
+			child.Issue.Title = item.Objective
+			child.Issue.Body = fmt.Sprintf("Goal: %s\nMilestone: %s\nScope: %s\nAcceptance: %s\nDeliverables: %s", plan.Objective, m.Name, item.Scope, item.Acceptance, item.Deliverables)
+			if len(item.ContextRefs) > 0 {
+				child.Issue.Body += "\nReferences: " + strings.Join(item.ContextRefs, ", ")
+			}
+			doc, err := json.Marshal(child)
+			if err != nil {
+				return Task{}, err
+			}
+			state := "READY"
+			if len(item.Dependencies) > 0 {
+				state = "BLOCKED"
+			}
+			var childID int64
+			err = tx.QueryRowContext(ctx, `WITH child AS (
+				INSERT INTO work_items(project_id,kind,status,spec,goal_id,plan_revision,plan_key)
+				VALUES ($1,'codex_issue',$2,$3,$4,$5,$6) RETURNING id)
+				INSERT INTO task_events(task_id,type) SELECT id,'goal_item_created' FROM child RETURNING task_id`,
+				projectID, state, string(doc), id, revision, item.Key).Scan(&childID)
+			if err != nil {
+				return Task{}, err
+			}
+			ids[item.Key] = childID
+		}
+	}
+	for _, m := range plan.Milestones {
+		for _, item := range m.Items {
+			for _, dep := range item.Dependencies {
+				if _, err = tx.ExecContext(ctx, `INSERT INTO work_dependencies(task_id,prerequisite) VALUES ($1,$2) ON CONFLICT DO NOTHING`, ids[item.Key], ids[dep]); err != nil {
+					return Task{}, err
+				}
+			}
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='ACTIVE' WHERE id=$1`, id); err != nil {
+		return Task{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'plan_activated')`, id); err != nil {
+		return Task{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Task{}, err
+	}
+	return s.Task(ctx, id)
+}
