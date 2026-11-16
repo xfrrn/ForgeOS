@@ -71,12 +71,17 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 		}
 		var input struct {
 			Validation string `json:"validation"`
+			Mode       string `json:"mode"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
 		if input.Validation != "docs" && input.Validation != "go-test" {
 			problem(w, http.StatusBadRequest, "select a validation profile: docs or go-test")
+			return
+		}
+		if input.Mode != "" && input.Mode != "plan" {
+			problem(w, http.StatusBadRequest, "unsupported issue execution mode")
 			return
 		}
 		ctx := r.Context()
@@ -109,7 +114,7 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 			problem(w, status, err.Error())
 			return
 		}
-		task, err := data.ImportIssue(ctx, id, store.IssueSpec{Issue: issue, BaseCommit: source.Base, Validation: input.Validation})
+		task, err := data.ImportIssue(ctx, id, store.IssueSpec{Issue: issue, BaseCommit: source.Base, Validation: input.Validation, Mode: input.Mode})
 		if errors.Is(err, store.ErrConflict) {
 			problem(w, http.StatusConflict, "GitHub issue or repository conflicts with the stored project mapping")
 			return

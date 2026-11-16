@@ -105,6 +105,7 @@ type Job struct {
 }
 
 type Result struct {
+	Plan       *Plan             `json:"plan,omitempty"`
 	Commit     string            `json:"commit"`
 	ExitCode   int               `json:"exit_code"`
 	Error      string            `json:"error"`
@@ -114,7 +115,7 @@ type Result struct {
 }
 
 func (r Result) succeeded() bool {
-	return r.ExitCode == 0 && r.Error == "" && r.Commit != ""
+	return r.ExitCode == 0 && r.Error == "" && (r.Commit != "" || r.Plan != nil)
 }
 
 type Store struct{ db *sql.DB }
@@ -272,13 +273,15 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	var projectID int64
 	canRunIssue := len(capabilities) > 0 && capabilities[0]
 	canRework := len(capabilities) > 1 && capabilities[1]
+	canPlan := len(capabilities) > 2 && capabilities[2]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE candidate.status = 'READY' AND (candidate.kind = 'git_head' OR $1)
+		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=candidate.id AND r.decision='reject'))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -291,10 +294,11 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		UPDATE work_items SET status = 'RUNNING'
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
 		            AND (w.kind = 'git_head' OR $2)
+		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=w.id AND r.decision='reject'))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -395,7 +399,7 @@ func (s *Store) Complete(ctx context.Context, id int64, token string, result Res
 				return ErrConflict
 			}
 		}
-	} else if result.Validation != nil || result.SessionID != "" || result.BaseCommit != "" {
+	} else if result.Validation != nil || result.SessionID != "" || result.BaseCommit != "" || result.Plan != nil {
 		return ErrConflict
 	}
 	data, err := json.Marshal(result)
@@ -408,6 +412,15 @@ func (s *Store) Complete(ctx context.Context, id int64, token string, result Res
 	status, eventType := "DONE", "execution_completed"
 	if !result.succeeded() {
 		status, eventType = "FAILED", "execution_failed"
+	} else if result.Plan != nil {
+		status, eventType = "PLANNING", "planner_completed"
+		plan, err := json.Marshal(result.Plan)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan) VALUES ($1,1,$2)`, taskID, string(plan)); err != nil {
+			return err
+		}
 	} else if spec != nil {
 		status = "WAITING_ACCEPTANCE"
 	}

@@ -121,10 +121,11 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 
 	mux.HandleFunc("POST /internal/claim", authorized(worker, func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			Worker         string `json:"worker"`
-			WorkspaceRoot  string `json:"workspace_root"`
-			SupportsCodex  bool   `json:"supports_codex"`
-			SupportsRework bool   `json:"supports_rework"`
+			Worker          string `json:"worker"`
+			WorkspaceRoot   string `json:"workspace_root"`
+			SupportsCodex   bool   `json:"supports_codex"`
+			SupportsRework  bool   `json:"supports_rework"`
+			SupportsPlanner bool   `json:"supports_planner"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -133,7 +134,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 			problem(w, http.StatusBadRequest, "provide a worker identity and absolute workspace_root")
 			return
 		}
-		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework)
+		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -147,12 +148,13 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 			return
 		}
 		var input struct {
-			LeaseToken string `json:"lease_token"`
-			Commit     string `json:"commit"`
-			ExitCode   *int   `json:"exit_code"`
-			Error      string `json:"error"`
-			BaseCommit string `json:"base_commit"`
-			SessionID  string `json:"session_id"`
+			LeaseToken string      `json:"lease_token"`
+			Plan       *store.Plan `json:"plan"`
+			Commit     string      `json:"commit"`
+			ExitCode   *int        `json:"exit_code"`
+			Error      string      `json:"error"`
+			BaseCommit string      `json:"base_commit"`
+			SessionID  string      `json:"session_id"`
 			Validation *struct {
 				Profile  string `json:"profile"`
 				Commit   string `json:"commit"`
@@ -169,7 +171,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 		}
 		sha, err := hex.DecodeString(input.Commit)
 		validSHA := err == nil && (len(sha) == 20 || len(sha) == 32)
-		if (*input.ExitCode == 0 && (!validSHA || input.Error != "")) ||
+		if (*input.ExitCode == 0 && ((!validSHA && input.Plan == nil) || input.Error != "")) ||
 			(*input.ExitCode != 0 && (strings.TrimSpace(input.Error) == "" || (input.Commit != "" && !validSHA))) {
 			problem(w, http.StatusBadRequest, "success requires a commit, failure requires an error")
 			return
@@ -179,7 +181,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 			return
 		}
 		result := store.Result{Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error,
-			BaseCommit: input.BaseCommit, SessionID: input.SessionID}
+			BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan}
 		if v := input.Validation; v != nil {
 			if v.ExitCode == nil || *v.ExitCode < -1 || *v.ExitCode > 2147483647 {
 				problem(w, http.StatusBadRequest, "validation requires an explicit exit code")

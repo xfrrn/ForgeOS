@@ -95,6 +95,8 @@ Invoke-RestMethod -NoProxy -Method Post -Uri "$api/tasks/$taskId/acceptance" -He
 
 ## 将 Issue 工作项升级为 Goal 草案
 
+首次按编号导入复杂 Issue 时可传 `{"mode":"plan","validation":"docs"}`。工作项冻结规划模式，只有探测到只读沙箱和结构化输出能力的 Worker 才能领取。Worker 在冻结版本的独立 Worktree 中调用 Codex，只读查阅项目资料，校验返回的任务图、原始 HEAD 和工作区状态。成功后控制面保存原生 Session、基础 SHA 和计划修订 1，进入 PLANNING。维护者可核对范围、引用路径、依赖和验收条件，再显式激活。既有任务复用首次导入的模式。
+
 Owner 向 `POST /tasks/{id}/plans` 提交以下结构。首次提交传 `previous_revision: 0`，后续传当前修订号。每次成功返回完整版本。相同版本和内容的重报返回原记录，版本冲突返回 409。支持待执行、执行失败、待验收和规划中的 Issue 任务。运行中的任务先到达安全停止点。
 
 ```json

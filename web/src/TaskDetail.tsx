@@ -3,7 +3,7 @@ import { ApiError, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } fr
 import './detail.css'
 
 type Validation = { profile: string; commit: string; exit_code: number; output: string }
-type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation }
+type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   id: number; status: string; worker: string; workspace: string; lease_until: string
   lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
@@ -33,6 +33,7 @@ const events: Record<string, string> = {
   dependencies_delivered: '前置交付已确认',
   decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
   goal_delivered: '全部子项已交付，父 Issue 已关闭',
+  planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
@@ -102,7 +103,7 @@ function Execution({ attempt, task, latest, request }: { attempt: Attempt; task:
       </div>
       <dl className="detail-facts"><Fact label="验证 SHA" code>{validation.commit}</Fact><Fact label="验证退出码" code>{validation.exit_code}</Fact></dl>
       {validation.output && <pre>{validation.output}</pre>}
-    </section> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
+    </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
     </div>
   </details>

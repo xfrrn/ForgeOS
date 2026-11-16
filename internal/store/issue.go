@@ -21,6 +21,7 @@ type Issue struct {
 }
 
 type IssueSpec struct {
+	Mode       string `json:"mode,omitempty"`
 	Issue      Issue  `json:"issue"`
 	BaseCommit string `json:"base_commit"`
 	Validation string `json:"validation"`
@@ -46,7 +47,7 @@ func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec) (Task, error) {
 	issue := spec.Issue
 	if issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
-		(spec.Validation != "docs" && spec.Validation != "go-test") {
+		(spec.Validation != "docs" && spec.Validation != "go-test") || (spec.Mode != "" && spec.Mode != "plan") {
 		return Task{}, ErrConflict
 	}
 	snapshot, err := json.Marshal(spec)
@@ -157,6 +158,21 @@ func validCommit(sha string) bool {
 }
 
 func (spec IssueSpec) accepts(r Result) bool {
+	if spec.Mode == "plan" {
+		if r.Validation != nil || r.Commit != "" || (r.BaseCommit != "" && r.BaseCommit != spec.BaseCommit) {
+			return false
+		}
+		if r.ExitCode != 0 {
+			return r.Plan == nil && strings.TrimSpace(r.Error) != ""
+		}
+		if r.BaseCommit != spec.BaseCommit {
+			return false
+		}
+		return r.Plan != nil && r.Plan.Validate() == nil && r.Error == "" && strings.TrimSpace(r.SessionID) != ""
+	}
+	if r.Plan != nil {
+		return false
+	}
 	if r.BaseCommit != "" && r.BaseCommit != spec.BaseCommit {
 		return false
 	}

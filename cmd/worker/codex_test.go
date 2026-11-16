@@ -19,6 +19,23 @@ func TestMain(m *testing.M) {
 	}
 	body, err := io.ReadAll(os.Stdin)
 	args := strings.Join(os.Args[1:], " ")
+	if strings.Contains(args, "--sandbox read-only") {
+		if err != nil || !strings.Contains(args, "--ignore-user-config") || !strings.Contains(args, "--output-schema") || os.Getenv("FORGEOS_WORKER_TOKEN") != "" || os.Getenv("GH_TOKEN") != "" {
+			os.Exit(2)
+		}
+		for k, arg := range os.Args {
+			if arg == "--output-last-message" && k+1 < len(os.Args) {
+				const plan = `{"objective":"Handbook","milestones":[{"name":"Docs","items":[{"key":"example","objective":"Write example","scope":"README","acceptance_criteria":"Example exists","deliverables":"Example"}]}]}`
+				if os.WriteFile(os.Args[k+1], []byte(plan), 0600) != nil {
+					os.Exit(3)
+				}
+				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
+				fmt.Println(`{"type":"turn.completed"}`)
+				os.Exit(0)
+			}
+		}
+		os.Exit(2)
+	}
 	if err != nil || !strings.Contains(args, "-a never exec") || !strings.Contains(args, "--sandbox workspace-write") ||
 		!strings.Contains(args, "--ignore-user-config") || os.Getenv("FORGEOS_WORKER_TOKEN") != "" || os.Getenv("GH_TOKEN") != "" {
 		os.Exit(2)
@@ -52,6 +69,23 @@ func TestMain(m *testing.M) {
 	}
 	fmt.Println(`{"type":"turn.completed"}`)
 	os.Exit(0)
+}
+
+func TestReadOnlyPlanner(t *testing.T) {
+	t.Setenv("FORGEOS_WORKER_TOKEN", "worker-test-secret")
+	t.Setenv("GH_TOKEN", "github-test-secret")
+	w, job, base := fixture(t)
+	w.codex, _ = os.Executable()
+	w.planner = true
+	job.Kind = "codex_issue"
+	job.Spec = &store.IssueSpec{Issue: store.Issue{Number: 42, Title: "Plan README"}, Mode: "plan", BaseCommit: base, Validation: "docs"}
+	res := w.execute(context.Background(), job)
+	if res.ExitCode != 0 || res.Plan == nil || res.Commit != "" || res.Validation != nil || res.SessionID != "planner-test" || res.BaseCommit != base {
+		t.Fatalf("unexpected plan result: %+v", res)
+	}
+	if git(t, job.Workspace, "status", "--porcelain") != "" || git(t, job.Workspace, "rev-parse", "HEAD") != base {
+		t.Fatal("planner modified checkout")
+	}
 }
 
 func TestIssueChanges(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 type worker struct {
 	api, token, id, repoRoot, workspaceRoot string
 	codex                                   string
+	planner                                 bool
 	client                                  *http.Client
 }
 
@@ -72,7 +73,7 @@ func fromEnv() (*worker, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.codex, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
+	w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +128,9 @@ func (w *worker) run(ctx context.Context) error {
 	if w.codex != "" {
 		claim["supports_codex"] = true
 		claim["supports_rework"] = true
+		if w.planner {
+			claim["supports_planner"] = true
+		}
 	}
 	for ctx.Err() == nil {
 		var job store.Job

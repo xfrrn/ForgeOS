@@ -67,6 +67,7 @@ func (s *Store) ActivatePlan(ctx context.Context, id int64, revision int) (Task,
 	for _, m := range plan.Milestones {
 		for _, item := range m.Items {
 			child := spec
+			child.Mode = ""
 			child.Issue.Title = item.Objective
 			child.Issue.Body = fmt.Sprintf("Goal: %s\nMilestone: %s\nScope: %s\nAcceptance: %s\nDeliverables: %s", plan.Objective, m.Name, item.Scope, item.Acceptance, item.Deliverables)
 			if len(item.ContextRefs) > 0 {

@@ -7,6 +7,54 @@ import (
 	"testing"
 )
 
+func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, "planner repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := strings.Repeat("a", 40)
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Mode: "plan", Issue: Issue{ID: 17, Number: 2, RepositoryID: 9}, BaseCommit: base, Validation: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if legacy, err := s.Claim(ctx, "old", root, true, true); err != nil || legacy != nil {
+		t.Fatalf("legacy worker: %v %v", legacy, err)
+	}
+	job, err := s.Claim(ctx, "planner", root, true, true, true)
+	if err != nil || job == nil {
+		t.Fatal(job, err)
+	}
+	candidate := strings.Repeat("b", 40)
+	result := Result{BaseCommit: base, Commit: candidate, SessionID: "planning", Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}
+	if err := s.Complete(ctx, job.ExecutionID, job.LeaseToken, result); !errors.Is(err, ErrConflict) {
+		t.Fatal("planner delivered code", err)
+	}
+	plan := Plan{Objective: "Handbook", Milestones: []Milestone{{Name: "Docs", Items: []PlanItem{{Key: "usage", Objective: "usage", Scope: "README", Acceptance: "example present", Deliverables: "README"}}}}}
+	result = Result{BaseCommit: base, SessionID: "planning", Plan: &plan}
+	for range 2 {
+		if err := s.Complete(ctx, job.ExecutionID, job.LeaseToken, result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Task(ctx, task.ID)
+	if err != nil || got.Status != "PLANNING" || got.Plan == nil || got.Plan.Revision != 1 || len(got.Children) != 0 || len(got.Events) != 3 {
+		t.Fatalf("unexpected draft: %+v %v", got, err)
+	}
+	if _, err := s.ActivatePlan(ctx, task.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	child, err := s.Claim(ctx, "writer", root, true)
+	if err != nil || child == nil || child.Spec.Mode != "" {
+		t.Fatalf("child inherited planning mode: %v %v", child, err)
+	}
+}
+
 func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
