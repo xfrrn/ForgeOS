@@ -1385,3 +1385,15 @@ Caddy 2.11.4 使用正式 Staging.Caddyfile 和短期 TLS 证书。发送者、�
 | 验证配置，发送带 state 的 GET 到 /callback，再发送含投递 ID、签名和 JSON 原文的 POST | 原查询、正文和签名到达独立应用的 /provider/hook | Caddy 配置验证通过；GET 返回 200；应用逐字节核对 HMAC 后返回 202 和 fixture-4。错误签名返回 401 |
 | 请求工作台根、/ui/、/tasks/1、/internal/claim、其他回调子路径，以 DELETE 请求回调，或使用私有预览 Host | 三方客户端只能到达指定 Staging 回调 | 7 种请求均返回 404。应用日志仅出现前一步的 3 个回调。发送容器无法解析后端服务名 |
 | 对照真实提供方的投递 ID | 在外部提供方和接收应用同时核对相同 ID 与实际投递结果 | 待验收。本次发送端是隔离容器内的测试客户端 |
+
+### 专题 01 · Ruby Bundler 仓库初始化
+
+PostgreSQL 18 测试 schema 为 `ruby_0a2dc902`。原生对照在隔离 Docker 中使用 Ruby 3.4.12 和 Bundler 2.6.9。对两版项目各执行 `bundle lock --local`，分别读取 `Bundler.definition.dependencies`、`Bundler::LockfileParser#dependencies` 及其完整 specs；工作台经正式 Worker 检查对应提交。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 登记项目，在任务 #1 展开 Gemfile 与 Gemfile.lock，归档初始化报告 | 各自显示来源 blob；工作台的直接依赖与两份原生结果相等 | 提交 `6b16a325f3e5e9308f31040e8618160f15e31a26` 的两份直接依赖均为 counter-first、json。原生 specs 包含的传递依赖 counter-helper 未混入报告 |
+| 通过工作台生成 Management 归纳输入，检查其他清单中的多行 Ruby 表达式和无效锁文件 | 标明未解析来源，保留独立锁文件依据 | Management 取得包名及锁文件直接依赖标识，动态 Gemfile 标为未解析，无效锁文件标为格式错误。字符串中的伪声明、私有路径参数与注册表地址均未进入清单 |
+| 改成 counter-next，在项目页检查新 HEAD 并归档；移开克隆、重启控制面，从 Chrome 依次打开两份报告 | 新任务读取新版本，旧回执保持原样，离线仍可核对 | 任务 #2 的 `84656de1c17d3c718b909eb7a71178e73c86ef7e` 对应 counter-next、json。离线两条任务的工作台和归档 JSON 分别恢复各自的原始结果 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 160 项通过，零跳过。Go vet、TypeScript 检查和 Web 生产构建通过。

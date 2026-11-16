@@ -57,9 +57,13 @@ func inventoryKind(file string) string {
 		return "cargo"
 	case "pom.xml":
 		return "maven"
-	case "build.gradle", "build.gradle.kts", "gemfile":
+	case "gemfile", "gems.rb":
+		return "ruby"
+	case "gemfile.lock", "gems.locked":
+		return "ruby-lock"
+	case "build.gradle", "build.gradle.kts":
 		return "manifest"
-	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "gemfile.lock", "composer.lock":
+	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "composer.lock":
 		return "lock"
 	case "makefile", "dockerfile", "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
 		return "runtime"
@@ -114,7 +118,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" {
+		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" || kind == "ruby" || kind == "ruby-lock" {
 			if kind == "cargo" {
 				cargo[file] = nil
 			}
@@ -186,6 +190,11 @@ func (f *InventoryFile) readManifest(data []byte) {
 			if module.CheckPath(d.Mod.Path) == nil {
 				deps[d.Mod.Path] = true
 			}
+		}
+	} else if f.Kind == "ruby" || f.Kind == "ruby-lock" {
+		f.readRuby(data, deps)
+		if f.Problem != "" {
+			return
 		}
 	} else if f.Kind == "python" {
 		if !f.readPython(data, deps) {
