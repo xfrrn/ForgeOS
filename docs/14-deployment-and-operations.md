@@ -188,6 +188,34 @@ fi
 
 将恢复控制面的 `FORGEOS_ARTIFACT_ROOT` 指向新目录。通过 Owner 工作台打开原任务、候选预览及反馈，核对附件编号、图像和摘要。单独恢复数据库时仍可读历史元数据，缺少附件的回读返回 503。
 
+### 恢复项目克隆和 Worker 工作区
+
+暂停派发，等正在运行的 Harness 和 CI 写入结束，停止相应的 Worker 与控制面。在这一维护窗口备份数据库、登记的项目克隆和对应的 Worker 工作区。Git 的对象、引用与每个关联 Worktree 的索引位于共享的 Git 管理目录，已暂存、未暂存和未跟踪的内容都可能用于恢复。将工作区的 `.git` 文件与它所指向的克隆一起保存。备份包含源码与尚未提交的内容，使用私有存储。
+
+下面的例子中项目根目录为 `/state/repos`，工作区根目录为 `/state/work`。部署时替换为两个服务实际使用的路径，控制面与 Worker 分机时分别在各自保存对应文件。授权的备份账号需要能读取这些目录。快照同时包含截图时，将 `workspaces.tar.gz` 加入同批附件的校验清单。
+
+```sh
+set -eu
+umask 077
+tar -C / -czf "$backup_dir/workspaces.tar.gz" state/repos state/work
+(cd "$backup_dir" && sha256sum forgeos.dump workspaces.tar.gz > workspace.SHA256SUMS)
+```
+
+准备路径布局相同、两项目录均为空的隔离恢复主机。核对离线保管的清单，恢复数据库及两个目录。以受信任的备份恢复身份还原文件所有权和模式，确保专用服务账号、共享组和 UID/GID 与源部署匹配。使用 ACL 或扩展属性的部署需在备份、恢复时成对启用相应 tar 选项。服务的环境配置和登录凭据按各自的恢复流程配置。
+
+```sh
+set -eu
+(cd "$backup_dir" && sha256sum -c workspace.SHA256SUMS)
+tar --numeric-owner -C / -xzf "$backup_dir/workspaces.tar.gz"
+git -C /state/repos/example worktree list --porcelain
+git -C /state/work/execution-1 rev-parse HEAD
+git -C /state/work/execution-1 status --short
+git -C /state/work/execution-1 diff --cached --binary
+git -C /state/work/execution-1 diff --binary
+```
+
+用服务账号执行 Git 检查。对照源记录核对工作项、执行编号、绝对路径、HEAD、索引、工作区差异和未跟踪文件的内容摘要。确认历史任务可从 Owner API 查询后，再派发一个独立 `git_head` 工作项。新的执行应获得自己的目录。若源执行原本失联，另行核对它的租约、会话和远端已产生的结果，再决定如何恢复。
+
 ## 7. 不属于第一版的内容
 
 - Kubernetes；
