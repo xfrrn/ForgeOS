@@ -12,7 +12,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, manager string, workers workerAccess) error {
+func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, manager string, workers *workerRegistry) error {
 	mux.HandleFunc("PUT /projects/{id}/review-policy", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var input struct {

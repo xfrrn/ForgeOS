@@ -9,7 +9,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerMaterials(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess) {
+func registerMaterials(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	registerProjectRead(mux, "materials", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		q := r.URL.Query()
 		kind, query, after := q.Get("kind"), strings.TrimSpace(q.Get("q")), q.Get("after")

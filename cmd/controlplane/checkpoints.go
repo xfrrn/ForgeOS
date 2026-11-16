@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess) {
+func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	mux.HandleFunc("GET /tasks/{id}/checkpoints", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

@@ -10,7 +10,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerHistory(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess) {
+func registerHistory(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	search := func(w http.ResponseWriter, r *http.Request, project int64) {
 		q := r.URL.Query()
 		source, text := q.Get("source"), strings.TrimSpace(q.Get("q"))
@@ -33,7 +33,7 @@ func registerHistory(mux *http.ServeMux, data *store.Store, owner string, worker
 	registerProjectRead(mux, "history", owner, workers, search)
 }
 
-func registerProjectRead(mux *http.ServeMux, resource, owner string, workers workerAccess, read func(http.ResponseWriter, *http.Request, int64)) {
+func registerProjectRead(mux *http.ServeMux, resource, owner string, workers *workerRegistry, read func(http.ResponseWriter, *http.Request, int64)) {
 	mux.HandleFunc("GET /projects/{id}/"+resource, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pathID(w, r); ok {
 			read(w, r, id)

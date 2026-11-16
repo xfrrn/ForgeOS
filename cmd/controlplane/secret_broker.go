@@ -10,7 +10,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerSecretBroker(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess, metadata, broker *bao.Client) {
+func registerSecretBroker(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry, metadata, broker *bao.Client) {
 	const collection = "/projects/{id}/secret-grants"
 	mux.HandleFunc("POST "+collection, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
@@ -26,7 +26,7 @@ func registerSecretBroker(mux *http.ServeMux, data *store.Store, owner string, w
 			return
 		}
 		allowed := false
-		for _, node := range workers {
+		for _, node := range workers.snapshot() {
 			if node.id == g.Principal && node.environments[environmentGrant{project, g.Environment}] {
 				allowed = true
 				break

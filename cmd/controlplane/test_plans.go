@@ -11,7 +11,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manager string, workers workerAccess) error {
+func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manager string, workers *workerRegistry) error {
 	record := func(w http.ResponseWriter, r *http.Request, task, project int64, tester, actor string) {
 		var body store.TestCaseResult
 		if !decodeLimited(w, r, &body, 128<<10) {

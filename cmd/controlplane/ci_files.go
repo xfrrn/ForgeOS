@@ -15,7 +15,7 @@ import (
 	"forgeos/internal/validation"
 )
 
-func registerCIFiles(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess) {
+func registerCIFiles(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	policy := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

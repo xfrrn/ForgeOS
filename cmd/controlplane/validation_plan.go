@@ -43,7 +43,7 @@ func verifyDeclaredChecks(root string) store.CheckVerifier {
 	}
 }
 
-func registerValidationPlan(mux *http.ServeMux, data *store.Store, root, owner string, workers workerAccess) {
+func registerValidationPlan(mux *http.ServeMux, data *store.Store, root, owner string, workers *workerRegistry) {
 	registerProjectRead(mux, "acceptance-playbooks", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		if _, err := data.Project(r.Context(), id); err != nil {
 			respond(w, 0, nil, err)

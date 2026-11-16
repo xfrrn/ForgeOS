@@ -10,7 +10,9 @@ import (
 func TestProjectHistoryAuthorizesBeforeSearch(t *testing.T) {
 	worker := workerGrant{id: "alpha", digest: sha256.Sum256([]byte("scoped")), projects: []int64{2}}
 	mux := http.NewServeMux()
-	registerHistory(mux, nil, "owner", append(legacyWorker("legacy"), worker))
+	access := legacyWorker("legacy")
+	access.grants = append(access.grants, worker)
+	registerHistory(mux, nil, "owner", access)
 	for _, tc := range []struct {
 		token, path string
 		status      int

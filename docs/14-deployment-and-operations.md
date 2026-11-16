@@ -52,7 +52,7 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 | 文件 | 必填设置 |
 | --- | --- |
 | `/etc/forgeos/controlplane.env` | `FORGEOS_LISTEN_ADDR=127.0.0.1:8080`、`FORGEOS_DATABASE_URL`、`FORGEOS_OWNER_TOKEN`、`FORGEOS_WORKERS_FILE`、`FORGEOS_REPO_ROOT` |
-| `/etc/forgeos/worker.env` | `FORGEOS_API_URL=http://127.0.0.1:8080`、节点的 `FORGEOS_WORKER_ID` 和 `FORGEOS_WORKER_TOKEN`、`FORGEOS_REPO_ROOT`、`FORGEOS_SHARED_REPOS`、`FORGEOS_WORKSPACE_ROOT=/var/lib/forgeos-worker/work` |
+| `/etc/forgeos/worker.env` | `FORGEOS_API_URL=http://127.0.0.1:8080`、节点的 `FORGEOS_WORKER_ID` 和 `FORGEOS_WORKER_TOKEN` 或 `FORGEOS_WORKER_TOKEN_FILE`（[在线轮换步骤](local-development.md#为多个-worker-分配项目)）、`FORGEOS_REPO_ROOT`、`FORGEOS_SHARED_REPOS`、`FORGEOS_WORKSPACE_ROOT=/var/lib/forgeos-worker/work` |
 
 节点授权文件采用[本地运行说明](local-development.md)中的 JSON 格式，由控制面用户独占读取。需要外网代理时，在使用代理的服务环境文件中显式配置 `HTTP_PROXY`、`HTTPS_PROXY`。两个 unit 均设置 `NO_PROXY=localhost,127.0.0.1,::1`。服务首次启动时由 systemd 创建权限为 `0700` 的独立 HOME。模型登录须在 Worker 自己的 HOME 下完成。
 

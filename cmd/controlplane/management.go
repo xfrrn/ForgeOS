@@ -9,7 +9,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerManagement(mux *http.ServeMux, data *store.Store, project, token, owner string, workers workerAccess) error {
+func registerManagement(mux *http.ServeMux, data *store.Store, project, token, owner string, workers *workerRegistry) error {
 	if project == "" && token == "" {
 		return nil
 	}

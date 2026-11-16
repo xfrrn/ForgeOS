@@ -27,6 +27,7 @@ import (
 
 type worker struct {
 	api, token, id, repoRoot, workspaceRoot string
+	tokenFile                               string
 	codex, codexVersion                     string
 	claude                                  claudeCLI
 	planner                                 bool
@@ -98,8 +99,18 @@ func fromEnv(role string) (*worker, error) {
 	if w.ciSlots, err = workerSlots("FORGEOS_WORKER_CI_SLOTS", w.slots); err != nil {
 		return nil, err
 	}
-	if w.token == "" || !filepath.IsAbs(w.repoRoot) || !filepath.IsAbs(w.workspaceRoot) {
-		return nil, errors.New("set FORGEOS_WORKER_TOKEN, absolute FORGEOS_REPO_ROOT and FORGEOS_WORKSPACE_ROOT")
+	w.tokenFile = os.Getenv("FORGEOS_WORKER_TOKEN_FILE")
+	if w.tokenFile != "" && (!filepath.IsAbs(w.tokenFile) || w.token != "") {
+		return nil, errors.New("configure either an absolute FORGEOS_WORKER_TOKEN_FILE or FORGEOS_WORKER_TOKEN")
+	}
+	if w.tokenFile == "" && w.token == "" {
+		return nil, errors.New("set FORGEOS_WORKER_TOKEN or FORGEOS_WORKER_TOKEN_FILE")
+	}
+	if _, err = w.credential(); err != nil {
+		return nil, err
+	}
+	if !filepath.IsAbs(w.repoRoot) || !filepath.IsAbs(w.workspaceRoot) {
+		return nil, errors.New("set absolute FORGEOS_REPO_ROOT and FORGEOS_WORKSPACE_ROOT")
 	}
 	w.repoRoot, err = filepath.EvalSymlinks(w.repoRoot)
 	if err != nil {
@@ -136,6 +147,36 @@ func fromEnv(role string) (*worker, error) {
 	return w, nil
 }
 
+func (w *worker) credential() (string, error) {
+	if w.tokenFile == "" {
+		return w.token, nil
+	}
+	f, err := os.Open(w.tokenFile)
+	if err != nil {
+		return "", errors.New("worker credential file unavailable")
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("worker credential file is not a regular file")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, 16385))
+	token := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+	if err != nil || len(data) > 16384 || token == "" || strings.IndexFunc(token, func(r rune) bool { return r < 33 || r > 126 }) >= 0 {
+		return "", errors.New("worker credential file must contain one bearer token")
+	}
+	return token, nil
+}
+
+func (w *worker) authenticatedRequest(req *http.Request) (*http.Response, error) {
+	token, err := w.credential()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return w.client.Do(req)
+}
+
 func (w *worker) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -145,9 +186,8 @@ func (w *worker) postJSON(ctx context.Context, path string, body any) (*http.Res
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+w.token)
 	req.Header.Set("Content-Type", "application/json")
-	return w.client.Do(req)
+	return w.authenticatedRequest(req)
 }
 
 func (w *worker) post(ctx context.Context, path string, body any, out any) (int, error) {

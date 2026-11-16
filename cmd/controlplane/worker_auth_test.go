@@ -21,7 +21,7 @@ func TestWorkerProjectGrants(t *testing.T) {
 	grant := func(id, token string, projects string) string {
 		return fmt.Sprintf(`{"worker_id":"%s","token_sha256":"%x","projects":%s}`, id, sha256.Sum256([]byte(token)), projects)
 	}
-	config := func(doc string) (workerAccess, error) {
+	config := func(doc string) (*workerRegistry, error) {
 		t.Helper()
 		if err := os.WriteFile(file, []byte(doc), 0600); err != nil {
 			t.Fatal(err)
@@ -120,4 +120,48 @@ func TestWorkerProjectGrants(t *testing.T) {
 	post("alpha", path, result, 204)
 	post("alpha", renew, lease, 409)
 	post("alpha", "/internal/claim", req, 204)
+}
+
+func TestWorkerCredentialRotation(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "nodes.json")
+	t.Setenv("FORGEOS_REVIEWER_TOKEN", "reviewer")
+	write := func(primary, overlap string) {
+		t.Helper()
+		row := map[string]any{"worker_id": "A", "projects": []int{7}, "token_sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(primary)))}
+		if overlap != "" {
+			row["next_token_sha256"] = fmt.Sprintf("%x", sha256.Sum256([]byte(overlap)))
+		}
+		doc, err := json.Marshal([]any{row})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(file, doc, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("old", "")
+	registry, err := loadWorkers(file, "", "owner", "manager")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"old", "owner", "manager", "reviewer"} {
+		write("old", bad)
+		if err := registry.reload(); err == nil || registry.match("old") == nil || registry.match("new") != nil {
+			t.Fatal("invalid replacement changed grants")
+		}
+	}
+	write("old", "new")
+	if err := registry.reload(); err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range []string{"old", "new"} {
+		g := registry.match(token)
+		if g == nil || g.id != "A" || len(g.projects) != 1 || g.projects[0] != 7 {
+			t.Fatal("scope lost")
+		}
+	}
+	write("new", "")
+	if err := registry.reload(); err != nil || registry.match("old") != nil || registry.match("new") == nil {
+		t.Fatal("retired credential still active", err)
+	}
 }

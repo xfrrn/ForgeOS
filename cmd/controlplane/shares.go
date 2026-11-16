@@ -8,7 +8,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerShares(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess) {
+func registerShares(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	mux.HandleFunc("POST /projects/{id}/shares", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

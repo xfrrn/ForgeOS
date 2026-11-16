@@ -7,7 +7,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerSecrets(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess, vault *bao.Client) {
+func registerSecrets(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry, vault *bao.Client) {
 	const path = "/projects/{id}/environments/{environment}/secrets/{name}"
 	target := func(w http.ResponseWriter, r *http.Request) (store.SecretMeta, bool) {
 		id, ok := pathID(w, r)

@@ -7,7 +7,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerDecisions(mux *http.ServeMux, data *store.Store, owner string, workers workerAccess) {
+func registerDecisions(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	registerProjectRead(mux, "decisions", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		q := r.URL.Query()
 		status := q.Get("status")

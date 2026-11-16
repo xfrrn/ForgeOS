@@ -19,8 +19,15 @@ import (
 	"forgeos/internal/validation"
 )
 
-func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryTargets) *http.ServeMux {
+func routes(data *store.Store, root, owner string, workers *workerRegistry, delivery deliveryTargets) *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /workers/reload-credentials", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		if err := workers.reload(); err != nil {
+			problem(w, http.StatusConflict, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("GET /workers", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		nodes, err := data.WorkerNodes(r.Context())
 		respond(w, http.StatusOK, nodes, err)

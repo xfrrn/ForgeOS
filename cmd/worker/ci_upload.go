@@ -76,9 +76,8 @@ func (w *worker) uploadCIFile(ctx context.Context, path, run, file string, diges
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+w.token)
 	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := w.client.Do(req)
+	resp, err := w.authenticatedRequest(req)
 	if err != nil {
 		return err
 	}

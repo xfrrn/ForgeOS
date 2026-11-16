@@ -10,9 +10,11 @@ import (
 	"errors"
 	"forgeos/internal/store"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,13 +28,18 @@ type environmentGrant struct {
 	Project     int64  `json:"project_id"`
 	Environment string `json:"environment"`
 }
-type workerAccess []workerGrant
-
-func legacyWorker(token string) workerAccess {
-	return workerAccess{{digest: sha256.Sum256([]byte(token))}}
+type workerRegistry struct {
+	mu       sync.RWMutex
+	grants   []workerGrant
+	file     string
+	reserved map[[sha256.Size]byte]bool
 }
 
-func loadWorkers(file, legacy, owner, manager string) (workerAccess, error) {
+func legacyWorker(token string) *workerRegistry {
+	return &workerRegistry{grants: []workerGrant{{digest: sha256.Sum256([]byte(token))}}}
+}
+
+func loadWorkers(file, legacy, owner, manager string) (*workerRegistry, error) {
 	if strings.TrimSpace(owner) == "" {
 		return nil, errors.New("set FORGEOS_OWNER_TOKEN")
 	}
@@ -45,65 +52,102 @@ func loadWorkers(file, legacy, owner, manager string) (workerAccess, error) {
 	if legacy != "" {
 		return nil, errors.New("configure either FORGEOS_WORKERS_FILE or FORGEOS_WORKER_TOKEN on the control plane")
 	}
-	doc, err := os.ReadFile(file)
+	a := &workerRegistry{file: file, reserved: map[[sha256.Size]byte]bool{}}
+	for _, token := range []string{"", owner, manager, os.Getenv("FORGEOS_REVIEWER_TOKEN"), os.Getenv("FORGEOS_TEST_AGENT_TOKEN")} {
+		a.reserved[sha256.Sum256([]byte(token))] = true
+	}
+	if err := a.reload(); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+func (a *workerRegistry) snapshot() []workerGrant {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.grants
+}
+
+func (a *workerRegistry) reload() error {
+	if a.file == "" {
+		return errors.New("reload requires FORGEOS_WORKERS_FILE")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	doc, err := os.ReadFile(a.file)
 	if err != nil {
-		return nil, errors.New("could not read FORGEOS_WORKERS_FILE")
+		return errors.New("could not read FORGEOS_WORKERS_FILE")
 	}
 	var rows []struct {
 		ID           string             `json:"worker_id"`
 		Hash         string             `json:"token_sha256"`
+		NextHash     string             `json:"next_token_sha256"`
 		Projects     []int64            `json:"projects"`
 		Environments []environmentGrant `json:"environments"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(doc))
 	dec.DisallowUnknownFields()
 	if err = dec.Decode(&rows); err != nil || dec.Decode(new(any)) != io.EOF || len(rows) == 0 {
-		return nil, errors.New("invalid Worker grants file")
+		return errors.New("invalid Worker grants file")
 	}
-	used := map[[sha256.Size]byte]bool{sha256.Sum256(nil): true, sha256.Sum256([]byte(owner)): true, sha256.Sum256([]byte(manager)): true}
+	used := maps.Clone(a.reserved)
 	ids := map[string]bool{}
-	var access workerAccess
+	var access []workerGrant
 	for _, r := range rows {
 		raw, err := hex.DecodeString(r.Hash)
 		if err != nil || len(raw) != sha256.Size || len(r.ID) == 0 || len(r.ID) > 128 || strings.Trim(r.ID, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") != "" || ids[r.ID] || len(r.Projects) == 0 {
-			return nil, errors.New("each Worker needs a unique ID, token digest and explicit projects")
+			return errors.New("each Worker needs a unique ID, token digest and explicit projects")
 		}
 		grant := workerGrant{id: r.ID, digest: [sha256.Size]byte(raw), projects: r.Projects}
 		if used[grant.digest] {
-			return nil, errors.New("Worker credentials must be distinct from other credentials")
+			return errors.New("Worker credentials must be distinct from other credentials")
 		}
 		projects := map[int64]bool{}
 		for _, id := range grant.projects {
 			if id < 1 || projects[id] {
-				return nil, errors.New("Worker project IDs must be positive and distinct")
+				return errors.New("Worker project IDs must be positive and distinct")
 			}
 			projects[id] = true
 		}
 		grant.environments = map[environmentGrant]bool{}
 		for _, scope := range r.Environments {
 			if !projects[scope.Project] || !store.ValidEnvironment(scope.Environment) || grant.environments[scope] {
-				return nil, errors.New("Worker environment grants must be distinct and belong to an allowed project")
+				return errors.New("Worker environment grants must be distinct and belong to an allowed project")
 			}
 			grant.environments[scope] = true
 		}
 		ids[r.ID], used[grant.digest] = true, true
 		access = append(access, grant)
+		if r.NextHash != "" {
+			next, err := hex.DecodeString(r.NextHash)
+			if err != nil || len(next) != sha256.Size {
+				return errors.New("invalid next Worker token digest")
+			}
+			grant.digest = [sha256.Size]byte(next)
+			if used[grant.digest] {
+				return errors.New("Worker credentials must be distinct from other credentials")
+			}
+			used[grant.digest] = true
+			access = append(access, grant)
+		}
 	}
-	return access, nil
+	a.grants = access
+	return nil
 }
 
-func (a workerAccess) match(token string) *workerGrant {
+func (a *workerRegistry) match(token string) *workerGrant {
 	hash := sha256.Sum256([]byte(token))
 	var grant *workerGrant
-	for i := range a {
-		if subtle.ConstantTimeCompare(hash[:], a[i].digest[:]) == 1 {
-			grant = &a[i]
+	entries := a.snapshot()
+	for i := range entries {
+		if subtle.ConstantTimeCompare(hash[:], entries[i].digest[:]) == 1 {
+			grant = &entries[i]
 		}
 	}
 	return grant
 }
 
-func (a workerAccess) authorize(next func(http.ResponseWriter, *http.Request, *workerGrant)) http.HandlerFunc {
+func (a *workerRegistry) authorize(next func(http.ResponseWriter, *http.Request, *workerGrant)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		grant := a.match(token)
@@ -118,7 +162,7 @@ func (a workerAccess) authorize(next func(http.ResponseWriter, *http.Request, *w
 	}
 }
 
-func (a workerAccess) execution(data *store.Store, next http.HandlerFunc) http.HandlerFunc {
+func (a *workerRegistry) execution(data *store.Store, next http.HandlerFunc) http.HandlerFunc {
 	return a.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		if grant.id != "" {
 			id, ok := pathID(w, r)

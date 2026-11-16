@@ -259,7 +259,14 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 ## 为多个 Worker 分配项目
 
-控制面可用 `FORGEOS_WORKERS_FILE` 代替单一 `FORGEOS_WORKER_TOKEN`。文件是 JSON 数组，每项含 `worker_id`、`token_sha256`（原始随机令牌的 SHA-256 十六进制摘要）与 `projects`（允许领取的项目 ID 数组）。在对应 Worker 上设置相同的 `FORGEOS_WORKER_ID` 和该节点自己的原始 `FORGEOS_WORKER_TOKEN`。控制面读取摘要，Owner 与 Management 继续使用各自身份。更换文件后重启控制面生效。
+控制面可用 `FORGEOS_WORKERS_FILE` 代替单一 `FORGEOS_WORKER_TOKEN`。文件是 JSON 数组，每项含 `worker_id`、`token_sha256`（原始随机令牌的 SHA-256 十六进制摘要）与 `projects`（允许领取的项目 ID 数组）。在对应 Worker 上设置相同的 `FORGEOS_WORKER_ID`。可用 `FORGEOS_WORKER_TOKEN` 设置固定令牌，或用 `FORGEOS_WORKER_TOKEN_FILE` 指向节点服务账号可读、位于项目和工作区之外的绝对路径。两种方式只选一种。文件内容为一行可打印 ASCII 令牌，允许末尾换行。使用文件时，Worker 每次发起请求都会重新读取。
+
+要在线轮换节点令牌，按以下顺序操作。
+
+1. 在同一节点的授权记录中保留 `token_sha256`，添加新令牌的 `next_token_sha256`，原子替换控制面授权文件。
+2. 使用 Owner 身份向控制面的 `POST /workers/reload-credentials` 发送空请求。204 表示整份配置已启用。两个摘要共享该节点的项目和环境授权。配置无效时返回 409，此前生效的配置继续工作。
+3. 在节点上原子替换令牌文件，确认新的令牌能访问获准项目，并观察心跳或活动执行续约。
+4. 将新摘要移至 `token_sha256`，移除 `next_token_sha256`，再次替换授权文件并由 Owner 重载。核对旧令牌返回 401，新令牌仍可用。
 
 多身份模式下，控制面先限制候选项目再领取任务。节点只能读自己执行的检查点和回报自己的结果，后续请求仍校验执行租约。使用不同的本地仓库根目录与工作区根目录，可进一步限制各节点可解析的 Git 工作区。历史单令牌配置适用于共用信任域。
 
