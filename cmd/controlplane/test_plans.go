@@ -25,7 +25,7 @@ func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manag
 			record(w, r, id, 0, "human", "owner")
 		}
 	}))
-	mux.HandleFunc("POST /internal/projects/{project}/tasks/{id}/test-results", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	workers.handle(mux, "POST /internal/projects/{project}/tasks/{id}/test-results", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return

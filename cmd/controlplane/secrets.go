@@ -61,7 +61,7 @@ func registerSecrets(mux *http.ServeMux, data *store.Store, owner string, worker
 			read(w, r, m)
 		}
 	}))
-	mux.HandleFunc("GET /internal"+path, workers.authorize(func(w http.ResponseWriter, r *http.Request, g *workerGrant) {
+	workers.handle(mux, "GET /internal"+path, workers.authorize(func(w http.ResponseWriter, r *http.Request, g *workerGrant) {
 		m, ok := target(w, r)
 		if !ok {
 			return

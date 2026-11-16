@@ -20,7 +20,7 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		rows, err := data.Checkpoints(r.Context(), id, execution)
 		respond(w, http.StatusOK, rows, err)
 	}))
-	mux.HandleFunc("POST /internal/executions/{id}/checkpoints", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+	workers.handle(mux, "POST /internal/executions/{id}/checkpoints", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return

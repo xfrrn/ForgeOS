@@ -32,7 +32,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		nodes, err := data.WorkerNodes(r.Context())
 		respond(w, http.StatusOK, nodes, err)
 	}))
-	mux.HandleFunc("POST /internal/workers/heartbeat", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	workers.handle(mux, "POST /internal/workers/heartbeat", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		var input store.WorkerHeartbeat
 		if !decode(w, r, &input) {
 			return
@@ -193,7 +193,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			}
 		}))
 	}
-	mux.HandleFunc("POST /internal/executions/{id}/ci-candidate", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+	workers.handle(mux, "POST /internal/executions/{id}/ci-candidate", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var input struct {
 			Lease   string `json:"lease_token"`
@@ -221,7 +221,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		respond(w, http.StatusOK, task, err)
 	}))
 
-	mux.HandleFunc("POST /internal/claim", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	workers.handle(mux, "POST /internal/claim", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		var input struct {
 			Worker        string `json:"worker"`
 			WorkspaceRoot string `json:"workspace_root"`
@@ -249,7 +249,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		respond(w, http.StatusOK, job, err)
 	}))
 
-	mux.HandleFunc("POST /internal/executions/{id}/resource", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+	workers.handle(mux, "POST /internal/executions/{id}/resource", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var input store.ResourceRequest
 		if !ok || !decode(w, r, &input) {
@@ -262,7 +262,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		respond(w, http.StatusNoContent, nil, err)
 	}))
-	mux.HandleFunc("POST /internal/executions/{id}/renew", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+	workers.handle(mux, "POST /internal/executions/{id}/renew", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -280,7 +280,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		respond(w, http.StatusNoContent, nil, data.RenewExecutionLease(r.Context(), id, input.LeaseToken))
 	}))
 
-	mux.HandleFunc("POST /internal/executions/{id}/result", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+	workers.handle(mux, "POST /internal/executions/{id}/result", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if !valid {
 			return

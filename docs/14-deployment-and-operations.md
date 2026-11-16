@@ -54,6 +54,8 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 | `/etc/forgeos/controlplane.env` | `FORGEOS_LISTEN_ADDR=127.0.0.1:8080`、`FORGEOS_DATABASE_URL`、`FORGEOS_OWNER_TOKEN`、`FORGEOS_WORKERS_FILE`、`FORGEOS_REPO_ROOT` |
 | `/etc/forgeos/worker.env` | `FORGEOS_API_URL=http://127.0.0.1:8080`、节点的 `FORGEOS_WORKER_ID` 和 `FORGEOS_WORKER_TOKEN` 或 `FORGEOS_WORKER_TOKEN_FILE`（[在线轮换步骤](local-development.md#为多个-worker-分配项目)）、`FORGEOS_REPO_ROOT`、`FORGEOS_SHARED_REPOS`、`FORGEOS_WORKSPACE_ROOT=/var/lib/forgeos-worker/work` |
 
+多节点部署可在私网绑定独立的 TLS 1.3 节点端口，客户端证书与具名节点逐一绑定。服务身份文件、私有 CA 与在线轮换步骤见[具名节点证书](local-development.md#为具名节点签发和轮换客户端证书)。
+
 节点授权文件采用[本地运行说明](local-development.md)中的 JSON 格式，由控制面用户独占读取。需要外网代理时，在使用代理的服务环境文件中显式配置 `HTTP_PROXY`、`HTTPS_PROXY`。两个 unit 均设置 `NO_PROXY=localhost,127.0.0.1,::1`。服务首次启动时由 systemd 创建权限为 `0700` 的独立 HOME。模型登录须在 Worker 自己的 HOME 下完成。
 
 执行 `systemctl daemon-reload` 和 `systemctl enable --now forgeos-controlplane forgeos-worker`。用 `systemctl status` 检查两项服务，随后通过 Owner API 登记仓库并创建 `git_head` 任务。任务应返回该仓库 HEAD。重启两个服务并再次查询，原执行的工作区、退出码和提交应与重启前一致。

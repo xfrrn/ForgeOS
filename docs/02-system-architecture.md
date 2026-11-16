@@ -73,7 +73,7 @@ flowchart TD
 
 - UI 到 Control Plane：HTTPS REST，实时状态使用 WebSocket。
 - GitHub 到 Control Plane：Poller 为主，Webhook 可选。
-- Control Plane 到 Worker：建议 Worker 主动建立 mTLS gRPC 双向流。
+- Control Plane 到 Worker：Worker 主动连接控制面。当前使用 HTTP 请求领取任务、续约和回报，可启用[独立的双向 TLS 节点入口](local-development.md#为具名节点签发和轮换客户端证书)。gRPC 双向流是后续传输方案。
 - Worker 到 Harness：本机 stdio / 原生协议 / CLI 结构化输入输出。
 - Agent 到中台工具：通过受控 API 或 MCP 工具接口。
 - CI Runner：由 Worker/Control Plane 创建受控 Run。

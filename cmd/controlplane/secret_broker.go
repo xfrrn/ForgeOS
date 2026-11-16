@@ -88,7 +88,7 @@ func registerSecretBroker(mux *http.ServeMux, data *store.Store, owner string, w
 		}
 		respond(w, 204, nil, data.RevokeSecretGrant(r.Context(), project, id))
 	}))
-	mux.HandleFunc("POST /internal"+collection+"/{grant}/use", workers.authorize(func(w http.ResponseWriter, r *http.Request, node *workerGrant) {
+	workers.handle(mux, "POST /internal"+collection+"/{grant}/use", workers.authorize(func(w http.ResponseWriter, r *http.Request, node *workerGrant) {
 		w.Header().Set("Cache-Control", "no-store")
 		project, id, ok := ids(w, r)
 		if !ok {

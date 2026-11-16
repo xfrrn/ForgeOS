@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"forgeos/internal/nodetls"
 	"forgeos/internal/store"
 )
 
@@ -53,10 +55,35 @@ func fromEnv(role string) (*worker, error) {
 		w.api = "http://127.0.0.1:8080"
 	}
 	u, err := url.Parse(w.api)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil ||
-		(u.Hostname() != "localhost" && !net.ParseIP(u.Hostname()).IsLoopback()) ||
-		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("FORGEOS_API_URL must be a loopback HTTP(S) origin")
+	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil ||
+		(u.Path != "" && u.Path != "/") || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("FORGEOS_API_URL must be an HTTP(S) origin")
+	}
+	identity, ca := os.Getenv("FORGEOS_NODE_TLS_IDENTITY_FILE"), os.Getenv("FORGEOS_NODE_TLS_CA_FILE")
+	if role == "" && (identity != "" || ca != "") {
+		if u.Scheme != "https" {
+			return nil, errors.New("node TLS requires an HTTPS origin")
+		}
+		if _, err := nodetls.Identity(identity); err != nil {
+			return nil, err
+		}
+		pool, err := nodetls.Roots(ca)
+		if err != nil {
+			return nil, err
+		}
+		// A new handshake reads the current identity after an atomic file replacement.
+		w.client.Transport = &http.Transport{
+			DisableKeepAlives: true,
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS13,
+				RootCAs:    pool,
+				GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+					return nodetls.Identity(identity)
+				},
+			},
+		}
+	} else if u.Hostname() != "localhost" && !net.ParseIP(u.Hostname()).IsLoopback() {
+		return nil, errors.New("non-loopback Worker origin requires a node TLS identity and CA")
 	}
 	w.api = strings.TrimRight(w.api, "/")
 	if role == "reviewer" {

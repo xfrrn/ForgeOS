@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"forgeos/internal/bao"
+	"forgeos/internal/nodetls"
 	"forgeos/internal/store"
 	_ "github.com/lib/pq"
 )
@@ -106,19 +108,53 @@ func run(ctx context.Context) error {
 	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), manager, owner, workers); err != nil {
 		return err
 	}
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      25 * time.Second,
-		IdleTimeout:       time.Minute,
-		MaxHeaderBytes:    16 << 10,
+	var servers []*http.Server
+	done := make(chan error, 2)
+	start := func(listener net.Listener, handler http.Handler) {
+		server := &http.Server{
+			Handler: handler, ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout: 10 * time.Second, WriteTimeout: 25 * time.Second,
+			IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10,
+		}
+		servers = append(servers, server)
+		go func() { done <- server.Serve(listener) }()
 	}
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
+	defer listener.Close()
+	nodeAddr, identity, ca := os.Getenv("FORGEOS_NODE_TLS_ADDR"), os.Getenv("FORGEOS_NODE_TLS_IDENTITY_FILE"), os.Getenv("FORGEOS_NODE_TLS_CA_FILE")
+	if nodeAddr != "" || identity != "" || ca != "" {
+		if nodeAddr == "" || workers.file == "" {
+			return errors.New("node TLS listener requires FORGEOS_NODE_TLS_ADDR and named Worker grants")
+		}
+		pair, err := nodetls.Identity(identity)
+		if err != nil {
+			return err
+		}
+		pool, err := nodetls.Roots(ca)
+		if err != nil {
+			return err
+		}
+		nodeListener, err := tls.Listen("tcp", nodeAddr, &tls.Config{
+			MinVersion: tls.VersionTLS13,
+			ClientAuth: tls.RequireAndVerifyClientCert,
+			ClientCAs:  pool, Certificates: []tls.Certificate{*pair},
+		})
+		if err != nil {
+			return err
+		}
+		defer nodeListener.Close()
+		start(nodeListener, workers.nodeRoutes)
+		log.Printf("ForgeOS Worker mTLS listening on %s", nodeListener.Addr())
+	}
+	start(listener, mux)
+	defer func() {
+		for _, s := range servers {
+			s.Close()
+		}
+	}()
 	for _, poller := range pollers {
 		stopPolling := poller.start(ctx, data, root, ghRead)
 		defer stopPolling()
@@ -131,14 +167,16 @@ func run(ctx context.Context) error {
 	defer stopSweep()
 	go sweepArtifacts(sweepCtx, data)
 	log.Printf("ForgeOS control plane listening on %s", listener.Addr())
-	done := make(chan error, 1)
-	go func() { done <- server.Serve(listener) }()
 	select {
 	case err := <-done:
 		return err
 	case <-ctx.Done():
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return server.Shutdown(shutdown)
+		var result error
+		for _, server := range servers {
+			result = errors.Join(result, server.Shutdown(shutdown))
+		}
+		return result
 	}
 }

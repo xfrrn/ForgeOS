@@ -22,6 +22,7 @@ type workerGrant struct {
 	environments map[environmentGrant]bool
 	id           string
 	digest       [sha256.Size]byte
+	certificates map[[sha256.Size]byte]bool
 	projects     []int64
 }
 type environmentGrant struct {
@@ -29,14 +30,15 @@ type environmentGrant struct {
 	Environment string `json:"environment"`
 }
 type workerRegistry struct {
-	mu       sync.RWMutex
-	grants   []workerGrant
-	file     string
-	reserved map[[sha256.Size]byte]bool
+	mu         sync.RWMutex
+	grants     []workerGrant
+	file       string
+	nodeRoutes *http.ServeMux
+	reserved   map[[sha256.Size]byte]bool
 }
 
 func legacyWorker(token string) *workerRegistry {
-	return &workerRegistry{grants: []workerGrant{{digest: sha256.Sum256([]byte(token))}}}
+	return &workerRegistry{nodeRoutes: http.NewServeMux(), grants: []workerGrant{{digest: sha256.Sum256([]byte(token))}}}
 }
 
 func loadWorkers(file, legacy, owner, manager string) (*workerRegistry, error) {
@@ -52,7 +54,7 @@ func loadWorkers(file, legacy, owner, manager string) (*workerRegistry, error) {
 	if legacy != "" {
 		return nil, errors.New("configure either FORGEOS_WORKERS_FILE or FORGEOS_WORKER_TOKEN on the control plane")
 	}
-	a := &workerRegistry{file: file, reserved: map[[sha256.Size]byte]bool{}}
+	a := &workerRegistry{file: file, nodeRoutes: http.NewServeMux(), reserved: map[[sha256.Size]byte]bool{}}
 	for _, token := range []string{"", owner, manager, os.Getenv("FORGEOS_REVIEWER_TOKEN"), os.Getenv("FORGEOS_TEST_AGENT_TOKEN")} {
 		a.reserved[sha256.Sum256([]byte(token))] = true
 	}
@@ -81,6 +83,7 @@ func (a *workerRegistry) reload() error {
 	var rows []struct {
 		ID           string             `json:"worker_id"`
 		Hash         string             `json:"token_sha256"`
+		Certificates []string           `json:"certificate_sha256"`
 		NextHash     string             `json:"next_token_sha256"`
 		Projects     []int64            `json:"projects"`
 		Environments []environmentGrant `json:"environments"`
@@ -92,6 +95,7 @@ func (a *workerRegistry) reload() error {
 	}
 	used := maps.Clone(a.reserved)
 	ids := map[string]bool{}
+	certificates := map[[sha256.Size]byte]bool{}
 	var access []workerGrant
 	for _, r := range rows {
 		raw, err := hex.DecodeString(r.Hash)
@@ -99,6 +103,18 @@ func (a *workerRegistry) reload() error {
 			return errors.New("each Worker needs a unique ID, token digest and explicit projects")
 		}
 		grant := workerGrant{id: r.ID, digest: [sha256.Size]byte(raw), projects: r.Projects}
+		if len(r.Certificates) > 2 {
+			return errors.New("a node accepts at most two certificate fingerprints during rotation")
+		}
+		grant.certificates = map[[sha256.Size]byte]bool{}
+		for _, fingerprint := range r.Certificates {
+			derHash, err := hex.DecodeString(fingerprint)
+			if err != nil || len(derHash) != sha256.Size || certificates[[sha256.Size]byte(derHash)] {
+				return errors.New("node certificate fingerprints must be valid and unique")
+			}
+			digest := [sha256.Size]byte(derHash)
+			certificates[digest], grant.certificates[digest] = true, true
+		}
 		if used[grant.digest] {
 			return errors.New("Worker credentials must be distinct from other credentials")
 		}
@@ -147,6 +163,11 @@ func (a *workerRegistry) match(token string) *workerGrant {
 	return grant
 }
 
+func (a *workerRegistry) handle(mux *http.ServeMux, pattern string, handler http.HandlerFunc) {
+	mux.HandleFunc(pattern, handler)
+	a.nodeRoutes.HandleFunc(pattern, handler)
+}
+
 func (a *workerRegistry) authorize(next func(http.ResponseWriter, *http.Request, *workerGrant)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -155,6 +176,17 @@ func (a *workerRegistry) authorize(next func(http.ResponseWriter, *http.Request,
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			problem(w, http.StatusUnauthorized, "invalid credentials")
 			return
+		}
+		if r.TLS != nil || len(grant.certificates) > 0 {
+			if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 {
+				problem(w, http.StatusForbidden, "node certificate required")
+				return
+			}
+			leaf := r.TLS.PeerCertificates[0]
+			if !grant.certificates[sha256.Sum256(leaf.Raw)] || !time.Now().Before(leaf.NotAfter) {
+				problem(w, http.StatusForbidden, "node certificate is outside this grant")
+				return
+			}
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()

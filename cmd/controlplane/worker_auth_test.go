@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"forgeos/internal/store"
 	"forgeos/internal/testdb"
@@ -164,4 +167,64 @@ func TestWorkerCredentialRotation(t *testing.T) {
 	if err := registry.reload(); err != nil || registry.match("old") != nil || registry.match("new") == nil {
 		t.Fatal("retired credential still active", err)
 	}
+}
+
+func TestNodeCertificateBindingAndRevocation(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "grants.json")
+	old := &x509.Certificate{Raw: []byte("old"), NotAfter: time.Now().Add(time.Hour)}
+	newer := &x509.Certificate{Raw: []byte("new"), NotAfter: old.NotAfter}
+	grant := func(id string, certificates ...*x509.Certificate) map[string]any {
+		var hashes []string
+		for _, cert := range certificates {
+			hashes = append(hashes, fmt.Sprintf("%x", sha256.Sum256(cert.Raw)))
+		}
+		return map[string]any{"worker_id": id, "projects": []int{1}, "token_sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(id))), "certificate_sha256": hashes}
+	}
+	write := func(rows ...map[string]any) {
+		t.Helper()
+		b, err := json.Marshal(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(file, b, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(grant("first", old, newer), grant("second"))
+	registry, err := loadWorkers(file, "", "owner", "manager")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	registry.handle(mux, "GET /internal/test", registry.authorize(func(w http.ResponseWriter, r *http.Request, g *workerGrant) { w.WriteHeader(204) }))
+	check := func(token string, cert *x509.Certificate, want int) {
+		t.Helper()
+		r := httptest.NewRequest("GET", "/internal/test", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		if cert != nil {
+			r.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{cert}}, PeerCertificates: []*x509.Certificate{cert}}
+		}
+		w := httptest.NewRecorder()
+		registry.nodeRoutes.ServeHTTP(w, r)
+		if w.Code != want {
+			t.Fatalf("got %d, want %d", w.Code, want)
+		}
+	}
+	check("first", old, 204)
+	check("first", newer, 204)
+	check("first", nil, 403)
+	check("second", old, 403)
+	write(grant("first", old), grant("second", old))
+	if registry.reload() == nil {
+		t.Fatal("accepted shared certificate")
+	}
+	check("first", newer, 204)
+	write(grant("first", newer), grant("second"))
+	if err = registry.reload(); err != nil {
+		t.Fatal(err)
+	}
+	check("first", old, 403)
+	check("first", newer, 204)
+	newer.NotAfter = time.Now().Add(-time.Minute)
+	check("first", newer, 403)
 }

@@ -123,8 +123,8 @@ func registerCIFiles(mux *http.ServeMux, data *store.Store, owner string, worker
 		w.Write(content)
 	}
 	mux.HandleFunc("GET "+path, authorized(owner, serve))
-	mux.HandleFunc("PUT /internal"+path, workers.execution(data, serve))
-	mux.HandleFunc(probeRoute, workers.execution(data, serve))
+	workers.handle(mux, "PUT /internal"+path, workers.execution(data, serve))
+	workers.handle(mux, probeRoute, workers.execution(data, serve))
 }
 
 func removeCIFile(f store.CIArchiveFile) error {

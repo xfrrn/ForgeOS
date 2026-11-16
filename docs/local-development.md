@@ -271,3 +271,13 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 多身份模式下，控制面先限制候选项目再领取任务。节点只能读自己执行的检查点和回报自己的结果，后续请求仍校验执行租约。使用不同的本地仓库根目录与工作区根目录，可进一步限制各节点可解析的 Git 工作区。历史单令牌配置适用于共用信任域。
 
 节点使用密钥状态接口时，在该节点的配置中添加 `"environments":[{"project_id":2,"environment":"local-mock"}]`。所列项目必须已在该节点的 `projects` 数组内。未列出环境的节点仍可领取已有授权项目的普通任务。OpenBao 连接、只读策略与状态接口见[密钥管理](09-security-and-secrets.md)。
+
+### 为具名节点签发和轮换客户端证书
+
+控制面保留回环 Owner 入口。要单独启用节点 HTTPS 入口，在控制面设置 `FORGEOS_NODE_TLS_ADDR`（私网 IP 与端口）、`FORGEOS_NODE_TLS_IDENTITY_FILE`（包含服务端证书链和私钥的 PEM 文件）和 `FORGEOS_NODE_TLS_CA_FILE`（签发客户端证书的 CA）。配置须使用绝对文件路径和 `FORGEOS_WORKERS_FILE`。服务端证书的 SAN 须匹配节点访问的地址。该入口只注册具名 Worker 的路由。
+
+在节点上将 `FORGEOS_API_URL` 指向上述 HTTPS 地址。节点自己的 `FORGEOS_NODE_TLS_CA_FILE` 信任服务端 CA，`FORGEOS_NODE_TLS_IDENTITY_FILE` 包含客户端证书链与私钥。将私钥文件保存在仓库和工作区之外并限制为服务账号可读。仍需配置节点的 bearer 凭据。用 `openssl x509 -in node.crt -noout -fingerprint -sha256` 取得叶证书 DER 的 SHA-256，移除冒号后，将十六进制摘要放入该节点的 `certificate_sha256` 数组。绑定指纹的节点每次请求都须提交已验证且与 bearer 属于同一授权记录的证书。
+
+1. 在已有指纹旁添加新证书的指纹。原子替换授权文件，从 Owner 回环入口调用 `POST /workers/reload-credentials`，核对返回 204。
+2. 用新的客户端证书链和私钥原子替换节点的 PEM 文件。Worker 的下一次请求会重新握手并读取新文件。核对相同节点已用新证书成功领取任务或回报结果。
+3. 删除旧指纹并再次由 Owner 重载。保留的旧连接和使用旧证书重连的请求均应返回 403。要完全撤销节点访问，删除整条节点授权记录。服务端身份和信任根文件在控制面启动时加载。

@@ -39,7 +39,7 @@ func registerProjectRead(mux *http.ServeMux, resource, owner string, workers *wo
 			read(w, r, id)
 		}
 	}))
-	mux.HandleFunc("GET /internal/projects/{id}/"+resource, workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	workers.handle(mux, "GET /internal/projects/{id}/"+resource, workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
