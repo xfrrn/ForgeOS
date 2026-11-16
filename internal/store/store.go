@@ -155,6 +155,9 @@ var repositoryAnalysesSchema string
 //go:embed 044_initialization_reports.sql
 var initializationReportsSchema string
 
+//go:embed 045_owner_cancellation.sql
+var ownerCancellationSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -189,26 +192,27 @@ type Task struct {
 }
 
 type Execution struct {
-	ReviewFeedback      []ReviewFeedback `json:"review_feedback,omitempty"`
-	TestCaseState       string           `json:"test_case_state,omitempty"`
-	TestCaseAttempts    int64            `json:"test_case_attempts,omitempty"`
-	RequiresTestPlan    bool             `json:"requires_test_plan,omitempty"`
-	TestPlanState       string           `json:"test_plan_state,omitempty"`
-	TestPlanRevision    int              `json:"test_plan_revision,omitempty"`
-	CommitStatus        *CommitStatus    `json:"commit_status,omitempty"`
-	CodeReviewState     string           `json:"code_review_state,omitempty"`
-	UsesCheckpoints     bool             `json:"uses_checkpoints,omitempty"`
-	RequirementID       int64            `json:"requirement_id,omitempty"`
-	RequirementRevision int              `json:"requirement_revision,omitempty"`
-	ID                  int64            `json:"id"`
-	Status              string           `json:"status"`
-	Worker              string           `json:"worker"`
-	Workspace           string           `json:"workspace"`
-	LeaseUntil          time.Time        `json:"lease_until"`
-	LeaseExpired        bool             `json:"lease_expired"`
-	AbandonedAt         *time.Time       `json:"abandoned_at,omitempty"`
-	EndReason           string           `json:"end_reason,omitempty"`
-	Result              *Result          `json:"result"`
+	OwnerCancelRequestedAt *time.Time       `json:"owner_cancel_requested_at,omitempty"`
+	ReviewFeedback         []ReviewFeedback `json:"review_feedback,omitempty"`
+	TestCaseState          string           `json:"test_case_state,omitempty"`
+	TestCaseAttempts       int64            `json:"test_case_attempts,omitempty"`
+	RequiresTestPlan       bool             `json:"requires_test_plan,omitempty"`
+	TestPlanState          string           `json:"test_plan_state,omitempty"`
+	TestPlanRevision       int              `json:"test_plan_revision,omitempty"`
+	CommitStatus           *CommitStatus    `json:"commit_status,omitempty"`
+	CodeReviewState        string           `json:"code_review_state,omitempty"`
+	UsesCheckpoints        bool             `json:"uses_checkpoints,omitempty"`
+	RequirementID          int64            `json:"requirement_id,omitempty"`
+	RequirementRevision    int              `json:"requirement_revision,omitempty"`
+	ID                     int64            `json:"id"`
+	Status                 string           `json:"status"`
+	Worker                 string           `json:"worker"`
+	Workspace              string           `json:"workspace"`
+	LeaseUntil             time.Time        `json:"lease_until"`
+	LeaseExpired           bool             `json:"lease_expired"`
+	AbandonedAt            *time.Time       `json:"abandoned_at,omitempty"`
+	EndReason              string           `json:"end_reason,omitempty"`
+	Result                 *Result          `json:"result"`
 }
 
 type Event struct {
@@ -272,7 +276,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -329,7 +333,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
-		        'abandoned_at', e.abandoned_at,
+		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,
 		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
 		            FROM candidate_review_feedback f WHERE f.execution_id=e.id AND t.status='WAITING_ACCEPTANCE'
 		            AND e.id=(SELECT max(id) FROM executions WHERE task_id=t.id)),
@@ -593,13 +597,13 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned, usesCheckpoints, sourceClosed bool
+	var abandoned, usesCheckpoints, sourceClosed, ownerCancel bool
 	var expectedHash, stored, spec []byte
 	var repo, worker, kind string
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,t.kind
+		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL,t.kind
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &kind)
+		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -645,7 +649,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker) {
 			return ErrConflict
 		}
-		if result.succeeded() && !sourceClosed {
+		if result.succeeded() && !sourceClosed && !ownerCancel {
 			if v := result.Validation; v != nil && v.Run != nil {
 				if verify == nil {
 					return ErrConflict
@@ -703,6 +707,8 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	status, eventType := "DONE", "execution_completed"
 	if sourceClosed {
 		status, eventType = "CANCELLED", "source_issue_cancelled"
+	} else if ownerCancel {
+		status, eventType = "CANCELLED", "owner_cancelled"
 	} else if !result.succeeded() {
 		status, eventType = "FAILED", "execution_failed"
 	} else if result.Plan != nil {
@@ -728,10 +734,10 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned, eligible, sourceClosed bool
+	var abandoned, eligible, cancelled bool
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.abandoned_at IS NOT NULL, e.result IS NULL AND e.lease_until <= now(), t.source_closure_id IS NOT NULL
-		FROM executions e JOIN work_items t ON t.id=e.task_id WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &abandoned, &eligible, &sourceClosed)
+		SELECT e.task_id, e.abandoned_at IS NOT NULL, e.result IS NULL AND e.lease_until <= now(), t.source_closure_id IS NOT NULL OR e.owner_cancel_requested_at IS NOT NULL
+		FROM executions e JOIN work_items t ON t.id=e.task_id WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &abandoned, &eligible, &cancelled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -745,7 +751,7 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 		return err
 	}
 	status := "FAILED"
-	if sourceClosed {
+	if cancelled {
 		status = "CANCELLED"
 	}
 	return finishTask(ctx, tx, taskID, id, status, "execution_abandoned")

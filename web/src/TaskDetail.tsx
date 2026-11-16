@@ -15,6 +15,7 @@ type Validation = { profile: string; commit: string; exit_code: number; output: 
 type HarnessProcess = { instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  owner_cancel_requested_at?: string
   review_feedback?: { id: number; preview_id: string; decision: 'approve' | 'reject'; note: string }[]
   test_plan_revision?: number; test_plan_state?: string; test_case_state?: string; test_case_attempts?: number; requires_test_plan?: boolean
   commit_status?: { id: number; state: string; context: string; commit: string }
@@ -63,6 +64,7 @@ const events: Record<string, string> = {
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   source_cancel_requested: '来源 Issue 已关闭，等待执行结算', source_issue_cancelled: '来源 Issue 已关闭，任务已取消',
+  owner_cancel_requested: 'Owner 请求取消，等待执行结算', owner_cancelled: '已按 Owner 请求取消任务',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
   acceptance_rejected: '候选版本已退回', pr_created: '已创建 PR', pr_merged: 'PR 已合并', delivery_completed: '交付完成',
 }
@@ -434,6 +436,7 @@ function Detail({ id, request, onChanged }: Props) {
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [revision, setRevision] = useState(0)
+  const [cancelling, setCancelling] = useState(false)
   const generation = useRef(0)
 
   useEffect(() => {
@@ -471,6 +474,18 @@ function Detail({ id, request, onChanged }: Props) {
     refresh(updated.reviews?.at(-1)?.decision === 'reject' ? '候选已退回，任务已重新排队。' : '已记录对该候选 SHA 的批准。')
     onChanged()
   }
+  async function cancelExecution(execution: number) {
+    setCancelling(true)
+    try {
+      await request(`/executions/${execution}/cancel`, { method: 'POST' })
+      refresh()
+      onChanged()
+    } catch (cause) {
+      refresh(cause instanceof ApiError && cause.status === 409 ? '执行状态已变化，请查看最新记录。' : '无法确认取消请求，请刷新后重试。')
+    } finally {
+      setCancelling(false)
+    }
+  }
   if (!task) return <div className="panel detail-placeholder" role="status">{error || '正在读取任务详情…'}
     {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
   const issue = task.spec?.issue
@@ -498,6 +513,9 @@ function Detail({ id, request, onChanged }: Props) {
     </div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
+    {task.status === 'RUNNING' && last && !task.source_closure && (last.owner_cancel_requested_at
+      ? <p className="detail-notice" role="status">已请求取消执行 #{last.id}，等待 Worker 回执。</p>
+      : <button className="button" disabled={loading || cancelling} onClick={() => void cancelExecution(last.id)}>取消任务 · 执行 #{last.id}</button>)}
     {task.source_closure && <p className="detail-notice" role="status"><OutLink href={task.source_closure.url}>Issue #{task.source_closure.number}</OutLink>
       {' 于 '}{formatTime(task.source_closure.closed_at)} 关闭{task.source_closure.state_reason && `（${task.source_closure.state_reason}）`}。
       {task.status === 'RUNNING' ? '等待 Worker 停止执行并提交回执。' : '任务已取消。'}</p>}

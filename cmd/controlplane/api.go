@@ -179,6 +179,13 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		respond(w, http.StatusNoContent, nil, err)
 	}))
 
+	mux.HandleFunc("POST /executions/{id}/cancel", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, valid := pathID(w, r)
+		if valid {
+			respond(w, http.StatusNoContent, nil, data.CancelExecution(r.Context(), id))
+		}
+	}))
+
 	mux.HandleFunc("POST /executions/{id}/retry", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if !valid {
@@ -354,6 +361,8 @@ func respond(w http.ResponseWriter, status int, value any, err error) {
 			Error    string `json:"error"`
 			Revision int64  `json:"retention_revision,omitempty"`
 		}{expiry.Error(), expiry.Revision})
+	case errors.Is(err, store.ErrOwnerStop):
+		problem(w, http.StatusLocked, err.Error())
 	case errors.Is(err, store.ErrSourceClosed):
 		problem(w, http.StatusGone, err.Error())
 	case errors.Is(err, store.ErrConflict):

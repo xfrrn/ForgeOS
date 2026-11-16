@@ -1190,3 +1190,17 @@ Cargo 工作区清单对应 ForgeOS 提交 `9e9e55269894dcb65e904c1906e07d539b73
 | 归档两版报告、领取 Management 输入，重启控制面回读 | 每版包含当时的依赖和来源，Agent 输入保留声明种类 | 两份报告与当次清单逐字段一致。Management 输入含直接及受管坐标，未包含验收用的私有标记。重启后两版清单均与重启前相同 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 149 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+Maven 清单对应 ForgeOS 提交 `9e88bdd57971956e382d9141057b4ed9861e6fe7`。
+
+## 专题 06、10 · Owner 从工作台取消运行中的 CI
+
+真实验收使用私有 beta 的 Issue #54、正式 Codex Worker、Docker、Chrome 和 PostgreSQL 18 schema `ownercancel_e93befcb`。以下时间为 UTC+8。[验收 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/54)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 等待 Codex 自然结束并生成候选，观察真实 Docker build 后，排入同项目 HEAD 任务，在任务页选择“取消任务 · 执行 #1” | 请求绑定当前执行；结算前后续任务仍排队。重复提交无新增请求事件 | 候选 `b2bf1acda60f9adfa8eef62c527a75cfb75e26e9`，原生会话 `01a1e5fc-84fe-7103-85ce-00f13a891722`。04:12:38 浏览器收到 204，T-1 仍为 RUNNING，T-3 为 READY；再次 POST 返回 204，共一条 owner_cancel_requested |
+| 等待续约、读取 CI 回执，并从控制面下载 build.log 与 Worker 原件比较 | CI 取消保留已有日志，回收容器，后续任务可派发 | 04:13:03 T-1 转入 CANCELLED。运行 `ci-run-2538423736` 和 build 均标为 CANCELLED；下载的日志 SHA-256 为 `9f6a670ca638ae057abe96b4e405841c1e074ec2330e02c312c115e4a70478a5`，逐字节相同。原容器已回收，T-3 完成 |
+| 重启控制面，在 Chrome 回读执行与事件并查询远端 Issue | 已取消任务保持终态，重复请求安全；来源 Issue 仍开放 | 浏览器显示 Owner 取消结算事件，取消按钮已移除。原执行保留请求时间，无交付记录，GitHub 回读 OPEN。核对后另行关闭验收 Issue |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 150 项通过，零测试跳过。已覆盖并发重报、成功回执与取消交错、过期租约结算和非 Owner 请求。Go 静态检查、TypeScript 检查和 Web 生产构建通过。

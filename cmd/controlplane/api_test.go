@@ -25,6 +25,7 @@ func TestAPIBoundaries(t *testing.T) {
 		{"GET", "/tasks/1", "worker", "", http.StatusUnauthorized},
 		{"POST", "/internal/claim", "owner", "{}", http.StatusUnauthorized},
 		{"POST", "/executions/1/abandon", "worker", "", http.StatusUnauthorized},
+		{"POST", "/executions/1/cancel", "worker", "", http.StatusUnauthorized},
 		{"POST", "/executions/1/retry", "worker", "", http.StatusUnauthorized},
 		{"POST", "/tasks/1/acceptance", "worker", "{}", http.StatusUnauthorized},
 		{"POST", "/tasks/1/acceptance", "owner", `{"decision":"approve","commit":"HEAD"}`, http.StatusBadRequest},

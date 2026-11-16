@@ -35,18 +35,21 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 	var worker, kind string
 	var step int64
 	var limit int
-	var sourceClosed bool
+	var sourceClosed, ownerCancel bool
 	err = tx.QueryRowContext(ctx, `SELECT n.worker, e.resource_step, e.resource_kind,
-		COALESCE(CASE WHEN $3='model' THEN n.model_slots ELSE n.ci_slots END,n.slots),t.source_closure_id IS NOT NULL
+		COALESCE(CASE WHEN $3='model' THEN n.model_slots ELSE n.ci_slots END,n.slots),t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL
 		FROM executions e JOIN worker_nodes n ON n.worker=e.worker JOIN work_items t ON t.id=e.task_id
 		WHERE e.id=$1 AND e.lease_hash=$2 AND e.resource_managed AND e.result IS NULL AND e.abandoned_at IS NULL
 		AND ($3='ci' OR t.kind='codex_issue')
-		FOR UPDATE OF n,e,t`, execution, hash[:], r.Kind).Scan(&worker, &step, &kind, &limit, &sourceClosed)
+		FOR UPDATE OF n,e,t`, execution, hash[:], r.Kind).Scan(&worker, &step, &kind, &limit, &sourceClosed, &ownerCancel)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, ErrConflict
 	}
 	if err != nil {
 		return false, err
+	}
+	if ownerCancel && !r.Release {
+		return false, ErrOwnerStop
 	}
 	if sourceClosed && !r.Release {
 		return false, ErrSourceClosed

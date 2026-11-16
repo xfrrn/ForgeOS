@@ -58,6 +58,8 @@ func (w *worker) renewWhileRunning(ctx context.Context, job store.Job, ttl time.
 		if status == http.StatusNoContent && err == nil {
 			// Counting from the request start excludes network delay and does not require synchronized host clocks.
 			deadline = start.Add(ttl)
+		} else if status == http.StatusLocked {
+			return store.ErrOwnerStop
 		} else if status == http.StatusGone {
 			return store.ErrSourceClosed
 		} else if !temporary(status) {

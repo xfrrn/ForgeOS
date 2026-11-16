@@ -233,6 +233,7 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 | `POST /internal/claim` | Worker | 领取任务，空队列返回 HTTP 204。每个项目同时最多一个运行中的任务。 |
 | `POST /internal/executions/{id}/renew` | Worker | 发送该执行的 `lease_token`。生效时返回 204，租约已到期、执行已结束或令牌不符返回 409；超出节点授权返回 403。 |
 | `POST /internal/executions/{id}/result` | Worker | 以领取时的租约令牌提交结果。重发相同结果只记一次。 |
+| `POST /executions/{id}/cancel` | Owner | 请求取消指定运行中的执行。已登记的请求可安全重报。任务详情显示请求时间，Worker 回传结果后才能释放名额。 |
 | `POST /executions/{id}/abandon` | Owner | 核对失联执行并确认原 Worker 已停止后，人工结束过期租约。标记失败并释放项目名额，保留工作区与事件。 |
 | `POST /executions/{id}/retry` | Owner | 核对失败原因后重试该次 Issue 执行。相同执行 ID 的重试请求幂等，继续沿用原工作项与冻结需求，下一次执行使用新 Worktree。 |
 
