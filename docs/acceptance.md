@@ -420,3 +420,15 @@ Management 提高计划验证下限对应 ForgeOS 提交 `0420f455c76949ddb9d524
 | 从 `worker plan-tests` 提交 beta #15 的文档候选、两个明确标准与冻结的 V4 策略 | 输出可操作的用例，每例能追溯原文，保留待测状态 | 初次生成发现库中缺少文档核对方法。补入 documentation 后，候选 `bb383121eea44590f4db686735466844fc8ad865` 的原生会话 `01a1e412-0029-7933-919b-ae0a7652bca2` 返回 TC-001、TC-002。分别核对两个测试名称与允许/拒绝示例，均为 pending。方法库摘要 `f9af76bc56b37bd6c52fd99841d263ac3bf5041b591c9f1a9d853587dd61722c` |
 | 对移出 ledger 模块的候选指定容量标准，再加入“足够快”的模糊性能标准 | 使用基础版本的组件预期，要求 staging 人工操作；缺阈值时提问 | 候选 `a4a9f6373d89115f2aacebfda5585e0aa16a097e` 的原生会话 `01a1e412-320a-7bc0-b173-153e4865a9b5` 生成两项 pending 用例。组件用例绑定 component/ledger/1、api-backend、human、staging。requirement/2 返回指标、阈值、负载、环境及观测时长的澄清问题 |
 | 尝试提交虚构的预期、已通过的结果、错误环境、错误方法或遗漏标准 | 拒绝无来源的期望及未执行先报通过；允许无业务预期时只提问 | `TestPlanBindingsAndClarifications` 逐项通过。独立生成入口没有写入人工测试结果 |
+
+独立测试计划生成对应 ForgeOS 提交 `7565fa6af37a2395fb45310bf9dff7e291f3445d`。含 PostgreSQL 与 Docker 的 90 项 Go 回归通过，零跳过。
+
+## 专题 11 · Management 对待测计划逐项审查
+
+通过 `worker review-test-plan` 提交原始请求和完整计划。以下三个审查均使用原生 Codex 独立会话。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 检查 beta #15 两项文档用例，核对步骤和证据 | 两项均有可操作的检查，总结果 covered，用例保持 pending | 会话 `01a1e415-6ed0-7642-889b-0b74ab713b14` 分别引用了对应的 TC 编号。候选 `bb383121eea44590f4db686735466844fc8ad865`，计划摘要 `3c803e466bb47638d205d9b3b722caa7251834aee0a1aab9bddaa1648c3b3e63` |
+| 在同一候选把第一个用例改为仅查看 docs 目录，保留原标准、预期和编号 | 目录截图无法证明文中出现指定测试名称，审核指出缺口 | 会话 `01a1e415-6ecf-78a2-a030-ebafa28200dc` 将第一项判为 gap、第二项为 covered，总结果 changes_requested，收到不同计划摘要 `879bc089893f4eda00b975e37bd4ee043e025c18fcb9411598e34f18d4649a4f` |
+| 核查 ledger 计划中的模糊性能要求；另以已修改的原始标准提交旧计划 | 未解决的标准保持澄清；来源发生变化时拒绝旧计划 | 会话 `01a1e415-6ed0-75a0-863c-4a9ca31d5a80` 给两个容量标准 covered、性能标准 needs_clarification。错来源请求返回非零且没有审查回执 |

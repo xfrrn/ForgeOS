@@ -198,6 +198,12 @@ func (w *worker) run(ctx context.Context) error {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) == 2 && os.Args[1] == "review-test-plan" {
+		if err := runTestCoverage(ctx, os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "plan-tests" {
 		if err := runTestPlan(ctx, os.Stdin, os.Stdout); err != nil {
 			log.Fatal(err)
@@ -221,7 +227,7 @@ func main() {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" {
-		log.Fatal("usage: worker [management|reviewer|review-candidate|validate-candidate|plan-tests]")
+		log.Fatal("usage: worker [management|reviewer|review-candidate|validate-candidate|plan-tests|review-test-plan]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {

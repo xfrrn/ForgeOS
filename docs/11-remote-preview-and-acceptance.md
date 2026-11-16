@@ -76,6 +76,10 @@ Owner 通过 `GET /projects/{id}/validation-assessment?base=<基础 SHA>&commit=
 
 Test Agent 在独立只读会话中读取固定差异、基础规则、验收标准和全局方法。输入差异最多 128 KiB，截断会告知模型。输出 JSON 保存两个提交、规则 blob、方法库摘要、会话、验收标准来源、用例及澄清问题。每个用例引用一个标准和一个已有方法，预期结果引用标准原文；每个标准都必须有用例或澄清问题。组件可指定人工测试和环境。Evidence 列的是要采集的证据，所有新用例的 Result 均为 pending。
 
+运行 `worker review-test-plan` 进行 Management 覆盖审查。在标准输入的 `request` 字段提供原始生成请求，`plan` 字段提供生成的完整计划。Worker 根据独立提供的请求重新读取 Git 对象和规则，核对验收标准、方法库摘要、用例编号与 pending 状态，然后启动另一只读原生会话。
+
+每个标准均返回所引用的用例、判定及理由。步骤与证据足以证明预期时为 covered，缺少可观测步骤或证据时为 gap，业务条件不足时为 needs_clarification。总结果优先呈现 changes_requested，其次是 needs_clarification。回执绑定计划 JSON 的 SHA-256、两个提交及两次会话。覆盖审查完成后，用例仍需要实际执行并记录结果。
+
 ## 5. 远程预览
 
 Preview 必须绑定：
