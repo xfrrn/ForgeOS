@@ -150,9 +150,12 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 | `GET /tasks/{id}/diff` | Owner | 提供 `execution_id` 和完整候选 `commit`，读取该次执行相对冻结基础提交的 Git 差异。展示上限 256 KiB，超出时标记 `truncated`。 |
 | `POST /tasks/{id}/acceptance` | Owner | 提交 `execution_id`、完整 `commit`、`decision` 和可选的 `note`。退回必须附说明，批准时按该项目配置决定是否交付 GitHub。 |
 | `POST /internal/claim` | Worker | 领取任务，空队列返回 HTTP 204。每个项目同时最多一个运行中的任务。 |
+| `POST /internal/executions/{id}/renew` | Worker | 发送该执行的 `lease_token`。生效时返回 204，租约已到期、执行已结束或令牌不符返回 409；超出节点授权返回 403。 |
 | `POST /internal/executions/{id}/result` | Worker | 以领取时的租约令牌提交结果。重发相同结果只记一次。 |
 | `POST /executions/{id}/abandon` | Owner | 核对失联执行并确认原 Worker 已停止后，人工结束过期租约。标记失败并释放项目名额，保留工作区与事件。 |
 | `POST /executions/{id}/retry` | Owner | 核对失败原因后重试该次 Issue 执行。相同执行 ID 的重试请求幂等，继续沿用原工作项与冻结需求，下一次执行使用新 Worktree。 |
+
+控制面在领取响应的 `lease_seconds` 中给出本次租期，Git HEAD 为 120 秒，Issue 为 1500 秒。正式 Worker 在执行期间每 30 秒确认一次租约，使用节点身份和该执行的令牌。暂时不可达时，Worker 在上一次确认的有效期内重试；确认超时或续约被拒时取消当前操作。控制面按数据库时间核对截止点。Worker 以请求开始的单调时钟计时，不需要与控制面交换本机时间。一般节点心跳只登记在线状态，不延长其他执行。最终结果先写入本地恢复日志再补报。
 
 Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID 和工作区。租约过期后中台仍等待原执行回报，避免同一任务执行两次。人工结束后，Issue 使用上表中的重试接口，连通性测试可创建新的 `git_head` 任务。工作区保留用于核对，完成核对后可用 `git -C <仓库> worktree remove <工作区>` 清理。
 

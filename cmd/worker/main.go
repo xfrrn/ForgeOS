@@ -238,6 +238,7 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 			continue
 		}
 		var job store.Job
+		requested := time.Now()
 		status, err := w.post(ctx, "/internal/claim", claim, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			<-occupied
@@ -254,7 +255,7 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		go func() {
 			defer jobs.Done()
 			defer func() { <-occupied }()
-			if err := w.executeAndReport(ctx, job); err != nil {
+			if err := w.executeAndReport(ctx, job, requested); err != nil {
 				stop(err)
 			}
 		}()

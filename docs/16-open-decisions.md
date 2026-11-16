@@ -2,7 +2,7 @@
 
 本文件防止把架构建议误认为已完成技术验证。
 
-运行基座已用本地 `git_head` 任务验证首次派发、结果重报和控制面重启后的查询。连通性任务租约为两分钟，Codex Issue 任务租约为 25 分钟。两者在租约过期后均保留工作区和同项目运行名额。Owner 可在核对后结束失联执行，失败的 Issue 可在原工作项下用新的 Execution 和 Worktree 重试。原生 Session 恢复仍属 B.4，Linux systemd 环境仍需按 A.4 实测。运行方法见[本地运行指南](local-development.md)。
+运行基座已用本地 `git_head` 任务验证首次派发、结果重报和控制面重启后的查询。连通性任务租约为两分钟，Codex Issue 任务租约为 25 分钟。两者在租约过期后均保留工作区和同项目运行名额。Owner 可在核对后结束失联执行，失败的 Issue 可在原工作项下用新的 Execution 和 Worktree 重试。执行期间的租约续约与断线结果补报见 B.5；原生 Session 恢复仍属 B.4。Linux systemd 的非 root 部署和未验收的模型登录项见 A.4。运行方法见[本地运行指南](local-development.md)。
 
 Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Session、Worktree 修改及候选提交的本地验证。真实 PostgreSQL 已验证按 SHA 验收、退回重做和交付记录恢复。私有 GitHub 仓库已实测创建 PR、等待目标分支的必需 Actions 检查、Squash Merge、Issue 反馈与关闭。
 
@@ -25,7 +25,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 2. Harness Adapter 的正式 Go 接口与错误模型。
 3. ACP 内部消息 JSON Schema。
 4. Execution/Session/Process 状态机的精确定义。
-5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。原生 Session 恢复及多 Worker 租约续约仍待细化。
+5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。原生 Session 恢复仍待验收。
 6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。运行取消、日志和产物读取接口、保留策略仍待补齐。
 7. `acceptance.yaml`、全局 Playbook、任务内计划生成、覆盖审查、修订归档和逐用例实测门禁已验证。六类预览反馈均有 Owner 处置入口。需求变更已实测到新候选页面，新工作项已独立完成真实 GitHub 交付，来源 Issue 保持开放。工作台已核对截图像素与归档回执。扩展截图采集、录屏和真实外部设备访问仍待验收。
 8. 单项目交付已在真实仓库核对固定任务分支、PR 编号、验收 SHA、最终合并 SHA 与 Issue 评论。私有 beta #27 已实测创建 PR、请求 Squash Merge、发布回执评论和关闭 Issue 四次写入成功后分别丢失响应。每次重启控制面均能读取远端状态继续交付，只有一个 PR、一次合并和一条评论。[PR #28](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/28) · [唯一交付回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/27#issuecomment-6919716568)

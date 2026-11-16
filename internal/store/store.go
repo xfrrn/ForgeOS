@@ -185,6 +185,7 @@ type Event struct {
 }
 
 type Job struct {
+	LeaseSeconds        int        `json:"lease_seconds,omitempty"`
 	SupportsCheckpoints bool       `json:"supports_checkpoints,omitempty"`
 	Kind                string     `json:"kind"`
 	Spec                *IssueSpec `json:"spec,omitempty"`
@@ -485,10 +486,11 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	j.LeaseToken = hex.EncodeToString(token[:])
 	hash := sha256.Sum256([]byte(j.LeaseToken))
 	j.Workspace = filepath.Join(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
+	j.LeaseSeconds = executionLeaseSeconds(j.Kind)
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, lease_until)
-		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7, now() + CASE WHEN $6 = 'codex_issue'
-		    THEN interval '25 minutes' ELSE interval '2 minutes' END)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.Kind, j.SupportsCheckpoints)
+		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7,
+		    clock_timestamp() + $6 * interval '1 second')`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints)
 	if err != nil {
 		return nil, err
 	}

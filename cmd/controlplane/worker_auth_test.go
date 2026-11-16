@@ -102,6 +102,10 @@ func TestWorkerProjectGrants(t *testing.T) {
 		t.Fatal(err, job.TaskID)
 	}
 	path := fmt.Sprintf("/internal/executions/%d/result", job.ExecutionID)
+	renew := fmt.Sprintf("/internal/executions/%d/renew", job.ExecutionID)
+	lease := map[string]string{"lease_token": job.LeaseToken}
+	post("beta", renew, lease, 403)
+	post("alpha", renew, lease, 204)
 	report, err := s.WorkerNodes(ctx)
 	var nodes []struct {
 		Worker   string
@@ -114,5 +118,6 @@ func TestWorkerProjectGrants(t *testing.T) {
 	result := map[string]any{"lease_token": job.LeaseToken, "exit_code": 1, "error": "controlled"}
 	post("beta", path, result, 403)
 	post("alpha", path, result, 204)
+	post("alpha", renew, lease, 409)
 	post("alpha", "/internal/claim", req, 204)
 }

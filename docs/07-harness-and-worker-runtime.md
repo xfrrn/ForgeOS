@@ -115,6 +115,8 @@ Owner 可在导入 Issue 时提交 `{"validation":"auto","harness":"claude"}`，
 
 ## 10. 恢复策略
 
+运行中每个执行凭自己的租约令牌独立续约。有效期内的短暂断线可以重试；永久拒绝或超过已确认的截止点会取消该执行的上下文。控制面保存原执行与工作区，由 Owner 核对处置。[租约接口与时间窗口](local-development.md)
+
 Worker 已支持执行结果断线缓冲和重启补报。查询本机领取记录、未确认结果和冲突回执的方法见[Worker 执行恢复日志](13-data-storage-and-audit.md#worker-执行恢复日志)。
 
 - Harness 进程崩溃：尝试恢复原 Session；

@@ -172,7 +172,7 @@ func TestReplayDurableReceipt(t *testing.T) {
 				t.Fatal(err)
 			}
 			w.journal = db
-			err = w.executeAndReport(ctx, job)
+			err = w.executeAndReport(ctx, job, time.Now())
 			db.Close()
 			if err == nil {
 				t.Fatal("unconfirmed result was reported as confirmed")
@@ -194,6 +194,40 @@ func TestReplayDurableReceipt(t *testing.T) {
 			if status == http.StatusConflict && (outcome != "conflict" || !strings.Contains(conflict, head)) ||
 				status == http.StatusNoContent && (outcome != "confirmed" || conflict != "") {
 				t.Fatalf("wrong outcome %s", outcome)
+			}
+		})
+	}
+}
+
+func TestLeaseRenewalStopsAtAuthorityBoundary(t *testing.T) {
+	for _, unavailable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unavailable=%t", unavailable), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				requests++
+				var body map[string]string
+				if json.NewDecoder(r.Body).Decode(&body) != nil || body["lease_token"] != "lease" || r.URL.Path != "/internal/executions/1/renew" {
+					t.Error("wrong lease identity")
+				}
+				if unavailable || requests == 1 {
+					rw.WriteHeader(http.StatusServiceUnavailable)
+				} else if requests == 2 {
+					rw.WriteHeader(http.StatusNoContent)
+				} else {
+					rw.WriteHeader(http.StatusConflict)
+				}
+			}))
+			defer server.Close()
+			w := worker{client: server.Client(), api: server.URL}
+			ttl := 300 * time.Millisecond
+			err := w.renewWhileRunning(ctx, store.Job{ExecutionID: 1, LeaseToken: "lease"}, ttl, time.Now().Add(ttl))
+			if err == nil || ctx.Err() != nil {
+				t.Fatal("lease loss went undetected", err)
+			}
+			if unavailable && !strings.Contains(err.Error(), "expired") || !unavailable && !strings.Contains(err.Error(), "409") {
+				t.Fatal(err)
 			}
 		})
 	}

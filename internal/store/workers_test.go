@@ -2,11 +2,65 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"forgeos/internal/validation"
 )
+
+func TestExecutionLeaseRenewal(t *testing.T) {
+	ctx := context.Background()
+	db := isolatedDatabase(t)
+	s := New(db)
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.CreateTask(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := s.Claim(ctx, "node", t.TempDir())
+	if err != nil || j == nil || j.LeaseSeconds != 120 {
+		t.Fatal("expected two-minute Git lease", err)
+	}
+	if err := s.RenewExecutionLease(ctx, j.ExecutionID, "wrong"); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted wrong token", err)
+	}
+	var shortened time.Time
+	if err := db.QueryRow("UPDATE executions SET lease_until=clock_timestamp()+interval '5 seconds' WHERE id=$1 RETURNING lease_until", j.ExecutionID).Scan(&shortened); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RenewExecutionLease(ctx, j.ExecutionID, j.LeaseToken); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Task(ctx, task.ID)
+	if err != nil || got.Execution == nil || got.Execution.LeaseUntil.Sub(shortened) < 114*time.Second {
+		t.Fatal("lease deadline not extended", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("UPDATE executions SET lease_until=clock_timestamp()+interval '100 milliseconds' WHERE id=$1", j.ExecutionID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.RenewExecutionLease(ctx, j.ExecutionID, j.LeaseToken) }()
+	time.Sleep(160 * time.Millisecond)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, ErrConflict) {
+		t.Fatal("renewed expired lease", err)
+	}
+}
 
 func TestRegisteredHarnessRequiredForClaim(t *testing.T) {
 	ctx := context.Background()
@@ -36,7 +90,7 @@ func TestRegisteredHarnessRequiredForClaim(t *testing.T) {
 			t.Fatal(err)
 		}
 		j, err := s.ClaimForProjects(ctx, h.Worker, root, []int64{p.ID}, request)
-		if err != nil || (j != nil) != want || j != nil && j.TaskID != task.ID {
+		if err != nil || (j != nil) != want || j != nil && (j.TaskID != task.ID || j.LeaseSeconds != 1500) {
 			t.Fatalf("want claim %v, got %v, error %v", want, j, err)
 		}
 	}

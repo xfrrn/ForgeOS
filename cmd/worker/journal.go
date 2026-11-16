@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"forgeos/internal/store"
 	_ "modernc.org/sqlite"
@@ -85,14 +86,14 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 	return db, nil
 }
 
-func (w *worker) executeAndReport(ctx context.Context, job store.Job) error {
+func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested time.Time) error {
 	key := sha256.Sum256([]byte(job.LeaseToken))
 	_, err := w.journal.ExecContext(ctx, `INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)`,
 		key[:], job.ExecutionID, job.TaskID, job.Workspace)
 	if err != nil {
 		return fmt.Errorf("record claim for execution %d: %w", job.ExecutionID, err)
 	}
-	result := w.execute(ctx, job)
+	result := w.executeWithLease(ctx, job, requested)
 	report, err := json.Marshal(struct {
 		LeaseToken string `json:"lease_token"`
 		store.Result

@@ -173,6 +173,24 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		respond(w, http.StatusOK, job, err)
 	}))
 
+	mux.HandleFunc("POST /internal/executions/{id}/renew", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			LeaseToken string `json:"lease_token"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		if len(input.LeaseToken) != 64 {
+			problem(w, http.StatusBadRequest, "provide the execution lease token")
+			return
+		}
+		respond(w, http.StatusNoContent, nil, data.RenewExecutionLease(r.Context(), id, input.LeaseToken))
+	}))
+
 	mux.HandleFunc("POST /internal/executions/{id}/result", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if !valid {
