@@ -57,6 +57,23 @@ Owner 通过 `PUT /projects/{id}/environments/{environment}/secrets/{name}` 登�
 
 Agent 默认不能直接读取生产密钥。优先使用短期、最小权限凭据；支付私钥优先考虑签名服务而非把私钥交给 Agent。
 
+### 绑定执行的 Secret Broker
+
+除元数据身份外，控制面通过 `FORGEOS_BAO_BROKER_TOKEN_FILE` 读取独立的 Broker 令牌。为每个允许分发的 KV 数据路径配置 read，并让 OpenBao 强制响应包装，最短 1 秒、最长 60 秒。下面的策略仅允许读取指定测试键的包装响应。
+
+```hcl
+path "secret/data/projects/2/local-mock/example" {
+  capabilities     = ["read"]
+  min_wrapping_ttl = "1s"
+  max_wrapping_ttl = "60s"
+}
+```
+
+1. 具名节点领取任务后，Owner 向 `POST /projects/{id}/secret-grants` 提交 `execution_id`、`principal`、`environment`、`name`、`version`、`purpose`、`expires_at`、`request_key`，以及可选的正整数 `max_uses`。版本须为当前可用版本。获批记录绑定该任务、节点、密钥元数据版本和确切 KV 路径。production 和 S3 的原始凭据不经此接口分发。
+2. 受信执行器以原节点身份向 `POST /internal/projects/{id}/secret-grants/{grant}/use` 提交 `execution_id`、`lease_token`、`environment`、`name`、`purpose` 和本次唯一的 `request_key`。成功响应携带 `wrapping_token` 和 `expires_at`。在 OpenBao 的 `POST /v1/sys/wrapping/unwrap` 使用该令牌，解包仅能成功一次。将解包值保留在获准操作的进程内。模型提示、Worktree、普通 CI 和任务结果均不需要这些令牌。
+3. 包装令牌不超过 60 秒，也不能超出授权或执行租约的截止时间。服务逐次检查执行状态、身份、用途、环境权限、风险及秘密版本，串行处理同一授权的并发领取。校验失败不消耗次数。已交付的包装令牌有自己的到期时间；撤销、结束任务或调整风险会阻止后续领取。
+4. Owner 通过 `GET /projects/{id}/secret-grants/{grant}` 核对 ISSUED、FAILED 和对应请求键，或 `POST /projects/{id}/secret-grants/{grant}/revoke` 撤销。响应丢失时先核对回执。已记录的使用请求不会重发令牌。OpenBao 故障记录 FAILED，修复后可使用新请求键重试。数据库仅记录操作和包装有效期。
+
 ## 5. Agent 执行安全
 
 - Worker 以非 root 用户运行；

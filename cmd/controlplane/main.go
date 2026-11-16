@@ -80,6 +80,17 @@ func run(ctx context.Context) error {
 		return err
 	}
 	registerSecrets(mux, data, owner, workers, vault)
+	var broker *bao.Client
+	if file := os.Getenv("FORGEOS_BAO_BROKER_TOKEN_FILE"); file != "" {
+		if vault == nil || filepath.Clean(file) == filepath.Clean(os.Getenv("FORGEOS_BAO_METADATA_TOKEN_FILE")) {
+			return errors.New("configure separate OpenBao metadata and broker identities")
+		}
+		broker, err = bao.New(os.Getenv("FORGEOS_BAO_ADDR"), file, os.Getenv("FORGEOS_BAO_CA_FILE"))
+		if err != nil {
+			return err
+		}
+	}
+	registerSecretBroker(mux, data, owner, workers, vault, broker)
 	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), manager, owner, workers); err != nil {
 		return err
 	}
