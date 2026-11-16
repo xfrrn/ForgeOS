@@ -17,7 +17,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 7. 本机静态预览已验证隔离、持久化与撤销。已在本机经真实 Caddy 和双向 TLS 验证工作台、独立的候选子域名、Owner 鉴权与停止后回收。动态 local-mock 应用已从工作台启动和停止：固定候选在 Docker 中处理交互，重启保留计数，过期回收，Caddy 网关已验证带客户端证书的同源 POST。独立 Staging Caddy 已实测签名回调和路径隔离。外部提供方实际投递待验收。Tailscale 分流 DNS 和 ACL 需在真实 tailnet 与第二台设备验收，两者当前缺失。
 8. 已在 Chrome for Testing 验证顶层 DOM、整页反馈、Canvas 相对位置、Esc 取消、隐私字段排除及错版本阻断。React 19.3.1 和 Vue 3.5.45 的一层及两层同源 iframe 已实测到反馈历史并可重定位。工作台 PNG 标注、敏感区域遮挡、归档和恢复后回读均已实测。扩展采集当前视口、自动隐藏私有区域、丢失响应后重试及上传标注截图已在真实 Chrome 验收。原生标签页录制、候选交互、脱敏、撤销及工作台回放已实测。
 9. OpenBao 2.7.2 已验证 2/3 解封、KV v2 权限、分开加密的 Raft/审计备份及恢复。Secret Manager 已验证环境状态与身份轮换；Secret Broker 已通过真实 OpenBao 验证固定 KV 版本、运行中节点租约、用途、次数、有效期和一次性解包。
-10. PostgreSQL 队列与事件存储在实际任务量下的性能。
+10. 已在 PostgreSQL 18.3 的两份实际验收库快照副本测量队列和事件存储。每份从 5 个项目、27 项任务、173 条事件开始，4 个 Worker 继续完成 27 项任务。列表、事件详情、入队、领取和完成的延迟与吞吐量见[专题 14、16 A.10](acceptance.md#queue-performance)。更大任务量与其他机器配置需要重新测量。
 
 ## B. 需要进一步细化
 
