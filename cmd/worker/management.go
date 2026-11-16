@@ -29,15 +29,6 @@ const reviewSchema = `{
 
 func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) (store.ManagementReview, error) {
 	var review store.ManagementReview
-	workspace, err := os.MkdirTemp("", "forgeos-management-")
-	if err != nil {
-		return review, err
-	}
-	defer os.RemoveAll(workspace)
-	schema, output := filepath.Join(workspace, "schema.json"), filepath.Join(workspace, "review.json")
-	if err = os.WriteFile(schema, []byte(reviewSchema), 0600); err != nil {
-		return review, err
-	}
 	var source any = struct {
 		Spec store.IssueSpec `json:"frozen_request"`
 		Plan store.Plan      `json:"plan"`
@@ -65,28 +56,41 @@ func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) 
 	} else {
 		prompt += "Leave validation_minimum empty for this review.\n"
 	}
-	prompt += string(doc)
+	session, err := readOnlyJSONTurn(ctx, w.codex, reviewSchema, prompt+string(doc), 12<<10, &review)
+	review.SessionID = session
+	return review, err
+}
+
+func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit int64, dest any) (string, error) {
+	workspace, err := os.MkdirTemp("", "forgeos-readonly-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(workspace)
+	schema, output := filepath.Join(workspace, "schema.json"), filepath.Join(workspace, "output.json")
+	if err = os.WriteFile(schema, []byte(contract), 0600); err != nil {
+		return "", err
+	}
 	options := []string{"--skip-git-repo-check", "--output-schema", schema, "--output-last-message", output}
 	for _, feature := range []string{"shell_tool", "unified_exec", "multi_agent", "multi_agent_v2", "code_mode", "code_mode_host", "computer_use", "browser_use", "view_image", "image_generation"} {
 		options = append(options, "--disable", feature)
 	}
-	session, err := runCodexTurn(ctx, w.codex, workspace, "read-only", prompt, options...)
+	session, err := runCodexTurn(ctx, bin, workspace, "read-only", prompt, options...)
 	if err != nil {
-		return review, err
+		return "", err
 	}
-	info, err := os.Stat(output)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 12<<10 {
-		return review, errors.New("invalid management output file")
+	info, err := os.Lstat(output)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > limit {
+		return "", errors.New("invalid structured output file")
 	}
-	doc, err = os.ReadFile(output)
+	doc, err := os.ReadFile(output)
 	if err != nil {
-		return review, err
+		return "", err
 	}
-	if err = json.Unmarshal(doc, &review); err != nil {
-		return review, errors.New("invalid management review JSON")
+	if err = json.Unmarshal(doc, dest); err != nil {
+		return "", errors.New("invalid structured output JSON")
 	}
-	review.SessionID = session
-	return review, nil
+	return session, nil
 }
 
 func (w *worker) runManagement(ctx context.Context) error {

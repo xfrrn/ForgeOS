@@ -1,0 +1,86 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cases",
+    "clarifications"
+  ],
+  "properties": {
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion_id",
+          "playbook_id",
+          "objective",
+          "preconditions",
+          "environment",
+          "steps",
+          "expected_result",
+          "evidence",
+          "tester"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string"
+          },
+          "playbook_id": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "preconditions": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expected_result": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tester": {
+            "type": "string",
+            "enum": [
+              "human",
+              "runner"
+            ]
+          }
+        }
+      }
+    },
+    "clarifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion_id",
+          "question"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
