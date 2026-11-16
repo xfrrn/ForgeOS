@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -33,22 +30,13 @@ func configuredDeliveryTargets(id, target, file string) (deliveryTargets, error)
 	if legacy.projectID != 0 {
 		targets[legacy.projectID] = legacy.target
 	}
-	if file == "" {
-		return targets, nil
-	}
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var entries []struct {
+	type entry struct {
 		Project int64  `json:"project_id"`
 		Target  string `json:"target_branch"`
 	}
-	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&entries); err != nil || entries == nil || dec.Decode(new(any)) != io.EOF {
-		return nil, errors.New("invalid GitHub delivery project list")
+	entries, err := readProjectList[entry](file)
+	if err != nil {
+		return nil, err
 	}
 	for _, entry := range entries {
 		p, err := deliveryConfig(strconv.FormatInt(entry.Project, 10), entry.Target)

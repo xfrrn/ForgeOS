@@ -845,3 +845,17 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 | 重启时仅启用 alpha，重放 beta 的原批准、发布状态和刷新请求；再将单项目环境变量和文件配置指向同一项目的不同分支 | 原验收可核对，已停用项目不能执行新远端操作；冲突配置启动失败 | 原批准重发返回相同任务；beta 的状态发布、交付刷新均返回 403。alpha 重用原状态回执。分支冲突时控制面非零退出并报告冲突 |
 
 两库实际使用同一个 GitHub CLI 账号。每项目 GitHub App 身份和多项目自动轮询仍待验收。启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、125 项通过，零跳过。Go 静态检查通过。
+
+单控制面多项目交付对应提交 `977910ee99f313832a367dd4ccd3cc17aee2c7ac`。
+
+## 阶段四、专题 12、ADR-002 · 单控制面同时轮询两个私有仓库
+
+2026-11-17，先登记 alpha 和 beta，分别在 GitHub 创建带 forgeos-agent 标签的 Issue。alpha 之前没有该标签，在其验收库中创建后复用。以下步骤均从控制面正式轮询入口开始，两个工作项都由后台自动导入。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 起初只配置 alpha 的 docs 轮询，再把 beta 的 auto 配置加入文件并重启 | 首次只导入 alpha；第二次保留原 ID，按 beta 自己的规则新建工作项。讨论按仓库进入收件箱 | 首次只有 alpha #18、任务 1，beta 收件箱为空。启用两项后 alpha 仍为任务 1，使用 Codex 和 docs；beta #43 成为任务 2，使用项目默认 Claude 和 auto。alpha 收件箱只有普通讨论 #2；beta 收件箱为 #19、#2。所有链接均属于对应仓库 |
+| 停止控制面，分别给两个 Issue 添加普通评论。重启并等待真实扫描，再启动两个具名节点 | 各工作项收到本库评论，重复扫描仍只有两项工作 | 每项都保存了一条对应的原始评论。工作项 ID 保持 1、2，最终各只有一次执行。[alpha 评论](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/18#issuecomment-6921873049) · [beta 评论](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/43#issuecomment-6921873963) |
+| 在 Chrome 以 Owner 核对两份文档差异并批准，待 GitHub 必需检查重跑成功后核对 PR、回写和控制面重启 | 两库分别交付按本项目规则生成的候选，保留讨论和交付评论 | alpha 候选 `eca73bb07027627a0640121d21b2a004662569d3`，合并 `8c8a314b6a72c939f0d9c214c25c016f7376f530`。[PR #19](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/19) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43904786638) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/18#issuecomment-6921948584)。beta 候选 `4bd43cb76582ac651cad9e09f37a6650e42d4fc8`，合并 `42c39e9698aebb2fc6f05080f2f045ff206fde5c`。[PR #44](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/44) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43904791081) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/43#issuecomment-6921950067)。两项均已关闭 Issue，重启前后任务 JSON 相同 |
+
+启用 PostgreSQL 18 和真实 Docker 的全量 Go 回归 9 个包、126 项通过，零跳过。Go 静态检查通过。两库共用 GitHub CLI 身份；GitHub App 最小授权仍待实测。

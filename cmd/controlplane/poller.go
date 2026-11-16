@@ -42,6 +42,36 @@ func pollConfig(id, validation string) (*issuePoller, error) {
 	return &issuePoller{projectID, validation}, nil
 }
 
+func configuredPollers(id, validation, file string) (map[int64]*issuePoller, error) {
+	legacy, err := pollConfig(id, validation)
+	if err != nil {
+		return nil, err
+	}
+	pollers := make(map[int64]*issuePoller)
+	if legacy != nil {
+		pollers[legacy.projectID] = legacy
+	}
+	type entry struct {
+		Project    int64  `json:"project_id"`
+		Validation string `json:"validation"`
+	}
+	entries, err := readProjectList[entry](file)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range entries {
+		p, err := pollConfig(strconv.FormatInt(row.Project, 10), row.Validation)
+		if err != nil {
+			return nil, err
+		}
+		if previous := pollers[p.projectID]; previous != nil && previous.validation != p.validation {
+			return nil, fmt.Errorf("conflicting poll validation profiles for project %d", p.projectID)
+		}
+		pollers[p.projectID] = p
+	}
+	return pollers, nil
+}
+
 func (p *issuePoller) start(ctx context.Context, data pollStore, root string, get githubGET) func() {
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})

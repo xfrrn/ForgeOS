@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -51,6 +53,31 @@ func TestPollConfig(t *testing.T) {
 	for _, args := range [][2]string{{"0", "docs"}, {"1", ""}, {"", "go-test"}, {"1", "shell"}} {
 		if _, err := pollConfig(args[0], args[1]); err == nil {
 			t.Errorf("accepted invalid config %v", args)
+		}
+	}
+}
+
+func TestConfiguredPollers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "poll.json")
+	write := func(doc string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(doc), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`[{"project_id":2,"validation":"auto"},{"project_id":1,"validation":"docs"}]`)
+	got, err := configuredPollers("1", "docs", path)
+	if err != nil || len(got) != 2 || got[1].validation != "docs" || got[2].validation != "auto" {
+		t.Fatal("expected one poller per project", got, err)
+	}
+	for _, doc := range []string{
+		`[{"project_id":1,"validation":"V2"}]`, `[{"project_id":0,"validation":"docs"}]`,
+		`[{"project_id":2}]`, `[{"project_id":2,"validation":"off"}]`,
+		`[{"project_id":2,"validation":"V2","target_branch":"main"}]`,
+	} {
+		write(doc)
+		if _, err := configuredPollers("1", "docs", path); err == nil {
+			t.Errorf("accepted invalid polling configuration %s", doc)
 		}
 	}
 }

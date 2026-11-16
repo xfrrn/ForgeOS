@@ -51,7 +51,7 @@ func run(ctx context.Context) error {
 	if dsn == "" {
 		return errors.New("set FORGEOS_DATABASE_URL to the ForgeOS PostgreSQL database")
 	}
-	poller, err := pollConfig(os.Getenv("FORGEOS_POLL_PROJECT_ID"), os.Getenv("FORGEOS_POLL_VALIDATION"))
+	pollers, err := configuredPollers(os.Getenv("FORGEOS_POLL_PROJECT_ID"), os.Getenv("FORGEOS_POLL_VALIDATION"), os.Getenv("FORGEOS_POLL_PROJECTS_FILE"))
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if poller != nil {
+	for _, poller := range pollers {
 		stopPolling := poller.start(ctx, data, root, ghRead)
 		defer stopPolling()
 	}
