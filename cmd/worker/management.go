@@ -96,7 +96,7 @@ func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 func (w *worker) runManagement(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ManagementJob
-		status, err := w.post(ctx, "/internal/management/claim", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true}, &job)
+		status, err := w.post(ctx, "/internal/management/claim", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
 		if err != nil && !temporary(status) {
 			return err
 		}
@@ -112,6 +112,12 @@ func (w *worker) runManagement(ctx context.Context) error {
 		}
 		if job.TestPlan != nil {
 			if err = w.finishTestJob(ctx, *job.TestPlan, true); err != nil {
+				return err
+			}
+			continue
+		}
+		if job.RepositoryAnalysis != nil {
+			if err = w.analyzeRepository(ctx, *job.RepositoryAnalysis); err != nil {
 				return err
 			}
 			continue

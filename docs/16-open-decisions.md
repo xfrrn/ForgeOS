@@ -41,7 +41,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 5. 审批中心；
 6. 预览反馈工具；
 7. 知识库管理；
-8. 项目登记、Worker HEAD 检查和失败重试已验收。仓库入口、Go、Node.js 和 PHP Composer 的声明依赖、npm 与 Composer 脚本名均可按检查提交归档，原克隆离线后的浏览器回读已验收。工作台可核对分环境密钥需求和两种本地启动声明。从工作台和 Worker 命令行均已验证固定提交的 Local Mock / Integrated 启动。工作台留有数据库停机失败及恢复后重跑成功的两份独立回执。其他技术栈的依赖解析、Agent 对入口文档的归纳及完整初始化报告仍待验收。
+8. 项目登记、Worker HEAD 检查和失败重试已验收。仓库入口、Go、Node.js 和 PHP Composer 的声明依赖、npm 与 Composer 脚本名均可按检查提交归档，原克隆离线后的浏览器回读已验收。工作台可核对分环境密钥需求和两种本地启动声明。从工作台和 Worker 命令行均已验证固定提交的 Local Mock / Integrated 启动。工作台留有数据库停机失败及恢复后重跑成功的两份独立回执。原生 Management Agent 对固定版本的用途、技术栈、依赖、启动及测试命令归纳已从 Chrome 验收，可核对来源。其他技术栈的依赖解析和完整初始化报告仍待验收。
 
 ## D. 不属于当前范围
 

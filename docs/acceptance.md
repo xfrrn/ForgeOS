@@ -1115,3 +1115,18 @@ PostgreSQL 18 和 Docker 全量回归 142 项通过，零测试跳过。Go 静�
 | 更新 PHP 清单，从项目页再次检查 HEAD，重启控制面后回读两次结果 | 新旧清单独立归档 | T-2 对应 `e6007d00ce03e8babf5fe020c6a48d513692c808`，只显示 php 和 composer run-script verify。两次配置 blob 分别为 `bd018c27b8770c89506a7283c71910ba912050e8`、`eda3693ea975adcda0fd43013e96674df04a67a3`，重启后回执逐字段相同 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 144 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+PHP Composer 清单对应 ForgeOS 提交 `a0b90a45b69f054b8537ccc11ef950b838cff1f2`。
+
+## 专题 01 · 原生 Agent 归纳固定版本的入口文档
+
+在 `analysis_5a06be3e` 使用正式控制面、独立 HEAD Worker、项目专用 Management Agent、已登录的原生 Codex 和 Chrome。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 Chrome 读取 T-1 清单，更改 README 并提交，再从旧任务派发归纳 | Agent 使用 T-1 的文档和包清单 | 来源为 `e0276e7490e6c6d4ba0917fb5493a2fb6d13f82f`，新 HEAD 为 `1eeb42cb37929ef830b62423187961b251212b5f`。原生会话 `01a1e5d4-b0ae-7c51-9c54-f2c2e528f0b7` 返回五类事实，其内容没有新版命令 |
+| 展开启动命令并核对依据 | 每项能定位到入口原文或清单摘要 | Chrome 展开 go run ./cmd/rain，显示 README.md 的引用及 blob `6a25245a5bb677f5d9214d0bcd1198c7e864e10b`。测试命令为 go test ./...，依赖 github.com/lib/pq 来自 go.mod 摘要 |
+| 重复派发、用 Worker 凭据访问 Owner 接口、重启后回读 | 同一检查复用归纳结果且只向授权身份提供 | 未生成第二次归纳，Worker 访问返回 401；重启控制面后 GET 和 POST 的回执均与原结果逐字段相同。测试 .env 及其合成标记均未进入回执 |
+| 在真实 PostgreSQL 中使旧租约过期，提交错误来源或凭空写出的命令，再提交正确结果 | 拒绝旧租约、跨项目写入和不匹配的证据；允许正确结果重放 | 数据库回归通过，旧轮次的重复重试未重新排队；正确结果重复提交保持同一份归档 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 145 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。补充拒绝 PostgreSQL 无法归档的空字符后，相关数据库回归和 Go 静态检查再次通过。

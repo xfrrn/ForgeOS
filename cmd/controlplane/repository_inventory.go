@@ -13,6 +13,73 @@ import (
 )
 
 func registerRepositoryInventory(mux *http.ServeMux, data *store.Store, root, owner string) {
+	const analysisPath = "/tasks/{id}/repository-analysis"
+	analysis := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		if r.Method == http.MethodPost {
+			var req struct {
+				Previous int `json:"previous_attempt"`
+			}
+			if !decode(w, r, &req) {
+				return
+			}
+			if req.Previous < 0 {
+				problem(w, 400, "invalid previous attempt")
+				return
+			}
+			if req.Previous > 0 {
+				if err := data.RetryAnalysis(ctx, id, req.Previous); err != nil {
+					respond(w, 0, nil, err)
+					return
+				}
+			} else if _, err := data.RepositoryAnalysis(ctx, id); errors.Is(err, store.ErrNotFound) {
+				raw, err := data.RepositoryInventory(ctx, id)
+				if err != nil {
+					respond(w, 0, nil, err)
+					return
+				}
+				var inv struct {
+					Project int64                     `json:"project_id"`
+					Files   []localrepo.InventoryFile `json:"files"`
+				}
+				if err = json.Unmarshal(raw, &inv); err != nil {
+					respond(w, 0, nil, err)
+					return
+				}
+				p, err := data.Project(ctx, inv.Project)
+				if err != nil {
+					respond(w, 0, nil, err)
+					return
+				}
+				repo, err := localrepo.ResolveRepo(ctx, root, p.Path)
+				if err != nil {
+					problem(w, 409, "registered repository unavailable")
+					return
+				}
+				source, err := localrepo.AnalysisSources(ctx, repo, inv.Files)
+				if err != nil {
+					problem(w, 422, err.Error())
+					return
+				}
+				if err = data.QueueAnalysis(ctx, id, source); err != nil {
+					respond(w, 0, nil, err)
+					return
+				}
+			} else if err != nil {
+				respond(w, 0, nil, err)
+				return
+			}
+		}
+		doc, err := data.RepositoryAnalysis(ctx, id)
+		respond(w, 200, doc, err)
+	})
+	mux.HandleFunc("POST "+analysisPath, analysis)
+	mux.HandleFunc("GET "+analysisPath, analysis)
 	const checks = "/tasks/{id}/startup-checks"
 	mux.HandleFunc("GET "+checks, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
