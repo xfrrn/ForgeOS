@@ -66,6 +66,7 @@ func run(ctx context.Context) error {
 		return errors.New("could not open PostgreSQL connection")
 	}
 	defer db.Close()
+	db.SetMaxIdleConns(8)
 	data := store.New(db)
 	initCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
