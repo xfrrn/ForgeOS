@@ -21,10 +21,11 @@ type Issue struct {
 }
 
 type IssueSpec struct {
-	Mode       string `json:"mode,omitempty"`
-	Issue      Issue  `json:"issue"`
-	BaseCommit string `json:"base_commit"`
-	Validation string `json:"validation"`
+	VerifyCommit string `json:"verify_commit,omitempty"`
+	Mode         string `json:"mode,omitempty"`
+	Issue        Issue  `json:"issue"`
+	BaseCommit   string `json:"base_commit"`
+	Validation   string `json:"validation"`
 }
 
 type ValidationResult struct {
@@ -46,7 +47,7 @@ func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
 
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec) (Task, error) {
 	issue := spec.Issue
-	if issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
+	if spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
 		(spec.Validation != "docs" && spec.Validation != "go-test") || (spec.Mode != "" && spec.Mode != "plan") {
 		return Task{}, ErrConflict
 	}
@@ -189,5 +190,9 @@ func (spec IssueSpec) accepts(r Result) bool {
 	if r.ExitCode != 0 {
 		return strings.TrimSpace(r.Error) != ""
 	}
-	return r.Error == "" && r.BaseCommit == spec.BaseCommit && strings.TrimSpace(r.SessionID) != "" && v != nil && v.ExitCode == 0
+	validTurn := strings.TrimSpace(r.SessionID) != ""
+	if spec.VerifyCommit != "" {
+		validTurn = r.SessionID == "" && r.Commit == spec.VerifyCommit
+	}
+	return r.Error == "" && r.BaseCommit == spec.BaseCommit && validTurn && v != nil && v.ExitCode == 0
 }

@@ -48,8 +48,7 @@ func taskDiff(data diffStore, root string) http.HandlerFunc {
 			problem(w, http.StatusNotFound, "execution not found for this task")
 			return
 		}
-		base := task.Spec.BaseCommit
-		if attempt.Result == nil || attempt.Result.Commit != commit || attempt.Result.BaseCommit != base || !gitCommit.MatchString(base) {
+		if attempt.Result == nil || attempt.Result.Commit != commit || !gitCommit.MatchString(attempt.Result.BaseCommit) {
 			problem(w, http.StatusConflict, "candidate does not match the recorded execution")
 			return
 		}
@@ -63,7 +62,7 @@ func taskDiff(data diffStore, root string) http.HandlerFunc {
 			problem(w, http.StatusConflict, "registered project repository is unavailable")
 			return
 		}
-		diff, err := readCommitDiff(r.Context(), repo, base, commit)
+		diff, err := readCommitDiff(r.Context(), repo, attempt.Result.BaseCommit, commit)
 		if err != nil {
 			problem(w, http.StatusConflict, "cannot read the recorded Git objects from the registered repository")
 			return

@@ -64,6 +64,9 @@ var commentSchema string
 //go:embed 014_checkpoints.sql
 var checkpointSchema string
 
+//go:embed 015_delivery_refresh.sql
+var refreshSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -71,6 +74,7 @@ type Project struct {
 }
 
 type Task struct {
+	Refreshes           []DeliveryRefresh  `json:"delivery_refreshes,omitempty"`
 	RequirementRevision int                `json:"requirement_revision,omitempty"`
 	LatestRequirement   int                `json:"latest_requirement,omitempty"`
 	ActiveRevision      int                `json:"active_revision,omitempty"`
@@ -159,7 +163,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -203,7 +207,7 @@ func (s *Store) CreateTask(ctx context.Context, projectID int64) (Task, error) {
 
 func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var t Task
-	var spec, attempts, events, reviews, delivery, plan, children, questions []byte
+	var spec, attempts, events, reviews, delivery, plan, children, questions, refreshes []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
@@ -224,9 +228,10 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    COALESCE(t.goal_id,0), COALESCE(t.plan_revision,0), COALESCE(t.plan_key,''),
 		    (SELECT jsonb_agg(jsonb_build_object('id',c.id,'key',c.plan_key,'status',c.status) ORDER BY c.id)
 		       FROM work_items c WHERE c.goal_id=t.id),
-		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id)
+		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id),
+		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.execution_id) FROM delivery_refreshes f WHERE f.task_id=t.id)
 		FROM work_items t LEFT JOIN requirement_revisions frozen ON frozen.id=t.requirement_id WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &t.ActiveRevision, &t.RequirementRevision, &t.LatestRequirement, &spec, &attempts,
-		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions)
+		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions, &refreshes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -245,6 +250,11 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	}
 	if children != nil {
 		if err = json.Unmarshal(children, &t.Children); err != nil {
+			return Task{}, err
+		}
+	}
+	if refreshes != nil {
+		if err = json.Unmarshal(refreshes, &t.Refreshes); err != nil {
 			return Task{}, err
 		}
 	}
@@ -297,15 +307,17 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	canRework := len(capabilities) > 1 && capabilities[1]
 	canPlan := len(capabilities) > 2 && capabilities[2]
 	canCheckpoint := len(capabilities) > 3 && capabilities[3]
+	canVerify := len(capabilities) > 4 && capabilities[4]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
-		WHERE candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1)
-		  AND ($4 OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
+		WHERE candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1 OR ($5 AND candidate.spec ? 'verify_commit'))
+		  AND ($5 OR NOT COALESCE(candidate.spec ? 'verify_commit',false))
+		  AND ($4 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
-		  AND ($2 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
+		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -318,13 +330,14 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		UPDATE work_items SET status = 'RUNNING'
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
 		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
-		            AND (w.kind = 'git_head' OR $2)
-		            AND ($5 OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
+		            AND (w.kind = 'git_head' OR $2 OR ($6 AND w.spec ? 'verify_commit'))
+		            AND ($6 OR NOT COALESCE(w.spec ? 'verify_commit',false))
+		            AND ($5 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
-		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
+		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -332,10 +345,10 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 		return nil, err
 	}
 	if spec != nil {
-		j.SupportsCheckpoints = canCheckpoint
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
 			return nil, err
 		}
+		j.SupportsCheckpoints = canCheckpoint && j.Spec.VerifyCommit == ""
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)

@@ -10,7 +10,7 @@ type Attempt = {
 }
 type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string }
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string }
-type Delivery = { state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
+type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
@@ -18,7 +18,7 @@ type Plan = { revision: number; review?: { level: string; effective_level: strin
 type Task = {
   id: number; project_id: number; status: string; kind: string
   spec?: { issue: Issue; base_commit: string; validation: string }
-  execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery
+  execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery; delivery_refreshes?: { execution_id: number; old_delivery: Delivery; new_base: string; candidate: string }[]
   plan?: Plan
   requirement_revision?: number; latest_requirement?: number; active_revision?: number; goal_id?: number; plan_revision?: number
   children?: { id: number; key: string; status: string }[]
@@ -34,6 +34,7 @@ const events: Record<string, string> = {
   decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
   goal_delivered: '全部子项已交付，父 Issue 已关闭',
   goal_item_superseded: '已从后续计划移除', goal_item_revised: '已更新待执行工作项',
+  delivery_base_refreshed: '已在新的目标提交上准备候选',
   requirement_adopted: '已采用新的需求修订',
   requirement_observed: '已记录新的 Issue 需求版本',
   management_reviewed: 'Management 已审核本版计划',
@@ -250,6 +251,21 @@ function Decision({ taskID, q, request, onAnswer }: { taskID: number; q: Questio
   </section>
 }
 
+function RefreshDelivery({ id, delivery, request, reload }: { id: number; delivery: Delivery; request: ApiRequest; reload: (message: string) => void }) {
+  const [busy, setBusy] = useState(false)
+  async function submit() {
+    setBusy(true)
+    try {
+      await request(`/tasks/${id}/delivery/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ execution_id: delivery.execution_id, commit: delivery.commit }) })
+      reload('已在新的目标版本上重新排队验证。')
+    } catch (e) { reload(e instanceof Error ? e.message : '请核对交付状态后重试。') }
+    finally { setBusy(false) }
+  }
+  return <div><p>目标分支已前进。重新应用已批准的差异后会关闭此 PR，新候选需再次验证和验收。</p>
+    <button className="button" disabled={busy} onClick={() => void submit()}>在最新目标版本上重新验证</button></div>
+}
+
 function Detail({ id, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
@@ -357,13 +373,19 @@ function Detail({ id, request, onChanged }: Props) {
             <dl className="detail-facts">{delivery.pr_number && <Fact label="Pull request"><OutLink href={delivery.pr_url}>PR #{delivery.pr_number}</OutLink></Fact>}
               <Fact label="任务分支" code>{delivery.branch}</Fact>{delivery.target_branch && <Fact label="目标分支" code>{delivery.target_branch}</Fact>}
               {delivery.merge_sha && <Fact label="合并 SHA" code>{delivery.merge_sha}</Fact>}</dl>
-            {delivery.detail && <p className="detail-delivery-note">{delivery.detail}</p>}</> :
+            {delivery.detail && <p className="detail-delivery-note">{delivery.detail}</p>}
+            {delivery.state === 'WAITING' && delivery.detail === 'accepted candidate is behind the protected target branch' &&
+              <RefreshDelivery id={id} delivery={delivery} request={request} reload={message => { refresh(message); onChanged() }}/>}</> :
             <p className="detail-empty-text">{task.status === 'ACCEPTED' ? '此版本已通过本地验收，未创建 GitHub 交付。' : '尚无 PR 或合并记录。'}</p>}</section>}
         {task.spec && <section className="panel detail-card"><h2><Icon name="ListChecks" size={18} />验收记录<span className="detail-count">{reviews.length}</span></h2>
           {reviews.length ? <ol className="detail-reviews">{[...reviews].reverse().map(review =>
             <li key={review.execution_id}><strong>{review.decision === 'approve' ? '已通过' : '已退回'}</strong><span>执行 #{review.execution_id} · {review.actor}</span>
               <code>{review.commit}</code>{review.note && <p>{review.note}</p>}<time dateTime={review.at}>{formatTime(review.at)}</time></li>)}</ol>
             : <p className="detail-empty-text">暂无验收决定。</p>}</section>}
+        {task.delivery_refreshes?.map(r => <section className="panel detail-card" key={r.execution_id}>
+          <h2>已替换的交付 · 执行 #{r.execution_id}</h2><dl><Fact label="原 PR"><OutLink href={r.old_delivery.pr_url}>PR #{r.old_delivery.pr_number}</OutLink></Fact>
+          <Fact label="原候选" code>{r.old_delivery.commit}</Fact><Fact label="新基线" code>{r.new_base}</Fact>
+          <Fact label="新候选" code>{r.candidate}</Fact></dl></section>)}
         <section className="panel detail-card"><h2><Icon name="History" size={18} />任务时间线</h2>
           <ol className="detail-timeline">{[...task.events].reverse().map(event =>
             <li key={event.id}><strong>{events[event.type] || event.type}</strong>

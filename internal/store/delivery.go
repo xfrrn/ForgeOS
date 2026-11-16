@@ -109,7 +109,7 @@ func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, d
 			}
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status=$2 WHERE id=$1`, taskID, status); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status=$2,spec=CASE WHEN $2='READY' THEN spec-'verify_commit' ELSE spec END WHERE id=$1`, taskID, status); err != nil {
 		return Task{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES ($1,$2,$3)`, taskID, executionID, event); err != nil {

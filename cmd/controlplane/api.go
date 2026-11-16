@@ -26,6 +26,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
 	registerWebRoutes(mux, data, root, owner)
+	mux.HandleFunc("POST /tasks/{id}/delivery/refresh", authorized(owner, delivery.refresh(data, root)))
 	mux.HandleFunc("POST /tasks/{id}/acceptance", authorized(owner, delivery.review(data)))
 	mux.HandleFunc("GET /tasks", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -124,6 +125,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 		var input struct {
 			Worker              string `json:"worker"`
 			WorkspaceRoot       string `json:"workspace_root"`
+			SupportsValidation  bool   `json:"supports_validation"`
 			SupportsCheckpoints bool   `json:"supports_checkpoints"`
 			SupportsCodex       bool   `json:"supports_codex"`
 			SupportsRework      bool   `json:"supports_rework"`
@@ -136,7 +138,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 			problem(w, http.StatusBadRequest, "provide a worker identity and absolute workspace_root")
 			return
 		}
-		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints)
+		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return

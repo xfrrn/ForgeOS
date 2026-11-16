@@ -132,7 +132,7 @@ func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task,
 		if planned || (status != "READY" && status != "WAITING_ACCEPTANCE" && status != "FAILED") {
 			return Task{}, ErrConflict
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2,spec=jsonb_set(spec,'{issue}',$3::jsonb),status='READY' WHERE id=$1`, id, rid, string(issue)); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2,spec=jsonb_set(spec-'verify_commit','{issue}',$3::jsonb),status='READY' WHERE id=$1`, id, rid, string(issue)); err != nil {
 			return Task{}, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'requirement_adopted')`, id); err != nil {

@@ -229,6 +229,19 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 
 func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job store.Job) store.Result {
 	spec := job.Spec
+	if spec != nil && spec.VerifyCommit != "" {
+		result := store.Result{BaseCommit: spec.BaseCommit, Commit: spec.VerifyCommit}
+		if _, err := checkedWorktree(ctx, repo, workspace, spec.VerifyCommit); err != nil {
+			return failed("could not check out refreshed candidate", err)
+		}
+		report, err := validateCandidate(ctx, workspace, spec.BaseCommit, spec.VerifyCommit, spec.Validation)
+		result.Validation = &report
+		if err != nil {
+			result.ExitCode = 1
+			result.Error = err.Error()
+		}
+		return result
+	}
 	if w.codex == "" || spec == nil || (spec.Validation != "docs" && spec.Validation != "go-test") {
 		return failed("missing Codex capability or unsupported issue specification", nil)
 	}

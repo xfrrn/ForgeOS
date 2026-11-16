@@ -327,6 +327,9 @@ func mergeGates(ctx context.Context, api deliveryAPI, i store.Issue, d store.Del
 		}
 		return "waiting for successful GitHub checks", nil
 	}
+	if p.MergeStateStatus == "BEHIND" {
+		return "accepted candidate is behind the protected target branch", nil
+	}
 	var review *string
 	if p.IsDraft == nil || *p.IsDraft || p.Mergeable != "MERGEABLE" || p.MergeStateStatus != "CLEAN" ||
 		json.Unmarshal(p.ReviewDecision, &review) != nil || (review != nil && *review != "APPROVED") {
