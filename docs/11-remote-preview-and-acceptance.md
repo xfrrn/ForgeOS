@@ -108,7 +108,7 @@ Preview 必须绑定：
 - 生命周期；
 - 访问策略。
 
-Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 回调入口，不应为方便验收公开整个私有网络。
+Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 回调入口，不应为方便验收公开整个私有网络。回调地址、独立网络部署和投递核对见[Staging 回调部署](14-deployment-and-operations.md#独立-staging-回调)。
 
 ### Worker 动态应用预览
 

@@ -47,7 +47,7 @@
 | 开发任务 | 专题与决策 |
 |---|---|
 | 为候选 Commit 选择检查、运行本地 CI、汇总审查结果 | [10 代码审查与自动化验证](docs/10-validation-and-local-ci.md) · [ADR-012 验证方案与权限](docs/adr/ADR-012-validation-ownership.md) · [ADR-013 动态验证等级](docs/adr/ADR-013-dynamic-validation-level.md) |
-| 生成测试计划、开放私网预览、记录反馈与验收版本 | [11 远程预览与人工验收](docs/11-remote-preview-and-acceptance.md) · [ADR-014 预览与页面反馈](docs/adr/ADR-014-remote-preview-feedback.md) · [浏览器扩展](extension/manifest.json) · [Caddy 网关](deploy/caddy/Caddyfile) |
+| 生成测试计划、开放私网预览、记录反馈与验收版本 | [11 远程预览与人工验收](docs/11-remote-preview-and-acceptance.md) · [ADR-014 预览与页面反馈](docs/adr/ADR-014-remote-preview-feedback.md) · [浏览器扩展](extension/manifest.json) · [Caddy 网关](deploy/caddy/Caddyfile) · [Staging 回调入口](deploy/caddy/Staging.Caddyfile) |
 | 验收后创建 PR、合并并回写 Issue | [12 GitHub 接入与交付](docs/12-github-delivery-and-feedback.md) · [ADR-015 代码交付范围](docs/adr/ADR-015-code-delivery-scope.md) · [ADR-016 默认 Squash Merge](docs/adr/ADR-016-squash-merge.md) · [ADR-017 Issue 关闭条件](docs/adr/ADR-017-issue-close-policy.md) |
 
 ## 配置与消息示例

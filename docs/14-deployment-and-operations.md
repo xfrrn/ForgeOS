@@ -69,6 +69,25 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 - 网络 ACL 与应用身份认证同时使用；
 - 不默认启用 Funnel 公网暴露。
 
+### 独立 Staging 回调
+
+在独立的 Staging 主机或容器网络上运行[回调网关配置](../deploy/caddy/Staging.Caddyfile)。入口地址为 `https://<Staging 域名>/callback`。网关只将该域名的 GET 和 POST 送到一个 Staging 应用处理器。原查询、正文和提供方签名头会转交给应用。其他域名、路径及方法返回 404。OAuth 状态、Webhook 签名和重放检查由接收应用按提供方协议处理。
+
+| Staging 进程变量 | 设置 |
+| --- | --- |
+| `FORGEOS_STAGING_HOST`、`FORGEOS_STAGING_BIND`、`FORGEOS_STAGING_PORT` | 回调域名、该入口自己的绑定地址和端口。默认监听 127.0.0.1:8443；提供方使用实际可达的 HTTPS 地址。 |
+| `FORGEOS_STAGING_TLS_CERT`、`FORGEOS_STAGING_TLS_KEY` | Staging 域名的证书链和私钥。 |
+| `FORGEOS_STAGING_UPSTREAM`、`FORGEOS_STAGING_APP_PATH` | Staging 网络中的接收服务，例如 `receiver:8080`；处理路径默认 `/callback`，可设为应用实际路径，例如 `/provider/hook`。 |
+
+Staging 接收器使用项目在 Staging 环境中的实际凭据。网关和接收器不加入工作台、Worker 或私网预览所在网络。在 Staging 服务环境中运行：
+
+```sh
+caddy validate --config deploy/caddy/Staging.Caddyfile --adapter caddyfile
+caddy run --config deploy/caddy/Staging.Caddyfile --adapter caddyfile
+```
+
+在提供方登记 HTTPS 回调地址并发送一次测试事件，用提供方的投递 ID 对照接收端结果。验收时还需访问同一域名的 `/ui/`、`/tasks/1`、`/internal/claim`，核对三者均返回 404，并确认接收服务没有收到这些请求。
+
 ## 4. 反向代理
 
 Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动态登记，路由到对应本地实例。
