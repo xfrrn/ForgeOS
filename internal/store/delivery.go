@@ -8,15 +8,25 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 type Review struct {
+	FeedbackIDs []int64   `json:"feedback_ids,omitempty"`
 	ExecutionID int64     `json:"execution_id"`
 	Commit      string    `json:"commit"`
 	Decision    string    `json:"decision"`
 	Note        string    `json:"note"`
 	Actor       string    `json:"actor"`
 	At          time.Time `json:"at"`
+}
+
+type ReviewFeedback struct {
+	ID       int64  `json:"id"`
+	Preview  string `json:"preview_id"`
+	Decision string `json:"decision"`
+	Note     string `json:"note"`
 }
 
 type Delivery struct {
@@ -34,7 +44,7 @@ type Delivery struct {
 }
 
 // Review records a decision on exactly one validated execution. Publication is frozen at approval time.
-func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, decision, note string, publish bool, target string) (Task, error) {
+func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, decision, note string, publish bool, target string, feedbackIDs ...int64) (Task, error) {
 	if !validCommit(commit) || (decision != "approve" && decision != "reject") || (decision == "reject" && strings.TrimSpace(note) == "") {
 		return Task{}, ErrConflict
 	}
@@ -53,8 +63,10 @@ func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, d
 		return Task{}, err
 	}
 	var same bool
-	err = tx.QueryRowContext(ctx, `SELECT "commit"=$3 AND decision=$4 AND note=$5 FROM acceptance_reviews
-		WHERE task_id=$1 AND execution_id=$2`, taskID, executionID, commit, decision, note).Scan(&same)
+	err = tx.QueryRowContext(ctx, `SELECT "commit"=$3 AND decision=$4 AND note=$5 AND
+		ARRAY(SELECT feedback_id FROM acceptance_review_feedback WHERE execution_id=$2 ORDER BY feedback_id)
+		= ARRAY(SELECT id FROM unnest($6::bigint[]) AS id ORDER BY id)
+		FROM acceptance_reviews WHERE task_id=$1 AND execution_id=$2`, taskID, executionID, commit, decision, note, pq.Array(feedbackIDs)).Scan(&same)
 	if err == nil {
 		if !same {
 			return Task{}, ErrConflict
@@ -102,6 +114,21 @@ func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, d
 	if _, err = tx.ExecContext(ctx, `INSERT INTO acceptance_reviews(task_id,execution_id,"commit",decision,note)
 		VALUES ($1,$2,$3,$4,$5)`, taskID, executionID, commit, decision, note); err != nil {
 		return Task{}, err
+	}
+	if len(feedbackIDs) > 0 {
+		links, err := tx.ExecContext(ctx, `INSERT INTO acceptance_review_feedback(feedback_id,execution_id)
+			SELECT id,execution_id FROM candidate_review_feedback WHERE task_id=$1 AND execution_id=$2
+			AND commit=$3 AND decision=$4 AND id=ANY($5)`, taskID, executionID, commit, decision, pq.Array(feedbackIDs))
+		if err != nil {
+			return Task{}, err
+		}
+		n, err := links.RowsAffected()
+		if err != nil {
+			return Task{}, err
+		}
+		if n != int64(len(feedbackIDs)) {
+			return Task{}, ErrConflict
+		}
 	}
 	status, event := "READY", "acceptance_rejected"
 	if decision == "approve" {

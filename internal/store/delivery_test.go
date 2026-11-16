@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -47,6 +48,37 @@ func TestReviewAndRework(t *testing.T) {
 	}
 	first := claim()
 	complete(first, firstCommit)
+	classify := func(job *Job, sha, key, category string) int64 {
+		t.Helper()
+		raw, err := s.OpenPreview(ctx, issue.ID, job.ExecutionID, sha, "public", 8091, 60)
+		var preview struct{ ID string }
+		if err != nil || json.Unmarshal(raw, &preview) != nil {
+			t.Fatalf("preview: %v %s", err, raw)
+		}
+		f := PreviewFeedback{Request: key, Execution: job.ExecutionID, Commit: sha, Path: "/", Note: "Checked the heading."}
+		id, err := s.SubmitPreviewFeedback(ctx, issue.ID, preview.ID, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		j, err := s.ClaimFeedback(ctx, p.ID)
+		if err != nil || j == nil || j.ID != id {
+			t.Fatalf("claim feedback %d: %v %v", id, j, err)
+		}
+		if err = s.ClassifyFeedback(ctx, p.ID, id, j.Lease, FeedbackClassification{Category: category, Rationale: f.Note, Evidence: f.Note, Session: key}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	bug := classify(first, firstCommit, "13d375cf-a0e1-4539-b20a-032643e419a1", "bug")
+	ui := classify(first, firstCommit, "13d375cf-a0e1-4539-b20a-032643e419a2", "ui_change")
+	for _, refs := range [][]int64{{bug, ui, -1}, {ui, ui}} {
+		if _, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "reject", "revise", false, "", refs...); !errors.Is(err, ErrConflict) {
+			t.Fatalf("accepted invalid references %v: %v", refs, err)
+		}
+	}
+	if _, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "approve", "", false, "", bug); !errors.Is(err, ErrConflict) {
+		t.Fatalf("approved bug feedback: %v", err)
+	}
 	if _, err := s.Review(ctx, issue.ID, first.ExecutionID, secondCommit, "approve", "", true, ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("accepted stale SHA: %v", err)
 	}
@@ -57,7 +89,7 @@ func TestReviewAndRework(t *testing.T) {
 	responses := make(chan error, 6)
 	for i := 0; i < cap(responses); i++ {
 		go func() {
-			_, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "reject", feedback, true, "main")
+			_, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "reject", feedback, true, "main", ui, bug)
 			responses <- err
 		}()
 	}
@@ -68,8 +100,14 @@ func TestReviewAndRework(t *testing.T) {
 	}
 	rejected, err := s.Task(ctx, issue.ID)
 	if err != nil || rejected.Status != "READY" || len(rejected.Reviews) != 1 || rejected.Reviews[0].Actor != "owner" ||
-		rejected.Reviews[0].At.IsZero() || rejected.Delivery != nil || len(rejected.Events) != 4 {
+		rejected.Reviews[0].At.IsZero() || rejected.Delivery != nil || !reflect.DeepEqual(rejected.Reviews[0].FeedbackIDs, []int64{bug, ui}) || len(rejected.Events) != 8 {
 		t.Fatalf("reject audit: %+v %v", rejected, err)
+	}
+	if _, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "reject", feedback, true, "main", bug, ui); err != nil {
+		t.Fatalf("reordered references: %v", err)
+	}
+	if _, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "reject", feedback, true, "main", bug); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed decision references: %v", err)
 	}
 	if _, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "approve", "", true, ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("accepted opposite decision: %v", err)
@@ -100,7 +138,7 @@ func TestReviewAndRework(t *testing.T) {
 		t.Fatal(err)
 	}
 	third := claim()
-	if third.Rework == nil || *third.Rework != *second.Rework {
+	if third.Rework == nil || !reflect.DeepEqual(third.Rework, second.Rework) {
 		t.Fatal("retry lost the rejected version or feedback")
 	}
 	for _, result := range []Result{
@@ -112,11 +150,15 @@ func TestReviewAndRework(t *testing.T) {
 		}
 	}
 	complete(third, secondCommit)
-	local, err := s.Review(ctx, issue.ID, third.ExecutionID, secondCommit, "approve", "checked", false, "")
+	if _, err := s.Review(ctx, issue.ID, third.ExecutionID, secondCommit, "reject", feedback, false, "", bug); !errors.Is(err, ErrConflict) {
+		t.Fatalf("reused old report: %v", err)
+	}
+	passed := classify(third, secondCommit, "13d375cf-a0e1-4539-b20a-032643e419a3", "acceptance")
+	local, err := s.Review(ctx, issue.ID, third.ExecutionID, secondCommit, "approve", "checked", false, "", passed)
 	if err != nil || local.Status != "ACCEPTED" || local.Delivery != nil || len(local.Reviews) != 2 {
 		t.Fatalf("local decision: %+v %v", local, err)
 	}
-	replay, err := s.Review(ctx, issue.ID, third.ExecutionID, secondCommit, "approve", "checked", true, "main")
+	replay, err := s.Review(ctx, issue.ID, third.ExecutionID, secondCommit, "approve", "checked", true, "main", passed)
 	if err != nil || replay.Delivery != nil || len(replay.Events) != len(local.Events) {
 		t.Fatalf("replay authorized publication: %+v %v", replay, err)
 	}

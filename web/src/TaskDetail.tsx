@@ -12,6 +12,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  review_feedback?: { id: number; preview_id: string; decision: 'approve' | 'reject'; note: string }[]
   test_plan_revision?: number; test_plan_state?: string; test_case_state?: string; test_case_attempts?: number; requires_test_plan?: boolean
   commit_status?: { id: number; state: string; context: string; commit: string }
   code_review_state?: 'pending' | 'failed' | 'needs_check' | 'clear'
@@ -19,7 +20,7 @@ type Attempt = {
   uses_checkpoints?: boolean; requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
 }
 type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string }
-type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string }
+type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
@@ -288,6 +289,9 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, revie
   taskID: number; attempt: Attempt; request: ApiRequest; onUpdate: (task: Task) => void; refresh: (message: string) => void; locked: boolean; reviewPending: boolean
 }) {
   const commit = attempt.result!.commit!
+  const [selected, setSelected] = useState<number[]>([])
+  const reports = attempt.review_feedback ?? []
+  const incompatible = (decision: string) => reports.some(f => selected.includes(f.id) && f.decision !== decision)
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -309,7 +313,7 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, revie
     try {
       const updated = await request<Task>(`/tasks/${taskID}/acceptance`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ execution_id: attempt.id, commit, decision, note: feedback }),
+        body: JSON.stringify({ execution_id: attempt.id, commit, decision, note: feedback, feedback_ids: selected }),
       })
       if (live.current) onUpdate(updated)
     } catch (cause) {
@@ -325,13 +329,20 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, revie
     <h2><Icon name="ListChecks" size={18} />候选验收</h2>
     <div className="detail-target"><span>执行 #{attempt.id} · 候选 SHA</span><code>{commit}</code></div>
     <p className="detail-approval-hint">已启用 GitHub 交付的项目会在批准后自动创建 PR。</p>
+    {reports.length > 0 && <fieldset disabled={busy}><legend>引用预览反馈</legend>
+      {reports.map(f => <div key={f.id}><label><input type="checkbox" checked={selected.includes(f.id)}
+        disabled={!selected.includes(f.id) && incompatible(f.decision)}
+        onChange={e => setSelected(e.target.checked ? [...selected, f.id] : selected.filter(id => id !== f.id))} />
+        #{f.id} · {f.decision === 'approve' ? '通过' : '退回'} · {f.note}</label>{' '}
+        <a href={`#/tasks/${taskID}/previews/${f.preview_id}/feedback`}>查看反馈依据</a></div>)}
+    </fieldset>}
     <label htmlFor="acceptance-note">验收说明</label>
     <textarea id="acceptance-note" ref={noteField} value={note} disabled={busy} placeholder="退回时请说明需要修改的内容" onChange={e => { setNote(e.target.value); setError('') }} />
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {reviewPending && <p role="status">{(attempt.requires_test_plan || attempt.test_plan_state) && attempt.test_case_state !== 'passed'
       ? '请先完成此候选的测试计划、覆盖审查和用例实测。' : '请先在执行记录中完成独立代码审查和发现核对。'}</p>}
-    <div className="detail-actions"><button className="button primary" disabled={busy || locked || reviewPending} onClick={() => decide('approve')}><Icon name="Check" size={16} />通过验收</button>
-      <button className="button" disabled={busy || locked} onClick={() => decide('reject')}>退回修改</button></div>
+    <div className="detail-actions"><button className="button primary" disabled={busy || locked || reviewPending || incompatible('approve')} onClick={() => decide('approve')}><Icon name="Check" size={16} />通过验收</button>
+      <button className="button" disabled={busy || locked || incompatible('reject')} onClick={() => decide('reject')}>退回修改</button></div>
     {busy && <p role="status">正在提交验收决定…</p>}
   </section>
 }
@@ -492,7 +503,8 @@ function Detail({ id, request, onChanged }: Props) {
         {task.spec && <section className="panel detail-card"><h2><Icon name="ListChecks" size={18} />验收记录<span className="detail-count">{reviews.length}</span></h2>
           {reviews.length ? <ol className="detail-reviews">{[...reviews].reverse().map(review =>
             <li key={review.execution_id}><strong>{review.decision === 'approve' ? '已通过' : '已退回'}</strong><span>执行 #{review.execution_id} · {review.actor}</span>
-              <code>{review.commit}</code>{review.note && <p>{review.note}</p>}<time dateTime={review.at}>{formatTime(review.at)}</time></li>)}</ol>
+              <code>{review.commit}</code>{Boolean(review.feedback_ids?.length) && <p>引用反馈　{review.feedback_ids?.map(id => '#' + id).join('、')}</p>}
+              {review.note && <p>{review.note}</p>}<time dateTime={review.at}>{formatTime(review.at)}</time></li>)}</ol>
             : <p className="detail-empty-text">暂无验收决定。</p>}</section>}
         {task.delivery_refreshes?.map(r => <section className="panel detail-card" key={r.execution_id}>
           <h2>已替换的交付 · 执行 #{r.execution_id}</h2><dl><Fact label="原 PR"><OutLink href={r.old_delivery.pr_url}>PR #{r.old_delivery.pr_number}</OutLink></Fact>

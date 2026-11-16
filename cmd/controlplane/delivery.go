@@ -42,10 +42,11 @@ func (p deliveryPolicy) review(data *store.Store) http.HandlerFunc {
 			return
 		}
 		var input struct {
-			ExecutionID int64  `json:"execution_id"`
-			Commit      string `json:"commit"`
-			Decision    string `json:"decision"`
-			Note        string `json:"note"`
+			ExecutionID int64   `json:"execution_id"`
+			Commit      string  `json:"commit"`
+			Decision    string  `json:"decision"`
+			Note        string  `json:"note"`
+			FeedbackIDs []int64 `json:"feedback_ids"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -65,7 +66,7 @@ func (p deliveryPolicy) review(data *store.Store) http.HandlerFunc {
 			}
 			publish = task.ProjectID == p.projectID
 		}
-		task, err := data.Review(r.Context(), id, input.ExecutionID, input.Commit, input.Decision, input.Note, publish, p.target)
+		task, err := data.Review(r.Context(), id, input.ExecutionID, input.Commit, input.Decision, input.Note, publish, p.target, input.FeedbackIDs...)
 		respond(w, http.StatusOK, task, err)
 	}
 }

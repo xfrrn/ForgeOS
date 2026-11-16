@@ -108,6 +108,9 @@ var feedbackClassificationTables string
 //go:embed 028_feedback_questions.sql
 var feedbackQuestionsTable string
 
+//go:embed 029_feedback_reviews.sql
+var feedbackReviewsTable string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -139,25 +142,26 @@ type Task struct {
 }
 
 type Execution struct {
-	TestCaseState       string        `json:"test_case_state,omitempty"`
-	TestCaseAttempts    int64         `json:"test_case_attempts,omitempty"`
-	RequiresTestPlan    bool          `json:"requires_test_plan,omitempty"`
-	TestPlanState       string        `json:"test_plan_state,omitempty"`
-	TestPlanRevision    int           `json:"test_plan_revision,omitempty"`
-	CommitStatus        *CommitStatus `json:"commit_status,omitempty"`
-	CodeReviewState     string        `json:"code_review_state,omitempty"`
-	UsesCheckpoints     bool          `json:"uses_checkpoints,omitempty"`
-	RequirementID       int64         `json:"requirement_id,omitempty"`
-	RequirementRevision int           `json:"requirement_revision,omitempty"`
-	ID                  int64         `json:"id"`
-	Status              string        `json:"status"`
-	Worker              string        `json:"worker"`
-	Workspace           string        `json:"workspace"`
-	LeaseUntil          time.Time     `json:"lease_until"`
-	LeaseExpired        bool          `json:"lease_expired"`
-	AbandonedAt         *time.Time    `json:"abandoned_at,omitempty"`
-	EndReason           string        `json:"end_reason,omitempty"`
-	Result              *Result       `json:"result"`
+	ReviewFeedback      []ReviewFeedback `json:"review_feedback,omitempty"`
+	TestCaseState       string           `json:"test_case_state,omitempty"`
+	TestCaseAttempts    int64            `json:"test_case_attempts,omitempty"`
+	RequiresTestPlan    bool             `json:"requires_test_plan,omitempty"`
+	TestPlanState       string           `json:"test_plan_state,omitempty"`
+	TestPlanRevision    int              `json:"test_plan_revision,omitempty"`
+	CommitStatus        *CommitStatus    `json:"commit_status,omitempty"`
+	CodeReviewState     string           `json:"code_review_state,omitempty"`
+	UsesCheckpoints     bool             `json:"uses_checkpoints,omitempty"`
+	RequirementID       int64            `json:"requirement_id,omitempty"`
+	RequirementRevision int              `json:"requirement_revision,omitempty"`
+	ID                  int64            `json:"id"`
+	Status              string           `json:"status"`
+	Worker              string           `json:"worker"`
+	Workspace           string           `json:"workspace"`
+	LeaseUntil          time.Time        `json:"lease_until"`
+	LeaseExpired        bool             `json:"lease_expired"`
+	AbandonedAt         *time.Time       `json:"abandoned_at,omitempty"`
+	EndReason           string           `json:"end_reason,omitempty"`
+	Result              *Result          `json:"result"`
 }
 
 type Event struct {
@@ -212,7 +216,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -264,6 +268,9 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'abandoned_at', e.abandoned_at,
+		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
+		            FROM candidate_review_feedback f WHERE f.execution_id=e.id AND t.status='WAITING_ACCEPTANCE'
+		            AND e.id=(SELECT max(id) FROM executions WHERE task_id=t.id)),
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
 		        'result', e.result,'commit_status',e.commit_status, 'test_plan_state',tp.state,'test_plan_revision',tp.revision,'test_case_state',tp.execution_state,'test_case_attempts',tp.attempt_count, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
 		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id
@@ -272,7 +279,8 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    (SELECT jsonb_agg(jsonb_build_object(
 		        'id', v.id, 'execution_id', v.execution_id, 'type', v.type, 'at', v.at) ORDER BY v.id)
 		     FROM task_events v WHERE v.task_id = t.id),
-		    COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.execution_id)
+		    COALESCE((SELECT jsonb_agg(to_jsonb(r) || jsonb_build_object('feedback_ids',
+		        ARRAY(SELECT feedback_id FROM acceptance_review_feedback WHERE execution_id=r.execution_id ORDER BY feedback_id)) ORDER BY r.execution_id)
 		     FROM acceptance_reviews r WHERE r.task_id = t.id), '[]'),
 		    (SELECT to_jsonb(d) - 'lease_token' - 'available_at' FROM deliveries d WHERE d.task_id = t.id),
 		    (SELECT to_jsonb(r) FROM plan_revisions r WHERE r.task_id=t.id ORDER BY revision DESC LIMIT 1),

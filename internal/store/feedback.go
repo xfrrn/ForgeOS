@@ -67,6 +67,8 @@ func (s *Store) PreviewFeedbackPage(ctx context.Context, task int64, preview str
         'feedback',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',f.id,'created_at',f.created_at,'author','owner',
             'state',CASE WHEN f.classified_at IS NOT NULL THEN 'classified' WHEN f.review_until>now() THEN 'in_review' ELSE 'awaiting_review' END,
             'classification',f.classification,'classified_at',f.classified_at,'body',f.body,
+            'review',(SELECT jsonb_build_object('decision',a.decision,'note',a.note) FROM acceptance_review_feedback l
+                JOIN acceptance_reviews a USING(execution_id) WHERE l.feedback_id=f.id),
             'question',(SELECT to_jsonb(q) FROM decision_questions q WHERE q.feedback_id=f.id)) ORDER BY f.id DESC) FROM preview_feedback f WHERE f.preview_id=r.id),'[]'),
         'plan',(SELECT jsonb_build_object('revision',p.revision,'cases',p.plan->'cases') FROM candidate_test_plan_receipts p
                  WHERE p.execution_id=r.execution_id AND p.plan IS NOT NULL ORDER BY p.revision DESC LIMIT 1))
