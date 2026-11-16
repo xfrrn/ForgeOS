@@ -31,7 +31,7 @@ func fixture(t *testing.T) (*worker, store.Job, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := &worker{repoRoot: filepath.Join(base, "repos"), workspaceRoot: filepath.Join(base, "workspaces")}
+	w := &worker{repoRoot: filepath.Join(base, "repos"), workspaceRoot: filepath.Join(base, "workspaces"), slots: 1}
 	repo := filepath.Join(w.repoRoot, "project")
 	for _, dir := range []string{repo, w.workspaceRoot} {
 		if err := os.MkdirAll(dir, 0700); err != nil {

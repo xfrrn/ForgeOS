@@ -403,6 +403,18 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	canRunChecks := len(capabilities) > 5 && capabilities[5]
 	canAssess := canRunChecks && len(capabilities) > 6 && capabilities[6]
 	canClaude := len(capabilities) > 7 && capabilities[7]
+	// Serialize reservations across projects, including simultaneous claims by the same node.
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('forgeos.worker_capacity'),hashtext($1))`, worker); err != nil {
+		return nil, err
+	}
+	var available bool
+	err = tx.QueryRowContext(ctx, `SELECT
+		(SELECT count(*) FROM executions WHERE worker=$1 AND result IS NULL AND abandoned_at IS NULL)
+		< COALESCE((SELECT CASE WHEN last_seen > now() - interval '45 seconds' THEN slots ELSE 0 END
+		            FROM worker_nodes WHERE worker=$1 FOR UPDATE),1)`, worker).Scan(&available)
+	if err != nil || !available {
+		return nil, err
+	}
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE'))

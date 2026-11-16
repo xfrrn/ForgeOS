@@ -15,7 +15,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,6 +29,7 @@ type worker struct {
 	codex                                   string
 	claude                                  claudeCLI
 	planner                                 bool
+	slots                                   int
 	client                                  *http.Client
 }
 
@@ -82,6 +85,14 @@ func fromEnv(role string) (*worker, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	w.slots = 1
+	if raw := os.Getenv("FORGEOS_WORKER_SLOTS"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil || n < 1 {
+			return nil, errors.New("FORGEOS_WORKER_SLOTS must be a positive integer")
+		}
+		w.slots = int(n)
 	}
 	if w.token == "" || !filepath.IsAbs(w.repoRoot) || !filepath.IsAbs(w.workspaceRoot) {
 		return nil, errors.New("set FORGEOS_WORKER_TOKEN, absolute FORGEOS_REPO_ROOT and FORGEOS_WORKSPACE_ROOT")
@@ -158,7 +169,7 @@ func (w *worker) run(ctx context.Context) error {
 	writer := w.codex != "" || w.claude.bin != ""
 	caps := store.WorkerCapabilities{SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
-	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Slots: 1, Capabilities: caps}
+	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Slots: w.slots, Capabilities: caps}
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
 			status, err := w.post(ctx, "/internal/workers/heartbeat", h, nil)
@@ -199,16 +210,27 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-func (w *worker) runQueue(ctx context.Context, caps store.WorkerCapabilities) error {
+func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
+	ctx, stop := context.WithCancelCause(parent)
+	var jobs sync.WaitGroup
+	defer jobs.Wait()
+	defer stop(nil)
+	occupied := make(chan struct{}, w.slots)
 	claim := struct {
 		Worker        string `json:"worker"`
 		WorkspaceRoot string `json:"workspace_root"`
 		store.WorkerCapabilities
 	}{w.id, w.workspaceRoot, caps}
 	for ctx.Err() == nil {
+		select {
+		case occupied <- struct{}{}:
+		case <-ctx.Done():
+			continue
+		}
 		var job store.Job
 		status, err := w.post(ctx, "/internal/claim", claim, &job)
 		if status == http.StatusNoContent || temporary(status) {
+			<-occupied
 			if status != http.StatusNoContent && ctx.Err() == nil {
 				log.Printf("claim unavailable (HTTP %d), retrying", status)
 			}
@@ -218,31 +240,45 @@ func (w *worker) runQueue(ctx context.Context, caps store.WorkerCapabilities) er
 		if err != nil || status != http.StatusOK || job.ExecutionID <= 0 || job.LeaseToken == "" {
 			return fmt.Errorf("invalid claim response (HTTP %d)", status)
 		}
-		result := w.execute(ctx, job)
-		report := struct {
-			LeaseToken string `json:"lease_token"`
-			store.Result
-		}{job.LeaseToken, result}
-		path := fmt.Sprintf("/internal/executions/%d/result", job.ExecutionID)
-		for {
-			// Give an interrupted execution one bounded chance to record its outcome on shutdown.
-			status, _ = w.post(context.WithoutCancel(ctx), path, report, nil)
-			if status == http.StatusNoContent {
-				log.Printf("execution %d reported (exit %d)", job.ExecutionID, result.ExitCode)
-				break
+		jobs.Add(1)
+		go func() {
+			defer jobs.Done()
+			defer func() { <-occupied }()
+			if err := w.executeAndReport(ctx, job); err != nil {
+				stop(err)
 			}
-			if status == http.StatusConflict {
-				log.Printf("execution %d result conflicts with the recorded lease or outcome", job.ExecutionID)
-				break
-			}
-			if ctx.Err() != nil || !temporary(status) {
-				return fmt.Errorf("execution %d result not acknowledged (HTTP %d)", job.ExecutionID, status)
-			}
-			log.Printf("execution %d result pending (HTTP %d), retrying", job.ExecutionID, status)
-			wait(ctx)
-		}
+		}()
 	}
-	return nil
+	if parent.Err() != nil {
+		return nil
+	}
+	return context.Cause(ctx)
+}
+
+func (w *worker) executeAndReport(ctx context.Context, job store.Job) error {
+	result := w.execute(ctx, job)
+	report := struct {
+		LeaseToken string `json:"lease_token"`
+		store.Result
+	}{job.LeaseToken, result}
+	path := fmt.Sprintf("/internal/executions/%d/result", job.ExecutionID)
+	for {
+		// Give an interrupted execution one bounded chance to record its outcome on shutdown.
+		status, _ := w.post(context.WithoutCancel(ctx), path, report, nil)
+		if status == http.StatusNoContent {
+			log.Printf("execution %d reported (exit %d)", job.ExecutionID, result.ExitCode)
+			return nil
+		}
+		if status == http.StatusConflict {
+			log.Printf("execution %d result conflicts with the recorded lease or outcome", job.ExecutionID)
+			return nil
+		}
+		if ctx.Err() != nil || !temporary(status) {
+			return fmt.Errorf("execution %d result not acknowledged (HTTP %d)", job.ExecutionID, status)
+		}
+		log.Printf("execution %d result pending (HTTP %d), retrying", job.ExecutionID, status)
+		wait(ctx)
+	}
 }
 
 func main() {
