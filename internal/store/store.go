@@ -94,6 +94,7 @@ type Project struct {
 }
 
 type Task struct {
+	RequiresCodeReview  bool               `json:"requires_code_review,omitempty"`
 	Refreshes           []DeliveryRefresh  `json:"delivery_refreshes,omitempty"`
 	RequirementRevision int                `json:"requirement_revision,omitempty"`
 	LatestRequirement   int                `json:"latest_requirement,omitempty"`
@@ -117,6 +118,7 @@ type Task struct {
 }
 
 type Execution struct {
+	CodeReviewState     string     `json:"code_review_state,omitempty"`
 	UsesCheckpoints     bool       `json:"uses_checkpoints,omitempty"`
 	RequirementID       int64      `json:"requirement_id,omitempty"`
 	RequirementRevision int        `json:"requirement_revision,omitempty"`
@@ -230,14 +232,15 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var spec, attempts, events, reviews, delivery, plan, children, questions, refreshes []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
-		SELECT t.id, t.project_id, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
+		SELECT t.id, t.project_id, p.requires_code_review, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'abandoned_at', e.abandoned_at,
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
-		        'result', e.result) ORDER BY e.id)
-		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id WHERE e.task_id = t.id), '[]'),
+		        'result', e.result, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
+		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id
+		     LEFT JOIN code_reviews r ON r.execution_id=e.id WHERE e.task_id = t.id), '[]'),
 		    (SELECT jsonb_agg(jsonb_build_object(
 		        'id', v.id, 'execution_id', v.execution_id, 'type', v.type, 'at', v.at) ORDER BY v.id)
 		     FROM task_events v WHERE v.task_id = t.id),
@@ -250,7 +253,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		       FROM work_items c WHERE c.goal_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.execution_id) FROM delivery_refreshes f WHERE f.task_id=t.id)
-		FROM work_items t LEFT JOIN requirement_revisions frozen ON frozen.id=t.requirement_id WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &t.ActiveRevision, &t.RequirementRevision, &t.LatestRequirement, &spec, &attempts,
+		FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN requirement_revisions frozen ON frozen.id=t.requirement_id WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.RequiresCodeReview, &t.Status, &t.Kind, &t.ActiveRevision, &t.RequirementRevision, &t.LatestRequirement, &spec, &attempts,
 		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions, &refreshes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound

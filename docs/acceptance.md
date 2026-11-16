@@ -293,3 +293,15 @@ OpenBao 部署及恢复对应 `ab013b603c4bb3368e1daf777dcae7b6f3599b02`。
 | 按固定执行请求审查，在独立进程启动 `worker reviewer` | Claude 与开发会话分离，控制面核对固定对象并保存独立回执 | 会话 `39ae331b-2e6e-4512-9b7d-f05d8e2bc3a1` 完成，未报告发现。回执与开发结果的基础和候选 SHA 逐字段一致。Owner 批准成功，控制面重启后回执完全相同 |
 | 让交付器创建 PR，等待必需检查，在相同 head 重跑首次失败的检查 | 检查通过才允许合并，Issue 回写并关闭 | PR #11 的 `acceptance-check` 成功，合并 SHA 为 `e20d92779c846102f3e58d1fd33169bbabb59d8b`。任务 DONE，Issue CLOSED。[Issue #10](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/10) · [PR #11](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/11) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43841822142) |
 | 用 PostgreSQL 测试失败、重试、错租约、开发会话复用、报告重放和引用未核实 | 无有效报告或缺核对说明时不能批准，重试使用新租约 | `TestCodeReviewGate` 通过。启用 PostgreSQL 和 Docker 的全套 Go 测试共 70 项通过、零跳过，`go vet ./...` 通过 |
+
+审查门禁及以上交付对应 ForgeOS 提交 `940006841453be623726e3b2d0d58c859c940fa5`。
+
+## 专题 10、11 · 从任务页面核对审查发现
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 390 × 844 的 Chrome 窗口打开已交付任务 28，展开执行 24 的审查报告 | 加载关联会话、候选和摘要，窄屏可读 | 页面显示原生会话 `39ae331b-2e6e-4512-9b7d-f05d8e2bc3a1` 和“未报告发现”，页面无横向溢出 |
+| 在独立 PostgreSQL 测试 schema 中从页面请求审查，受控返回失败，再点击重试 | 批准被锁定，退回仍可用。重试使用新租约 | Chrome 中按钮状态符合预期，重试生成与原值不同的租约 |
+| 把此前配额样例的真实 Claude 报告提交给控制面，在页面核对并退回候选 | 行证据可核对，空说明无法保存。Owner 可据此退回，历史记录保留 | 页面展示 High、阻塞、`quota.py:3`、原文和引用匹配结果。保存核对说明后批准按钮可用；因确认边界错误，实际选择退回。任务变为 READY，重载后仍能打开原报告并读到说明 |
+
+第二、三项使用预置开发执行和真实 Git 对象，回放已实测的原生报告。浏览器、控制面、租约、证据核对和数据库写入均按实际入口运行；该样例未创建远端 PR。

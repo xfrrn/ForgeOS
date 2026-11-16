@@ -66,6 +66,6 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
         response.status === 409 ? '任务状态或候选版本已变化，请刷新记录。' :
         response.status === 404 ? '找不到这条记录。' : (info?.error || '请求失败，请稍后重试。'))
     }
-    return await response.json() as T
+    return response.status === 204 ? undefined as T : await response.json() as T
   }
 }

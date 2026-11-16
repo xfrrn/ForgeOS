@@ -66,6 +66,10 @@
 .detail-attempt:last-child .detail-attempt-body { margin-bottom: 0; }
 .detail-validation { background: #f2f7f5; border: 1px solid #d8e8df; border-radius: 6px; margin-top: 16px; padding: 10px 12px; }
 .detail-validation.failed { background: #fcf1ef; border-color: #be665a; }
+.detail-code-review { background: #f7f9fb; border-color: #dbe2e9; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.detail-code-review h3 { margin: 0; font-size: 14px; }
+.detail-code-review p, .detail-code-review ol { margin: 8px 0; }
+.detail-code-review .detail-facts { margin-top: 10px; }
 .detail-validation > div:first-child { display: flex; align-items: center; gap: 7px; color: #2b6649; font-size: 13px; margin-bottom: 8px; }
 .detail-validation.failed > div:first-child { color: #994739; }
 .detail-validation > div:first-child code { margin-left: auto; font-size: 11px; }

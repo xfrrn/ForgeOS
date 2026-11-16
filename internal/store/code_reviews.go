@@ -157,11 +157,17 @@ func (s *Store) CheckReviewFindings(ctx context.Context, task, execution int64, 
 	return err
 }
 
+// Share the decision state with the task detail so the Owner sees the gate used at approval.
+const codeReviewState = `CASE WHEN r.execution_id IS NULL THEN ''
+	WHEN r.failed_at IS NOT NULL THEN 'failed' WHEN r.report IS NULL THEN 'pending'
+	WHEN r.owner_checked_at IS NULL AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.report->'findings') f
+		WHERE (f->>'blocking')::boolean OR NOT (f->>'evidence_verified')::boolean) THEN 'needs_check'
+	ELSE 'clear' END`
+
 func canApproveReview(ctx context.Context, tx *sql.Tx, task, execution int64) error {
 	var allowed bool
 	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.execution_id IS NULL THEN NOT p.requires_code_review
-		ELSE r.report IS NOT NULL AND (r.owner_checked_at IS NOT NULL OR NOT EXISTS(
-			SELECT 1 FROM jsonb_array_elements(r.report->'findings') f WHERE (f->>'blocking')::boolean OR NOT (f->>'evidence_verified')::boolean))
+		ELSE (`+codeReviewState+`)='clear'
 		END FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN code_reviews r ON r.task_id=t.id AND r.execution_id=$2
 		WHERE t.id=$1 FOR SHARE OF p`, task, execution).Scan(&allowed)
 	if err != nil {

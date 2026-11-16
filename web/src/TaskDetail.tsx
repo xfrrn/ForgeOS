@@ -5,6 +5,7 @@ import './detail.css'
 type Validation = { profile: string; commit: string; exit_code: number; output: string }
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  code_review_state?: 'pending' | 'failed' | 'needs_check' | 'clear'
   id: number; status: string; worker: string; workspace: string; lease_until: string
   uses_checkpoints?: boolean; requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
 }
@@ -16,6 +17,7 @@ type Question = { id: number; execution_id: number; commit_sha: string; question
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
 type Plan = { revision: number; review?: { level: string; effective_level: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
+  requires_code_review?: boolean
   id: number; project_id: number; status: string; kind: string
   spec?: { issue: Issue; base_commit: string; validation: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery; delivery_refreshes?: { execution_id: number; old_delivery: Delivery; new_base: string; candidate: string }[]
@@ -146,7 +148,74 @@ function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: At
     </li>)}</ol>)}</div>
 }
 
-function Execution({ attempt, task, latest, request }: { attempt: Attempt; task: Task; latest: boolean; request: ApiRequest }) {
+type ReviewReceipt = {
+  base_commit: string; commit_sha: string; owner_note?: string; owner_checked_at?: string
+  report: { session_id: string; summary: string; findings: { id: string; severity: string; file: string; side: string
+    line: number; evidence: string; evidence_verified: boolean; blocking: boolean; confidence: number; description: string; recommendation: string }[] }
+}
+
+function CandidateReview({ task, attempt, request, refresh, current }: {
+  task: Task; attempt: Attempt; request: ApiRequest; refresh: (message: string) => void; current: boolean
+}) {
+  const state = attempt.code_review_state
+  const [open, setOpen] = useState(false)
+  const [receipt, setReceipt] = useState<ReviewReceipt | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+  const path = `/tasks/${task.id}/code-review`
+  const hasReport = state === 'needs_check' || state === 'clear'
+  useEffect(() => {
+    if (!open || !hasReport) return
+    const controller = new AbortController()
+    setReceipt(null)
+    setError('')
+    request<ReviewReceipt>(`${path}?execution_id=${attempt.id}`, { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setReceipt(data) })
+      .catch(() => { if (!controller.signal.aborted) setError('无法读取审查报告，请重新打开。') })
+    return () => controller.abort()
+  }, [path, attempt.id, state, hasReport, open, request])
+  async function submit(check: boolean) {
+    setBusy(true)
+    setError('')
+    try {
+      await request<void>(path + (check ? '/check' : ''), { method: 'POST', body: JSON.stringify({
+        execution_id: attempt.id, commit: attempt.result?.commit, ...(check ? { note: note.trim() } : {}),
+      }) })
+      refresh(check ? '已保存本次审查的核对说明。' : '已为此候选请求独立审查。')
+    } catch (e) { setError(e instanceof Error ? e.message : '提交失败，请重试。') }
+    finally { setBusy(false) }
+  }
+  if (!state && !current) return null
+  const labels = { pending: '等待审查完成', failed: '审查失败', needs_check: '发现待核对', clear: '审查完成' }
+  return <section className={`detail-validation detail-code-review${state === 'failed' ? ' failed' : ''}`}>
+    <h3>独立代码审查</h3>
+    <p>{state ? labels[state] : task.requires_code_review ? '此项目要求审查，正在等待 Reviewer 领取。' : '尚未请求审查。'}</p>
+    {current && (!state || state === 'failed') && <button className="button" disabled={busy}
+      onClick={() => void submit(false)}>{state === 'failed' ? '重试审查' : '请求独立审查'}</button>}
+    {hasReport && <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起审查报告' : '查看审查报告'}</button>}
+    {open && !receipt && !error && <p role="status">正在读取审查报告…</p>}
+    {open && receipt && <>
+      <dl className="detail-facts"><Fact label="审查会话" code>{receipt.report.session_id}</Fact>
+        <Fact label="基础 SHA" code>{receipt.base_commit}</Fact><Fact label="候选 SHA" code>{receipt.commit_sha}</Fact></dl>
+      <p>{receipt.report.summary}</p>
+      {receipt.report.findings.length === 0 ? <p>未报告发现。</p> : <ol>{receipt.report.findings.map(f => <li key={f.id}>
+        <strong>{f.id} · {f.severity}{f.blocking && ' · 阻塞'}</strong>
+        <p>{f.description}</p><code>{f.side === 'base' ? '基础' : '候选'} · {f.file}:{f.line}</code><pre>{f.evidence}</pre>
+        <p>{f.evidence_verified ? '引用与 Git 原文匹配' : '引用尚未核实'} · 置信度 {f.confidence}</p><p>建议：{f.recommendation}</p>
+      </li>)}</ol>}
+      {receipt.owner_note && <p>Owner 核对 · {receipt.owner_note}</p>}
+      {current && state === 'needs_check' && <form className="detail-accept" onSubmit={e => { e.preventDefault(); void submit(true) }}>
+        <label htmlFor={`review-note-${attempt.id}`}>发现核对说明</label>
+        <textarea id={`review-note-${attempt.id}`} required value={note} onChange={e => setNote(e.target.value)} />
+        <button className="button" disabled={busy || !note.trim() || new TextEncoder().encode(note.trim()).length > 4096}>保存核对说明</button>
+      </form>}
+    </>}
+    {error && <p className="detail-problem" role="alert">{error}</p>}
+  </section>
+}
+
+function Execution({ attempt, task, latest, request, refresh }: { attempt: Attempt; task: Task; latest: boolean; request: ApiRequest; refresh: (message: string) => void }) {
   const result = attempt.result
   const validation = result?.validation
   const start = task.events.find(event => event.execution_id === attempt.id && event.type === 'execution_claimed')
@@ -173,12 +242,14 @@ function Execution({ attempt, task, latest, request }: { attempt: Attempt; task:
       {validation.output && <pre>{validation.output}</pre>}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
+    {task.kind === 'codex_issue' && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&
+      <CandidateReview task={task} attempt={attempt} request={request} refresh={refresh} current={latest && task.status === 'WAITING_ACCEPTANCE'} />}
     </div>
   </details>
 }
 
-function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked }: {
-  taskID: number; attempt: Attempt; request: ApiRequest; onUpdate: (task: Task) => void; refresh: (message: string) => void; locked: boolean
+function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, reviewPending }: {
+  taskID: number; attempt: Attempt; request: ApiRequest; onUpdate: (task: Task) => void; refresh: (message: string) => void; locked: boolean; reviewPending: boolean
 }) {
   const commit = attempt.result!.commit!
   const [note, setNote] = useState('')
@@ -221,7 +292,8 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked }: {
     <label htmlFor="acceptance-note">验收说明</label>
     <textarea id="acceptance-note" ref={noteField} value={note} disabled={busy} placeholder="退回时请说明需要修改的内容" onChange={e => { setNote(e.target.value); setError('') }} />
     {error && <p className="detail-problem" role="alert">{error}</p>}
-    <div className="detail-actions"><button className="button primary" disabled={busy || locked} onClick={() => decide('approve')}><Icon name="Check" size={16} />通过验收</button>
+    {reviewPending && <p role="status">请先在执行记录中完成独立代码审查和发现核对。</p>}
+    <div className="detail-actions"><button className="button primary" disabled={busy || locked || reviewPending} onClick={() => decide('approve')}><Icon name="Check" size={16} />通过验收</button>
       <button className="button" disabled={busy || locked} onClick={() => decide('reject')}>退回修改</button></div>
     {busy && <p role="status">正在提交验收决定…</p>}
   </section>
@@ -362,12 +434,13 @@ function Detail({ id, request, onChanged }: Props) {
             onApply={message => { refresh(message); onChanged() }}/>}</section>}
         <section className="panel detail-card"><h2><Icon name="Terminal" size={18} />Worker 执行记录<span className="detail-count">{task.attempts.length}</span></h2>
           {task.attempts.length ? <div className="detail-attempts">{[...task.attempts].reverse().map(attempt =>
-            <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} request={request} />)}</div>
+            <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} request={request} refresh={refresh} />)}</div>
             : <p className="detail-empty-text">{task.plan ? '尚无执行记录。' : '等待 Worker 领取任务。'}</p>}</section>
       </div>
       <aside className="detail-column">
         {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
-        {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)} />}
+        {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)}
+          reviewPending={Boolean(task.requires_code_review || last.code_review_state) && last.code_review_state !== 'clear'} />}
         {task.spec && <section className="panel detail-card"><h2><Icon name="GitPullRequest" size={18} />GitHub 交付</h2>
           {delivery ? <><div className="detail-delivery-state"><span className={'detail-state-dot ' + (delivery.state === 'DONE' ? 'complete' : '')} />{deliveryStates[delivery.state] || delivery.state}</div>
             <dl className="detail-facts">{delivery.pr_number && <Fact label="Pull request"><OutLink href={delivery.pr_url}>PR #{delivery.pr_number}</OutLink></Fact>}
