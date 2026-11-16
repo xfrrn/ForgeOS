@@ -40,7 +40,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 
 ## 专题覆盖与实现提交
 
-下列短 SHA 属于本地 ForgeOS 仓库。PR 内的 SHA 属于验收项目。节点授权版本 `c5134015ab2b6bdc6504144764fc542010bba73f` 在专用 PostgreSQL 18 实例中启用数据库和 Docker 测试，`go test -count=1 -json ./...` 得到 60 项通过、零跳过。`go vet ./...` 与前端生产构建通过。
+下列短 SHA 属于本地 ForgeOS 仓库。PR 内的 SHA 属于验收项目。历史检索版本 `a31c02ceb9ea5419f356d00aebb2989480a1a28b` 在专用 PostgreSQL 18 实例中启用数据库和 Docker 测试，`go test -count=1 -json ./...` 得到 63 项通过、零跳过，`go vet ./...` 通过。前端生产构建在 `bd1c734` 通过。
 
 | 专题 | 已验证的入口和证据 | 实现 SHA | 仍待补齐或实测 |
 | --- | --- | --- | --- |
@@ -50,7 +50,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840` | 运行时事件批处理和安全中断 |
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session、真实失联租约、评论检查点；Ubuntu 非 root systemd 服务实测见下文 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f` | App Server、Claude Code 原生恢复、Linux Harness 登录复用、多节点恢复 |
-| 08 项目知识 | Planner 在固定版本引用 README 和 CI 工程事实；Owner 和两个节点从真实项目历史检索需求与评论版本 | `cc2011f`，历史检索证据见下文 | 导入资料、决策索引、语义检索、脱敏审批和共享副本 |
+| 08 项目知识 | Planner 在固定版本引用 README 和 CI 工程事实；Owner 和两个节点从真实项目历史检索需求与评论版本 | `cc2011f`、`a31c02c` | 导入资料、决策索引、语义检索、脱敏审批和共享副本 |
 | 09 权限与密钥 | Owner/Worker 分权，两个 Worker 按项目领取，持另一节点有效租约的越权回报返回 403 | `1a17822`、`319aa65`、`70781ba`、`c513401` | 环境授权、OpenBao、Secret Broker、短期凭据与恢复 |
 | 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、失败的 Actions 门禁、候选变化后重新验证 | `1a17822`、`32c0fa0` | 只读审查、V1–V4、仓库验证 Schema、检查报告与 GitHub 状态回传 |
 | 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
@@ -167,3 +167,13 @@ PostgreSQL 恢复演练对应提交 `06ed00b8e47fa764e31611b655fbc5ca9e7fa2d1`�
 | 以 Owner 和 alpha 节点凭据分别查项目 2，参数为 `source=comment&task_id=20&q=requirement+revision` | 只检索该项目的源记录，两种授权入口返回一致结果，可区分原文和修订 | 两个响应逐字段相同。[同一条真实评论](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/7#issuecomment-6910490346) 返回事件 4（latest）和事件 2（historical），均带时间、引用与各版本原文摘要 |
 | 以 beta 节点查本项目相同评论，再搜索 `source=requirement&q=queue` | 根据来源和项目筛选 | 评论查询返回空数组；需求查询仅返回项目 4 的任务 7 和 13 |
 | 交换两个节点的目标项目，再尝试无效来源和负任务编号 | 授权失败时拒绝访问，参数错误可区分 | 两个跨项目请求均为 403；两个非法参数均为 400。数据库测试另以同一关键词和中文子串验证项目隔离与旧版本匹配 |
+
+## 专题 07、16 A.2 · Claude Code 原生权限交互与恢复
+
+在 Windows 已登录账号执行 `python scripts/probe_claude.py --bin <claude.exe>`。CLI 报告版本 2.1.310，使用原生 stream-json 双向通信。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 用进程 13936 启动会话，等待 AskUserQuestion 并通过相同 request_id 回答 | 工具交互到达宿主，模型得到选择的答案 | 收到 can_use_tool 请求，宿主选择 Green 并回传；同一 Session ID 为 `90231784-7dea-4ee8-994f-552af586ab52` |
+| 拒绝对临时目录 probe.txt 的 Write 请求 | 调用受权限门禁控制，文件未落盘 | 宿主返回 deny；任务结束后实际检查文件不存在 |
+| 退出进程，使用 --resume 在新进程 44392 恢复 | 新进程返回相同 Session ID，并能同时回忆第一轮随机标识和已选答案 | 第二次结果与随机标识和 Green 完全匹配。此项覆盖协议探测，Worker 自动恢复、Linux 登录与并发仍需独立验收 |

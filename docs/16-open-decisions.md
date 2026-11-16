@@ -9,7 +9,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 ## A. 需要真实环境验证
 
 1. Codex App Server 的目标版本、协议兼容和事件能力。
-2. Claude Code Headless/SDK 的 Session Resume、交互和权限事件能力。
+2. Claude Code 2.1.310 已在 Windows 真实验证 Headless Session Resume、问题答复和权限拒绝。Linux 服务用户和 ForgeOS 任务内的恢复仍待验收。
 3. 同一 Linux 用户下多个 CLI 进程共享认证状态时的并发和账号限额行为。
 4. Worker Daemon systemd 环境对 CLI 登录缓存、代理和 PATH 的继承。
 5. 本次实测使用已登录的 GitHub CLI 账号。GitHub App 或细粒度 Token 所需的最小权限，以及要求第二位维护者批准 PR 时的交付行为，仍待实测。
