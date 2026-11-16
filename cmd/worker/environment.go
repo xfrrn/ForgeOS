@@ -84,6 +84,32 @@ func (run *environmentRun) record(ctx context.Context, repo, dir string) error {
 }
 
 func (r *environmentRun) verify(ctx context.Context, repo string) error {
+	if err := r.readConfig(ctx, repo); err != nil {
+		return err
+	}
+	d, err := openDocker(ctx)
+	if err != nil {
+		return err
+	}
+	if err = r.pinImage(ctx, d); err != nil {
+		return err
+	}
+	r.Network = "none"
+	if r.Environment == "local-integrated" {
+		r.Network, err = integrationNetwork(ctx, d, r.Repo)
+		if err != nil {
+			return err
+		}
+	}
+	snapshot, release, err := ciSnapshot(ctx, repo, r.Commit)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return r.probe(ctx, d, snapshot)
+}
+
+func (r *environmentRun) readConfig(ctx context.Context, repo string) error {
 	blob, raw, err := validation.ReadConfigFile(ctx, repo, r.Commit, "project.yaml")
 	if err != nil || blob == "" {
 		return errors.New("project.yaml unavailable at requested commit")
@@ -105,10 +131,10 @@ func (r *environmentRun) verify(ctx context.Context, repo string) error {
 		return errors.New("start script must be a committed regular file")
 	}
 	r.ScriptBlob = fields[2]
-	d, err := openDocker(ctx)
-	if err != nil {
-		return err
-	}
+	return nil
+}
+
+func (r *environmentRun) pinImage(ctx context.Context, d localDocker) error {
 	image := os.Getenv("FORGEOS_STARTUP_IMAGE")
 	if image == "" || strings.HasPrefix(image, "-") || strings.ContainsAny(image, " \r\n\t") {
 		return errors.New("configure a local FORGEOS_STARTUP_IMAGE")
@@ -118,19 +144,7 @@ func (r *environmentRun) verify(ctx context.Context, repo string) error {
 		return errors.New("startup image unavailable")
 	}
 	r.Image = strings.TrimSpace(string(pinned))
-	r.Network = "none"
-	if r.Environment == "local-integrated" {
-		r.Network, err = integrationNetwork(ctx, d, r.Repo)
-		if err != nil {
-			return err
-		}
-	}
-	snapshot, release, err := ciSnapshot(ctx, repo, r.Commit)
-	if err != nil {
-		return err
-	}
-	defer release()
-	return r.probe(ctx, d, snapshot)
+	return nil
 }
 
 func integrationNetwork(ctx context.Context, d localDocker, project string) (string, error) {
@@ -160,9 +174,7 @@ func (r *environmentRun) probe(ctx context.Context, d localDocker, snapshot stri
 		return err
 	}
 	// The engine also bounds the container lifetime when the worker disconnects.
-	args := append([]string{"run", "-d", "--rm"}, options...)
-	args = append(args, "--env=FORGEOS_LOCAL_ENVIRONMENT="+r.Environment, "--entrypoint", "/usr/bin/timeout", r.Image, "-s", "KILL", strconv.Itoa(r.Config.TimeoutSeconds+30),
-		"/bin/sh", "-c", `mkdir /tmp/project && cp -R /src/. /tmp/project && rm -f /tmp/project/.git && cd /tmp/project && exec /bin/sh "./$1"`, "forgeos-start", r.Config.StartScript)
+	args := r.containerArgs(options, r.Config.TimeoutSeconds+30)
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -176,6 +188,17 @@ func (r *environmentRun) probe(ctx context.Context, d localDocker, snapshot stri
 	if err = d.command(ctx, args...).Run(); err != nil {
 		return errors.New("could not start the environment container")
 	}
+	return r.waitReady(ctx, d, name)
+}
+
+func (r *environmentRun) containerArgs(options []string, lifetime int) []string {
+	args := append([]string{"run", "-d", "--rm"}, options...)
+	args = append(args, "--env=FORGEOS_LOCAL_ENVIRONMENT="+r.Environment, "--entrypoint", "/usr/bin/timeout", r.Image, "-s", "KILL", strconv.Itoa(lifetime),
+		"/bin/sh", "-c", `mkdir /tmp/project && cp -R /src/. /tmp/project && rm -f /tmp/project/.git && cd /tmp/project && exec /bin/sh "./$1"`, "forgeos-start", r.Config.StartScript)
+	return args
+}
+
+func (r *environmentRun) waitReady(ctx context.Context, d localDocker, name string) error {
 	probe, cancel := context.WithTimeout(ctx, time.Duration(r.Config.TimeoutSeconds)*time.Second)
 	defer cancel()
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", r.Config.Port, r.Config.HealthPath)

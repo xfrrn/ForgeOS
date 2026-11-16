@@ -110,6 +110,12 @@ Preview 必须绑定：
 
 Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 回调入口，不应为方便验收公开整个私有网络。
 
+### Worker 动态应用预览
+
+在 Worker 账户下运行 `worker preview-manager`，设置绝对路径 `FORGEOS_REPO_ROOT`、本地已安装的 `FORGEOS_STARTUP_IMAGE`、专用监听地址（例如 `FORGEOS_PREVIEW_MANAGER_ADDR=127.0.0.1:8092`）和至少 32 字符的随机 `FORGEOS_PREVIEW_MANAGER_TOKEN`。该服务独立使用本机 Docker。镜像需提供本地环境验证使用的 sh、timeout 和 curl。
+
+控制面通过专用 Bearer 令牌向 `PUT /instances/{48位十六进制ID}` 发送 `repo`、完整 `commit` 与 UTC `expires_at`。Manager 从该提交的 project.yaml 读取 local-mock，固定镜像，等待健康检查通过。实例保留自己的临时可写目录，无外网及宿主机发布端口。向 Manager 发送应用请求时使用原路径、查询串、请求体，并在 `X-ForgeOS-Preview-Instance` 中指定实例。应用数据请求上限 8 MiB，响应上限 16 MiB。预览支持有限时长的 HTTP 请求，浏览器 Cookie 和服务鉴权头均不会送入应用。服务重启后通过 Docker 标签认回存活的实例；重复申请相同租期保留应用状态。发送 `DELETE /instances/{id}` 可停止，服务离线时容器也按租期退出。
+
 ### 本机静态预览
 
 在控制面设置 `FORGEOS_PREVIEW_ADDR=127.0.0.1:8091`，重启后在通过验证的执行详情展开“本机静态预览”。填写项目中可公开的静态目录，例如 public。目录应在该候选提交中包含 index.html。点击“启动预览”“打开预览”。新标签页使用独立的随机 localhost 子域名，能读取该目录内已提交的普通文件。支持绝对站内路径、相对资源和目录首页；隐藏文件、符号链接、目录清单与工作区未提交内容不可读取。单个资源上限 8 MiB。
