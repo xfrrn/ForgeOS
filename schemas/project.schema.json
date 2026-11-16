@@ -5,6 +5,21 @@
   "required": ["version"],
   "properties": {
     "version": { "const": 1 },
+    "secret_requirements": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["environment", "name", "risk"],
+        "properties": {
+          "environment": { "enum": ["local-mock", "local-integrated", "ci-test", "staging", "production"] },
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" },
+          "risk": { "enum": ["S0", "S1", "S2", "S3"] }
+        }
+      }
+    },
     "execution": {
       "type": "object",
       "additionalProperties": false,

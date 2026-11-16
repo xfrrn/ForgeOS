@@ -1054,3 +1054,18 @@ PostgreSQL 18 和 Docker 全量回归 138 项通过，零测试跳过。Go 静�
 | 再从项目页选“检查当前 HEAD”，由同一 Worker 创建第二份清单 | 新检查读取更新后的脚本，原任务继续显示原清单 | 独立复验中任务 1 绑定 `b0b7cf3d08963a135aff8cf6c4d08ee7e1bf5013`，任务 2 绑定 `f6ed6f19006a25d2917556e3b0e757443f31e0b2`。第二个页面只显示新脚本 npm run different，第一份归档逐字段相同 |
 
 PostgreSQL 18 和 Docker 全量回归 139 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+仓库入口和依赖清单对应 ForgeOS 提交 `e73088cbe63e0da79133d342e477d018c640021c`。
+
+## 专题 01、09、ADR-001 · 按环境归档项目声明的密钥需求
+
+在独立 PostgreSQL schema 中用正式控制面、Worker 和 Chrome 生成三次仓库清单。验收仓库使用合成名称。预先通过 Owner API 登记 local-mock/queue-api 的实际元数据为 S2。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在首个提交声明 local-mock 与 ci-test 下两项同名需求，再声明 production 的独立需求。执行 HEAD 检查，在 Chrome 展开项目配置 | 显示各环境声明，记录其固定来源 | 原提交 `6467fb6366933bb412dcb0e6f9ee467033bc3b5d`，根配置 blob 为 `372091daa991c34239188453d4a91e2326fbd880`。Chrome 展示两条 queue-api/S1 和一条 production/queue-admin/S3 |
+| 比较扫描前后的元数据、授权和使用记录 | 声明不得修改实际风险、登记新凭据或授予使用权限 | PostgreSQL 唯一既有元数据的风险仍为 S2，更新时间相同。ci-test/queue-api 的 Owner 状态查询返回 404。执行授权和使用记录均为零 |
+| 在需求中加入不受支持的 value 字段，再用第三次提交移除声明 | 错误可定位，回执不含字段值。空清单与配置错误能区分 | 第二次提交 `5783bb288bcb2514b1957994d3941a7222a7498d` 在浏览器提示配置无效；归档保留 blob 和 invalid_project，无测试字段值。第三次提交 `ce8ac6a156c3db4f10a9456cfba11f74044a691c` 返回空数组 |
+| 重启控制面，并切换到此前生成的旧版清单 | 已归档的旧证据与首次扫描一致 | 前两版回执重启后逐字段相同。旧版项目清单仍未包含当时没有解析的字段 |
+
+PostgreSQL 18 和 Docker 全量回归 140 项通过，零测试跳过。Go 静态检查、TypeScript 检查与生产构建通过。

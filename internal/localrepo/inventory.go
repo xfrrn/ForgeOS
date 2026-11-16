@@ -12,17 +12,19 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"forgeos/schemas"
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 )
 
 type InventoryFile struct {
-	Path         string   `json:"path"`
-	Blob         string   `json:"blob"`
-	Kind         string   `json:"kind"`
-	Dependencies []string `json:"dependencies,omitempty"`
-	Scripts      []string `json:"scripts,omitempty"`
-	Problem      string   `json:"problem,omitempty"`
+	Path               string                       `json:"path"`
+	Blob               string                       `json:"blob"`
+	Kind               string                       `json:"kind"`
+	Dependencies       []string                     `json:"dependencies,omitempty"`
+	Scripts            []string                     `json:"scripts,omitempty"`
+	SecretRequirements *[]schemas.SecretRequirement `json:"secret_requirements,omitempty"`
+	Problem            string                       `json:"problem,omitempty"`
 }
 
 var objectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -88,7 +90,11 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			return nil, errors.New("repository exceeds 2000 inventory files")
 		}
 		c := InventoryFile{Path: file, Blob: fields[2], Kind: kind}
-		if kind == "node" || kind == "go" {
+		if file == "project.yaml" {
+			if err := c.readProject(ctx, repo); err != nil {
+				return nil, err
+			}
+		} else if kind == "node" || kind == "go" {
 			if readBudget <= 0 {
 				c.Problem = "read_budget"
 			} else {
@@ -107,6 +113,24 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 		files = append(files, c)
 	}
 	return files, nil
+}
+
+func (f *InventoryFile) readProject(ctx context.Context, repo string) error {
+	data, large, err := LimitedGit(ctx, repo, schemas.MaxValidationBytes, "cat-file", "blob", f.Blob)
+	if err != nil {
+		return errors.New("cannot read project configuration")
+	}
+	if large {
+		f.Problem = "size_limit"
+		return nil
+	}
+	project, err := schemas.ParseProject(data)
+	if err != nil {
+		f.Problem = "invalid_project"
+		return nil
+	}
+	f.SecretRequirements = &project.SecretRequirements
+	return nil
 }
 
 func (f *InventoryFile) readManifest(data []byte) {

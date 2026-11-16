@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Fact, formatTime, type ApiRequest } from './shared'
 
-type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string }
+type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string
+  secret_requirements?: { environment: string; name: string; risk: string }[] }
 type Report = { execution_id: number; commit_sha: string; github_origin: string; repository_id?: number; scanned_at: string; files: Source[] }
 const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
-const problems: Record<string,string> = { size_limit: '清单超过读取上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效' }
+const problems: Record<string,string> = { size_limit: '清单超过读取上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
 
 export function RepositoryInventory({ task, request }: { task: number; request: ApiRequest }) {
   const [report, setReport] = useState<Report>()
@@ -41,6 +42,8 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       <p>Git blob · <code>{f.blob}</code></p>
       {f.dependencies?.length && <p>声明依赖 · {f.dependencies.join('、')}</p>}
       {f.scripts?.map(name => <p key={name}><code>npm run {name}</code></p>)}
+      {f.secret_requirements && <><h3>声明的密钥需求</h3>{f.secret_requirements.length ? <ul>{f.secret_requirements.map(r =>
+        <li key={r.environment + '/' + r.name}>{r.environment} · <code>{r.name}</code> · {r.risk}</li>)}</ul> : <p>此版本未声明密钥需求。</p>}</>}
       {f.problem && <p>{problems[f.problem] || f.problem}</p>}
     </details>) : <p>此提交未匹配已支持的入口文件。</p>}</>}
   </section>

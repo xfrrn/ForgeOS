@@ -20,6 +20,12 @@
 
 路径建议：`secret/projects/{project_id}/{environment}/{secret_name}`。
 
+### 项目声明的需求
+
+在仓库根目录的 `project.yaml` 中使用可选的 `secret_requirements` 数组。每项仅含 `environment`、`name`、`risk`，分别使用下文的五种环境标识、Secret Manager 的键名格式和 S0–S3。最多 128 项，同一环境内名称唯一。不同环境可使用相同名称。参见[项目配置示例](../schemas/project.yaml.example)。
+
+在工作台生成仓库初始化清单，展开根 `project.yaml` 即可查看该提交的声明。声明的风险是项目方的预期，实际元数据由 Owner 独立登记。扫描只读取 Git 对象，不访问 Vault，也不授予凭据。若配置错误，报告保留文件的 Git blob 和错误状态。既有归档保留首次扫描时的内容；要采集新增字段，可从项目页重新检查当前提交。
+
 ### Secret Manager 元数据和状态
 
 控制面使用 `FORGEOS_BAO_ADDR` 指定 HTTPS origin，`FORGEOS_BAO_METADATA_TOKEN_FILE` 指定只读身份的令牌文件绝对路径，私有 CA 使用 `FORGEOS_BAO_CA_FILE`。令牌文件由控制面独占读取，可原子替换。身份策略只授予已配置项目和环境的 KV v2 **metadata** read 权限。以下为项目 2 单个测试键的示例。

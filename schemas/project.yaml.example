@@ -15,6 +15,14 @@ execution:
   default_harness: codex
   default_write_concurrency: 1
 
+secret_requirements:
+  - environment: local-mock
+    name: queue-test-key
+    risk: S1
+  - environment: staging
+    name: queue-service-key
+    risk: S2
+
 delivery:
   pull_request:
     enabled: true
