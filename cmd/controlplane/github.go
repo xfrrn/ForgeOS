@@ -54,6 +54,23 @@ func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner strin
 		rev, err := data.RequirementRevision(r.Context(), id, n)
 		respond(w, http.StatusOK, rev, err)
 	}))
+	mux.HandleFunc("GET /tasks/{id}/comments", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var after int64
+		if raw := r.URL.Query().Get("after"); raw != "" {
+			var err error
+			after, err = strconv.ParseInt(raw, 10, 64)
+			if err != nil || after < 0 {
+				problem(w, http.StatusBadRequest, "provide a non-negative event cursor")
+				return
+			}
+		}
+		events, err := data.Comments(r.Context(), id, after)
+		respond(w, http.StatusOK, events, err)
+	}))
 	mux.HandleFunc("GET /projects/{id}/inbox", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -208,6 +225,7 @@ func githubSource(ctx context.Context, root string, project store.Project, get g
 }
 
 type githubIssue struct {
+	Comments    int             `json:"comments"`
 	ID          int64           `json:"id"`
 	Number      int64           `json:"number"`
 	RepoURL     string          `json:"repository_url"`

@@ -66,24 +66,24 @@ func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issu
 	return err
 }
 
-func (s *Store) ObserveIssue(ctx context.Context, projectID int64, issue Issue) error {
+func (s *Store) ObserveIssue(ctx context.Context, projectID int64, issue Issue) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 	var id int64
 	err = tx.QueryRowContext(ctx, `SELECT t.id FROM work_items t JOIN projects p ON p.id=t.project_id WHERE t.project_id=$1 AND t.github_issue_id=$2 AND p.github_repository_id=$3 FOR UPDATE OF t`, projectID, issue.ID, issue.RepositoryID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return 0, nil
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err = recordRequirement(ctx, tx, id, issue); err != nil {
-		return err
+		return 0, err
 	}
-	return tx.Commit()
+	return id, tx.Commit()
 }
 
 func (s *Store) RequirementRevision(ctx context.Context, taskID int64, revision int64) (RequirementRevision, error) {

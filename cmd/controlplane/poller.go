@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -24,7 +25,8 @@ type issuePoller struct {
 
 type pollStore interface {
 	issueStore
-	ObserveIssue(context.Context, int64, store.Issue) error
+	ObserveIssue(context.Context, int64, store.Issue) (int64, error)
+	RecordComments(context.Context, int64, store.Issue, []json.RawMessage) error
 	ReplaceInbox(context.Context, int64, int64, []store.Discussion) error
 }
 
@@ -107,15 +109,21 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 				continue
 			}
 			issue, err := repo.issue(raw, raw.Number)
+			var taskID int64
 			if err == nil && !raw.hasAgentLabel() {
-				if err = data.ObserveIssue(ctx, p.projectID, issue); err != nil {
+				if taskID, err = data.ObserveIssue(ctx, p.projectID, issue); err != nil {
 					return err
 				}
 				discussions = append(discussions, store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL})
-				continue
+			} else if err == nil {
+				var task store.Task
+				task, err = data.ImportIssue(ctx, p.projectID, store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: p.validation})
+				taskID = task.ID
 			}
-			if err == nil {
-				_, err = data.ImportIssue(ctx, p.projectID, store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: p.validation})
+			if err == nil && taskID > 0 && raw.Comments > 0 {
+				if err = pollComments(ctx, data, get, taskID, issue); errors.Is(err, errGHLimit) {
+					return err
+				}
 			}
 			if err != nil {
 				log.Printf("GitHub poll project %d issue %d: %v", p.projectID, raw.Number, err)

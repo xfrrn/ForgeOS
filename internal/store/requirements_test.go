@@ -25,7 +25,7 @@ func TestRequirementHistoryIgnoresDelayedPolls(t *testing.T) {
 	observe := func(body, stamp string) {
 		t.Helper()
 		issue.Body, issue.UpdatedAt = body, stamp
-		if err := s.ObserveIssue(ctx, p.ID, issue); err != nil {
+		if _, err := s.ObserveIssue(ctx, p.ID, issue); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -86,7 +86,7 @@ func TestAdoptRequirementAfterTurn(t *testing.T) {
 	}
 	issue := spec.Issue
 	issue.Body = "clarification"
-	if err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
+	if _, err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.AdoptRequirement(ctx, task.ID, 2); !errors.Is(err, ErrConflict) {
@@ -101,7 +101,7 @@ func TestAdoptRequirementAfterTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	issue.Body = "updated requirements"
-	if err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
+	if _, err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.AdoptRequirement(ctx, task.ID, 2); !errors.Is(err, ErrConflict) {

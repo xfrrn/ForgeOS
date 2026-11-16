@@ -16,14 +16,20 @@ type pollFixture struct {
 	importFixture
 	received map[int64]int
 	observed map[int64]int
+	comments []json.RawMessage
 	inbox    []store.Discussion
 }
 
-func (f *pollFixture) ObserveIssue(_ context.Context, _ int64, issue store.Issue) error {
+func (f *pollFixture) ObserveIssue(_ context.Context, _ int64, issue store.Issue) (int64, error) {
 	if f.observed == nil {
 		f.observed = map[int64]int{}
 	}
 	f.observed[issue.Number]++
+	return 0, nil
+}
+
+func (f *pollFixture) RecordComments(_ context.Context, _ int64, _ store.Issue, page []json.RawMessage) error {
+	f.comments = append(f.comments, page...)
 	return nil
 }
 
