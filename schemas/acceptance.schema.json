@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ForgeOS project acceptance rules",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "components"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "minimum_validation": {
+      "enum": [
+        "V1",
+        "V2",
+        "V3",
+        "V4"
+      ]
+    },
+    "components": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "paths",
+          "minimum_validation",
+          "playbooks"
+        ],
+        "properties": {
+          "paths": {
+            "type": "array",
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "playbooks": {
+            "type": "array",
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            }
+          },
+          "minimum_validation": {
+            "enum": [
+              "V1",
+              "V2",
+              "V3",
+              "V4"
+            ]
+          },
+          "manual_acceptance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "required"
+            ],
+            "properties": {
+              "required": {
+                "enum": [
+                  true,
+                  false,
+                  "conditional"
+                ]
+              },
+              "environment": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              }
+            }
+          },
+          "expected_behavior": {
+            "type": "array",
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          }
+        }
+      }
+    }
+  }
+}

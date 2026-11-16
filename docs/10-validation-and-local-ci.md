@@ -44,6 +44,10 @@ Owner 通过 `GET /projects/{id}/validation-plan?commit=<完整 SHA>&level=V3` �
 
 最终等级由任务类型、Git Diff、敏感模块、项目规则和交付目标共同决定。Management Agent 可提高等级，不能降低 Policy Engine 最低要求。
 
+查询项目的 `validation-assessment` 可以在执行前预估固定候选的等级。可提供 `minimum`、`task_type`、`target`、`management_minimum`。结果给出各项最低等级、具体依据、匹配组件、基础和候选 SHA、规则 blob 及最终最大值。查询参数用于评估，不会修改任务。
+
+内置路径规则将文档置于 V1、常规代码置于 V2，integration、e2e、.github、deploy 路径片段置于 V3，auth、authentication、authorization、payment、payments、secrets、migrations 片段和根目录的验证或验收配置置于 V4。组件规则与项目整体最低等级可以进一步提高要求。任务类型 documentation、change、integration、security 分别对应 V1 至 V4；目标 local、pull_request、staging 分别最低 V1、V2、V3。
+
 ## 4. Review Engine
 
 - 独立 Session；

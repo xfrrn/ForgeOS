@@ -44,29 +44,46 @@ func ValidLevel(level string) bool {
 	return level == "V1" || level == "V2" || level == "V3" || level == "V4"
 }
 
-func ReadPlan(ctx context.Context, repo, commit, level string) (Plan, error) {
-	var plan Plan
-	if !FullCommit(commit) || !ValidLevel(level) {
-		return plan, errors.New("provide a full commit and a level V1 through V4")
+func configFile(ctx context.Context, repo, commit, name string) (string, []byte, error) {
+	if !FullCommit(commit) {
+		return "", nil, errors.New("provide a full commit hash")
 	}
 	out, err := localrepo.Git(ctx, repo, "cat-file", "-t", commit)
 	if err != nil || string(out) != "commit\n" {
-		return plan, errors.New("validation revision is not a commit")
+		return "", nil, errors.New("configuration revision is not a commit")
 	}
-	entry, err := localrepo.Git(ctx, repo, "ls-tree", commit, "--", "validation.yaml")
+	entry, err := localrepo.Git(ctx, repo, "ls-tree", commit, "--", name)
+	if err == nil && len(entry) == 0 {
+		return "", nil, nil
+	}
 	fields := strings.Fields(string(entry))
-	if err != nil || len(fields) != 4 || (fields[0] != "100644" && fields[0] != "100755") || fields[1] != "blob" || !fullCommit.MatchString(fields[2]) || fields[3] != "validation.yaml" {
-		return plan, errors.New("commit requires a regular validation.yaml file")
+	if err != nil || len(fields) != 4 || (fields[0] != "100644" && fields[0] != "100755") || fields[1] != "blob" || !fullCommit.MatchString(fields[2]) || fields[3] != name {
+		return "", nil, fmt.Errorf("commit requires a regular %s file", name)
 	}
 	raw, large, err := localrepo.LimitedGit(ctx, repo, schemas.MaxValidationBytes, "cat-file", "blob", fields[2])
 	if err != nil || large {
-		return plan, errors.New("validation.yaml too large or unreadable")
+		return "", nil, fmt.Errorf("%s too large or unreadable", name)
+	}
+	return fields[2], raw, nil
+}
+
+func ReadPlan(ctx context.Context, repo, commit, level string) (Plan, error) {
+	var plan Plan
+	if !ValidLevel(level) {
+		return plan, errors.New("provide a level V1 through V4")
+	}
+	blob, raw, err := configFile(ctx, repo, commit, "validation.yaml")
+	if err != nil {
+		return plan, err
+	}
+	if blob == "" {
+		return plan, errors.New("commit requires a regular validation.yaml file")
 	}
 	cfg, err := schemas.ParseValidation(raw)
 	if err != nil {
 		return plan, fmt.Errorf("invalid validation.yaml: %w", err)
 	}
-	plan = Plan{Commit: commit, ConfigBlob: fields[2], Version: cfg.Version, Level: level, Checks: []PlannedCheck{}, Missing: []string{}}
+	plan = Plan{Commit: commit, ConfigBlob: blob, Version: cfg.Version, Level: level, Checks: []PlannedCheck{}, Missing: []string{}}
 	seen, kinds := map[string]bool{}, map[string]bool{}
 	var required []string
 	for _, l := range levels {

@@ -18,18 +18,21 @@ import (
 //go:embed validation.schema.json
 var schemaJSON []byte
 
-var validationSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
-	const uri = "urn:forgeos:validation:v1"
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaJSON))
-	if err != nil {
-		return nil, err
-	}
-	c := jsonschema.NewCompiler()
-	if err = c.AddResource(uri, doc); err != nil {
-		return nil, err
-	}
-	return c.Compile(uri)
-})
+var validationSchema = cachedSchema("urn:forgeos:validation:v1", schemaJSON)
+
+func cachedSchema(uri string, raw []byte) func() (*jsonschema.Schema, error) {
+	return sync.OnceValues(func() (*jsonschema.Schema, error) {
+		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
+		}
+		c := jsonschema.NewCompiler()
+		if err = c.AddResource(uri, doc); err != nil {
+			return nil, err
+		}
+		return c.Compile(uri)
+	})
+}
 
 type Check struct {
 	Type             string   `json:"type"`
@@ -52,32 +55,36 @@ type Validation struct {
 
 const MaxValidationBytes = 128 << 10
 
-func ParseValidation(raw []byte) (Validation, error) {
-	var config Validation
+func decodeConfig(raw []byte, load func() (*jsonschema.Schema, error), dest any) error {
 	if len(raw) > MaxValidationBytes {
-		return config, errors.New("validation.yaml exceeds 128 KiB")
+		return errors.New("configuration exceeds 128 KiB")
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	var value any
 	if err := dec.Decode(&value); err != nil || dec.Decode(new(any)) != io.EOF {
-		return config, errors.New("expected one YAML document with unique keys")
+		return errors.New("expected one YAML document with unique keys")
 	}
 	doc, err := json.Marshal(value)
 	if err != nil || len(doc) > MaxValidationBytes*4 {
-		return config, errors.New("invalid or oversized expanded YAML document")
+		return errors.New("invalid or oversized expanded YAML document")
 	}
-	schema, err := validationSchema()
+	schema, err := load()
 	if err != nil {
-		return config, err
+		return err
 	}
 	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(doc))
 	if err != nil {
-		return config, err
+		return err
 	}
 	if err = schema.Validate(instance); err != nil {
-		return config, err
+		return err
 	}
-	if err = json.Unmarshal(doc, &config); err != nil {
+	return json.Unmarshal(doc, dest)
+}
+
+func ParseValidation(raw []byte) (Validation, error) {
+	var config Validation
+	if err := decodeConfig(raw, validationSchema, &config); err != nil {
 		return config, err
 	}
 	for name, c := range config.Checks {

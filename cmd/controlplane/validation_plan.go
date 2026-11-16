@@ -31,6 +31,25 @@ func verifyDeclaredChecks(root string) store.CheckVerifier {
 }
 
 func registerValidationPlan(mux *http.ServeMux, data *store.Store, root, owner string, workers workerAccess) {
+	registerProjectRead(mux, "validation-assessment", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+		project, err := data.Project(r.Context(), id)
+		if err != nil {
+			respond(w, 0, nil, err)
+			return
+		}
+		repo, err := localrepo.ResolveRepo(r.Context(), root, project.Path)
+		if err != nil {
+			problem(w, 409, "registered repository unavailable")
+			return
+		}
+		q := r.URL.Query()
+		d, err := validation.Assess(r.Context(), repo, q.Get("base"), q.Get("commit"), validation.Policy{Minimum: q.Get("minimum"), TaskType: q.Get("task_type"), Target: q.Get("target"), Management: q.Get("management_minimum")})
+		if err != nil {
+			problem(w, 422, "cannot assess risk for the supplied revisions, policy or acceptance.yaml")
+			return
+		}
+		respond(w, 200, d, nil)
+	})
 	registerProjectRead(mux, "validation-plan", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		project, err := data.Project(r.Context(), id)
 		if err != nil {
