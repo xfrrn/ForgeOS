@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -27,6 +28,20 @@ type DecisionQuestion struct {
 	Answer       string     `json:"answer,omitempty"`
 	AnsweredBy   string     `json:"answered_by,omitempty"`
 	AnsweredAt   *time.Time `json:"answered_at,omitempty"`
+}
+
+func (s *Store) PendingQuestions(ctx context.Context, before int64) (json.RawMessage, error) {
+	var page json.RawMessage
+	err := s.db.QueryRowContext(ctx, `WITH pending AS (
+		SELECT q.id,q.task_id,t.project_id,q.execution_id,q.commit_sha,q.question,q.evidence,
+		       t.spec->'issue'->>'repository' AS repository,t.spec->'issue'->>'title' AS title
+		FROM decision_questions q JOIN work_items t ON t.id=q.task_id
+		WHERE q.answer IS NULL AND t.status='WAITING_INPUT' AND ($1::bigint=0 OR q.id<$1)
+		ORDER BY q.id DESC LIMIT 21
+	), page AS (SELECT * FROM pending ORDER BY id DESC LIMIT 20)
+	SELECT jsonb_build_object('items',COALESCE(jsonb_agg(to_jsonb(page) ORDER BY id DESC),'[]'),
+		'next_before',CASE WHEN (SELECT count(*) FROM pending)>20 THEN min(id) END) FROM page`, before).Scan(&page)
+	return page, err
 }
 
 func decisionText(s string) bool {

@@ -98,6 +98,10 @@
 .detail-target > span { display: block; margin-bottom: 3px; color: #536a82; font-size: 12px; }
 .detail-target code, .detail-reviews code { display: block; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .detail-accept label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.decision-queue { display: grid; gap: 16px; }
+.decision-queue section { overflow-wrap: anywhere; }
+.decision-queue section h2 { margin-top: 12px; }
+.decision-queue section p { white-space: pre-wrap; }
 .detail-accept textarea {
   display: block; width: 100%; min-height: 75px; box-sizing: border-box; resize: vertical;
   padding: 9px 10px; font: inherit; font-size: 13px; line-height: 1.5; color: inherit;

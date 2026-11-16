@@ -50,6 +50,10 @@ Management Agent 默认不直接修改项目代码、不直接执行任意 Shell
 - 时间；
 - 是否替代旧决策。
 
+Owner 可在工作台的“待答问题”跨项目查看处于 WAITING_INPUT 的候选。每项显示问题、依据、项目、任务、执行号和候选 SHA。填写要处理的答复后点击“提交已填答复”。每题独立记账，成功项回到原候选的 WAITING_ACCEPTANCE，空白项继续等待。响应丢失可保留草稿并重试；若另一会话已写入不同答复，页面展示该答复，保留本次草稿供核对。任务详情可查看原问题、答复、处理角色和时间。
+
+Owner 的 `GET /tasks/decision-questions` 按问题编号倒序返回最多 20 项，使用 `next_before` 作为下一页的 `before` 参数。批量操作沿用每题的 `POST /tasks/{id}/questions/{question}/answer` 与验收检查点。
+
 ## 5. Agent 内部通信
 
 内部协议建议统一 JSON Schema，消息类型包括：
