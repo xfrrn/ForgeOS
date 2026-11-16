@@ -1069,3 +1069,20 @@ PostgreSQL 18 和 Docker 全量回归 139 项通过，零测试跳过。Go 静�
 | 重启控制面，并切换到此前生成的旧版清单 | 已归档的旧证据与首次扫描一致 | 前两版回执重启后逐字段相同。旧版项目清单仍未包含当时没有解析的字段 |
 
 PostgreSQL 18 和 Docker 全量回归 140 项通过，零测试跳过。Go 静态检查、TypeScript 检查与生产构建通过。
+
+分环境密钥需求对应 ForgeOS 提交 `6e51e433ac87e43f8b432d968908e5eca7bc1b22`。
+
+## 专题 01 · 固定提交的本地环境清单与启动验证
+
+验收使用正式控制面、Worker、Chrome、Docker 以及独立 PostgreSQL 16.15 容器。两次运行均通过。下表记录第二次运行，控制面使用 PostgreSQL 18 的独立 schema `startup_04196f07`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 登记本地测试仓库、派发 HEAD 检查，从 Chrome 打开项目配置清单 | 两种环境均能追溯至同一次检查的 Git 提交 | 浏览器展示 Local Mock 与 Integrated 的脚本、端口及探测路径，绑定提交 `592602d4bce5cface58ebfd0aee9726debb97baf` |
+| 在仓库 HEAD 更新后，对上述提交运行 Worker 的 verify-environment，选择 local-mock | 运行原提交脚本，禁用外部网络，就绪后清理容器 | `environment-run-436666246` 使用 none 网络，第一次探测返回 HTTP 204 |
+| 为 local-integrated 配置带项目标签的内部 Docker 网络和数据库，再运行同一入口 | 应用完成真实数据库查询后才就绪 | `environment-run-3398551146` 两次探测后返回 204，PostgreSQL 日志记录了读取预置行的 SELECT |
+| 选择返回重定向的新版本，再将 Integrated 指向错误网络 | 重定向无法通过就绪检查，错误网络在启动前被拒绝 | `environment-run-3494789491` 记录 302 并超时；`environment-run-1326673787` 记录网络不匹配，探测次数为零 |
+| 停止数据库后重跑 Integrated，再检查一个启动脚本立即退出的版本 | 分别记录依赖故障和服务退出 | `environment-run-787047279` 记录 503 并超时；`environment-run-3387302772` 记录就绪前退出 |
+| 比较每次命令的标准输出与本地 run.json，再查询 Docker | 失败也保留回执，所有已创建的启动容器均移除 | 六份 JSON 逐字段相同，已创建的探测容器均清理，验收数据库容器及临时网络已移除 |
+
+PostgreSQL 18 和 Docker 全量回归 142 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。工作台派发及汇总启动检查另行验收。

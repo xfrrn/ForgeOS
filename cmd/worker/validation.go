@@ -125,7 +125,7 @@ func ciSnapshot(ctx context.Context, repo, candidate string) (string, func(), er
 	}, nil
 }
 
-func ciContainerOptions(snapshot string) ([]string, string, error) {
+func sandboxContainerOptions(snapshot, network string) ([]string, string, error) {
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, "", errors.New("cannot allocate validation run")
@@ -137,8 +137,7 @@ func ciContainerOptions(snapshot string) ([]string, string, error) {
 		return nil, "", errors.New("could not prepare CI workspace mount")
 	}
 	fields.Flush()
-	// The candidate is read-only. No host home, credentials, Docker socket or network enter CI.
-	return []string{"--name", name, "--pull=never", "--network=none", "--log-driver=none",
+	return []string{"--name", name, "--pull=never", "--network=" + network, "--log-driver=none",
 		"--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--user=65534:65534",
 		"--pids-limit=256", "--memory=2g", "--cpus=2", "--tmpfs=/tmp:rw,exec,mode=1777",
 		"--mount", strings.TrimSuffix(mount.String(), "\n"), "--workdir=/src", "--env=HOME=/tmp", "--env=GOCACHE=/tmp/go-build",
@@ -162,7 +161,7 @@ func checkGo(ctx context.Context, repo, candidate string) error {
 		return err
 	}
 	defer release()
-	options, name, err := ciContainerOptions(snapshot)
+	options, name, err := sandboxContainerOptions(snapshot, "none")
 	if err != nil {
 		return err
 	}

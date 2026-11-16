@@ -5,6 +5,21 @@
   "required": ["version"],
   "properties": {
     "version": { "const": 1 },
+    "local_environments": {
+      "type": "object",
+      "propertyNames": { "enum": ["local-mock", "local-integrated"] },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start_script", "port", "health_path", "timeout_seconds"],
+        "properties": {
+          "start_script": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "health_path": { "type": "string", "pattern": "^/[A-Za-z0-9._~/\\-]*$", "maxLength": 512 },
+          "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 300 }
+        }
+      }
+    },
     "secret_requirements": {
       "type": "array",
       "uniqueItems": true,

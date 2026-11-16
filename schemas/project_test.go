@@ -21,6 +21,23 @@ func TestProjectHarness(t *testing.T) {
 	}
 }
 
+func TestLocalEnvironmentStartupContract(t *testing.T) {
+	raw := `{"version":1,"local_environments":{"local-mock":{"start_script":"scripts/start mock.sh","port":8080,"health_path":"/health/ready","timeout_seconds":30}}}`
+	cfg, err := ParseProject([]byte(raw))
+	if err != nil || cfg.LocalEnvironments["local-mock"].Port != 8080 {
+		t.Fatal(cfg, err)
+	}
+	for _, edit := range [][2]string{
+		{"local-mock", "production"}, {"scripts/start mock.sh", "../start"}, {"scripts/start mock.sh", "C:/tmp/start"},
+		{"/health/ready", "https://outside.example/"}, {"8080", "65536"}, {"30", "0"},
+		{`"port"`, `"token":"fixture","port"`},
+	} {
+		if _, err := ParseProject([]byte(strings.Replace(raw, edit[0], edit[1], 1))); err == nil {
+			t.Fatalf("accepted %s", edit[1])
+		}
+	}
+}
+
 func TestSecretRequirementsBelongToOneEnvironment(t *testing.T) {
 	base := "version: 1\nsecret_requirements:\n  - {environment: ci-test, name: api-key, risk: S2}\n"
 	config, err := ParseProject([]byte(base + "  - {environment: staging, name: api-key, risk: S3}\n"))

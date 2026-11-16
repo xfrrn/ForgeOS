@@ -304,6 +304,12 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) == 2 && os.Args[1] == "verify-environment" {
+		if err := verifyEnvironment(ctx, os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "review-test-plan" {
 		if err := runTestCoverage(ctx, os.Stdin, os.Stdout); err != nil {
 			log.Fatal(err)
@@ -339,7 +345,7 @@ func main() {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" {
-		log.Fatal("usage: worker [management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan]")
+		log.Fatal("usage: worker [management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {

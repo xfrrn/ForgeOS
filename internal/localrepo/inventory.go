@@ -18,13 +18,14 @@ import (
 )
 
 type InventoryFile struct {
-	Path               string                       `json:"path"`
-	Blob               string                       `json:"blob"`
-	Kind               string                       `json:"kind"`
-	Dependencies       []string                     `json:"dependencies,omitempty"`
-	Scripts            []string                     `json:"scripts,omitempty"`
-	SecretRequirements *[]schemas.SecretRequirement `json:"secret_requirements,omitempty"`
-	Problem            string                       `json:"problem,omitempty"`
+	Path               string                              `json:"path"`
+	Blob               string                              `json:"blob"`
+	Kind               string                              `json:"kind"`
+	Dependencies       []string                            `json:"dependencies,omitempty"`
+	Scripts            []string                            `json:"scripts,omitempty"`
+	SecretRequirements *[]schemas.SecretRequirement        `json:"secret_requirements,omitempty"`
+	LocalEnvironments  map[string]schemas.LocalEnvironment `json:"local_environments,omitempty"`
+	Problem            string                              `json:"problem,omitempty"`
 }
 
 var objectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -130,6 +131,7 @@ func (f *InventoryFile) readProject(ctx context.Context, repo string) error {
 		return nil
 	}
 	f.SecretRequirements = &project.SecretRequirements
+	f.LocalEnvironments = project.LocalEnvironments
 	return nil
 }
 

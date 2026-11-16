@@ -18,6 +18,32 @@ $env:FORGEOS_WORKER_TOKEN = [Convert]::ToHexString([Security.Cryptography.Random
 
 ## 启动与验收
 
+### 验证项目的本地启动环境
+
+项目可在 `project.yaml` 的 `local_environments` 声明 `local-mock`、`local-integrated` 或两者。各环境包含受 Git 跟踪的仓库相对路径 `start_script`、应用监听的 `port`、`health_path` 和 1–300 秒的 `timeout_seconds`。提交脚本和配置后运行工作台的 HEAD 检查，并使用其完整提交号。[配置示例](../schemas/project.yaml.example)
+
+执行节点使用非 root 身份、本地 Docker 引擎及预先准备的 Linux 镜像。设置 `FORGEOS_STARTUP_IMAGE` 为包含应用运行时、`/bin/sh`、`/usr/bin/curl` 和 `/usr/bin/timeout` 的本机镜像。Runner 解析本地镜像 ID，以只读挂载读取提交快照，在容器临时目录运行脚本。脚本可读取 `FORGEOS_LOCAL_ENVIRONMENT` 选择启动方式，并应保持前台运行。Worker 不向容器传入宿主环境变量或 Vault 凭据。
+
+```powershell
+$env:FORGEOS_WORKER_ID = 'local-startup'
+$env:FORGEOS_STARTUP_IMAGE = 'golang:1.26.9-bookworm'
+$request = @{ repo = 'example-project'; commit = (git -C 'D:\projects\example-project' rev-parse HEAD); environment = 'local-mock' }
+$request | ConvertTo-Json -Compress | .\worker.exe verify-environment
+```
+
+Mock 模式只使用容器回环网络。集成模式由操作者创建项目专属的内部 bridge 网络，并连接实际需要的测试依赖。网络标签 `forgeos.project` 为仓库相对于节点 `FORGEOS_REPO_ROOT` 的路径，使用正斜线；`forgeos.environment` 为 `local-integrated`。将网络名称或 ID 配置在 `FORGEOS_STARTUP_NETWORK`。例如：
+
+```powershell
+docker network create --internal --label forgeos.project=example-project --label forgeos.environment=local-integrated example-integrated
+$env:FORGEOS_STARTUP_NETWORK = 'example-integrated'
+$request.environment = 'local-integrated'
+$request | ConvertTo-Json -Compress | .\worker.exe verify-environment
+```
+
+探测请求在应用容器内访问声明的回环端口。2xx 表示就绪，重定向与服务错误持续至截止时间则失败。标准输出和 `FORGEOS_WORKSPACE_ROOT/environment-run-*/run.json` 保存 Worker、提交、配置和脚本 blob、镜像 ID、网络、探测次数、HTTP 状态与容器回收结果。失败返回非零。该入口不发布宿主端口；独立的服务依赖由其操作者管理。
+
+### 从工作台登记仓库
+
 启动服务后，Owner 可从工作台的“项目接入”登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后选择“运行 HEAD 检查”进入任务详情。原 Worker 未上线时任务显示待执行；成功后可核对仓库的完整提交号。如果失败，保留原任务，在项目页选择“重新检查”生成下一次检查。
 
 Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。

@@ -23,6 +23,18 @@ secret_requirements:
     name: queue-service-key
     risk: S2
 
+local_environments:
+  local-mock:
+    start_script: scripts/start-mock.sh
+    port: 8080
+    health_path: /ready
+    timeout_seconds: 30
+  local-integrated:
+    start_script: scripts/start-integrated.sh
+    port: 8080
+    health_path: /ready
+    timeout_seconds: 60
+
 delivery:
   pull_request:
     enabled: true

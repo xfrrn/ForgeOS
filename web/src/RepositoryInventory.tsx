@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Fact, formatTime, type ApiRequest } from './shared'
 
 type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string
+  local_environments?: Record<string, {start_script: string; port: number; health_path: string; timeout_seconds: number}>
   secret_requirements?: { environment: string; name: string; risk: string }[] }
 type Report = { execution_id: number; commit_sha: string; github_origin: string; repository_id?: number; scanned_at: string; files: Source[] }
 const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
@@ -42,6 +43,8 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       <p>Git blob · <code>{f.blob}</code></p>
       {f.dependencies?.length && <p>声明依赖 · {f.dependencies.join('、')}</p>}
       {f.scripts?.map(name => <p key={name}><code>npm run {name}</code></p>)}
+      {f.local_environments && <><h3>本地环境</h3>{Object.entries(f.local_environments).map(([env, config]) =>
+        <p key={env}>{env} · <code>{config.start_script}</code> · <code>127.0.0.1:{config.port}{config.health_path}</code> · {config.timeout_seconds} 秒</p>)}</>}
       {f.secret_requirements && <><h3>声明的密钥需求</h3>{f.secret_requirements.length ? <ul>{f.secret_requirements.map(r =>
         <li key={r.environment + '/' + r.name}>{r.environment} · <code>{r.name}</code> · {r.risk}</li>)}</ul> : <p>此版本未声明密钥需求。</p>}</>}
       {f.problem && <p>{problems[f.problem] || f.problem}</p>}

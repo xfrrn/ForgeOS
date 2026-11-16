@@ -179,7 +179,7 @@ func runCheck(parent context.Context, docker localDocker, image, snapshot, dir s
 		digest := validation.DigestBytes(data)
 		result.LogDigest = &digest
 	}()
-	options, name, err := ciContainerOptions(snapshot)
+	options, name, err := sandboxContainerOptions(snapshot, "none")
 	if err != nil {
 		return
 	}
