@@ -11,7 +11,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
-  test_plan_revision?: number; test_plan_state?: string
+  test_plan_revision?: number; test_plan_state?: string; test_case_state?: string; test_case_attempts?: number; requires_test_plan?: boolean
   commit_status?: { id: number; state: string; context: string; commit: string }
   code_review_state?: 'pending' | 'failed' | 'needs_check' | 'clear'
   id: number; status: string; worker: string; workspace: string; lease_until: string
@@ -273,7 +273,8 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
     {result?.commit && validation?.exit_code === 0 && (attempt.test_plan_revision || (latest && task.status === 'WAITING_ACCEPTANCE')) ?
       <CandidateTestPlans task={task.id} execution={attempt.id} commit={result.commit} latest={attempt.test_plan_revision ?? 0}
-        state={attempt.test_plan_state ?? ''} current={latest && task.status === 'WAITING_ACCEPTANCE'} request={request} refresh={refresh} /> : null}
+        state={attempt.test_plan_state ?? ''} attempts={attempt.test_case_attempts ?? 0} required={Boolean(attempt.requires_test_plan)}
+        current={latest && task.status === 'WAITING_ACCEPTANCE'} request={request} refresh={refresh} /> : null}
     {task.kind === 'codex_issue' && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&
       <CandidateReview task={task} attempt={attempt} request={request} refresh={refresh} current={latest && task.status === 'WAITING_ACCEPTANCE'} />}
     </div>
@@ -324,7 +325,8 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, revie
     <label htmlFor="acceptance-note">验收说明</label>
     <textarea id="acceptance-note" ref={noteField} value={note} disabled={busy} placeholder="退回时请说明需要修改的内容" onChange={e => { setNote(e.target.value); setError('') }} />
     {error && <p className="detail-problem" role="alert">{error}</p>}
-    {reviewPending && <p role="status">请先在执行记录中完成独立代码审查和发现核对。</p>}
+    {reviewPending && <p role="status">{(attempt.requires_test_plan || attempt.test_plan_state) && attempt.test_case_state !== 'passed'
+      ? '请先完成此候选的测试计划、覆盖审查和用例实测。' : '请先在执行记录中完成独立代码审查和发现核对。'}</p>}
     <div className="detail-actions"><button className="button primary" disabled={busy || locked || reviewPending} onClick={() => decide('approve')}><Icon name="Check" size={16} />通过验收</button>
       <button className="button" disabled={busy || locked} onClick={() => decide('reject')}>退回修改</button></div>
     {busy && <p role="status">正在提交验收决定…</p>}
@@ -474,7 +476,7 @@ function Detail({ id, request, onChanged }: Props) {
         {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
         {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)}
           reviewPending={(Boolean(task.requires_code_review || last.code_review_state) && last.code_review_state !== 'clear') ||
-            Boolean(last.test_plan_state && last.test_plan_state !== 'covered')} />}
+            Boolean((last.test_plan_state || last.requires_test_plan) && last.test_case_state !== 'passed')} />}
         {task.spec && <section className="panel detail-card"><h2><Icon name="GitPullRequest" size={18} />GitHub 交付</h2>
           {delivery ? <><div className="detail-delivery-state"><span className={'detail-state-dot ' + (delivery.state === 'DONE' ? 'complete' : '')} />{deliveryStates[delivery.state] || delivery.state}</div>
             <dl className="detail-facts">{delivery.pr_number && <Fact label="Pull request"><OutLink href={delivery.pr_url}>PR #{delivery.pr_number}</OutLink></Fact>}

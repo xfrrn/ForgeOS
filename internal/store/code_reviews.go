@@ -164,13 +164,13 @@ const codeReviewState = `CASE WHEN r.execution_id IS NULL THEN ''
 		WHERE (f->>'blocking')::boolean OR NOT (f->>'evidence_verified')::boolean) THEN 'needs_check'
 	ELSE 'clear' END`
 
-func canApproveReview(ctx context.Context, tx *sql.Tx, task, execution int64) error {
+func canApproveReview(ctx context.Context, tx *sql.Tx, task, execution int64, requiresPlan bool) error {
 	var allowed bool
 	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.execution_id IS NULL THEN NOT p.requires_code_review
 		ELSE (`+codeReviewState+`)='clear'
-		END AND COALESCE((SELECT state='covered' FROM candidate_test_plan_receipts WHERE execution_id=$2 ORDER BY revision DESC LIMIT 1),true)
+		END AND COALESCE((SELECT execution_state='passed' FROM candidate_test_plan_status WHERE execution_id=$2 ORDER BY revision DESC LIMIT 1),NOT $3)
 		FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN code_reviews r ON r.task_id=t.id AND r.execution_id=$2
-		WHERE t.id=$1 FOR SHARE OF p`, task, execution).Scan(&allowed)
+		WHERE t.id=$1 FOR SHARE OF p`, task, execution, requiresPlan).Scan(&allowed)
 	if err != nil {
 		return err
 	}

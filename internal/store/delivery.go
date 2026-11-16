@@ -95,7 +95,7 @@ func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, d
 		return Task{}, ErrConflict
 	}
 	if decision == "approve" {
-		if err = canApproveReview(ctx, tx, taskID, executionID); err != nil {
+		if err = canApproveReview(ctx, tx, taskID, executionID, result.manualPlanRequired()); err != nil {
 			return Task{}, err
 		}
 	}

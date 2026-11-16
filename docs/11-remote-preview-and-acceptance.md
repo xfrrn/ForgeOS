@@ -88,6 +88,14 @@ Test Agent 在独立只读会话中读取固定差异、基础规则、验收标
 
 Owner 接口 `POST /tasks/{id}/test-plans` 接受 `execution_id`、`commit`、`previous_revision` 及可选的 `criteria`。首次提交使用 0。同一请求重试返回原修订；需要重试失败作业或提供澄清时，以当前修订号申请新版本。按 `GET /tasks/{id}/test-plans?execution_id=…&revision=…` 读取历史，省略 revision 返回最新版本。请求计划后，当前修订的覆盖审查必须通过才能批准候选；退回候选仍可用。工作台上的“待执行”表示计划尚未提供用例运行证据。
 
+### 记录用例实测
+
+组件规则要求人工验收，或要求根据条件决定是否人工验收时，控制面要求先生成计划。申请过计划的候选在最新修订通过覆盖审查后，还需每个用例的最近一次实测都通过，才能批准。修订和执行的历史证据保留供复查。
+
+Owner 在任务的测试计划内展开 human 用例，点击“记录人工实测”，填写实际操作、观察结果和证据。runner 用例由获该项目授权的具名 Worker 通过 `POST /internal/projects/{project}/tasks/{id}/test-results` 提交。身份取自已认证入口。Owner 表单使用 `POST /tasks/{id}/test-results`。
+
+两个入口都需要 `execution_id`、`revision`、`commit`、`plan_sha256`、`case_id`、`previous_attempt`、`operations`、`actual_result`、`evidence` 和 `result`。操作和证据逐条填写。结果可为 passed、failed 或 blocked。首次回报的 previous_attempt 为 0，复测时填写该用例最近一次实测序号。重复发送相同回报返回已有结果。任务详情可展开查看每次实测的身份、时间、操作、观察及证据。
+
 ## 5. 远程预览
 
 Preview 必须绑定：

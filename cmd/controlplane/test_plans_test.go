@@ -101,5 +101,23 @@ func TestCandidatePlanRolesAndRevisions(t *testing.T) {
 	coverage.Digest = original
 	must(data.FinishTestPlan(ctx, project.ID, "management", v))
 	must(data.FinishTestPlan(ctx, project.ID, "management", v))
+	conflict(approve())
+	caseResult := store.TestCaseResult{Execution: dev.ExecutionID, Revision: 2, Commit: sha, PlanDigest: original, Case: "TC-001", Result: "blocked", Operations: []string{"Open guide.md"}, Actual: "No review account available", Evidence: []string{"Test fixture observation"}}
+	record := func(tester, actor string) error {
+		_, err := data.RecordTestCase(ctx, task.ID, project.ID, tester, actor, caseResult)
+		return err
+	}
+	conflict(record("runner", "node"))
+	must(record("human", "owner"))
+	must(record("human", "owner"))
+	conflict(approve())
+	caseResult.Result, caseResult.Actual = "passed", "Candidate contains Read the guide."
+	conflict(record("human", "owner"))
+	caseResult.Previous = 1
+	caseResult.Commit = base
+	conflict(record("human", "owner"))
+	caseResult.Commit = sha
+	must(record("human", "owner"))
 	must(approve())
+	must(record("human", "owner"))
 }

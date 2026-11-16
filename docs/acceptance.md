@@ -11,7 +11,7 @@
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
 | 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。 | 已验收 Owner 发起和回答的验收检查点。角色分级、运行中 Harness 请求与恢复、需求修订和事件合并待实现与验收。 |
-| 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经 Issue 风险分级、控制面复算、页面验收和远端交付。Goal 34 的 Management 审核将文档子项提升到 V4。项目规则可以引用全局验收方法。 | 测试计划、相应的覆盖审查与执行证据待补齐与验收。 |
+| 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经风险分级后交付。Goal 34 的 Management 审核将子项提升至 V4。beta #17 从全局方法生成测试计划、澄清并复审，两项用例实测通过后交付。 | 通过上述候选场景。预览和反馈见下一行。 |
 | 三 · 预览、批注与知识 | 现有反馈可绑定执行和候选 SHA。 | Tailscale/Caddy、浏览器元素/截图/录屏、知识来源与决策索引待实现与验收。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
 | 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。 | 另一种 Harness 或节点、资源调度、能力注册、备份、压力与节点失联验收待完成。 |
@@ -53,7 +53,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与隔离恢复、Go 控制面只查元数据 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`，状态接口证据见下文 | Secret Broker、按执行受控使用与业务审计 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`，Management 提级见下文 | 运行管理和归档保留策略 |
-| 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题；原生 Test Agent 从项目规则和全局方法生成用例或澄清 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`，测试计划见下文 | 任务内测试计划、覆盖审查、用例执行证据、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
+| 11 预览与人工验收 | Chrome 核对候选、退回、批准与答疑。Test Agent 生成用例，Management 审核覆盖。工作项归档修订与逐次实测，批准检查最新结果。 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`、`7565fa6`、`e71b7c8`、`978d184`，用例实测见下文 | Preview Manager、Tailscale/Caddy、页面批注/截图/录屏与反馈分类；外部设备待验收 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付 | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5` | Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
 | 14 部署与运维 | Windows 主机、Docker Linux 引擎、Ubuntu systemd 服务重启和再次派发、PostgreSQL 恢复至空实例并逐项比对 | `1a17822`、`32c0fa0`、`bd1c734`，数据库证据见下文 | 私网访问、资源预算、OpenBao、工件和工作区备份恢复 |
@@ -444,3 +444,16 @@ Management 提高计划验证下限对应 ForgeOS 提交 `0420f455c76949ddb9d524
 | 在 Chrome 生成测试计划，附加“应该很快”的标准。尝试普通 Worker 领取 Test Agent 作业、使用错误 SHA、重发原请求并尝试直接批准候选 | 身份与候选必须匹配，重发复用修订，覆盖未通过时不能批准 | 错角色 401，错 SHA 与批准请求均为 409，原请求返回同一修订。Test Agent 会话 `01a1e41e-b9b4-7dd3-86fb-032cfd20532c` 和 Management 会话 `01a1e41f-0bb7-7a63-9d69-88a916166c7f` 对修订 1 返回 needs_clarification |
 | 通过 Chrome 将补充标准明确为两种容量输入和对应布尔结果，生成修订 2；阅读审查、翻回修订 1，并重启控制面 | 新修订保留原始 Issue，独立生成与审核；两个版本均可复查 | 两个新会话分别为 `01a1e41f-5855-7ea1-b352-1087a77f273f` 和 `01a1e41f-ce12-7741-be2d-3bc561206adc`。第二版 covered，两项用例仍为 pending，计划摘要 `359a406bbb3a8c0565e41a600183684196b069d8556a3ea72e7d2b6fa34bd47b`。重启前后两个完整回执分别相等 |
 | 在 PostgreSQL 中模拟并发领取、修订后的迟到结果、其他项目身份、开发会话冒充 Test Agent、伪造覆盖摘要及重复上报 | 只接收当前版本、正确身份和匹配计划的结果；重试不得重复派发 | `TestCandidatePlanRolesAndRevisions` 通过。生成及覆盖审查期间批准均返回冲突。覆盖通过后恢复批准入口 |
+
+工作项内计划与审查对应 ForgeOS 提交 `978d1849db027f2af78a7b4e59491465dd45c267`。该版 PostgreSQL 与 Docker 回归有 92 项通过。以下实测在此基础上新增了逐用例的批准条件。
+
+## 专题 11 · 冻结候选的用例执行与交付
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 beta #17 的执行 30、修订 2 通过覆盖审查后直接批准；以错误项目、错误 SHA 或 human 身份上报 runner 用例 | 拒绝提前批准和错误来源 | 提前批准 409、其他项目 403、错误 SHA 与错误用例身份均为 409 |
+| 具名项目节点 case-runner-beta 在固定候选检查变更文件、队列实现和文档，运行 `go test -count=1 -v -run 'TestCanEnqueue/(empty_queue\|zero_capacity)' ./...`。先在基础版本读取示例，再在正确候选复测 | 两项用例均有实际操作和可复核的证据。缺少文档时记录阻塞，复测保留前次结果 | TC-001 通过；TC-002 先受阻后通过。Chrome 展开第 2 次实测读到文档 blob `936801e8bb1b8e31fb5e6377842d240bf398438d`。重启控制面、重放同一回报，两项共三条记录 |
+| 在 Chrome 批准该候选，等待 GitHub 必需检查并读取 Issue 与 PR | 全部用例通过后才可批准和交付 | 候选 `3f20ee3a6a1cf53c37fe90d9b326cc5b992f49de` 合并为 `218f96c03ea383724ccd5915ce16d602758ff9d6`，Issue 已关闭。[PR #18](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/18) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43859752697) |
+| 在单独的 PostgreSQL schema 中登记本地仓库及测试 Issue，运行真实 Worker、Docker、Test Agent 与 Management。项目规则要求 Owner 在 Chrome 检查 docs/owner-check.md。打开差异核对新增的“Queue is empty.”，经人工实测表单逐例填写操作、观察和文件行号 | 无计划时批准返回冲突，覆盖通过后仍须采证，提交两项结果后可以批准 | 候选 `e87782520198c8d974fd9dc149f1a734203ac7e3`，计划摘要 `c7d1b423e08e0f0845b29bfb77a4bbda901af4ddb2f0eb90a50c4ce03d3a989c`。TC-001 和 TC-002 均记录 actor=owner、tester=human。批准返回 ACCEPTED。此次通过 Playwright 操作本机 Chrome 的 Owner 入口 |
+
+该版本启用 PostgreSQL 和 Docker 运行 `go test -count=1 -p 1 -json ./...`，92 项通过、零跳过。`go vet ./...`、前端生产构建通过。

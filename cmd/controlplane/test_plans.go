@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,35 @@ import (
 )
 
 func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manager string, workers workerAccess) error {
+	record := func(w http.ResponseWriter, r *http.Request, task, project int64, tester, actor string) {
+		var body store.TestCaseResult
+		if !decodeLimited(w, r, &body, 128<<10) {
+			return
+		}
+		receipt, err := data.RecordTestCase(r.Context(), task, project, tester, actor, body)
+		respond(w, 200, receipt, err)
+	}
+	mux.HandleFunc("POST /tasks/{id}/test-results", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		if id, ok := pathID(w, r); ok {
+			record(w, r, id, 0, "human", "owner")
+		}
+	}))
+	mux.HandleFunc("POST /internal/projects/{project}/tasks/{id}/test-results", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		project, err := strconv.ParseInt(r.PathValue("project"), 10, 64)
+		if err != nil || project < 1 {
+			problem(w, 400, "invalid project")
+			return
+		}
+		if grant.id == "" || !slices.Contains(grant.projects, project) {
+			problem(w, 403, "project-scoped runner required")
+			return
+		}
+		record(w, r, id, project, "runner", grant.id)
+	}))
 	mux.HandleFunc("POST /tasks/{id}/test-plans", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var req struct {

@@ -111,7 +111,9 @@ func (s *Store) RequestTestPlan(ctx context.Context, root string, task, executio
 
 func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revision int) (json.RawMessage, error) {
 	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM candidate_test_plan_receipts r WHERE task_id=$1 AND execution_id=$2 AND ($3=0 OR revision=$3) ORDER BY revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
+	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r)||jsonb_build_object('case_results',COALESCE(
+		(SELECT jsonb_agg(to_jsonb(c) ORDER BY c.case_id,c.attempt) FROM candidate_test_case_results c WHERE c.plan_id=r.id),'[]'))
+		FROM candidate_test_plan_status r WHERE task_id=$1 AND execution_id=$2 AND ($3=0 OR revision=$3) ORDER BY revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
