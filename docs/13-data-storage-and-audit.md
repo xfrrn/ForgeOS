@@ -21,7 +21,7 @@ SELECT execution_id, task_id, workspace, claimed_at, buffered_at, settled_at,
 FROM attempts ORDER BY claimed_at, execution_id;
 ```
 
-`buffered_at` 有值、`settled_at` 为空表示仍待确认。结果冲突时 `outcome` 为 `conflict`，可在该执行行读取 `conflicting_result`。PostgreSQL 中的正式任务状态与 Owner 决定保持有效。
+`buffered_at` 有值、`settled_at` 为空表示仍待确认。结果冲突时 `outcome` 为 `conflict`，可在该执行行读取 `conflicting_result`。PostgreSQL 中的正式任务状态与 Owner 决定保持有效。更换状态磁盘时，保留源文件名及原身份，将校验过的 SQLite 快照放入新的私有状态目录。[备份及补报演练](14-deployment-and-operations.md#备份和恢复-worker-的-sqlite-日志)
 
 查询原生会话及同一次执行经历的 Claude 或 Codex 进程：
 

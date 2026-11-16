@@ -240,6 +240,40 @@ FORGEOS_WORKSPACE_ROOT="$restored_workspace_root" worker verify-ci-run < "$backu
 
 核对程序先比对运行目录的 `run.json` 与输入回执，再检查每个登记的日志、报告和产物是否为普通文件、长度及 SHA-256 是否一致。成功时输出运行编号、Runner、执行号、候选 SHA 和已核对的文件数。退出非零时，从独立备份恢复相应文件后重新核对。老版本回执可继续查看；缺少日志摘要时，日志完整性保持待验收。用随运行目录保存的 `run.json` 作为唯一依据无法辨别目录与回执一并被替换的情况。
 
+### 备份和恢复 Worker 的 SQLite 日志
+
+在暂停派发的维护窗口中，先让活动的 Harness 和 CI 写完结果，保留尚未送达或尚未确认的回执。停止源 Worker 后，配套备份控制面数据库、项目克隆和工作区。SQLite 也支持在 Worker 运行时读取一致快照；与 PostgreSQL 配套恢复时，需要记录两个快照之间实际送达了哪些回报。恢复时只有一台 Worker 使用原节点身份。
+
+使用 SQLite CLI。每个控制面地址和 Worker ID 有一份独立的 SQLite 文件，文件名是对“去除末尾斜线的 API 地址、一个零字节、Worker ID”计算的 SHA-256 加 `.sqlite`。从源服务配置核对这两项及状态目录。以下示例备份一个身份；存在多份日志时分别保留各自原始文件名。归档中尚未确认的回执含执行租约，使用仅备份身份可读的私有存储。服务认证材料按原有权限单独配置。
+
+```sh
+set -eu
+umask 077
+# source_journal 是原状态目录下的具体 .sqlite 文件。backup_dir 已存放同批 forgeos.dump。
+receipt_dir=$(mktemp -d "$backup_dir/worker-XXXXXXXX")
+journal_name=$(basename "$source_journal")
+(cd "$receipt_dir" && sqlite3 -bail -readonly "$source_journal" "VACUUM INTO 'worker.sqlite';")
+test "$(sqlite3 -bail -readonly "$receipt_dir/worker.sqlite" 'PRAGMA integrity_check;')" = ok
+printf '%s\n' "$journal_name" > "$receipt_dir/original-name"
+(cd "$receipt_dir" && sha256sum worker.sqlite original-name ../forgeos.dump > SHA256SUMS)
+```
+
+将这份校验清单独立保管。隔离演练先恢复配套的 PostgreSQL 数据库，关闭真实交付及轮询，保留原控制面 URL 和 Worker ID。以 Worker 服务账号在私有磁盘创建新的状态目录，位于项目克隆和工作区之外。
+
+```sh
+set -eu
+umask 077
+(cd "$receipt_dir" && sha256sum -c SHA256SUMS)
+# api 与 worker_id 按源服务配置填写。先核对原文件名对应当前身份。
+journal_name=$(printf '%s\0%s' "${api%/}" "$worker_id" | sha256sum | cut -d' ' -f1).sqlite
+test "$(cat "$receipt_dir/original-name")" = "$journal_name"
+state_dir=$(mktemp -d "$RESTORE_ROOT/worker-state-XXXXXXXX")
+install -m 0600 "$receipt_dir/worker.sqlite" "$state_dir/$journal_name"
+test "$(sqlite3 -bail -readonly "$state_dir/$journal_name" 'PRAGMA integrity_check;')" = ok
+```
+
+将恢复服务的 `FORGEOS_WORKER_STATE_DIR` 指向 `state_dir`。启动后从 Owner 任务页核对原执行号、工作区、回执与事件，并在新 SQLite 文件中核对 `outcome`、`settled_at` 以及 `report IS NULL`。正常补报和已送达的重复回报都应为 confirmed；Owner 已放弃的执行应保留 conflict 和脱去租约的原结果。核对活动进程、会话时，备份中的 PID 仅是源节点上的历史记录。[本地日志查询](13-data-storage-and-audit.md#worker-执行恢复日志)
+
 ## 7. 不属于第一版的内容
 
 - Kubernetes；
