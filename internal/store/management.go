@@ -9,13 +9,14 @@ import (
 )
 
 type ManagementJob struct {
-	TaskID       int64     `json:"task_id"`
-	ProjectID    int64     `json:"project_id"`
-	Revision     int       `json:"revision"`
-	Lease        string    `json:"lease"`
-	MinimumLevel string    `json:"minimum_level"`
-	Spec         IssueSpec `json:"spec"`
-	Plan         Plan      `json:"plan"`
+	Share        *ShareReviewInput `json:"share,omitempty"`
+	TaskID       int64             `json:"task_id"`
+	ProjectID    int64             `json:"project_id"`
+	Revision     int               `json:"revision"`
+	Lease        string            `json:"lease"`
+	MinimumLevel string            `json:"minimum_level"`
+	Spec         IssueSpec         `json:"spec"`
+	Plan         Plan              `json:"plan"`
 }
 
 type ManagementReview struct {
@@ -77,11 +78,18 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64) (*Manageme
 	return &job, nil
 }
 
-func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, revision int, lease string, review ManagementReview) error {
+func (review ManagementReview) validate() error {
 	if !decisionLevel(review.Level) || (review.Verdict != "approve" && review.Verdict != "revise" && review.Verdict != "needs_owner") ||
 		strings.TrimSpace(review.Rationale) == "" || len(review.Rationale) > 4096 || strings.TrimSpace(review.Evidence) == "" || len(review.Evidence) > 4096 ||
 		review.SessionID == "" || len(review.SessionID) > 128 || strings.Trim(review.SessionID, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" || review.EffectiveLevel != "" {
 		return ErrConflict
+	}
+	return nil
+}
+
+func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, revision int, lease string, review ManagementReview) error {
+	if err := review.validate(); err != nil {
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

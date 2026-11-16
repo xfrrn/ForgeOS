@@ -25,6 +25,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	registerHistory(mux, data, owner, workers)
 	registerDecisions(mux, data, owner, workers)
 	registerMaterials(mux, data, owner, workers)
+	registerShares(mux, data, owner, workers)
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
