@@ -37,7 +37,7 @@ func AnalysisSources(ctx context.Context, repo string, files []InventoryFile) (A
 	out := AnalysisInput{Sources: []AnalysisSource{}}
 	left := 64 << 10
 	for _, f := range ordered {
-		if f.Kind != "guide" && f.Kind != "go" && f.Kind != "node" && f.Kind != "composer" && f.Kind != "python" && f.Kind != "cargo" && f.Kind != "maven" && f.Kind != "ruby" && f.Kind != "ruby-lock" && f.Kind != "manifest" {
+		if f.Kind != "guide" && f.Kind != "go" && f.Kind != "node" && f.Kind != "composer" && f.Kind != "python" && f.Kind != "cargo" && f.Kind != "maven" && f.Kind != "ruby" && f.Kind != "ruby-lock" && f.Kind != "gradle-catalog" && f.Kind != "manifest" {
 			continue
 		}
 		if left == 0 || len(out.Sources) == 48 {
@@ -66,6 +66,12 @@ func AnalysisSources(ctx context.Context, repo string, files []InventoryFile) (A
 			}
 			if f.Kind == "ruby" && (f.Problem == "dynamic_ruby" || f.UnresolvedInputs > 0) {
 				lines = append(lines, "additional Ruby dependency declarations unresolved")
+			}
+			for _, alias := range slices.Sorted(maps.Keys(f.CatalogLibraries)) {
+				lines = append(lines, "catalog library: "+alias+" = "+f.CatalogLibraries[alias])
+			}
+			for _, alias := range slices.Sorted(maps.Keys(f.CatalogBundles)) {
+				lines = append(lines, "catalog bundle: "+alias+" = "+strings.Join(f.CatalogBundles[alias], ", "))
 			}
 			for _, name := range f.WorkspaceDependencies {
 				lines = append(lines, "workspace dependency: "+name)

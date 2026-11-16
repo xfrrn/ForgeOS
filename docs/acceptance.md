@@ -1397,3 +1397,15 @@ PostgreSQL 18 测试 schema 为 `ruby_0a2dc902`。原生对照在隔离 Docker �
 | 改成 counter-next，在项目页检查新 HEAD 并归档；移开克隆、重启控制面，从 Chrome 依次打开两份报告 | 新任务读取新版本，旧回执保持原样，离线仍可核对 | 任务 #2 的 `84656de1c17d3c718b909eb7a71178e73c86ef7e` 对应 counter-next、json。离线两条任务的工作台和归档 JSON 分别恢复各自的原始结果 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 160 项通过，零跳过。Go vet、TypeScript 检查和 Web 生产构建通过。
+
+### 专题 01 · Gradle 版本目录
+
+在独立 Gradle 用户目录运行 Gradle 8.14.3、Java 21 的离线模型任务 `probeCatalog`，从 VersionCatalogsExtension 读取三个库别名和一个组合，并从 implementation 配置读取项目实际声明。ForgeOS 经正式 Worker、PostgreSQL 18 和 Chrome 完成同一提交的初始化。最终测试 schema 为 `gradle_bfe6ac64`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 展开初版的 gradle/libs.versions.toml，逐项核对原生 libraryAliases 和 bundleAliases | 标明模块坐标，保留组合成员顺序及重复项 | 提交 `62374ec815863b73d973fb78c4723f1d968e2cb2` 中，core.api 对应 example.core:api，core.kit 按 util.lib、core.api、util.lib 排列，与原生模型一致。optional 存在于目录，在实际 implementation 配置中没有出现。指向未定义成员的另一份目录标为无效 |
+| 从工作台归档并申请 Management 归纳，再修改目录，在项目页检查新 HEAD | 每个别名和组合能追溯到本次的 blob；后续提交独立归档 | Management 输入包含已核对的库和组合；第二次检查 `23c24c6150c1c4bb31addb3d2f10a824935a612c` 显示 example.core:next。原生模型、工作台与归档 JSON 一致 |
+| 移开克隆并重启控制面，从两个任务回读清单和初始化报告 | 两版均从数据库还原 | Chrome 和归档分别显示 example.core:api 与 example.core:next，原报告未随新版本变化 |
+
+本项开发期间，启用 PostgreSQL 18 和 Docker 的全量 Go 回归 161 项通过，零跳过。最终版本对别名中的横杠、下划线和点作同样的正规化，并以 Gradle 的实际版本引用及完整 localrepo 包测试复验。Go vet、TypeScript 检查和 Web 生产构建通过。

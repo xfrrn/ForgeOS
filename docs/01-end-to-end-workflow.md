@@ -46,6 +46,8 @@ Maven 清单从固定提交的 `pom.xml` 读取依赖坐标。若子项目的相
 
 Ruby 项目可分别展开 `Gemfile` 与 `Gemfile.lock`，也支持 Bundler 的 `gems.rb` 和 `gems.locked`。前者显示普通字面量 gem 声明，包括 group、platforms 和 path 块中的包名；后者只显示 DEPENDENCIES 段的直接依赖。每份来源对应本次检查的独立 Git blob。对含 Ruby 表达式、多行字符串或其他无法静态识别语句的 Gemfile，报告标记未解析；已有锁文件仍可单独查阅。gemspec 与 eval_gemfile 记为额外的未解析来源。扫描不运行项目 Ruby 代码，Management 取得包名和解析状态，私有源地址及 path 参数不会进入摘要。
 
+Gradle 的 `*.versions.toml` 在清单中作为版本目录列出。展开文件可查看库别名、模块坐标，以及 bundle 的成员顺序；工作台和 Management 都保留各自来源的 Git blob。目录里可有尚未被构建引用的库，模块是否实际使用还要对照构建脚本。未定义的 bundle 成员会使此目录标为无效。[Gradle 版本目录](https://docs.gradle.org/8.14.3/userguide/version_catalogs.html)
+
 Owner 用 `POST /tasks/{id}/repository-inventory` 生成或复用清单，`GET` 读取归档。首次扫描需要本机克隆仍有对应提交，归档随项目数据库保存。无效或过大的清单会在对应条目标明原因。整棵树的 Git 列表上限为 16 MiB，最多归档 2000 个匹配文件；解析单个包清单最多读取 256 KiB，每次累计 8 MiB。符号链接、子模块、vendor 和 node_modules 目录不作为初始化输入。依赖声明与脚本名称仅作发现依据，启动及测试结果另有实际执行回执。
 
 需要声明项目密钥时，将环境、名称和预期风险写入根配置的 `secret_requirements`。扫描结果附在该文件的条目中。实际元数据登记与执行授权见[密钥需求和授权](09-security-and-secrets.md#项目声明的需求)。

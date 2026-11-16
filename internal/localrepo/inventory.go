@@ -18,6 +18,8 @@ import (
 )
 
 type InventoryFile struct {
+	CatalogLibraries      map[string]string                   `json:"catalog_libraries,omitempty"`
+	CatalogBundles        map[string][]string                 `json:"catalog_bundles,omitempty"`
 	ManagedDependencies   []string                            `json:"managed_dependencies,omitempty"`
 	BOMImports            []string                            `json:"bom_imports,omitempty"`
 	ParentSources         []ManifestSource                    `json:"parent_sources,omitempty"`
@@ -42,7 +44,11 @@ var composerName = regexp.MustCompile(`^(?:[a-z0-9]+(?:[_.-][a-z0-9]+)*/[a-z0-9]
 var scriptName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`)
 
 func inventoryKind(file string) string {
-	switch strings.ToLower(path.Base(file)) {
+	name := strings.ToLower(path.Base(file))
+	if strings.HasSuffix(name, ".versions.toml") {
+		return "gradle-catalog"
+	}
+	switch name {
 	case "readme", "readme.md", "readme.rst", "agents.md", "contributing.md", "file_index.md":
 		return "guide"
 	case "go.mod":
@@ -118,7 +124,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" || kind == "ruby" || kind == "ruby-lock" {
+		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" || kind == "ruby" || kind == "ruby-lock" || kind == "gradle-catalog" {
 			if kind == "cargo" {
 				cargo[file] = nil
 			}
@@ -180,6 +186,12 @@ func (f *InventoryFile) readProject(ctx context.Context, repo string) error {
 
 func (f *InventoryFile) readManifest(data []byte) {
 	deps := map[string]bool{}
+	if f.Kind == "gradle-catalog" {
+		if !f.readGradleCatalog(data) {
+			f.Problem = "invalid_manifest"
+		}
+		return
+	}
 	if f.Kind == "go" {
 		m, err := modfile.ParseLax(f.Path, data, nil)
 		if err != nil || m.Module == nil {
