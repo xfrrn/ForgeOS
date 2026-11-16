@@ -42,6 +42,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	}))
 	registerCheckpoints(mux, data, owner, workers)
 	registerHistory(mux, data, owner, workers)
+	registerRepositoryInventory(mux, data, root, owner)
 	registerValidationPlan(mux, data, root, owner, workers)
 	registerCIFiles(mux, data, owner, workers)
 	registerDecisions(mux, data, owner, workers)

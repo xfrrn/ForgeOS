@@ -51,7 +51,7 @@ func (s *Store) ProjectCheck(ctx context.Context, project, retry int64) (Task, e
 	}
 	if retry != 0 {
 		var belongs bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM work_items WHERE id=$1 AND project_id=$2 AND kind='git_head' AND status='FAILED')`, retry, project).Scan(&belongs); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM work_items WHERE id=$1 AND project_id=$2 AND kind='git_head' AND status IN ('FAILED','DONE'))`, retry, project).Scan(&belongs); err != nil {
 			return Task{}, err
 		}
 		if !belongs {

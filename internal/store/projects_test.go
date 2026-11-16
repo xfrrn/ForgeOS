@@ -62,4 +62,14 @@ func TestProjectCheckReplaysAcrossSessions(t *testing.T) {
 	if err != nil || len(projects) != 1 || projects[0].CheckID != second || projects[0].CheckStatus != "READY" {
 		t.Fatal(projects, err)
 	}
+	j, err = s.Claim(ctx, "worker", t.TempDir())
+	if err != nil || j == nil || j.TaskID != second {
+		t.Fatal("missing second check", err)
+	}
+	if err := s.Complete(ctx, j.ExecutionID, j.LeaseToken, Result{Commit: "1234567890123456789012345678901234567890"}); err != nil {
+		t.Fatal(err)
+	}
+	if third := pair(second); third == second {
+		t.Fatal("cannot check the new HEAD")
+	}
 }

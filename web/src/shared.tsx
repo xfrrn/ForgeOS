@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import {
   Activity, AlertCircle, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight,
   Circle, ClipboardCheck, ExternalLink, FileCode2, GitBranch, GitPullRequest,
@@ -69,4 +70,8 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
     if (format === 'blob') return await response.blob() as T
     return response.status === 204 ? undefined as T : await response.json() as T
   }
+}
+
+export function Fact({ label, children, code = false }: { label: string; children: ReactNode; code?: boolean }) {
+  return <div className="detail-fact"><dt>{label}</dt><dd className={code ? 'mono' : undefined}>{children}</dd></div>
 }

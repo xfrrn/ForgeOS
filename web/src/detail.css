@@ -139,3 +139,6 @@
   .detail-subtitle > .detail-refresh { margin-left: 0; }
   .detail-fact { grid-template-columns: 72px minmax(0, 1fr); gap: 6px; }
 }
+.inventory-file { padding: 9px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.inventory-file summary { cursor: pointer; }
+.inventory-file p { font-size: 13px; margin: 6px 0; }

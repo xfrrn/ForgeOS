@@ -22,6 +22,8 @@ $env:FORGEOS_WORKER_TOKEN = [Convert]::ToHexString([Security.Cryptography.Random
 
 Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。
 
+项目更新后，可在成功检查的项目行选择“检查当前 HEAD”，也可以使用同一 API 提交已完成的检查编号。每次检查都可以按独立任务编号查看当时的仓库清单。
+
 在同一个 PowerShell 中执行以下命令，两个子进程会继承各自需要的配置。默认控制面地址为 `http://127.0.0.1:8080`。若端口已占用，可在启动前同时设置 `FORGEOS_LISTEN_ADDR`（例如 `127.0.0.1:8081`）和 `FORGEOS_API_URL`（例如 `http://127.0.0.1:8081`）。
 
 ```powershell

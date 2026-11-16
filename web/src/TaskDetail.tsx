@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ApiError, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
+import { ApiError, Fact, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
 import './detail.css'
 import { CandidateTestPlans } from './CandidateTestPlans'
 import { CandidatePreviews } from './CandidatePreviews'
+import { RepositoryInventory } from './RepositoryInventory'
 
 type CheckRun = { id: string; runner: string; level: string; profile?: string; config_blob?: string; image?: string
   decision?: { rules_blob?: string; changed_paths: number; reasons: { source: string; level: string; evidence: string }[] }
@@ -70,10 +71,6 @@ const fullSHA = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/
 function OutLink({ href, children }: { href?: string; children: ReactNode }) {
   const url = safeGitHubURL(href)
   return url ? <a className="detail-link" href={url} target="_blank" rel="noopener noreferrer">{children}<Icon name="ExternalLink" size={13} /></a> : <span>{children}</span>
-}
-
-function Fact({ label, children, code = false }: { label: string; children: ReactNode; code?: boolean }) {
-  return <div className="detail-fact"><dt>{label}</dt><dd className={code ? 'mono' : undefined}>{children}</dd></div>
 }
 
 function DeclaredChecks({ run, path, request }: { run: CheckRun; path: string; request: ApiRequest }) {
@@ -499,6 +496,7 @@ function Detail({ id, request, onChanged }: Props) {
       {task.status === 'RUNNING' ? '等待 Worker 停止执行并提交回执。' : '任务已取消。'}</p>}
     <div className="detail-layout">
       <div className="detail-column">
+        {task.kind === 'git_head' && task.status === 'DONE' && <RepositoryInventory task={task.id} request={request}/>}
         {task.plan && <section className="panel detail-card">
           <h2>Goal 计划 · 修订 {task.plan.revision}</h2>
           <p>{task.plan.plan.objective}</p>

@@ -41,7 +41,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 5. 审批中心；
 6. 预览反馈工具；
 7. 知识库管理；
-8. 工作台的项目登记、真实 Worker HEAD 检查、失败重试和已有项目分页已验收。仓库入口与依赖扫描、环境与密钥需求清单、Local Mock / Integrated 启动及完整初始化报告仍待验收。
+8. 项目登记、Worker HEAD 检查和失败重试已验收。仓库入口、Go 和 Node.js 依赖名、npm 脚本名均可按检查提交归档；原克隆离线后的浏览器回读已验收。其他技术栈的依赖解析、Agent 对入口文档的归纳、环境与密钥需求清单、Local Mock / Integrated 启动及完整初始化报告仍待验收。
 
 ## D. 不属于当前范围
 

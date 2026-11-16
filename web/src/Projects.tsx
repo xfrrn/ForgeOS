@@ -51,7 +51,7 @@ export function Projects({ request }: { request: ApiRequest }) {
     setBusy(true); setError(''); setNotice('')
     try {
       const task = await request<{ id: number }>(`/projects/${project.id}/check`, {
-        method: 'POST', body: JSON.stringify(project.check_status === 'FAILED' ? { retry_task_id: project.check_id } : {}), signal,
+        method: 'POST', body: JSON.stringify(project.check_id ? { retry_task_id: project.check_id } : {}), signal,
       })
       if (!signal.aborted) location.hash = '/tasks/' + task.id
     } catch (e) { if (!signal.aborted) setError(e instanceof Error ? e.message : '无法派发检查。') }
@@ -73,7 +73,7 @@ export function Projects({ request }: { request: ApiRequest }) {
         <h3>项目 #{p.id}</h3><code>{p.path}</code>{p.repository_id && <p>GitHub 仓库 ID · {p.repository_id}</p>}
         {p.check_status && <p>最近的 HEAD 检查 <Status value={p.check_status}/></p>}</div>
         <div className="detail-actions">{p.check_id && <a href={'#/tasks/' + p.check_id}>查看检查 #{p.check_id}</a>}
-          {(!p.check_id || p.check_status === 'FAILED') && <button className="button" disabled={busy} onClick={() => void check(p)}>{p.check_id ? '重新检查' : '运行 HEAD 检查'}</button>}</div>
+          {(!p.check_id || p.check_status === 'FAILED' || p.check_status === 'DONE') && <button className="button" disabled={busy} onClick={() => void check(p)}>{p.check_status === 'DONE' ? '检查当前 HEAD' : p.check_id ? '重新检查' : '运行 HEAD 检查'}</button>}</div>
       </article>)}
       {cursor && <button className="button" disabled={busy} onClick={() => lifetime.current && void load(lifetime.current.signal, cursor)}>更多项目</button>}
     </section>
