@@ -88,6 +88,30 @@ Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动
 
 定期进行恢复演练。
 
+### PostgreSQL 恢复演练
+
+使用与服务端主版本匹配的 PostgreSQL 客户端。以下示例使用 libpq 的两个 service 配置，`forgeos-source` 指向应用数据库，`forgeos-restore` 指向隔离实例中的空数据库。连接密码通过权限为 0600 的 passfile 提供。备份含项目内容、内部事件和执行租约，保存在仅备份账号可读的目录中。
+
+```sh
+set -eu
+umask 077
+backup_dir=$(mktemp -d "$BACKUP_ROOT/forgeos-XXXXXXXX")
+PGSERVICE=forgeos-source pg_dump --format=custom --file="$backup_dir/forgeos.dump"
+pg_restore --list "$backup_dir/forgeos.dump" >/dev/null
+(cd "$backup_dir" && sha256sum forgeos.dump > SHA256SUMS)
+```
+
+把备份与校验文件传至恢复实例，在备份目录执行以下命令。先独立配置目标实例的数据库用户和所有者，再使用应用数据库所有者恢复。
+
+```sh
+set -eu
+sha256sum -c SHA256SUMS
+pg_restore --dbname='service=forgeos-restore' \
+  --single-transaction --no-owner --no-privileges forgeos.dump
+```
+
+用恢复库的连接启动独立控制面，演练时关闭 GitHub 轮询和交付。通过 Owner API 对照任务列表、任务详情、计划修订、需求版本、评论和检查点。选择已交付任务核对候选、合并 SHA 和事件，再创建一条 `git_head` 任务确认序列可以继续分配。另行恢复项目 Git 对象与配置、Worker 工作区和认证材料后，才可恢复涉及这些资源的操作。
+
 ## 7. 不属于第一版的内容
 
 - Kubernetes；
