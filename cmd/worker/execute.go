@@ -28,6 +28,8 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 	timeout := time.Minute
 	if job.Kind == "codex_issue" {
 		timeout = 20 * time.Minute
+	} else if job.Kind == "environment_check" {
+		timeout = 10 * time.Minute
 	} else if job.Kind != "" && job.Kind != "git_head" {
 		return failed("unsupported task kind", nil)
 	}
@@ -53,6 +55,28 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 	}
 	if job.Kind == "codex_issue" {
 		return w.executeIssue(ctx, repo, expected, job)
+	}
+	if job.Kind == "environment_check" {
+		if job.Startup == nil {
+			return failed("missing startup configuration", nil)
+		}
+		if err = os.Mkdir(expected, 0700); err != nil {
+			return failed("cannot create startup workspace", err)
+		}
+		r, err := withResource(ctx, &executionResources{worker: w, job: job}, "ci", func() (*environmentRun, error) {
+			r := environmentRun{EnvironmentRequest: store.EnvironmentRequest{Repo: localrepo.RelativePath(w.repoRoot, repo), Commit: job.Startup.Commit, Environment: job.Startup.Environment}, Worker: w.id, Started: time.Now().UTC()}
+			err := r.record(ctx, repo, expected)
+			return &r, err
+		})
+		var result store.Result
+		if err != nil {
+			result = failed(err.Error(), err)
+		}
+		if r != nil && (result.ExitCode == 0 || r.Failure != "") {
+			result.EnvironmentRun = (*store.EnvironmentRun)(r)
+			result.Commit = r.Commit
+		}
+		return result
 	}
 	// git_head needs only the commit. Skipping checkout also avoids running project filters.
 	if _, err := localrepo.Git(ctx, repo, "worktree", "add", "--detach", "--no-checkout", expected, "HEAD"); err != nil {

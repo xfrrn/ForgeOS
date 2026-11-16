@@ -70,19 +70,26 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
-	SupportsResources      bool `json:"supports_resources,omitempty"`
-	SupportsCodex          bool `json:"supports_codex"`
-	SupportsClaude         bool `json:"supports_claude"`
-	SupportsRework         bool `json:"supports_rework"`
-	SupportsPlanner        bool `json:"supports_planner"`
-	SupportsCheckpoints    bool `json:"supports_checkpoints"`
-	SupportsValidation     bool `json:"supports_validation"`
-	SupportsDeclaredChecks bool `json:"supports_declared_checks"`
-	SupportsRiskPolicy     bool `json:"supports_risk_policy"`
+	SupportsStartup          bool  `json:"supports_startup,omitempty"`
+	StartupIntegratedProject int64 `json:"startup_integrated_project,omitempty"`
+	SupportsResources        bool  `json:"supports_resources,omitempty"`
+	SupportsCodex            bool  `json:"supports_codex"`
+	SupportsClaude           bool  `json:"supports_claude"`
+	SupportsRework           bool  `json:"supports_rework"`
+	SupportsPlanner          bool  `json:"supports_planner"`
+	SupportsCheckpoints      bool  `json:"supports_checkpoints"`
+	SupportsValidation       bool  `json:"supports_validation"`
+	SupportsDeclaredChecks   bool  `json:"supports_declared_checks"`
+	SupportsRiskPolicy       bool  `json:"supports_risk_policy"`
 }
 
 func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilities {
+	integrated := c.StartupIntegratedProject
+	if integrated != node.StartupIntegratedProject {
+		integrated = 0
+	}
 	return WorkerCapabilities{
+		SupportsStartup: c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,
 		SupportsResources:      c.SupportsResources && node.SupportsResources,
 		SupportsCodex:          c.SupportsCodex && node.SupportsCodex,
 		SupportsClaude:         c.SupportsClaude && node.SupportsClaude,
@@ -109,7 +116,8 @@ type WorkerHeartbeat struct {
 var platformName = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 
 func (h WorkerHeartbeat) Valid() bool {
-	return strings.TrimSpace(h.Worker) != "" && len(h.Worker) <= 128 && !strings.ContainsAny(h.Worker, "\x00\r\n") &&
+	return h.Capabilities.StartupIntegratedProject >= 0 && (h.Capabilities.StartupIntegratedProject == 0 || h.Capabilities.SupportsStartup) &&
+		strings.TrimSpace(h.Worker) != "" && len(h.Worker) <= 128 && !strings.ContainsAny(h.Worker, "\x00\r\n") &&
 		platformName.MatchString(h.OS) && platformName.MatchString(h.Arch) &&
 		((h.ModelSlots == 0 && h.CISlots == 0 && !h.Capabilities.SupportsResources) ||
 			(h.Capabilities.SupportsResources && h.ModelSlots >= 1 && h.ModelSlots <= 2147483647 && h.CISlots >= 1 && h.CISlots <= 2147483647)) &&

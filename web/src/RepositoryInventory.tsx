@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Fact, formatTime, type ApiRequest } from './shared'
+import { Fact, Status, formatTime, type ApiRequest } from './shared'
 
 type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string
   local_environments?: Record<string, {start_script: string; port: number; health_path: string; timeout_seconds: number}>
   secret_requirements?: { environment: string; name: string; risk: string }[] }
 type Report = { execution_id: number; commit_sha: string; github_origin: string; repository_id?: number; scanned_at: string; files: Source[] }
+type StartupCheck = { id: number; environment: string; status: string }
 const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
 const problems: Record<string,string> = { size_limit: '清单超过读取上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
 
@@ -18,6 +19,35 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
     lifetime.current = controller
     return () => controller.abort()
   }, [])
+  const [checks, setChecks] = useState<StartupCheck[]>([])
+  const [pending, setPending] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const checksPath = `/tasks/${task}/startup-checks`
+  useEffect(() => {
+    if (!report?.files.some(file => file.local_environments)) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    async function refresh() {
+      try {
+        const items = await request<StartupCheck[]>(checksPath, { signal: controller.signal })
+        if (!controller.signal.aborted) setChecks(items)
+      } catch (e) {
+        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : '读取启动检查失败。')
+      }
+      if (!controller.signal.aborted) timer = setTimeout(refresh, 4000)
+    }
+    void refresh()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [report, checksPath, request, revision])
+  async function start(environment: string, previous?: number) {
+    const signal = lifetime.current?.signal
+    if (!signal || pending) return
+    setPending(true); setError('')
+    try {
+      await request(checksPath, { method: 'POST', signal, body: JSON.stringify({environment, previous_task_id: previous}) })
+    } catch (e) { if (!signal.aborted) setError(e instanceof Error ? e.message : '派发启动检查失败。') }
+    finally { if (!signal.aborted) { setPending(false); setRevision(value => value + 1) } }
+  }
   async function scan() {
     const signal = lifetime.current?.signal
     if (busy || !signal) return
@@ -43,8 +73,14 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       <p>Git blob · <code>{f.blob}</code></p>
       {f.dependencies?.length && <p>声明依赖 · {f.dependencies.join('、')}</p>}
       {f.scripts?.map(name => <p key={name}><code>npm run {name}</code></p>)}
-      {f.local_environments && <><h3>本地环境</h3>{Object.entries(f.local_environments).map(([env, config]) =>
-        <p key={env}>{env} · <code>{config.start_script}</code> · <code>127.0.0.1:{config.port}{config.health_path}</code> · {config.timeout_seconds} 秒</p>)}</>}
+      {f.local_environments && <><h3>本地环境</h3>{Object.entries(f.local_environments).map(([env, config]) => {
+        const history = checks.filter(check => check.environment === env)
+        const latest = history[0]
+        return <div key={env}><p>{env} · <code>{config.start_script}</code> · <code>127.0.0.1:{config.port}{config.health_path}</code> · {config.timeout_seconds} 秒</p>
+          <button className="button" disabled={pending || (latest && !['DONE','FAILED'].includes(latest.status))}
+            onClick={() => void start(env, latest?.id)}>{latest ? '重新检查' : '启动检查'} · {env}</button>
+          {history.map(check => <p key={check.id}><a href={`#/tasks/${check.id}`}>启动检查 #{check.id}</a> · <Status value={check.status}/></p>)}
+        </div>})}</>}
       {f.secret_requirements && <><h3>声明的密钥需求</h3>{f.secret_requirements.length ? <ul>{f.secret_requirements.map(r =>
         <li key={r.environment + '/' + r.name}>{r.environment} · <code>{r.name}</code> · {r.risk}</li>)}</ul> : <p>此版本未声明密钥需求。</p>}</>}
       {f.problem && <p>{problems[f.problem] || f.problem}</p>}

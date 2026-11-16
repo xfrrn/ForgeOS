@@ -146,6 +146,9 @@ var projectChecksSchema string
 //go:embed 041_repository_inventories.sql
 var inventoriesSchema string
 
+//go:embed 042_startup_checks.sql
+var startupSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -153,6 +156,7 @@ type Project struct {
 }
 
 type Task struct {
+	Startup             *StartupSpec       `json:"startup,omitempty"`
 	SourceClosure       json.RawMessage    `json:"source_closure,omitempty"`
 	FeedbackSources     []FeedbackSource   `json:"feedback_sources,omitempty"`
 	RequiresCodeReview  bool               `json:"requires_code_review,omitempty"`
@@ -209,22 +213,24 @@ type Event struct {
 }
 
 type Job struct {
-	ManageResources     bool       `json:"manage_resources,omitempty"`
-	RecordProcesses     bool       `json:"record_processes,omitempty"`
-	LeaseSeconds        int        `json:"lease_seconds,omitempty"`
-	SupportsCheckpoints bool       `json:"supports_checkpoints,omitempty"`
-	Kind                string     `json:"kind"`
-	Spec                *IssueSpec `json:"spec,omitempty"`
-	Rework              *Review    `json:"rework,omitempty"`
-	ExecutionID         int64      `json:"execution_id"`
-	TaskID              int64      `json:"task_id"`
-	RepoPath            string     `json:"repo_path"`
-	RepoRelativePath    string     `json:"repo_relative_path,omitempty"`
-	Workspace           string     `json:"workspace"`
-	LeaseToken          string     `json:"lease_token"`
+	Startup             *StartupSpec `json:"startup,omitempty"`
+	ManageResources     bool         `json:"manage_resources,omitempty"`
+	RecordProcesses     bool         `json:"record_processes,omitempty"`
+	LeaseSeconds        int          `json:"lease_seconds,omitempty"`
+	SupportsCheckpoints bool         `json:"supports_checkpoints,omitempty"`
+	Kind                string       `json:"kind"`
+	Spec                *IssueSpec   `json:"spec,omitempty"`
+	Rework              *Review      `json:"rework,omitempty"`
+	ExecutionID         int64        `json:"execution_id"`
+	TaskID              int64        `json:"task_id"`
+	RepoPath            string       `json:"repo_path"`
+	RepoRelativePath    string       `json:"repo_relative_path,omitempty"`
+	Workspace           string       `json:"workspace"`
+	LeaseToken          string       `json:"lease_token"`
 }
 
 type Result struct {
+	EnvironmentRun *EnvironmentRun   `json:"environment_run,omitempty"`
 	Processes      *ProcessHistory   `json:"processes,omitempty"`
 	Harness        string            `json:"harness,omitempty"`
 	HarnessVersion string            `json:"harness_version,omitempty"`
@@ -260,7 +266,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -348,6 +354,12 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	}
 	if err != nil {
 		return Task{}, err
+	}
+	if t.Kind == "environment_check" {
+		t.Startup, err = startupSpec(ctx, s.db, id)
+		if err != nil {
+			return Task{}, err
+		}
 	}
 	t.SourceClosure = closure
 	if spec != nil {
@@ -460,11 +472,16 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			caps.SupportsCodex, caps.SupportsClaude, caps.SupportsValidation = false, false, false
 		}
 	}
+	canStart := registered != nil && caps.SupportsResources && caps.SupportsStartup
 	canAssess := caps.SupportsDeclaredChecks && caps.SupportsRiskPolicy
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE'))
-		  AND (candidate.kind = 'git_head' OR ($5 AND candidate.spec ? 'verify_commit') OR CASE WHEN candidate.spec->>'harness'='claude' THEN $9::boolean ELSE $1 END)
+		  AND (candidate.kind = 'git_head'
+		       OR ($10 AND EXISTS(SELECT 1 FROM startup_checks sc WHERE sc.task_id=candidate.id
+		            AND (sc.environment='local-mock' OR candidate.project_id=$11)))
+		       OR (candidate.kind='codex_issue' AND (($5 AND candidate.spec ? 'verify_commit')
+		            OR CASE WHEN candidate.spec->>'harness'='claude' THEN $9::boolean ELSE $1 END)))
 		  AND ($5 OR NOT COALESCE(candidate.spec ? 'verify_commit',false))
 		  AND ($7 OR COALESCE(candidate.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		  AND ($8 OR candidate.spec->>'validation' IS DISTINCT FROM 'auto')
@@ -473,7 +490,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -486,7 +503,11 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		UPDATE work_items SET status = 'RUNNING'
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
 		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
-		            AND (w.kind = 'git_head' OR ($6 AND w.spec ? 'verify_commit') OR CASE WHEN w.spec->>'harness'='claude' THEN $9::boolean ELSE $2 END)
+		            AND (w.kind = 'git_head'
+		       OR ($10 AND EXISTS(SELECT 1 FROM startup_checks sc WHERE sc.task_id=w.id
+		            AND (sc.environment='local-mock' OR w.project_id=$11)))
+		       OR (w.kind='codex_issue' AND (($6 AND w.spec ? 'verify_commit')
+		            OR CASE WHEN w.spec->>'harness'='claude' THEN $9::boolean ELSE $2 END)))
 		            AND ($6 OR NOT COALESCE(w.spec ? 'verify_commit',false))
 		            AND ($7 OR COALESCE(w.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		            AND ($8 OR w.spec->>'validation' IS DISTINCT FROM 'auto')
@@ -495,12 +516,19 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if j.Kind == "environment_check" {
+		j.ManageResources = true
+		j.Startup, err = startupSpec(ctx, tx, j.TaskID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if spec != nil {
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
@@ -561,11 +589,11 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	var taskID int64
 	var abandoned, usesCheckpoints, sourceClosed bool
 	var expectedHash, stored, spec []byte
-	var repo, worker string
+	var repo, worker, kind string
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL
+		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,t.kind
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed)
+		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -585,6 +613,17 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 			return ErrConflict
 		}
 		return nil
+	}
+	if kind == "environment_check" {
+		expected, err := startupSpec(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		if !expected.accepts(result, worker, "execution-"+strconv.FormatInt(id, 10)) {
+			return ErrConflict
+		}
+	} else if result.EnvironmentRun != nil {
+		return ErrConflict
 	}
 	if spec == nil && result.Processes != nil {
 		return ErrConflict

@@ -5,7 +5,7 @@ type Node = { worker: string; os: string; arch: string; cpus: number; slots: num
   model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
   last_seen: string; online: boolean; capabilities: Record<string, boolean> }
 
-const capabilities: Record<string, string> = { supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划',
+const capabilities: Record<string, string> = { supports_startup: '本地环境启动', supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划',
   supports_checkpoints: '检查点', supports_rework: '退回修订', supports_validation: '候选验证', supports_declared_checks: '项目检查', supports_risk_policy: '按风险选级' }
 
 export function WorkerNodes({ request }: { request: ApiRequest }) {

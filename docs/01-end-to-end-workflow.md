@@ -40,7 +40,7 @@ Owner 用 `POST /tasks/{id}/repository-inventory` 生成或复用清单，`GET` 
 
 需要声明项目密钥时，将环境、名称和预期风险写入根配置的 `secret_requirements`。扫描结果附在该文件的条目中。实际元数据登记与执行授权见[密钥需求和授权](09-security-and-secrets.md#项目声明的需求)。
 
-在同一文件的 `local_environments` 中声明本地启动脚本和 HTTP 就绪路径。在工作台展开根配置可查看固定版本的环境清单。从执行节点运行 `worker verify-environment`，用实际的 HTTP 响应验证克隆对应的提交。集成环境使用项目专属的 Docker 内部网络访问测试依赖。[启动配置和回执](local-development.md#验证项目的本地启动环境)
+在同一文件的 `local_environments` 中声明本地启动脚本和 HTTP 就绪路径。在工作台展开根配置，选择环境的“启动检查”。Worker 领取该任务，按来源 HEAD 的 Git 提交运行脚本并探测 HTTP 就绪路径。任务详情保留执行节点、容器清理和探测结果。集成环境通过项目专属的 Docker 内部网络访问测试依赖。也可在执行节点单独运行 `worker verify-environment`。[启动配置和回执](local-development.md#验证项目的本地启动环境)
 
 ### 02 需求与任务接入
 

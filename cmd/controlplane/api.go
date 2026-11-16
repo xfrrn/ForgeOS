@@ -253,6 +253,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		}
 		var input struct {
 			LeaseToken     string                `json:"lease_token"`
+			EnvironmentRun *store.EnvironmentRun `json:"environment_run"`
 			Processes      *store.ProcessHistory `json:"processes"`
 			Plan           *store.Plan           `json:"plan"`
 			Commit         string                `json:"commit"`
@@ -288,7 +289,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			problem(w, http.StatusBadRequest, "execution evidence exceeds the allowed length")
 			return
 		}
-		result := store.Result{Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error, Harness: input.Harness, HarnessVersion: input.HarnessVersion,
+		result := store.Result{EnvironmentRun: input.EnvironmentRun, Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error, Harness: input.Harness, HarnessVersion: input.HarnessVersion,
 			BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan, Processes: input.Processes}
 		if v := input.Validation; v != nil {
 			if v.ExitCode == nil || *v.ExitCode < -1 || *v.ExitCode > 2147483647 {

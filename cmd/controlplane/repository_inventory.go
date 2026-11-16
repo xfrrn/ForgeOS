@@ -13,6 +13,31 @@ import (
 )
 
 func registerRepositoryInventory(mux *http.ServeMux, data *store.Store, root, owner string) {
+	const checks = "/tasks/{id}/startup-checks"
+	mux.HandleFunc("GET "+checks, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		history, err := data.StartupChecks(r.Context(), id)
+		respond(w, 200, history, err)
+	}))
+	mux.HandleFunc("POST "+checks, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var req struct {
+			Environment string `json:"environment"`
+			Previous    int64  `json:"previous_task_id"`
+		}
+		if !ok || !decode(w, r, &req) {
+			return
+		}
+		if (req.Environment != "local-mock" && req.Environment != "local-integrated") || req.Previous < 0 {
+			problem(w, 400, "provide a declared local environment and a valid previous task")
+			return
+		}
+		task, err := data.QueueStartup(r.Context(), id, req.Environment, req.Previous)
+		respond(w, 200, map[string]int64{"id": task}, err)
+	}))
 	const path = "/tasks/{id}/repository-inventory"
 	serve := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

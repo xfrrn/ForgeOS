@@ -13,7 +13,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type HarnessProcess = { instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
-type Result = { commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
+type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   review_feedback?: { id: number; preview_id: string; decision: 'approve' | 'reject'; note: string }[]
   test_plan_revision?: number; test_plan_state?: string; test_case_state?: string; test_case_attempts?: number; requires_test_plan?: boolean
@@ -33,6 +33,7 @@ type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
   id: number; project_id: number; status: string; kind: string
+  startup?: { source_task_id: number; environment: string; commit: string }
   source_closure?: { number: number; url: string; closed_at: string; state_reason: string }
   spec?: { issue: Issue; base_commit: string; validation: string; harness?: string; child_harness?: string; project_config_blob?: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery; delivery_refreshes?: { execution_id: number; old_delivery: Delivery; new_base: string; candidate: string }[]
@@ -275,13 +276,19 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
     <summary><Icon name="ChevronRight" size={15} /><strong>执行 #{attempt.id}</strong><span className="detail-worker mono">{attempt.worker}</span><Status value={attempt.status} /></summary>
     <div className="detail-attempt-body"><dl className="detail-facts">
       {start && <Fact label="领取时间">{formatTime(start.at)}</Fact>}
-      <Fact label="Worktree" code>{attempt.workspace}</Fact>
+      <Fact label={task.startup ? "执行目录" : "Worktree"} code>{attempt.workspace}</Fact>
       {attempt.requirement_revision && <Fact label="执行绑定需求">{attempt.requirement_revision}</Fact>}
       {result?.harness && <Fact label="执行 Harness">{result.harness === 'claude' ? 'Claude Code' : 'Codex'} {result.harness_version}</Fact>}
       {result?.session_id && <Fact label={result.harness === 'claude' ? 'Claude Code Session' : 'Codex Session'} code>{result.session_id}</Fact>}
       {result?.base_commit && <Fact label="基础 SHA" code>{result.base_commit}</Fact>}
       {result?.commit && <Fact label={task.spec ? '候选 SHA' : '提交 SHA'} code>{result.commit}</Fact>}
       {attempt.commit_status && <Fact label="GitHub 状态" code>{attempt.commit_status.context} · {attempt.commit_status.state} · #{attempt.commit_status.id}</Fact>}
+      {result?.environment_run && <><Fact label="就绪探测">{result.environment_run.probes} 次 · {result.environment_run.http_status ? 'HTTP ' + result.environment_run.http_status : '未收到 HTTP 响应'}</Fact>
+        {result.environment_run.network && <Fact label="运行网络" code>{result.environment_run.network}</Fact>}
+        {result.environment_run.image && <Fact label="镜像" code>{result.environment_run.image}</Fact>}
+        {result.environment_run.config_blob && <Fact label="项目配置 blob" code>{result.environment_run.config_blob}</Fact>}
+        {result.environment_run.script_blob && <Fact label="启动脚本 blob" code>{result.environment_run.script_blob}</Fact>}
+        {result.environment_run.container_removed && <Fact label="启动容器">已清理</Fact>}</>}
       {result && <Fact label="执行退出码" code>{result.exit_code}</Fact>}
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
@@ -478,14 +485,14 @@ function Detail({ id, request, onChanged }: Props) {
   return <article className="task-detail">
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
-      <h1>{issue?.title || 'Git HEAD 检查'}</h1>
+      <h1>{issue?.title || (task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>
       {task.spec?.project_config_blob && <details><summary>项目执行配置</summary><dl className="detail-facts">
         <Fact label="实现 Harness">{(task.spec.child_harness || task.spec.harness) === 'claude' ? 'Claude Code' : 'Codex'}</Fact>
         <Fact label="project.yaml 对象" code>{task.spec.project_config_blob}</Fact>
       </dl></details>}
       {task.goal_id && <a href={`#/tasks/${task.goal_id}`}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
       <div className="detail-subtitle">{issue ? <><Icon name="GitBranch" size={15} /><span>{issue.repository}</span><span aria-hidden="true">/</span>
-        <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · git_head</span>}
+        <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · {task.startup ? <>{task.startup.environment} · <a href={`#/tasks/${task.startup.source_task_id}`}>来源 HEAD 检查 #{task.startup.source_task_id}</a> · <code>{task.startup.commit}</code></> : task.kind}</span>}
         <button className="button detail-refresh" disabled={loading} onClick={() => refresh()}><Icon name="RefreshCw" size={15} />刷新</button>
       </div>
     </div>

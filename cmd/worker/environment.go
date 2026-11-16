@@ -15,46 +15,26 @@ import (
 	"time"
 
 	"forgeos/internal/localrepo"
+	"forgeos/internal/store"
 	"forgeos/internal/validation"
 	"forgeos/schemas"
 )
 
-type environmentRequest struct {
-	Repo        string `json:"repo"`
-	Commit      string `json:"commit"`
-	Environment string `json:"environment"`
-}
-
-type environmentRun struct {
-	environmentRequest
-	ID         string                    `json:"id"`
-	Worker     string                    `json:"worker"`
-	Started    time.Time                 `json:"started_at"`
-	Finished   time.Time                 `json:"finished_at"`
-	ConfigBlob string                    `json:"config_blob,omitempty"`
-	ScriptBlob string                    `json:"script_blob,omitempty"`
-	Image      string                    `json:"image,omitempty"`
-	Network    string                    `json:"network,omitempty"`
-	Config     *schemas.LocalEnvironment `json:"config,omitempty"`
-	Probes     int                       `json:"probes"`
-	StatusCode int                       `json:"http_status,omitempty"`
-	Removed    bool                      `json:"container_removed,omitempty"`
-	Failure    string                    `json:"failure,omitempty"`
-}
+type environmentRun store.EnvironmentRun
 
 func verifyEnvironment(ctx context.Context, in io.Reader, out io.Writer) error {
 	raw, err := io.ReadAll(io.LimitReader(in, (16<<10)+1))
 	if err != nil || len(raw) > 16<<10 {
 		return errors.New("invalid environment request size")
 	}
-	var req environmentRequest
+	var req store.EnvironmentRequest
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if dec.Decode(&req) != nil || dec.Decode(new(any)) != io.EOF || !validation.FullCommit(req.Commit) || (req.Environment != "local-mock" && req.Environment != "local-integrated") {
 		return errors.New("provide a repository, a full commit and a local environment")
 	}
 	root, work := os.Getenv("FORGEOS_REPO_ROOT"), os.Getenv("FORGEOS_WORKSPACE_ROOT")
-	run := environmentRun{environmentRequest: req, Worker: os.Getenv("FORGEOS_WORKER_ID"), Started: time.Now().UTC()}
+	run := environmentRun{EnvironmentRequest: req, Worker: os.Getenv("FORGEOS_WORKER_ID"), Started: time.Now().UTC()}
 	if os.Geteuid() == 0 || run.Worker == "" || !filepath.IsAbs(work) {
 		return errors.New("configure a non-root worker, identity and absolute workspace root")
 	}
@@ -77,6 +57,14 @@ func verifyEnvironment(ctx context.Context, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	probeErr := run.record(ctx, repo, dir)
+	if err = json.NewEncoder(out).Encode(run); err != nil {
+		return err
+	}
+	return probeErr
+}
+
+func (run *environmentRun) record(ctx context.Context, repo, dir string) error {
 	run.ID = filepath.Base(dir)
 	check, cancel := context.WithTimeout(ctx, 7*time.Minute)
 	defer cancel()
@@ -90,9 +78,6 @@ func verifyEnvironment(ctx context.Context, in io.Reader, out io.Writer) error {
 		return err
 	}
 	if err = os.WriteFile(filepath.Join(dir, "run.json"), doc, 0600); err != nil {
-		return err
-	}
-	if err = json.NewEncoder(out).Encode(run); err != nil {
 		return err
 	}
 	return probeErr

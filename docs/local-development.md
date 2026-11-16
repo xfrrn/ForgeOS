@@ -42,6 +42,15 @@ $request | ConvertTo-Json -Compress | .\worker.exe verify-environment
 
 探测请求在应用容器内访问声明的回环端口。2xx 表示就绪，重定向与服务错误持续至截止时间则失败。标准输出和 `FORGEOS_WORKSPACE_ROOT/environment-run-*/run.json` 保存 Worker、提交、配置和脚本 blob、镜像 ID、网络、探测次数、HTTP 状态与容器回收结果。失败返回非零。该入口不发布宿主端口；独立的服务依赖由其操作者管理。
 
+要从工作台派发，在运行 Worker 守护进程前设置相同的启动镜像。需要 Integrated 的节点还要设置 `FORGEOS_STARTUP_PROJECT_ID` 为工作台中的项目数字 ID，并配置对应的内部网络。节点通过心跳声明能力，启动任务占用这个节点的一个 CI 名额。缺少可用节点时，任务留在待执行队列。
+
+Owner 从成功的 HEAD 任务读取仓库清单，展开 `project.yaml`，选择对应环境的“启动检查”。打开任务链接可查看来源 HEAD、执行节点、HTTP 状态、镜像、脚本和清理结果。节点在执行目录写入 `run.json`，控制面随执行归档回执。已完成或失败的检查可再次运行，历史任务保留原结果。
+
+| 工作台 API | 请求和结果 |
+| --- | --- |
+| `GET /tasks/{id}/startup-checks` | 使用来源 HEAD 检查 ID，按创建时间倒序列出其环境检查任务。 |
+| `POST /tasks/{id}/startup-checks` | `{"environment":"local-mock"}` 返回该环境的任务 ID。重跑时增加 `previous_task_id` 指向本次已观察到的终态任务。重复提交返回已有任务。 |
+
 ### 从工作台登记仓库
 
 启动服务后，Owner 可从工作台的“项目接入”登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后选择“运行 HEAD 检查”进入任务详情。原 Worker 未上线时任务显示待执行；成功后可核对仓库的完整提交号。如果失败，保留原任务，在项目页选择“重新检查”生成下一次检查。

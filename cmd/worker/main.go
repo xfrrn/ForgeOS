@@ -205,6 +205,13 @@ func (w *worker) run(ctx context.Context) error {
 	writer := w.codex != "" || w.claude.bin != ""
 	caps := store.WorkerCapabilities{SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
+	caps.SupportsStartup = os.Getenv("FORGEOS_STARTUP_IMAGE") != ""
+	if caps.SupportsStartup && os.Getenv("FORGEOS_STARTUP_NETWORK") != "" && os.Getenv("FORGEOS_STARTUP_PROJECT_ID") != "" {
+		caps.StartupIntegratedProject, err = strconv.ParseInt(os.Getenv("FORGEOS_STARTUP_PROJECT_ID"), 10, 64)
+		if err != nil || caps.StartupIntegratedProject < 1 {
+			return errors.New("FORGEOS_STARTUP_PROJECT_ID must be a positive project ID")
+		}
+	}
 	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(),
 		Slots: w.slots, ModelSlots: w.modelSlots, CISlots: w.ciSlots, Capabilities: caps}
 	beat := func(ctx context.Context) error {
