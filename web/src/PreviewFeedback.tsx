@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-type Note = { id: number; created_at: string; state: string; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Note = { id: number; created_at: string; state: string; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
 const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
-type Page = { preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
+type Page = { at_acceptance: boolean; preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
 export function PreviewFeedback({ task, preview, captureQuery, request }: { task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
   const capture = new URLSearchParams(captureQuery)
@@ -15,6 +15,8 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0)
+  const [asking, setAsking] = useState(0)
+  const [question, setQuestion] = useState('')
   const [key, setKey] = useState(() => crypto.randomUUID())
   const api = `/tasks/${task}/previews/${preview}/feedback`
   const mismatch = Boolean(captureQuery && page && (capture.get('commit') !== page.preview.commit || capture.get('execution') !== String(page.preview.execution_id)))
@@ -38,6 +40,17 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     } catch (e) { setError(e instanceof Error ? e.message : '反馈提交失败。') }
     finally { setBusy(false) }
   }
+  async function ask(f: Note) {
+    if (!page?.at_acceptance || !f.classification || busy || !question.trim()) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      await request(`/tasks/${task}/questions`, { method: 'POST', body: JSON.stringify({ feedback_id: f.id,
+        execution_id: page.preview.execution_id, commit_sha: page.preview.commit, request_key: 'feedback-' + f.id,
+        question: question.trim(), evidence: f.classification.evidence }) })
+      setAsking(0); setVersion(n => n + 1); setMessage('澄清问题已进入任务的待回答队列。')
+    } catch (e) { setError(e instanceof Error ? e.message : '发起澄清失败。') }
+    finally { setBusy(false) }
+  }
   return <section className="panel"><a href={`#/tasks/${task}`}>返回任务 T-{task}</a><h1>预览反馈</h1>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {page && <><p>执行 {page.preview.execution_id} · {page.preview.directory} · <code>{page.preview.commit}</code></p>
@@ -58,7 +71,14 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         {f.body.element && <p>元素 <code>{f.body.element}</code></p>}
         {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
         {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
-          <p>Management 会话　<code>{f.classification.session_id}</code></p></details>}</article>)}
+          <p>Management 会话　<code>{f.classification.session_id}</code></p></details>}
+        {f.question ? <div><p>澄清问题 #{f.question.id} · {f.question.question}</p>
+          {f.question.answer ? <p>Owner 答复　{f.question.answer}</p> : <a href={`#/tasks/${task}`}>到任务中回答</a>}</div> :
+          page.at_acceptance && f.classification?.category === 'blocked' && (asking === f.id ?
+            <fieldset><legend>提交澄清问题</legend><label>需要 Owner 决定的问题<textarea value={question} onChange={e => setQuestion(e.target.value)} /></label>
+              <button className="button" disabled={busy || !question.trim()} onClick={() => void ask(f)}>提交澄清问题</button>
+              <button className="detail-text-button" disabled={busy} onClick={() => setAsking(0)}>取消</button></fieldset> :
+            <button className="button" onClick={() => { setAsking(f.id); setQuestion(f.body.note) }}>转入澄清</button>)}</article>)}
     </>}
   </section>
 }

@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type QuestionRequest struct {
+	FeedbackID  int64  `json:"feedback_id,omitempty"`
 	ExecutionID int64  `json:"execution_id"`
 	Commit      string `json:"commit_sha"`
 	Key         string `json:"request_key"`
@@ -32,7 +34,8 @@ func decisionText(s string) bool {
 }
 
 func (r QuestionRequest) Valid() bool {
-	return r.ExecutionID > 0 && validCommit(r.Commit) && planItemKey.MatchString(r.Key) && decisionText(r.Question) && decisionText(r.Evidence)
+	return r.ExecutionID > 0 && validCommit(r.Commit) && planItemKey.MatchString(r.Key) && decisionText(r.Question) && decisionText(r.Evidence) &&
+		(r.FeedbackID == 0 || (r.FeedbackID > 0 && r.Key == "feedback-"+strconv.FormatInt(r.FeedbackID, 10)))
 }
 
 func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest) (Task, error) {
@@ -55,7 +58,7 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 	}
 	var same bool
 	err = tx.QueryRowContext(ctx, `SELECT question=$3 AND evidence=$4 AND commit_sha=$5 FROM decision_questions
-		WHERE task_id=$1 AND execution_id=$2 AND request_key=$6`, id, r.ExecutionID, r.Question, r.Evidence, r.Commit, r.Key).Scan(&same)
+		WHERE task_id=$1 AND execution_id=$2 AND request_key=$6 AND feedback_id IS NOT DISTINCT FROM NULLIF($7::bigint,0)`, id, r.ExecutionID, r.Question, r.Evidence, r.Commit, r.Key, r.FeedbackID).Scan(&same)
 	if err == nil {
 		if !same {
 			return Task{}, ErrConflict
@@ -72,10 +75,12 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 		return Task{}, ErrConflict
 	}
 	var qID int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester)
-		SELECT $1,id,$3,$4,$5,$6,$7,'owner' FROM executions WHERE task_id=$1 AND id=$2
+	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester,feedback_id)
+		SELECT $1,id,$3,$4,$5,$6,$7,'owner',NULLIF($8::bigint,0) FROM executions WHERE task_id=$1 AND id=$2
 		AND id=(SELECT max(id) FROM executions WHERE task_id=$1) AND result->>'commit'=$4
-		RETURNING id`, id, r.ExecutionID, revision, r.Commit, r.Key, r.Question, r.Evidence).Scan(&qID)
+		AND ($8=0 OR EXISTS(SELECT 1 FROM preview_feedback f JOIN static_previews p ON p.id=f.preview_id
+			WHERE f.id=$8 AND p.execution_id=$2 AND f.classification->>'category'='blocked' AND f.classification->>'evidence'=$7))
+		RETURNING id`, id, r.ExecutionID, revision, r.Commit, r.Key, r.Question, r.Evidence, r.FeedbackID).Scan(&qID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrConflict
 	}

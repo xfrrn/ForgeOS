@@ -93,7 +93,19 @@ func TestAcceptanceToDelivery(t *testing.T) {
 	post(path, "owner", body, 409)
 	body["commit"] = candidate
 	questions := "/tasks/" + strconv.FormatInt(task.ID, 10) + "/questions"
-	request := store.QuestionRequest{ExecutionID: job.ExecutionID, Commit: candidate, Key: "example", Question: "Which wording?", Evidence: "README diff"}
+	raw, err := data.OpenPreview(ctx, task.ID, job.ExecutionID, candidate, "public", 8091, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview struct{ ID string }
+	if err = json.Unmarshal(raw, &preview); err != nil {
+		t.Fatal(err)
+	}
+	fid, err := data.SubmitPreviewFeedback(ctx, task.ID, preview.ID, store.PreviewFeedback{Request: "73424164-fd76-4696-afdd-8915a903520f", Execution: job.ExecutionID, Commit: candidate, Path: "/", Note: "Which example is required?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := store.QuestionRequest{ExecutionID: job.ExecutionID, Commit: candidate, Key: "feedback-" + strconv.FormatInt(fid, 10), Question: "Which wording?", Evidence: "README diff"}
 	post(questions, "owner", request, 200)
 	post(questions, "owner", request, 200)
 	held, err := data.Task(ctx, task.ID)
@@ -112,6 +124,30 @@ func TestAcceptanceToDelivery(t *testing.T) {
 		resumed.Execution.Result.Commit != candidate || resumed.Questions[0].AnsweredBy != "owner" || len(resumed.Events) != len(held.Events)+1 {
 		t.Fatalf("resumed checkpoint: %+v %v", resumed, err)
 	}
+	t.Run("classified feedback preserves independent questions and evidence", func(t *testing.T) {
+		request.FeedbackID = fid
+		request.Evidence = "Which example is required?"
+		post(questions, "owner", request, 409)
+		j, err := data.ClaimFeedback(ctx, project.ID)
+		if err != nil || j == nil {
+			t.Fatalf("claim: %v", err)
+		}
+		err = data.ClassifyFeedback(ctx, project.ID, fid, j.Lease, store.FeedbackClassification{Category: "blocked", Rationale: "Scope is unclear.", Evidence: request.Evidence, Session: "management-test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := request
+		bad.Evidence = "different quote"
+		post(questions, "owner", bad, 409)
+		post(questions, "owner", request, 200)
+		post(questions, "owner", request, 200)
+		held, err := data.Task(ctx, task.ID)
+		if err != nil || len(held.Questions) != 2 || held.Questions[1].FeedbackID != fid || held.Status != "WAITING_INPUT" {
+			t.Fatalf("feedback checkpoint: %+v %v", held, err)
+		}
+		post(questions+"/"+strconv.FormatInt(held.Questions[1].ID, 10)+"/answer", "owner", answer, 200)
+		post(questions, "owner", request, 200)
+	})
 	post(path, "worker", body, 401)
 	post(path, "owner", body, 200)
 	post(path, "owner", body, 200)
