@@ -18,7 +18,7 @@ func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := strings.Repeat("a", 40)
-	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Mode: "plan", Issue: Issue{ID: 17, Number: 2, RepositoryID: 9}, BaseCommit: base, Validation: "docs"})
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Mode: "plan", ChildHarness: "claude", ProjectConfigBlob: base, Issue: Issue{ID: 17, Number: 2, RepositoryID: 9}, BaseCommit: base, Validation: "docs"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +49,11 @@ func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
 	if _, err := s.ActivatePlan(ctx, task.ID, 1); err != nil {
 		t.Fatal(err)
 	}
-	child, err := s.Claim(ctx, "writer", root, true)
-	if err != nil || child == nil || child.Spec.Mode != "" {
+	if child, err := s.Claim(ctx, "codex", root, true); err != nil || child != nil {
+		t.Fatalf("child lost project harness: %v %v", child, err)
+	}
+	child, err := s.Claim(ctx, "writer", root, false, true, false, false, true, true, true, true)
+	if err != nil || child == nil || child.Spec.Mode != "" || child.Spec.ChildHarness != "" || child.Spec.Harness != "claude" || child.Spec.ProjectConfigBlob != base {
 		t.Fatalf("child inherited planning mode: %v %v", child, err)
 	}
 }

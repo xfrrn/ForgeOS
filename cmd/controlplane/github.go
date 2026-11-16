@@ -16,19 +16,21 @@ import (
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
+	"forgeos/schemas"
 )
 
 var (
-	githubOrigin = regexp.MustCompile(`(?i)^(?:https://github\.com/|ssh://git@github\.com(?::22)?/|git@github\.com:)([a-z0-9][a-z0-9_-]*)/([a-z0-9_.-]+)/?$`)
-	gitCommit    = regexp.MustCompile(`^(?:[a-f0-9]{40}|[a-f0-9]{64})$`)
-	errMissing   = errors.New("repository or issue not found on GitHub, or unavailable to this account")
-	errGHRead    = errors.New("GitHub read failed; check gh availability, authentication and repository access")
-	errGHLimit   = errors.New("GitHub rate limit reached")
-	errIdentity  = errors.New("GitHub response does not match the registered origin and requested issue")
-	errNotOpen   = errors.New("select an open issue; closed issues and pull requests cannot be dispatched")
-	errIssueText = errors.New("issue title or body is invalid or exceeds the supported size")
-	errOrigin    = errors.New("registered project requires an accessible Git working tree with a github.com HTTPS or SSH origin")
-	errBase      = errors.New("project requires a committed local HEAD")
+	githubOrigin     = regexp.MustCompile(`(?i)^(?:https://github\.com/|ssh://git@github\.com(?::22)?/|git@github\.com:)([a-z0-9][a-z0-9_-]*)/([a-z0-9_.-]+)/?$`)
+	gitCommit        = regexp.MustCompile(`^(?:[a-f0-9]{40}|[a-f0-9]{64})$`)
+	errMissing       = errors.New("repository or issue not found on GitHub, or unavailable to this account")
+	errGHRead        = errors.New("GitHub read failed; check gh availability, authentication and repository access")
+	errGHLimit       = errors.New("GitHub rate limit reached")
+	errIdentity      = errors.New("GitHub response does not match the registered origin and requested issue")
+	errNotOpen       = errors.New("select an open issue; closed issues and pull requests cannot be dispatched")
+	errIssueText     = errors.New("issue title or body is invalid or exceeds the supported size")
+	errOrigin        = errors.New("registered project requires an accessible Git working tree with a github.com HTTPS or SSH origin")
+	errBase          = errors.New("project requires a committed local HEAD")
+	errProjectConfig = errors.New("invalid project.yaml at the selected base commit")
 )
 
 type issueStore interface {
@@ -165,14 +167,16 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 				status = http.StatusNotFound
 			case errors.Is(err, errGHLimit):
 				status = http.StatusTooManyRequests
-			case errors.Is(err, errIdentity), errors.Is(err, errNotOpen), errors.Is(err, errIssueText), errors.Is(err, errOrigin), errors.Is(err, errBase):
+			case errors.Is(err, errIdentity), errors.Is(err, errNotOpen), errors.Is(err, errIssueText), errors.Is(err, errOrigin), errors.Is(err, errBase), errors.Is(err, errProjectConfig):
 				status = http.StatusConflict
 			}
 			problem(w, status, err.Error())
 			return
 		}
 		spec := source.spec(issue, input.Validation, input.Mode, policy)
-		spec.Harness = input.Harness
+		if input.Harness != "" {
+			spec.Harness = input.Harness
+		}
 		task, err := data.ImportIssue(ctx, id, spec, sources...)
 		if errors.Is(err, store.ErrConflict) {
 			problem(w, http.StatusConflict, "GitHub issue or repository conflicts with the stored project mapping")
@@ -220,14 +224,22 @@ func ghRead(ctx context.Context, path string, dest any) error {
 }
 
 type githubProject struct {
-	ID       int64  `json:"id"`
-	FullName string `json:"full_name"`
-	Base     string `json:"-"`
-	Declared bool   `json:"-"`
+	ID         int64  `json:"id"`
+	FullName   string `json:"full_name"`
+	Base       string `json:"-"`
+	Declared   bool   `json:"-"`
+	Harness    string `json:"-"`
+	ConfigBlob string `json:"-"`
 }
 
 func (repo githubProject) spec(issue store.Issue, profile, mode string, policy validation.Policy) store.IssueSpec {
 	spec := store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: profile, Mode: mode}
+	spec.ProjectConfigBlob = repo.ConfigBlob
+	if mode == "plan" {
+		spec.ChildHarness = repo.Harness
+	} else {
+		spec.Harness = repo.Harness
+	}
 	if repo.Declared || profile == "auto" || policy != (validation.Policy{}) {
 		switch profile {
 		case "docs":
@@ -271,6 +283,17 @@ func githubSource(ctx context.Context, root string, project store.Project, get g
 		return repo, errBase
 	}
 	repo.Declared = len(config) != 0
+	blob, raw, err := validation.ReadConfigFile(ctx, path, repo.Base, "project.yaml")
+	if err != nil {
+		return repo, errProjectConfig
+	}
+	if blob != "" {
+		repo.Harness, err = schemas.ProjectHarness(raw)
+		if err != nil {
+			return repo, errProjectConfig
+		}
+		repo.ConfigBlob = blob
+	}
 	if repo.ID <= 0 || !strings.EqualFold(repo.FullName, slug) || (project.RepositoryID != 0 && repo.ID != project.RepositoryID) {
 		return repo, errIdentity
 	}

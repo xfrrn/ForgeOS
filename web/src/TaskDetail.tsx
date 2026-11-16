@@ -30,7 +30,7 @@ type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
   id: number; project_id: number; status: string; kind: string
-  spec?: { issue: Issue; base_commit: string; validation: string }
+  spec?: { issue: Issue; base_commit: string; validation: string; harness?: string; child_harness?: string; project_config_blob?: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery; delivery_refreshes?: { execution_id: number; old_delivery: Delivery; new_base: string; candidate: string }[]
   plan?: Plan
   requirement_revision?: number; latest_requirement?: number; active_revision?: number; goal_id?: number; plan_revision?: number
@@ -452,6 +452,10 @@ function Detail({ id, request, onChanged }: Props) {
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
       <h1>{issue?.title || 'Git HEAD 检查'}</h1>
+      {task.spec?.project_config_blob && <details><summary>项目执行配置</summary><dl className="detail-facts">
+        <Fact label="实现 Harness">{(task.spec.child_harness || task.spec.harness) === 'claude' ? 'Claude Code' : 'Codex'}</Fact>
+        <Fact label="project.yaml 对象" code>{task.spec.project_config_blob}</Fact>
+      </dl></details>}
       {task.goal_id && <a href={`#/tasks/${task.goal_id}`}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
       <div className="detail-subtitle">{issue ? <><Icon name="GitBranch" size={15} /><span>{issue.repository}</span><span aria-hidden="true">/</span>
         <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · git_head</span>}

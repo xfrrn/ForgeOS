@@ -56,7 +56,7 @@
 
 | 文件 | 查看内容 |
 |---|---|
-| [project.yaml.example](schemas/project.yaml.example) | 项目标识、仓库与本地目录、Harness、交付策略 |
+| [project.yaml.example](schemas/project.yaml.example) · [执行配置校验](schemas/project.schema.json) | 项目标识、仓库与本地目录、Harness、交付策略。导入和标签派发已接入固定提交中的默认 Harness。 |
 | [validation.yaml.example](schemas/validation.yaml.example) | 接入项目的检查命令、超时和检查组合 |
 | [validation.schema.json](schemas/validation.schema.json) | 版本 1 的验证配置合同，控制面读取配置时使用 |
 | [acceptance.yaml.example](schemas/acceptance.yaml.example) | 按模块路径选择验收方法、最低验证等级和人工验收条件 |

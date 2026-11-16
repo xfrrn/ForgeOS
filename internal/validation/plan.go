@@ -44,7 +44,8 @@ func ValidLevel(level string) bool {
 	return level == "V1" || level == "V2" || level == "V3" || level == "V4"
 }
 
-func configFile(ctx context.Context, repo, commit, name string) (string, []byte, error) {
+// ReadConfigFile returns the committed regular file and its blob ID, or an empty ID when absent.
+func ReadConfigFile(ctx context.Context, repo, commit, name string) (string, []byte, error) {
 	if !FullCommit(commit) {
 		return "", nil, errors.New("provide a full commit hash")
 	}
@@ -72,7 +73,7 @@ func ReadPlan(ctx context.Context, repo, commit, level string) (Plan, error) {
 	if !ValidLevel(level) {
 		return plan, errors.New("provide a level V1 through V4")
 	}
-	blob, raw, err := configFile(ctx, repo, commit, "validation.yaml")
+	blob, raw, err := ReadConfigFile(ctx, repo, commit, "validation.yaml")
 	if err != nil {
 		return plan, err
 	}

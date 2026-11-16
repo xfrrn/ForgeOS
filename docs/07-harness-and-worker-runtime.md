@@ -59,7 +59,9 @@ Adapter 应报告真实能力，不支持的能力不得伪装支持。
 
 在 Worker 专用账号的环境中设置 `FORGEOS_CLAUDE_BIN` 为本机 Claude Code 可执行文件；Windows 使用原生 `.exe`。Worker 启动时检查版本、`--restricted` 和 `--safe-mode`。通过探测的节点才会声明 `supports_claude`。模型认证沿用服务账号的登录或专用用户设置。用户设置位于该账号的 Claude 配置目录，受限模式下由 Worker 显式传给本机 CLI。[Claude Code 设置来源](https://code.claude.com/docs/en/settings)
 
-Owner 可在导入 Issue 时提交 `{"validation":"auto","harness":"claude"}`，也可在预览反馈的独立工作项表单选择 Claude Code。新任务将 Harness 选择与 Issue 快照一起冻结，重复导入复用原记录。未指定时默认使用 Codex。Claude 节点执行实现与退回修订，计划任务继续由具备只读规划能力的 Codex 节点领取。既有的仅验证任务沿用原候选。
+Owner 可在导入 Issue 时提交 `{"validation":"auto","harness":"claude"}`，也可在预览反馈的独立工作项表单选择 Claude Code。显式选择优先于项目默认。新任务将 Harness 选择与 Issue 快照一起冻结，重复导入复用原记录。Claude 节点执行实现与退回修订，计划任务继续由具备只读规划能力的 Codex 节点领取。既有的仅验证任务沿用原候选。
+
+项目可在仓库根目录提交版本 1 的 `project.yaml`，在 `execution.default_harness` 填写 `claude` 或 `codex`。手工导入和带 `forgeos-agent` 标签的自动派发均读取登记克隆的固定基础提交。没有声明时默认 Codex。任务详情内的“项目执行配置”显示实现 Harness 与文件的 Git blob。工作区未提交的改动不会改变配置来源。规划任务使用项目默认值为后续写入型子项选择 Harness。[项目配置示例](../schemas/project.yaml.example)
 
 执行时 CLI 使用文件读取、搜索和编辑工具，限制在工作树内；Worker 禁用扩展自定义、MCP 和浏览器集成，并传入选定的系统和模型环境变量。CLI 结果中的原生会话编号、实际版本和候选 SHA 在任务详情可查看。提交、验证、验收与 GitHub 交付沿用原有工作项流程。
 

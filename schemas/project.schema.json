@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:forgeos:project:v1",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": { "const": 1 },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_harness": { "enum": ["codex", "claude"] },
+        "default_write_concurrency": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

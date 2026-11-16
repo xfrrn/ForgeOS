@@ -110,6 +110,9 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 			}
 			child := spec
 			child.Mode = ""
+			if child.ChildHarness != "" {
+				child.Harness, child.ChildHarness = child.ChildHarness, ""
+			}
 			child.VerifyCommit = ""
 			child.Issue.Title = item.Objective
 			child.Issue.Body = fmt.Sprintf("Goal: %s\nMilestone: %s\nScope: %s\nAcceptance: %s\nDeliverables: %s", plan.Objective, m.Name, item.Scope, item.Acceptance, item.Deliverables)

@@ -24,7 +24,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   const [dispatching, setDispatching] = useState(0)
   const [issueNumber, setIssueNumber] = useState('')
   const [validation, setValidation] = useState('auto')
-  const [harness, setHarness] = useState('codex')
+  const [harness, setHarness] = useState('')
   const [draft, setDraft] = useState<{ feedback: number; revision: number; original: string; body: string } | null>(null)
   const [key, setKey] = useState(() => crypto.randomUUID())
   const api = `/tasks/${task}/previews/${preview}/feedback`
@@ -129,12 +129,12 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
               <label>独立 Issue 编号<input required inputMode="numeric" pattern="[1-9][0-9]*" value={issueNumber} onChange={e => setIssueNumber(e.target.value)} /></label>
               {/^[1-9]\d*$/.test(issueNumber) && <a href={`https://github.com/${page.repository}/issues/${issueNumber}`} target="_blank" rel="noreferrer">核对 Issue #{issueNumber}</a>}
               <label>执行 Harness<select value={harness} onChange={e => setHarness(e.target.value)}>
-                <option value="codex">Codex</option><option value="claude">Claude Code</option></select></label>
+                <option value="">项目默认</option><option value="codex">Codex</option><option value="claude">Claude Code</option></select></label>
               <label>验证方式<select value={validation} onChange={e => setValidation(e.target.value)}>
                 {['auto','docs','go-test','V1','V2','V3','V4'].map(v => <option key={v}>{v}</option>)}</select></label>
               <button className="button" disabled={!issueNumber}>确认派发</button>
               <button type="button" className="detail-text-button" onClick={() => setDispatching(0)}>取消</button></fieldset></form> :
-            <button className="button" disabled={busy} onClick={() => { setDispatching(f.id); setIssueNumber(''); setValidation('auto'); setHarness('codex') }}>派发独立工作项</button>)}
+            <button className="button" disabled={busy} onClick={() => { setDispatching(f.id); setIssueNumber(''); setValidation('auto'); setHarness('') }}>派发独立工作项</button>)}
         {f.requirement ? <a href={`#/tasks/${f.requirement.task_id}`}>到任务查看需求修订 {f.requirement.revision}</a> :
           f.classification?.category === 'requirement_change' && Boolean(page.latest_requirement) && (draft?.feedback === f.id ?
             <fieldset><legend>基于需求修订 {draft.revision} 建立新版本</legend>

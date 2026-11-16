@@ -14,7 +14,7 @@
 | 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经风险分级后交付。Goal 34 的 Management 审核将子项提升至 V4。beta #17 从全局方法生成测试计划、澄清并复审，两项用例实测通过后交付。 | 通过上述候选场景。预览和反馈见下一行。 |
 | 三 · 预览、批注与知识 | Chrome、Caddy 双向 TLS、DOM 与 Canvas 批注、六类反馈、阻塞澄清、从反馈退回修订及新候选批准均已实测。beta #19 还验证了从反馈修订需求、采用和再次执行。项目知识的来源、决策索引和审核后的共享副本见专题 08。 | 外部设备与 tailnet、动态应用、独立 Staging、扩展内截图采集和录屏待验收。工作台截图遮挡、标注与归档已实测。React 与 Vue 的同源 iframe 批注已实测。独立新工作项已从反馈 #2 实测到 beta PR #21 合并。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
-| 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。Claude Code 已从同一任务入口交付 beta #22。数据库、反馈截图和工作区恢复演练见专题 14。 | 资源调度、持久节点注册、压力与节点失联验收待完成。 |
+| 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。Claude Code 已交付 Owner 明确选择的 beta #22，以及项目配置和标签自动派发的 #24。数据库、反馈截图和工作区恢复演练见专题 14。 | 资源调度、持久节点注册、压力与节点失联验收待完成。 |
 
 MVP 页面验收与 GitHub 门禁证据对应基线、收件箱和交付诊断提交，最后一项为 `32c0fa07cc09eaf98750e588682d0f9701dd92f4`。两个私有项目均已交付。它们共用本机 GitHub 身份，跨项目业务凭据隔离保持待验收。
 
@@ -49,7 +49,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3` | 跨节点工件模型、完整 Session/Process 模型 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3` | 通用命令队列、运行中暂停与取消 |
-| 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`，Claude 正式交付见下文 | 进程中断后的原生会话恢复、Linux 模型登录复用、多节点恢复 |
+| 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b` | 进程中断后的原生会话恢复、Linux 模型登录复用、多节点恢复 |
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与恢复、状态接口、执行租约与用途绑定、一次性解包、签发与失败审计 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`、`72cd89d`、`8c83ac8` | 生产专用操作策略、其他节点身份与证书轮换 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`，Management 提级见下文 | 运行管理和归档保留策略 |
@@ -652,3 +652,16 @@ iframe 选择对应提交 `5279f11e3f93b6eb557580e570c054d9bcb46fd0`。该版本
 | Owner 批准，等待受保护分支检查并交付。重启控制面再次查询任务 | 检查失败时保留候选，全部通过后才可合并并关闭 Issue | 首次 Actions 运行的受控失败步骤阻止交付；重跑同一工作流，第二次通过。PR #23 的 `acceptance-check` 与 `forgeos/local-ci` 均成功，Squash Merge 为 `31b1f3a2745a45f51099c8a965b970cc9d7e020c`。#22 已关闭，任务 DONE，重启查询逐字段一致。[PR #23](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/23) · [Actions 运行](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43881504764) |
 
 本次使用 Windows 本机已有的模型网关设置。受限模式默认忽略用户设置，首次探测返回未登录；显式交给 CLI 服务账号的设置文件后，真实编辑与交付成功。未把模型凭据写入仓库或任务回执。启用 PostgreSQL 18 与真实 Docker 的回归测试覆盖 9 个包，102 项通过，零跳过。Go 静态检查及前端生产构建通过。
+
+按工作项选择 Claude Code 并交付的实现提交为 `b11089be5de8948af1eaef40353aebd5a50bed8c`。
+
+## 阶段四、专题 07 · 项目默认 Harness 与标签派发
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 beta 私有库的专用受保护验收分支提交 `project.yaml` 指定 Claude，本机工作区将同一字段改为 Codex 并留作未提交改动。给 #24 添加派单标签 | Poller 使用基础提交，工作台可追溯配置，只有匹配的 Worker 可领取 | 基础提交 `da7796669227f979503c5cdf915e4ac93909ea88`，配置 blob `1008b690a8b5527149b87f5b21563102636e8fde`。Chrome 任务页显示 Claude Code 与该 blob。仅声明 Codex 的节点领取返回 204。[标签 Issue #24](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/24) |
+| 由正式 Worker 实现，Owner 核对唯一改动的手册文件后批准，通过受保护分支交付 | 使用项目选定的 Harness，候选和已合并版本可追溯 | 会话 `14e58ae1-e6d6-4788-91a9-ab1b74358aa9`，候选 `c2c051d3e298c9ff1b2df42fd07b64b680ec413e`。PR #25 的 Actions 受控首轮失败后重跑成功，本地 CI 成功；合并到 `codex/accept-project-harness-9c4836`，Merge SHA 为 `81630b95429f0debfd9593544bba181ba0981708`。Issue 已关闭，重启控制面后任务记录相同。[PR #25](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/25) · [Actions 运行](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43884038472) |
+| 在隔离克隆提交未知的默认 Harness 并尝试导入。切回原基础，Owner 明确选择 Codex，再按项目默认重放 | 无效声明阻止派发，Owner 显式选择可覆盖默认，已有快照稳定 | 无效配置返回 409 且任务数为零。显式请求得到 Codex 与原配置 blob，重放后任务逐字段一致 |
+| 在独立数据库按规划模式导入，Owner 保存并激活一项计划，用两种节点声明分别尝试领取子项 | 规划和子项分开选择能力；子项保留来源配置 | 父项 1 归档默认子项 Harness 为 Claude。Owner 激活修订 1 后子项 2 为 Claude 并保留原 blob。Codex 领取返回 204，Claude 领取返回 200；此路由演练用受控失败结束领取 |
+
+本次改动完成后启用 PostgreSQL 18 与真实 Docker，Go 全量回归 9 个包、103 项通过，零跳过。Go 静态检查和工作台生产构建均通过。

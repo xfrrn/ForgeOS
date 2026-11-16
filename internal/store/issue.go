@@ -24,13 +24,15 @@ type Issue struct {
 }
 
 type IssueSpec struct {
-	Harness      string             `json:"harness,omitempty"`
-	VerifyCommit string             `json:"verify_commit,omitempty"`
-	Mode         string             `json:"mode,omitempty"`
-	Issue        Issue              `json:"issue"`
-	BaseCommit   string             `json:"base_commit"`
-	Validation   string             `json:"validation"`
-	Policy       *validation.Policy `json:"policy,omitempty"`
+	ProjectConfigBlob string             `json:"project_config_blob,omitempty"`
+	ChildHarness      string             `json:"child_harness,omitempty"`
+	Harness           string             `json:"harness,omitempty"`
+	VerifyCommit      string             `json:"verify_commit,omitempty"`
+	Mode              string             `json:"mode,omitempty"`
+	Issue             Issue              `json:"issue"`
+	BaseCommit        string             `json:"base_commit"`
+	Validation        string             `json:"validation"`
+	Policy            *validation.Policy `json:"policy,omitempty"`
 }
 
 type ValidationResult struct {
@@ -216,6 +218,12 @@ func validCommit(sha string) bool {
 }
 
 func (spec IssueSpec) ValidHarness() bool {
+	if spec.ProjectConfigBlob != "" && !validCommit(spec.ProjectConfigBlob) {
+		return false
+	}
+	if spec.ChildHarness != "" && (spec.Mode != "plan" || (spec.ChildHarness != "codex" && spec.ChildHarness != "claude")) {
+		return false
+	}
 	return spec.Harness == "" || spec.Harness == "codex" || (spec.Harness == "claude" && spec.Mode != "plan")
 }
 

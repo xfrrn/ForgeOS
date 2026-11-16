@@ -94,7 +94,7 @@ func Assess(ctx context.Context, repo, base, commit string, p Policy) (Decision,
 	if _, err := localrepo.Git(ctx, repo, "merge-base", "--is-ancestor", base, commit); err != nil {
 		return d, errors.New("candidate must descend from the selected base")
 	}
-	blob, raw, err := configFile(ctx, repo, base, "acceptance.yaml")
+	blob, raw, err := ReadConfigFile(ctx, repo, base, "acceptance.yaml")
 	if err != nil {
 		return d, err
 	}
