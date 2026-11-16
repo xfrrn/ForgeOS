@@ -85,6 +85,44 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		respond(w, http.StatusOK, page, err)
 	}))
 
+	mux.HandleFunc("GET /projects", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		var before int64
+		if q := r.URL.Query(); q.Has("before") {
+			var err error
+			if before, err = strconv.ParseInt(q.Get("before"), 10, 64); err != nil || before <= 0 {
+				problem(w, 400, "before must be a positive project ID")
+				return
+			}
+		}
+		rows, err := data.RegisteredProjects(r.Context(), before)
+		var next int64
+		if len(rows) > 30 {
+			rows = rows[:30]
+			next = rows[len(rows)-1].ID
+		}
+		respond(w, 200, struct {
+			Items []store.RegisteredProject `json:"items"`
+			Next  int64                     `json:"next_before,omitempty"`
+		}{rows, next}, err)
+	}))
+	mux.HandleFunc("POST /projects/{id}/check", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Retry int64 `json:"retry_task_id"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		if input.Retry < 0 {
+			problem(w, 400, "retry_task_id must be positive")
+			return
+		}
+		task, err := data.ProjectCheck(r.Context(), id, input.Retry)
+		respond(w, 200, task, err)
+	}))
 	mux.HandleFunc("POST /projects", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Path string `json:"path"`

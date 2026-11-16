@@ -41,7 +41,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 5. 审批中心；
 6. 预览反馈工具；
 7. 知识库管理；
-8. 项目初始化向导。
+8. 工作台的项目登记、真实 Worker HEAD 检查、失败重试和已有项目分页已验收。仓库入口与依赖扫描、环境与密钥需求清单、Local Mock / Integrated 启动及完整初始化报告仍待验收。
 
 ## D. 不属于当前范围
 

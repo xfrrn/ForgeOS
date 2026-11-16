@@ -5,6 +5,7 @@ import { PreviewFeedback } from './PreviewFeedback'
 import TaskList from './TaskList'
 import { WorkerNodes } from './WorkerNodes'
 import { DecisionQuestions } from './DecisionQuestions'
+import { Projects } from './Projects'
 import { Icon, requestWith } from './shared'
 import './style.css'
 
@@ -57,11 +58,12 @@ function App() {
   const queue = route === '/review'
   const nodes = route === '/workers'
   const questions = route === '/questions'
+  const projects = route === '/projects'
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?)?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
-  const valid = Boolean(id || queue || nodes || questions || route === '/tasks')
+  const valid = Boolean(id || queue || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
-  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : valid ? '任务列表' : '页面不存在'
+  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
   }, [])
@@ -88,7 +90,8 @@ function App() {
       <a className="brand-link" aria-label="ForgeOS 任务列表" href="#/tasks"><Brand/></a>
       <div className="work-label">工作区</div>
       <nav aria-label="工作台导航">
-        <a className={!queue && !nodes && !questions ? 'active' : ''} aria-current={!queue && !nodes && !questions ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
+        <a className={!queue && !nodes && !questions && !projects ? 'active' : ''} aria-current={!queue && !nodes && !questions && !projects ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
+        <a className={projects ? 'active' : ''} aria-current={projects ? 'page' : undefined} href="#/projects" onClick={() => setMobileNav(false)}><Icon name="GitBranch"/>项目接入</a>
         <a className={queue ? 'active' : ''} aria-current={queue ? 'page' : undefined} href="#/review" onClick={() => setMobileNav(false)}><Icon name="ClipboardCheck"/>验收队列
           {counts.WAITING_ACCEPTANCE > 0 && <span className="nav-count">{counts.WAITING_ACCEPTANCE}</span>}</a>
         <a className={nodes ? 'active' : ''} aria-current={nodes ? 'page' : undefined} href="#/workers"><Icon name="Terminal"/>执行节点</a>
@@ -109,6 +112,7 @@ function App() {
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} request={request} onChanged={refreshCounts}/> :
         nodes ? <WorkerNodes request={request}/> :
+        projects ? <Projects request={request}/> :
         questions ? <DecisionQuestions request={request} onChanged={refreshCounts}/> :
         valid ? <TaskList key={queue ? 'review' : 'all'} queue={queue} request={request} onCounts={setCounts}/> :
         <div className="panel table-message"><h1>页面不存在</h1><a className="button" href="#/tasks">返回任务列表</a></div>}

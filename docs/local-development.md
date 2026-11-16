@@ -18,6 +18,10 @@ $env:FORGEOS_WORKER_TOKEN = [Convert]::ToHexString([Security.Cryptography.Random
 
 ## 启动与验收
 
+启动服务后，Owner 可从工作台的“项目接入”登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后选择“运行 HEAD 检查”进入任务详情。原 Worker 未上线时任务显示待执行；成功后可核对仓库的完整提交号。如果失败，保留原任务，在项目页选择“重新检查”生成下一次检查。
+
+Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。
+
 在同一个 PowerShell 中执行以下命令，两个子进程会继承各自需要的配置。默认控制面地址为 `http://127.0.0.1:8080`。若端口已占用，可在启动前同时设置 `FORGEOS_LISTEN_ADDR`（例如 `127.0.0.1:8081`）和 `FORGEOS_API_URL`（例如 `http://127.0.0.1:8081`）。
 
 ```powershell

@@ -154,3 +154,13 @@ h2 { font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
   .task-table th:first-child,.task-table td:first-child { padding-left: 14px; }.task-table th:nth-child(2) { width: 70px; }.task-table td { padding: 13px 4px; }.task-table th { padding: 9px 4px; }.task-table th:last-child { width: 25px; }.row-link { width: 23px; }
   .task-title { font-size: 13px; gap: 5px; }.task-sub { padding-left: 26px; }.table-foot { padding: 12px; }
 }
+.project-setup { max-width: 960px; }
+.project-setup > .panel { margin-bottom: 16px; }
+.project-setup label { font-weight: 600; }
+.project-setup p { margin: 8px 0; }
+.project-input, .registered-project { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.project-input input { flex: 1 1 240px; min-width: 0; padding: 9px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.registered-project { justify-content: space-between; padding: 16px 0; border-top: 1px solid var(--line); }
+.registered-project h3 { margin: 0 0 6px; }
+.registered-project code { overflow-wrap: anywhere; }
+.registered-project > div { min-width: 0; }

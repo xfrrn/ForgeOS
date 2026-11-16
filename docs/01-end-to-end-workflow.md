@@ -32,6 +32,8 @@ flowchart TD
 
 交付物：Project Profile、Repository Mapping、Environment Inventory、Secret Requirement Inventory、初始化报告。
 
+Owner 在工作台选择“项目接入”，登记控制面机器上的 Git 仓库，随后运行 HEAD 检查。任务详情展示实际执行的 Worker、Worktree、提交号、退出码和事件。已有项目会列出最近一次 HEAD 检查。仓库尚无提交时可先检查失败回执，补上初始提交后在项目页重新检查。项目环境的启动验证和初始化报告分别验收。
+
 ### 02 需求与任务接入
 
 - GitHub Issue 是第一版主要远程入口。
