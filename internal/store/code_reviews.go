@@ -12,13 +12,14 @@ import (
 )
 
 type ReviewJob struct {
-	TaskID      int64  `json:"task_id"`
-	ExecutionID int64  `json:"execution_id"`
-	Repo        string `json:"repo"`
-	Base        string `json:"base_commit"`
-	Commit      string `json:"commit"`
-	Requirement string `json:"requirement"`
-	Lease       string `json:"lease"`
+	TaskID           int64  `json:"task_id"`
+	ExecutionID      int64  `json:"execution_id"`
+	Repo             string `json:"repo"`
+	RepoRelativePath string `json:"repo_relative_path,omitempty"`
+	Base             string `json:"base_commit"`
+	Commit           string `json:"commit"`
+	Requirement      string `json:"requirement"`
+	Lease            string `json:"lease"`
 }
 
 func (s *Store) SetCodeReviewPolicy(ctx context.Context, id int64, required bool) error {

@@ -33,7 +33,7 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	repo, err := localrepo.ResolveRepo(ctx, w.repoRoot, job.RepoPath)
+	repo, err := localrepo.ResolveAssigned(ctx, w.repoRoot, job.RepoPath, job.RepoRelativePath)
 	if err != nil {
 		return failed("repository validation failed: "+err.Error(), err)
 	}

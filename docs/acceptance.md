@@ -922,3 +922,15 @@ Worker 日志配套备份恢复对应提交 `75b1495e7095bd8a2c5cc01eb0e0e99e26f
 Windows 与 Linux 容器共用一台物理主机和 PostgreSQL，项目此前登记在 Windows。异地设备、独立站点网络、文件保留和清理策略仍待验收。
 
 启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、130 项通过、零跳过。回归包含归档队列写入失败后的原子回滚与重启补报。Go 静态检查和 Web 生产构建通过。
+
+跨节点 CI 文件归档及 Owner 下载对应提交 `6f9b0c141aad99dd9635586e47db8ac363f5dbe3`。
+
+## 专题 07、10、14 · 不同挂载路径上的执行和独立审查
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在空 schema 启动 Linux 容器控制面，从 Owner API 以 `team/beta` 登记只读挂载的 Git 克隆，创建 Git HEAD 任务。Windows 节点使用自己的仓库根和工作区领取 | 控制面登记 Linux 路径；节点从本机对应项目执行 | 登记路径 `/mnt/projects/team/beta`。任务 1、执行 1 在 Windows 完成，Git Worktree、源克隆与控制面回执的 HEAD 均为 `4e85a882d1173169966556a22200034f6a3a7f04` |
+| 在独立的控制面、Worker 和 Reviewer 根目录下各建一份 `team/beta` 克隆。正常导入 beta #19，在 Worker 镜像上生成候选。测试转发器在发送结果前用 Git 将固定候选对象同步给控制面 | 领取同时带登记绝对路径和相对路径。模型修改节点上的克隆，控制面能核对固定候选 | 普通领取和独立审查领取均保留控制面的绝对路径并传递 `team/beta`。Codex Thread `01a1e555-48ef-79f2-8f5f-5e9a1abd6a34` 生成 `693b82ff5c7cd0b21a9fe17a1e10bf6a006cd84e`，只更改指定页面。运行 `ci-run-1475177422` 通过本地 CI。[输入 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/19) |
+| 让尚未同步候选的 Reviewer 领取，再将固定对象同步到审查镜像，重试同一执行。在 Chrome 阅读报告和差异，核对标题及段落后批准；重启控制面 | 缺少候选时审查失败，可用对象到位后按原 SHA 审查和批准 | 首次报告候选不是可读取的 commit。同步后独立 Claude Session `8c97a582-98db-4cec-bda6-9c3752ceb21d` 对原候选给出零条发现。Owner 批准为 ACCEPTED，重启后任务和报告均相同。本场景关闭了 GitHub 交付 |
+
+两次演练均使用同一物理主机。独立镜像的 Git 对象同步由演练显式执行。全量回归启用 PostgreSQL 18 和真实 Docker，9 个包、131 项通过、零跳过；Go 静态检查通过。

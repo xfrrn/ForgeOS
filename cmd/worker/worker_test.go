@@ -90,6 +90,29 @@ func TestRejectsUnregisteredRepositoryAndWorkspacePaths(t *testing.T) {
 	}
 }
 
+func TestAssignedProjectAtNodeMount(t *testing.T) {
+	w, job, head := fixture(t)
+	root := t.TempDir()
+	registered := filepath.Join(root, "project")
+	job.RepoRelativePath = localrepo.RelativePath(root, registered)
+	job.RepoPath = registered
+	if job.RepoRelativePath != "project" {
+		t.Fatal("missing portable project path")
+	}
+	result := w.execute(context.Background(), job)
+	if result.ExitCode != 0 || result.Commit != head {
+		t.Fatalf("node mount: %+v", result)
+	}
+	if _, err := localrepo.ResolveAssigned(context.Background(), w.repoRoot, registered, "../project"); err == nil {
+		t.Fatal("accepted a path outside the node root")
+	}
+	// A broader node root may already contain the registered absolute checkout.
+	path, err := localrepo.ResolveAssigned(context.Background(), filepath.Dir(w.repoRoot), filepath.Join(w.repoRoot, "project"), "project")
+	if err != nil || path != filepath.Join(w.repoRoot, "project") {
+		t.Fatal("lost existing absolute project path", path, err)
+	}
+}
+
 func TestRetryReportWithoutExecutingTwice(t *testing.T) {
 	w, job, head := fixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)

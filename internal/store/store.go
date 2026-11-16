@@ -197,6 +197,7 @@ type Job struct {
 	ExecutionID         int64      `json:"execution_id"`
 	TaskID              int64      `json:"task_id"`
 	RepoPath            string     `json:"repo_path"`
+	RepoRelativePath    string     `json:"repo_relative_path,omitempty"`
 	Workspace           string     `json:"workspace"`
 	LeaseToken          string     `json:"lease_token"`
 }

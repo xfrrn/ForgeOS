@@ -20,7 +20,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 		if err != nil || status != http.StatusOK || job.ExecutionID < 1 || job.Lease == "" {
 			return fmt.Errorf("invalid reviewer claim (HTTP %d)", status)
 		}
-		report, err := reviewCandidate(ctx, candidateReview{Repo: job.Repo, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement})
+		report, err := reviewCandidate(ctx, candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement})
 		if ctx.Err() != nil {
 			return nil
 		}

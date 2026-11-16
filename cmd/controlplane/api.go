@@ -170,6 +170,9 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		if job != nil {
+			job.RepoRelativePath = localrepo.RelativePath(root, job.RepoPath)
+		}
 		respond(w, http.StatusOK, job, err)
 	}))
 

@@ -42,6 +42,39 @@ func within(root, path string) bool {
 	return err == nil && (rel == "." || filepath.IsLocal(rel))
 }
 
+// RelativePath translates the registered control-plane path for a node with another mount.
+func RelativePath(root, repo string) string {
+	if !filepath.IsAbs(repo) {
+		return ""
+	}
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(root, repo)
+	if err != nil || !filepath.IsLocal(rel) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+func ResolveAssigned(ctx context.Context, root, registered, relative string) (string, error) {
+	if relative == "" {
+		return ResolveRepo(ctx, root, registered)
+	}
+	local, err := filepath.Localize(relative)
+	if err != nil {
+		return "", errors.New("invalid assigned repository path")
+	}
+	if RelativePath(root, registered) != "" {
+		// Existing deployments can give the Worker a broader root than the control plane.
+		if _, err := os.Lstat(registered); !errors.Is(err, os.ErrNotExist) {
+			return ResolveRepo(ctx, root, registered)
+		}
+	}
+	return ResolveRepo(ctx, root, local)
+}
+
 func ResolveRepo(ctx context.Context, allowedRoot, path string) (string, error) {
 	if !filepath.IsAbs(allowedRoot) || path == "" {
 		return "", errors.New("expected an absolute repository root and a project path")

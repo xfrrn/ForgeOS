@@ -77,6 +77,9 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 			w.WriteHeader(204)
 			return
 		}
+		if job != nil {
+			job.RepoRelativePath = localrepo.RelativePath(root, job.Repo)
+		}
 		respond(w, 200, job, err)
 	}))
 	mux.HandleFunc("POST /internal/reviewer/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {

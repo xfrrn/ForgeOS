@@ -21,6 +21,7 @@ import (
 var codeReviewSchema string
 
 type candidateReview struct {
+	relative    string
 	Repo        string `json:"repo"`
 	Base        string `json:"base_commit"`
 	Commit      string `json:"commit"`
@@ -32,7 +33,7 @@ func reviewCandidate(ctx context.Context, input candidateReview) (review.Report,
 	if os.Geteuid() == 0 || strings.TrimSpace(input.Requirement) == "" || len(input.Requirement) > 64<<10 {
 		return report, errors.New("review requires a non-root identity and a bounded requirement")
 	}
-	repo, err := localrepo.ResolveRepo(ctx, os.Getenv("FORGEOS_REPO_ROOT"), input.Repo)
+	repo, err := localrepo.ResolveAssigned(ctx, os.Getenv("FORGEOS_REPO_ROOT"), input.Repo, input.relative)
 	if err != nil {
 		return report, err
 	}

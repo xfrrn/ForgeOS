@@ -45,6 +45,8 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 
 为每个批准访问的项目准备由控制面账号持有、`forgeos-repos` 组可读写的克隆。可在设置了组继承权限（`2770`）的目录中使用 `git init --shared=group` 后抓取项目。Worker 账号的环境文件中，`FORGEOS_SHARED_REPOS` 填入共享克隆的实际绝对路径，在 Linux 上用冒号分隔。只列出信任其 Git 管理目录的项目。仓库仍须位于 `FORGEOS_REPO_ROOT` 内。
 
+使用不同挂载点时，控制面、执行节点和审查节点分别设置本机的 `FORGEOS_REPO_ROOT`。例如控制面的 `/mnt/projects/team/beta` 和节点的 `D:\projects\team\beta` 对应同一相对路径 `team/beta`。可以把同一个 Git 对象库挂载到不同位置。部署独立镜像时，需要提前同步固定版本，以便执行节点读取基础 SHA，控制面在确认结果时、审查节点在领取审查时读取候选 SHA。仅配置路径不会同步 Git 对象。
+
 分别创建 root 持有、权限为 `0600` 的环境文件。每行写入一项 `名称=值`，systemd 在切换到服务账号前读取文件。
 
 | 文件 | 必填设置 |
