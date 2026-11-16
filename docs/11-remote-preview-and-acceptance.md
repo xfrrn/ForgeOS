@@ -172,6 +172,8 @@ Owner 使用 `GET /tasks/{id}/previews/{preview}/feedback` 读取预览上下文
 
 ## 8. 验收版本约束
 
+对于“需求变更”，点击“从反馈修订需求”，以最新修订的正文为起点编辑并保存。反馈历史提供目标任务和修订号，任务的需求历史可返回来源预览。保存后由 Owner 在任务检查点采用；已规划的 Goal 沿用计划修订流程。API 为 `POST /tasks/{id}/previews/{preview}/feedback/requirements`，字段为 `feedback_id`、`execution_id`、`commit`、`previous_revision`、`body`。相同请求返回原修订，沿用过期基础版本的另一份草案返回 409。
+
 任务页的“候选验收”列出本次执行各预览下已分类的验收、Bug 和 UI 反馈。Owner 可勾选一条或多条并核对原始依据。验收类可随“通过验收”提交，Bug 和 UI 类可随“退回修改”提交。退回时填写给 Worker 的修订说明。控制面把反馈编号和验收决定一起保存。新执行从退回候选开始修订，Worker 读取 Owner 的说明。原预览仍能查到对应决定。
 
 调用 `POST /tasks/{id}/acceptance` 时，可在现有字段旁传入 `feedback_ids` 编号数组。决定绑定执行、候选 SHA、类别和所选编号集合。重放时可调整编号顺序，改变编号集合会返回 409。正常的测试计划、代码审查和用例门禁同样适用于引用反馈的批准。

@@ -5,15 +5,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
 type RequirementRevision struct {
-	ID         int64     `json:"id"`
-	TaskID     int64     `json:"task_id"`
-	Revision   int       `json:"revision"`
-	Issue      Issue     `json:"issue"`
-	ObservedAt time.Time `json:"observed_at"`
+	FeedbackID      int64     `json:"feedback_id,omitempty"`
+	FeedbackTask    int64     `json:"feedback_task,omitempty"`
+	FeedbackPreview string    `json:"feedback_preview,omitempty"`
+	ID              int64     `json:"id"`
+	TaskID          int64     `json:"task_id"`
+	Revision        int       `json:"revision"`
+	Issue           Issue     `json:"issue"`
+	ObservedAt      time.Time `json:"observed_at"`
 }
 
 // The caller holds the imported task lock. Polling a renamed label or a newer branch tip is not a requirement edit.
@@ -21,7 +25,9 @@ func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issu
 	var revision int
 	var previous []byte
 	var seen sql.NullTime
-	err := tx.QueryRowContext(ctx, `SELECT r.revision,r.issue,t.last_issue_update FROM requirement_revisions r JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1 ORDER BY r.revision DESC LIMIT 1`, taskID).Scan(&revision, &previous, &seen)
+	err := tx.QueryRowContext(ctx, `SELECT (SELECT max(revision) FROM requirement_revisions WHERE task_id=$1),r.issue,t.last_issue_update
+		FROM requirement_revisions r JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1 AND r.feedback_id IS NULL
+		ORDER BY r.revision DESC LIMIT 1`, taskID).Scan(&revision, &previous, &seen)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -89,8 +95,9 @@ func (s *Store) ObserveIssue(ctx context.Context, projectID int64, issue Issue) 
 func (s *Store) RequirementRevision(ctx context.Context, taskID int64, revision int64) (RequirementRevision, error) {
 	var r RequirementRevision
 	var doc []byte
-	err := s.db.QueryRowContext(ctx, `SELECT r.id,r.task_id,r.revision,r.issue,r.observed_at FROM work_items t
-		JOIN requirement_revisions r ON r.task_id=COALESCE(t.goal_id,t.id) WHERE t.id=$1 AND r.revision=$2`, taskID, revision).Scan(&r.ID, &r.TaskID, &r.Revision, &doc, &r.ObservedAt)
+	err := s.db.QueryRowContext(ctx, `SELECT r.id,r.task_id,r.revision,r.issue,r.observed_at,COALESCE(r.feedback_id,0),COALESCE(p.task_id,0),COALESCE(p.id,'') FROM work_items t
+		JOIN requirement_revisions r ON r.task_id=COALESCE(t.goal_id,t.id) LEFT JOIN preview_feedback f ON f.id=r.feedback_id
+		LEFT JOIN static_preview_receipts p ON p.id=f.preview_id WHERE t.id=$1 AND r.revision=$2`, taskID, revision).Scan(&r.ID, &r.TaskID, &r.Revision, &doc, &r.ObservedAt, &r.FeedbackID, &r.FeedbackTask, &r.FeedbackPreview)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}
@@ -99,6 +106,69 @@ func (s *Store) RequirementRevision(ctx context.Context, taskID int64, revision 
 	}
 	err = json.Unmarshal(doc, &r.Issue)
 	return r, err
+}
+
+type FeedbackRequirement struct {
+	FeedbackID int64  `json:"feedback_id"`
+	Execution  int64  `json:"execution_id"`
+	Commit     string `json:"commit"`
+	Previous   int    `json:"previous_revision"`
+	Body       string `json:"body"`
+}
+
+func (f FeedbackRequirement) Valid() bool {
+	return f.FeedbackID > 0 && f.Execution > 0 && validCommit(f.Commit) && f.Previous > 0 && f.Previous < 2147483647 &&
+		strings.TrimSpace(f.Body) != "" && len(f.Body) <= 256<<10 && !strings.ContainsRune(f.Body, 0)
+}
+
+// Creating a revision records the Owner's decision. Adoption is a separate checkpoint.
+func (s *Store) ReviseFromFeedback(ctx context.Context, task int64, preview string, f FeedbackRequirement) (RequirementRevision, error) {
+	if !f.Valid() {
+		return RequirementRevision{}, ErrConflict
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return RequirementRevision{}, err
+	}
+	defer tx.Rollback()
+	var parent int64
+	err = tx.QueryRowContext(ctx, `SELECT parent.id FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id
+		JOIN work_items child ON child.id=p.task_id JOIN work_items parent ON parent.id=COALESCE(child.goal_id,child.id)
+		WHERE f.id=$1 AND p.id=$2 AND p.task_id=$3 AND p.execution_id=$4 AND p.commit=$5
+		AND f.classified_at IS NOT NULL AND f.classification->>'category'='requirement_change' FOR UPDATE OF parent`,
+		f.FeedbackID, preview, task, f.Execution, f.Commit).Scan(&parent)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RequirementRevision{}, ErrConflict
+	}
+	if err != nil {
+		return RequirementRevision{}, err
+	}
+	var revision int
+	var same bool
+	err = tx.QueryRowContext(ctx, `SELECT revision,revision-1=$2 AND issue->>'body'=$3 FROM requirement_revisions WHERE feedback_id=$1`,
+		f.FeedbackID, f.Previous, f.Body).Scan(&revision, &same)
+	if err == nil && !same {
+		return RequirementRevision{}, ErrConflict
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `INSERT INTO requirement_revisions(task_id,revision,issue,feedback_id)
+			SELECT task_id,revision+1,jsonb_set(issue,'{body}',to_jsonb($3::text)),$4 FROM requirement_revisions
+			WHERE task_id=$1 AND revision=$2 AND issue->>'body'<>$3 AND revision=(SELECT max(revision) FROM requirement_revisions WHERE task_id=$1)
+			RETURNING revision`, parent, f.Previous, f.Body, f.FeedbackID).Scan(&revision)
+		if errors.Is(err, sql.ErrNoRows) {
+			return RequirementRevision{}, ErrConflict
+		}
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES($1,'requirement_revised_from_feedback')`, parent)
+		}
+	}
+	if err != nil {
+		return RequirementRevision{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return RequirementRevision{}, err
+	}
+	return s.RequirementRevision(ctx, parent, int64(revision))
 }
 
 // AdoptRequirement starts new work at a completed turn boundary. Existing executions keep their own requirement IDs.

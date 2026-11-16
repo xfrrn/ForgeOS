@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-type Note = { id: number; created_at: string; state: string; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Note = { id: number; created_at: string; state: string; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
 const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
-type Page = { at_acceptance: boolean; preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
+type Page = { latest_requirement: number | null; at_acceptance: boolean; preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
 export function PreviewFeedback({ task, preview, captureQuery, request }: { task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
   const capture = new URLSearchParams(captureQuery)
@@ -17,6 +17,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   const [version, setVersion] = useState(0)
   const [asking, setAsking] = useState(0)
   const [question, setQuestion] = useState('')
+  const [draft, setDraft] = useState<{ feedback: number; revision: number; original: string; body: string } | null>(null)
   const [key, setKey] = useState(() => crypto.randomUUID())
   const api = `/tasks/${task}/previews/${preview}/feedback`
   const mismatch = Boolean(captureQuery && page && (capture.get('commit') !== page.preview.commit || capture.get('execution') !== String(page.preview.execution_id)))
@@ -52,6 +53,26 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     } catch (e) { setError(e instanceof Error ? e.message : '发起澄清失败。') }
     finally { setBusy(false) }
   }
+  async function editRequirement(f: Note) {
+    if (!page?.latest_requirement || busy) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const v = await request<{ revision: number; issue: { body: string } }>(`/tasks/${task}/requirements/${page.latest_requirement}`)
+      setDraft({ feedback: f.id, revision: v.revision, original: v.issue.body, body: v.issue.body })
+    } catch (e) { setError(e instanceof Error ? e.message : '无法读取需求正文。') }
+    finally { setBusy(false) }
+  }
+  async function revise() {
+    if (!page || !draft || busy) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const v = await request<{ revision: number }>(api + '/requirements', { method: 'POST', body: JSON.stringify({
+        feedback_id: draft.feedback, execution_id: page.preview.execution_id, commit: page.preview.commit,
+        previous_revision: draft.revision, body: draft.body }) })
+      setDraft(null); setVersion(n => n + 1); setMessage(`已保存需求修订 ${v.revision}。`)
+    } catch (e) { setVersion(n => n + 1); setError(e instanceof Error ? e.message : '无法保存需求修订。') }
+    finally { setBusy(false) }
+  }
   return <section className="panel"><a href={`#/tasks/${task}`}>返回任务 T-{task}</a><h1>预览反馈</h1>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {page && <><p>执行 {page.preview.execution_id} · {page.preview.directory} · <code>{page.preview.commit}</code></p>
@@ -78,6 +99,14 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
         {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
           <p>Management 会话　<code>{f.classification.session_id}</code></p></details>}
+        {f.requirement ? <a href={`#/tasks/${f.requirement.task_id}`}>到任务查看需求修订 {f.requirement.revision}</a> :
+          f.classification?.category === 'requirement_change' && Boolean(page.latest_requirement) && (draft?.feedback === f.id ?
+            <fieldset><legend>基于需求修订 {draft.revision} 建立新版本</legend>
+              <label>修订后的完整正文<textarea value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} /></label>
+              {draft.revision !== page.latest_requirement && <p role="alert">已有更新版本，请取消后重新读取。</p>}
+              <button className="button" disabled={busy || draft.revision !== page.latest_requirement || !draft.body.trim() || draft.body === draft.original} onClick={() => void revise()}>保存需求修订</button>
+              <button className="detail-text-button" disabled={busy} onClick={() => setDraft(null)}>取消</button></fieldset> :
+            <button className="button" disabled={busy} onClick={() => void editRequirement(f)}>从反馈修订需求</button>)}
         {f.question ? <div><p>澄清问题 #{f.question.id} · {f.question.question}</p>
           {f.question.answer ? <p>Owner 答复　{f.question.answer}</p> : <a href={`#/tasks/${task}`}>到任务中回答</a>}</div> :
           page.at_acceptance && f.classification?.category === 'blocked' && (asking === f.id ?

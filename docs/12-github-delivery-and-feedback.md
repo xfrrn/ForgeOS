@@ -24,6 +24,8 @@
 
 任务详情显示任务绑定版本与可浏览的需求历史。Owner 可以调用 `GET /tasks/{id}/requirements/{revision}` 获取完整快照。从子项访问时返回父 Goal 的原始需求。执行领取时冻结需求 ID；观察到新版本会记录事件，已有候选、验收和执行记录保持其原版本。
 
+工作台还有一个需求来源。对 Management 已归类为“需求变更”的预览反馈，Owner 可在原反馈下读取最新需求，编辑完整正文并保存。新修订保留原 Issue 身份和标题，标注 Owner、反馈编号和来源预览。子项的反馈进入父 Goal 的需求历史。重复读取未改动的 GitHub Issue 会保留本地修订；之后真实发生的 GitHub 标题或正文修改会形成另一版快照。可以在历史中分别核对和采用。
+
 对于尚未转为 Goal 的 Issue，Owner 可在任务详情查看最新正文，选择“采用修订并排队执行”。API 是 `POST /tasks/{id}/requirements/{revision}/apply`。适用检查点为待领取、执行失败或待验收；运行中返回 409。采用版本后，Work Item 保留原 ID，新 Execution 从同一基础提交和新需求开始，旧候选、退回意见与旧 Execution 保持关联。已创建计划的 Goal 通过计划修订处理子项范围。
 
 轮询已跟踪的开放 Issue 时按页读取 GitHub 评论。每条观测包含原始 API 对象、来源评论 ID、更新时间和中台事件 ID；正文编辑另存事件。重复读取同一版本不会重复入队。从 Owner 入口 `GET /tasks/{id}/comments?after={event_id}` 顺序读取，每页最多 30 条，子工作项读取父 Issue 的原始评论。未转换的普通讨论仍留在收件箱。轮询只能记录实际读到的版本。

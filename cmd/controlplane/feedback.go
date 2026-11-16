@@ -8,6 +8,22 @@ import (
 
 func registerPreviewFeedback(mux *http.ServeMux, data *store.Store, owner string) {
 	const path = "/tasks/{id}/previews/{preview}/feedback"
+	mux.HandleFunc("POST "+path+"/requirements", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var f store.FeedbackRequirement
+		if !decodeLimited(w, r, &f, 2<<20) {
+			return
+		}
+		if !f.Valid() {
+			problem(w, 400, "provide the classified feedback, execution, candidate, previous revision and revised requirement body")
+			return
+		}
+		rev, err := data.ReviseFromFeedback(r.Context(), id, r.PathValue("preview"), f)
+		respond(w, http.StatusOK, rev, err)
+	}))
 	mux.HandleFunc("GET "+path, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

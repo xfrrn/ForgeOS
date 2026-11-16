@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -120,5 +121,56 @@ func TestAdoptRequirementAfterTurn(t *testing.T) {
 	updated, err := s.Task(ctx, task.ID)
 	if err != nil || updated.Execution.RequirementRevision != 3 || len(updated.Attempts) != 2 || updated.Attempts[0].Result.Commit != candidate {
 		t.Fatal(updated, err)
+	}
+	raw, err := s.OpenPreview(ctx, task.ID, job.ExecutionID, candidate, "public", 8091, 30)
+	var preview struct{ ID string }
+	if err != nil || json.Unmarshal(raw, &preview) != nil {
+		t.Fatal(err, string(raw))
+	}
+	fid, err := s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, PreviewFeedback{Request: "ee08bcfe-0011-4d87-8739-c0eb1613f539",
+		Execution: job.ExecutionID, Commit: candidate, Path: "/", Note: "Change the rule."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := FeedbackRequirement{FeedbackID: fid, Execution: job.ExecutionID, Commit: candidate, Previous: 3, Body: "Owner changed the capacity rule."}
+	if _, err = s.ReviseFromFeedback(ctx, task.ID, preview.ID, change); !errors.Is(err, ErrConflict) {
+		t.Fatal("unclassified feedback accepted", err)
+	}
+	review, err := s.ClaimFeedback(ctx, p.ID)
+	if err != nil || review == nil {
+		t.Fatal(review, err)
+	}
+	if err = s.ClassifyFeedback(ctx, p.ID, fid, review.Lease, FeedbackClassification{Category: "requirement_change", Session: "management", Rationale: "Changes scope", Evidence: "Change the rule."}); err != nil {
+		t.Fatal(err)
+	}
+	stale := change
+	stale.Previous--
+	if _, err = s.ReviseFromFeedback(ctx, task.ID, preview.ID, stale); !errors.Is(err, ErrConflict) {
+		t.Fatal("stale draft", err)
+	}
+	for range 2 {
+		revision, err := s.ReviseFromFeedback(ctx, task.ID, preview.ID, change)
+		if err != nil || revision.Revision != 4 || revision.FeedbackID != fid || revision.FeedbackTask != task.ID || revision.FeedbackPreview != preview.ID || revision.Issue.Body != change.Body {
+			t.Fatal(revision, err)
+		}
+	}
+	if _, err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	current, err := s.Task(ctx, task.ID)
+	if err != nil || current.LatestRequirement != 4 || current.Status != "RUNNING" || current.Execution.RequirementRevision != 3 {
+		t.Fatal("poll or feedback changed running work", current, err)
+	}
+	issue.Body = "new GitHub scope"
+	if _, err = s.ObserveIssue(ctx, p.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	remote, err := s.RequirementRevision(ctx, task.ID, 5)
+	if err != nil || remote.FeedbackID != 0 || remote.Issue.Body != issue.Body {
+		t.Fatal("missed real GitHub change", remote, err)
+	}
+	change.Body = "different replay"
+	if _, err = s.ReviseFromFeedback(ctx, task.ID, preview.ID, change); !errors.Is(err, ErrConflict) {
+		t.Fatal("changed replay", err)
 	}
 }

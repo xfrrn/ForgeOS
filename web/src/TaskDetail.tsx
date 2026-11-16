@@ -49,6 +49,7 @@ const events: Record<string, string> = {
   delivery_base_refreshed: '已在新的目标提交上准备候选',
   requirement_adopted: '已采用新的需求修订',
   requirement_observed: '已记录新的 Issue 需求版本',
+  requirement_revised_from_feedback: 'Owner 已从预览反馈修订需求',
   management_reviewed: 'Management 已审核本版计划',
   planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
@@ -116,9 +117,11 @@ function CandidateDiff({ taskID, attempt, request }: { taskID: number; attempt: 
   </div>
 }
 
+type Requirement = { revision: number; feedback_id?: number; feedback_task?: number; feedback_preview?: string; observed_at: string; issue: Issue }
+
 function RequirementHistory({ id, latest, request, canApply, onApply }: { id: number; latest: number; request: ApiRequest; canApply: boolean; onApply: (message: string) => void }) {
   const [revision, setRevision] = useState<number | null>(null)
-  const [value, setValue] = useState<{ revision: number; issue: Issue } | null>(null)
+  const [value, setValue] = useState<Requirement | null>(null)
   const [failed, setFailed] = useState(false)
   const [applying, setApplying] = useState(false)
   async function apply() {
@@ -135,7 +138,7 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
     const controller = new AbortController()
     setFailed(false)
     setValue(null)
-    request<{ revision: number; issue: Issue }>(`/tasks/${id}/requirements/${revision}`, { signal: controller.signal })
+    request<Requirement>(`/tasks/${id}/requirements/${revision}`, { signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) setValue(result) })
       .catch(() => { if (!controller.signal.aborted) setFailed(true) })
     return () => controller.abort()
@@ -147,7 +150,8 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
       <button className="button" disabled={revision >= latest} onClick={() => setRevision(revision + 1)}>下一版</button>
       <button className="button" onClick={() => setRevision(null)}>收起历史</button></div>
     {failed ? <p role="alert">无法读取此需求版本。</p> : value?.revision === revision
-      ? <><h4>{value.issue.title}</h4><p className="detail-issue-text">{value.issue.body}</p><p>GitHub 更新时间 · {formatTime(value.issue.updated_at)}</p></>
+      ? <><h4>{value.issue.title}</h4><p className="detail-issue-text">{value.issue.body}</p>
+        <p>{value.feedback_id ? <a href={`#/tasks/${value.feedback_task}/previews/${value.feedback_preview}/feedback`}>Owner 修订 · 预览反馈 #{value.feedback_id} · {formatTime(value.observed_at)}</a> : `GitHub 更新时间 · ${formatTime(value.issue.updated_at)}`}</p></>
       : <p role="status">正在读取需求修订…</p>}
     {canApply && revision === latest && value?.revision === latest &&
       <button className="button primary" disabled={applying} onClick={() => void apply()}>采用修订 {revision} 并排队执行</button>}
