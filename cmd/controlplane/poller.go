@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +24,8 @@ const (
 type issuePoller struct {
 	projectID  int64
 	validation string
+	hookSecret []byte
+	wake       chan struct{}
 }
 
 type pollStore interface {
@@ -39,7 +43,7 @@ func pollConfig(id, validation string) (*issuePoller, error) {
 	if err != nil || projectID <= 0 || !store.ValidValidation(validation) {
 		return nil, errors.New("set a positive FORGEOS_POLL_PROJECT_ID and select auto, docs, go-test or V1 through V4")
 	}
-	return &issuePoller{projectID, validation}, nil
+	return &issuePoller{projectID: projectID, validation: validation}, nil
 }
 
 func configuredPollers(id, validation, file string) (map[int64]*issuePoller, error) {
@@ -52,8 +56,9 @@ func configuredPollers(id, validation, file string) (map[int64]*issuePoller, err
 		pollers[legacy.projectID] = legacy
 	}
 	type entry struct {
-		Project    int64  `json:"project_id"`
-		Validation string `json:"validation"`
+		Project           int64  `json:"project_id"`
+		Validation        string `json:"validation"`
+		WebhookSecretFile string `json:"webhook_secret_file"`
 	}
 	entries, err := readProjectList[entry](file)
 	if err != nil {
@@ -64,8 +69,23 @@ func configuredPollers(id, validation, file string) (map[int64]*issuePoller, err
 		if err != nil {
 			return nil, err
 		}
-		if previous := pollers[p.projectID]; previous != nil && previous.validation != p.validation {
-			return nil, fmt.Errorf("conflicting poll validation profiles for project %d", p.projectID)
+		if previous := pollers[p.projectID]; previous != nil {
+			if previous.validation != p.validation {
+				return nil, fmt.Errorf("conflicting poll validation profiles for project %d", p.projectID)
+			}
+			p = previous
+		}
+		if row.WebhookSecretFile != "" {
+			raw, err := os.ReadFile(row.WebhookSecretFile)
+			if err != nil {
+				return nil, fmt.Errorf("read webhook secret file for project %d: %w", p.projectID, err)
+			}
+			secret := bytes.TrimSuffix(bytes.TrimSuffix(raw, []byte("\n")), []byte("\r"))
+			if len(bytes.TrimSpace(secret)) == 0 || (p.hookSecret != nil && !bytes.Equal(p.hookSecret, secret)) {
+				return nil, fmt.Errorf("empty or conflicting webhook secret for project %d", p.projectID)
+			}
+			p.hookSecret = secret
+			p.wake = make(chan struct{}, 1)
 		}
 		pollers[p.projectID] = p
 	}
@@ -86,9 +106,14 @@ func (p *issuePoller) start(ctx context.Context, data pollStore, root string, ge
 			if err != nil && ctx.Err() == nil {
 				log.Printf("GitHub poll for project %d failed, retry in %s: %v", p.projectID, pause, err)
 			}
+			wake := p.wake
+			if err != nil {
+				wake = nil // Incoming hints must respect GitHub's retry interval.
+			}
 			select {
 			case <-ctx.Done():
 				return
+			case <-wake:
 			case <-time.After(pause):
 			}
 		}

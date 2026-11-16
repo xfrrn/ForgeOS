@@ -57,6 +57,29 @@ func TestPollConfig(t *testing.T) {
 	}
 }
 
+func TestGitHubWebhookRespectsRateLimit(t *testing.T) {
+	root, repo, _ := issueTestRepo(t)
+	data := &pollFixture{importFixture: importFixture{path: repo}}
+	p := &issuePoller{projectID: 3, validation: "docs", wake: make(chan struct{}, 1)}
+	calls := make(chan struct{}, 2)
+	stop := p.start(context.Background(), data, root, func(context.Context, string, any) error {
+		calls <- struct{}{}
+		return errGHLimit
+	})
+	defer stop()
+	select {
+	case <-calls:
+	case <-time.After(5 * time.Second):
+		t.Fatal("initial scan did not reach GitHub")
+	}
+	p.wake <- struct{}{}
+	select {
+	case <-calls:
+		t.Fatal("webhook bypassed the rate-limit backoff")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
 func TestConfiguredPollers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "poll.json")
 	write := func(doc string) {
@@ -143,7 +166,7 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 
 func TestPollingStopsDuringRequest(t *testing.T) {
 	root, path, _ := issueTestRepo(t)
-	p := &issuePoller{3, "go-test"}
+	p := &issuePoller{projectID: 3, validation: "go-test"}
 	data := &pollFixture{importFixture: importFixture{path: path}}
 	started := make(chan struct{})
 	get := func(ctx context.Context, _ string, _ any) error {

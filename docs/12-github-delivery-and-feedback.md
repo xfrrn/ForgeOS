@@ -11,6 +11,10 @@
 - 本地 Poller 为主，Webhook 为补充。
 - GitHub 事件需要身份验证、去重和原始记录。
 
+启用 Webhook 的项目逐条保存已验证的原始 JSON 字节、事件名、投递 UUID、仓库 ID、接收时间和 SHA-256。Owner 从 `GET /projects/{id}/github-events` 查看摘要，按最后一条的数字 `id` 传入 `?before=` 可继续翻页，每页最多 100 条。访问 `GET /projects/{id}/github-events/{delivery_uuid}` 可读回原文。原文可能包含私有 Issue 与评论内容，随项目数据库一起备份。
+
+新的 Issues 和 Issue comments 投递唤醒本项目的轮询，扫描运行期间的多个通知合并到下一次扫描。控制面从已绑定的仓库重新读取状态，沿用普通讨论、标签派单、需求版本和评论检查点规则。投递确认表示原文已保存；后续工作项和评论有独立回执。GitHub 限流时保留原重试间隔。项目可继续单独使用定时轮询。[接入配置](local-development.md#github-webhook)
+
 ## 2. Issue 变化
 
 - 补充信息：加入事件队列；

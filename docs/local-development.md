@@ -81,6 +81,12 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 
 启用 Poller 后，用 Owner 身份访问 `GET /projects/{id}/inbox` 查看开放的普通讨论。结果按 Issue 编号倒序排列，每页最多 100 项，下一页传 `?before=上一页最后的编号`。完整扫描结束后刷新收件箱，重复同步不会为普通讨论启动 Worker。通过下表的按编号导入接口转换后，讨论立即从收件箱移出。
 
+### GitHub Webhook
+
+先让项目完成一次轮询或 Issue 导入，建立数字仓库 ID 的绑定。在 `FORGEOS_POLL_PROJECTS_FILE` 中给该项目添加 `"webhook_secret_file":"/etc/forgeos/beta-webhook.key"`，文件内容为该仓库 Webhook 的密钥，可有一个结尾换行。限制文件读取权限，重启控制面后生效。仓库的 Webhook 使用 JSON，订阅 Issues、Issue comments；把其请求送到 `POST /hooks/github/{项目号}`。若有独立 HTTPS 接收代理，仅转发所配置的 Webhook 路径，原样传递正文及 GitHub 头。私有回环环境可使用 GitHub CLI 的 Webhook 转发功能实测。[GitHub 官方转发说明](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/using-the-github-cli-to-forward-webhooks-for-testing)
+
+首次有效投递返回 202；相同 delivery ID、事件名和原文的重投返回 200。签名无效返回 401，数字仓库 ID 错配返回 403，同一投递号对应不同内容返回 409。项目尚未绑定仓库返回 503，可在绑定后重投。投递使用原始请求字节校验 HMAC-SHA256，控制面支持至多 25 MiB 的正文。[GitHub 签名说明](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)
+
 ## 人工验收与退回
 
 先用 Owner 身份读取任务并查看原始 Issue、验证结果与实际差异。以下 PowerShell 命令在持有运行配置的终端执行，`$taskId` 换成要验收的任务编号。

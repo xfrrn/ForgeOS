@@ -75,6 +75,7 @@ func run(ctx context.Context) error {
 	}
 
 	mux := routes(data, root, owner, workers, delivery)
+	registerGitHubWebhooks(mux, data, owner, pollers)
 	stopPreviews, err := startPreviews(mux, data, root, owner, os.Getenv("FORGEOS_PREVIEW_ADDR"))
 	if err != nil {
 		return err
