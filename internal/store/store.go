@@ -52,6 +52,9 @@ var goalClosureSchema string
 //go:embed 010_management.sql
 var managementSchema string
 
+//go:embed 011_rolling.sql
+var rollingSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -59,22 +62,23 @@ type Project struct {
 }
 
 type Task struct {
-	Questions    []DecisionQuestion `json:"questions,omitempty"`
-	GoalID       int64              `json:"goal_id,omitempty"`
-	PlanRevision int                `json:"plan_revision,omitempty"`
-	PlanKey      string             `json:"plan_key,omitempty"`
-	Children     []GoalChild        `json:"children,omitempty"`
-	ID           int64              `json:"id"`
-	ProjectID    int64              `json:"project_id"`
-	Kind         string             `json:"kind"`
-	Spec         *IssueSpec         `json:"spec,omitempty"`
-	Status       string             `json:"status"`
-	Execution    *Execution         `json:"execution"`
-	Attempts     []Execution        `json:"attempts"`
-	Events       []Event            `json:"events"`
-	Reviews      []Review           `json:"reviews,omitempty"`
-	Delivery     *Delivery          `json:"delivery,omitempty"`
-	Plan         *PlanRevision      `json:"plan,omitempty"`
+	ActiveRevision int                `json:"active_revision,omitempty"`
+	Questions      []DecisionQuestion `json:"questions,omitempty"`
+	GoalID         int64              `json:"goal_id,omitempty"`
+	PlanRevision   int                `json:"plan_revision,omitempty"`
+	PlanKey        string             `json:"plan_key,omitempty"`
+	Children       []GoalChild        `json:"children,omitempty"`
+	ID             int64              `json:"id"`
+	ProjectID      int64              `json:"project_id"`
+	Kind           string             `json:"kind"`
+	Spec           *IssueSpec         `json:"spec,omitempty"`
+	Status         string             `json:"status"`
+	Execution      *Execution         `json:"execution"`
+	Attempts       []Execution        `json:"attempts"`
+	Events         []Event            `json:"events"`
+	Reviews        []Review           `json:"reviews,omitempty"`
+	Delivery       *Delivery          `json:"delivery,omitempty"`
+	Plan           *PlanRevision      `json:"plan,omitempty"`
 }
 
 type Execution struct {
@@ -140,7 +144,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -187,7 +191,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var spec, attempts, events, reviews, delivery, plan, children, questions []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
-		SELECT t.id, t.project_id, t.status, t.kind, t.spec,
+		SELECT t.id, t.project_id, t.status, t.kind, COALESCE(t.active_revision,0),t.spec,
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
 		        'id', e.id, 'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
@@ -206,7 +210,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    (SELECT jsonb_agg(jsonb_build_object('id',c.id,'key',c.plan_key,'status',c.status) ORDER BY c.id)
 		       FROM work_items c WHERE c.goal_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id)
-		FROM work_items t WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &spec, &attempts,
+		FROM work_items t WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &t.ActiveRevision, &spec, &attempts,
 		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
@@ -279,7 +283,7 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	canPlan := len(capabilities) > 2 && capabilities[2]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
-		WHERE candidate.status = 'READY' AND (candidate.kind = 'git_head' OR $1)
+		WHERE candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1)
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=candidate.id AND r.decision='reject'))
 		  AND NOT EXISTS (
@@ -296,6 +300,7 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	err = tx.QueryRowContext(ctx, `
 		UPDATE work_items SET status = 'RUNNING'
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
+		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
 		            AND (w.kind = 'git_head' OR $2)
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r WHERE r.task_id=w.id AND r.decision='reject'))

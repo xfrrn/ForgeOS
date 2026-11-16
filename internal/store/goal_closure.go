@@ -15,17 +15,17 @@ type GoalClosure struct {
 func (s *Store) ClaimGoalClosure(ctx context.Context, projectID int64) (*GoalClosure, error) {
 	var claim GoalClosure
 	err := s.db.QueryRowContext(ctx, `WITH due AS (
-		SELECT g.id FROM work_items g
-		CROSS JOIN LATERAL (SELECT plan FROM plan_revisions WHERE task_id=g.id ORDER BY revision DESC LIMIT 1) r
-		WHERE g.project_id=$1 AND g.status='ACTIVE' AND (g.close_after IS NULL OR g.close_after<=now())
+		SELECT g.id,r.revision FROM work_items g
+		CROSS JOIN LATERAL (SELECT revision,plan FROM plan_revisions WHERE task_id=g.id ORDER BY revision DESC LIMIT 1) r
+		WHERE g.project_id=$1 AND g.status='ACTIVE' AND g.active_revision=r.revision AND (g.close_after IS NULL OR g.close_after<=now())
 		AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r.plan->'milestones') m
 		    WHERE jsonb_array_length(COALESCE(NULLIF(m->'items','null'::jsonb),'[]'))=0)
 		AND EXISTS (SELECT 1 FROM work_items c WHERE c.goal_id=g.id)
 		AND NOT EXISTS (SELECT 1 FROM work_items c LEFT JOIN deliveries d ON d.task_id=c.id
-		    WHERE c.goal_id=g.id AND (c.status<>'DONE' OR d.state IS DISTINCT FROM 'DONE'))
+		    WHERE c.goal_id=g.id AND c.status<>'SUPERSEDED' AND (c.status<>'DONE' OR d.state IS DISTINCT FROM 'DONE'))
 		ORDER BY g.id LIMIT 1 FOR UPDATE OF g SKIP LOCKED)
 		UPDATE work_items g SET close_after=now()+interval '2 minutes',close_lease=gen_random_uuid()
-		FROM due WHERE due.id=g.id RETURNING g.id,g.close_lease`, projectID).Scan(&claim.ID, &claim.Lease)
+		FROM due WHERE due.id=g.id AND g.status='ACTIVE' AND g.active_revision=due.revision RETURNING g.id,g.close_lease`, projectID).Scan(&claim.ID, &claim.Lease)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

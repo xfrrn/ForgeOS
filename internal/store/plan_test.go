@@ -155,7 +155,51 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if err != nil || next == nil || len(next.Merges) != 1 || next.Merges[0] != merged || next.Target != "main" {
 		t.Fatalf("release evidence: %+v %v", next, err)
 	}
-	if err := s.ReleaseDependent(ctx, next.TaskID, merged); err != nil {
+	// Revise the undelivered child after its prerequisite merged but before a remote base check returns.
+	saved, err := s.PlanRevision(ctx, task.ID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rolling := saved.Plan
+	rolling.Milestones[0].Items[0].Acceptance = "The updated example links to the first"
+	transient := first
+	transient.Key, transient.Dependencies = "provisional", []string{"b"}
+	rolling.Milestones = append(rolling.Milestones, Milestone{Name: "Future", Items: []PlanItem{transient}})
+	if _, err = s.SavePlan(ctx, task.ID, 2, rolling); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := s.ClaimGoalClosure(ctx, p.ID); err != nil || c != nil {
+		t.Fatal(c, err)
+	}
+	active, err := s.ActivatePlan(ctx, task.ID, 3)
+	if err != nil || active.ActiveRevision != 3 || len(active.Children) != 3 {
+		t.Fatal(active, err)
+	}
+	if err = s.ReleaseDependent(ctx, next.TaskID, next.Revision, merged); !errors.Is(err, ErrConflict) {
+		t.Fatal("stale dependency check released revised work", err)
+	}
+	rolling.Milestones = rolling.Milestones[:1]
+	if _, err = s.SavePlan(ctx, task.ID, 3, rolling); err != nil {
+		t.Fatal(err)
+	}
+	active, err = s.ActivatePlan(ctx, task.ID, 4)
+	if err != nil || active.Children[2].Status != "SUPERSEDED" {
+		t.Fatal(active, err)
+	}
+	preserved, err := s.Task(ctx, child.TaskID)
+	if err != nil || preserved.Status != "DONE" || preserved.PlanRevision != 2 || preserved.Execution.ID != child.ExecutionID || preserved.Delivery.MergeSHA != merged {
+		t.Fatal(preserved, err)
+	}
+	rolling.Milestones[0].Items[1].Scope = "rewrite delivered work"
+	if _, err = s.SavePlan(ctx, task.ID, 4, rolling); !errors.Is(err, ErrConflict) {
+		t.Fatal("changed merged item", err)
+	}
+	rolling.Milestones[0].Items[1].Scope = first.Scope
+	next, err = s.NextDependent(ctx, p.ID, 0)
+	if err != nil || next == nil || next.Revision != 3 {
+		t.Fatal(next, err)
+	}
+	if err := s.ReleaseDependent(ctx, next.TaskID, next.Revision, merged); err != nil {
 		t.Fatal(err)
 	}
 	secondJob, err := s.Claim(ctx, "worker", root, true)
@@ -187,6 +231,9 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	}
 	if duplicate, err := s.ClaimGoalClosure(ctx, p.ID); duplicate != nil || err != nil {
 		t.Fatalf("duplicate closure claim: %v %v", duplicate, err)
+	}
+	if _, err = s.SavePlan(ctx, task.ID, 4, rolling); !errors.Is(err, ErrConflict) {
+		t.Fatal("reopened a goal with closure in flight", err)
 	}
 	if err := s.CompleteGoal(ctx, *c); err != nil {
 		t.Fatal(err)

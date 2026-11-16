@@ -113,8 +113,19 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 		return rev, err
 	}
 	defer tx.Rollback()
+	// Serialize draft publication with Worker admission, including a claim already waiting on this project.
+	var project int64
+	err = tx.QueryRowContext(ctx, `SELECT p.id FROM projects p JOIN work_items t ON t.project_id=p.id WHERE t.id=$1 FOR UPDATE OF p`, taskID).Scan(&project)
+	if errors.Is(err, sql.ErrNoRows) {
+		return rev, ErrNotFound
+	}
+	if err != nil {
+		return rev, err
+	}
+	var active int
+	var closing bool
 	var kind, status, validation string
-	err = tx.QueryRowContext(ctx, `SELECT kind,status,COALESCE(spec->>'validation','') FROM work_items WHERE id=$1 AND goal_id IS NULL FOR UPDATE`, taskID).Scan(&kind, &status, &validation)
+	err = tx.QueryRowContext(ctx, `SELECT kind,status,COALESCE(spec->>'validation',''),COALESCE(active_revision,0),close_lease IS NOT NULL FROM work_items WHERE id=$1 AND goal_id IS NULL FOR UPDATE`, taskID).Scan(&kind, &status, &validation, &active, &closing)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrNotFound
 	}
@@ -137,8 +148,11 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 	if !errors.Is(err, sql.ErrNoRows) {
 		return rev, err
 	}
-	if kind != "codex_issue" || (status != "READY" && status != "FAILED" && status != "WAITING_ACCEPTANCE" && status != "PLANNING") {
+	if closing || kind != "codex_issue" || (status != "ACTIVE" && status != "READY" && status != "FAILED" && status != "WAITING_ACCEPTANCE" && status != "PLANNING") {
 		return rev, ErrConflict
+	}
+	if _, err = rollingChanges(ctx, tx, taskID, active, plan); err != nil {
+		return rev, err
 	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan,minimum_level)
 		SELECT $1,$2,$3,NULLIF($4,'') WHERE $2::integer=(SELECT COALESCE(MAX(revision),0)+1 FROM plan_revisions WHERE task_id=$1)

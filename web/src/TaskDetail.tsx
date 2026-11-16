@@ -20,7 +20,7 @@ type Task = {
   spec?: { issue: Issue; base_commit: string; validation: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery
   plan?: Plan
-  goal_id?: number; plan_revision?: number
+  active_revision?: number; goal_id?: number; plan_revision?: number
   children?: { id: number; key: string; status: string }[]
   questions?: Question[]
 }
@@ -33,6 +33,7 @@ const events: Record<string, string> = {
   dependencies_delivered: '前置交付已确认',
   decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
   goal_delivered: '全部子项已交付，父 Issue 已关闭',
+  goal_item_superseded: '已从后续计划移除', goal_item_revised: '已更新待执行工作项',
   management_reviewed: 'Management 已审核本版计划',
   planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
@@ -255,6 +256,7 @@ function Detail({ id, request, onChanged }: Props) {
         {task.plan && <section className="panel detail-card">
           <h2>Goal 计划 · 修订 {task.plan.revision}</h2>
           <p>{task.plan.plan.objective}</p>
+          {task.active_revision && task.active_revision !== task.plan.revision ? <p>待审批修订 · 当前生效版本 {task.active_revision}</p> : null}
           {task.plan.review && <div><h3>Management 审核 · {task.plan.review.effective_level}</h3>
             <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[task.plan.review.verdict] ?? task.plan.review.verdict}</Fact>
               <Fact label="理由">{task.plan.review.rationale}</Fact><Fact label="依据">{task.plan.review.evidence}</Fact>

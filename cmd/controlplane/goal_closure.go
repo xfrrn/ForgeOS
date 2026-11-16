@@ -37,7 +37,13 @@ func (p deliveryPolicy) closeGoal(ctx context.Context, data *store.Store, root s
 		remote.PullRequest != nil || (remote.State != "open" && remote.State != "closed") {
 		return true, errIdentity
 	}
-	message := fmt.Sprintf("ForgeOS goal %d completed (plan revision %d). All %d work items have confirmed PR merges and delivery records.", task.ID, task.Plan.Revision, len(task.Children))
+	count := 0
+	for _, child := range task.Children {
+		if child.Status != "SUPERSEDED" {
+			count++
+		}
+	}
+	message := fmt.Sprintf("ForgeOS goal %d completed (plan revision %d). All %d work items have confirmed PR merges and delivery records.", task.ID, task.Plan.Revision, count)
 	if err := syncIssueFeedback(ctx, deliveryRequest, path, remote.State == "open", message); err != nil {
 		return true, err
 	}

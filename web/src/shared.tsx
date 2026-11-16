@@ -18,7 +18,7 @@ export function Icon({ name, size = 17, ...props }: LucideProps & { name: keyof 
 
 export const statusLabels: Record<string, string> = {
   WAITING_INPUT: '等待回答',
-  PLANNING: '规划中', ACTIVE: '目标执行中', BLOCKED: '等待依赖', READY: '待执行', RUNNING: '执行中', WAITING_ACCEPTANCE: '待验收',
+  SUPERSEDED: '已从计划移除', PLANNING: '规划中', ACTIVE: '目标执行中', BLOCKED: '等待依赖', READY: '待执行', RUNNING: '执行中', WAITING_ACCEPTANCE: '待验收',
   ACCEPTED: '已验收', DONE: '已完成', FAILED: '失败', COMPLETED: '执行成功',
   PENDING: '待交付', WAITING: '等待合并', MERGED: '已合并',
 }

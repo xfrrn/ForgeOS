@@ -47,8 +47,8 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 00–01 产品与端到端流程 | 两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭 | `1a17822`、`32c0fa0`、`5447445` | 远程外部设备、知识归档、完整项目初始化 |
 | 02–03 系统与模块 | 独立控制面和 Worker、PostgreSQL、同源 React 页面、只读规划和交付器均从实际入口运行 | `1a17822`、`cc2011f` | 分类、管理角色的协调职责、通知、节点资源管理、知识与预览服务 |
 | 04 领域模型 | 同一任务关联历史执行、计划修订、候选、验收、子 PR 和 Merge SHA | `5d30bcf`、`94b6b08`、`70781ba` | 独立 Requirement Revision、Validation Run 和 Artifact 标识，以及完整 Session/Process 模型 |
-| 05 角色与决策 | 任务 15 的候选在等待业务答复期间拒绝批准；Owner 回答与重报有留痕 | `70781ba` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
-| 06 规划与编排 | 任务 16 自动生成草案，Goal 13 显式激活；后继项从实际合并版本执行 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07` | 已激活计划滚动修订、运行时事件批处理和安全中断 |
+| 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
+| 06 规划与编排 | 任务 16 自动生成草案，Goal 13 显式激活；后继项从实际合并版本执行 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07` | 运行时事件批处理和安全中断 |
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session ID、工作区和真实失联租约验证 | `1a17822`、`cc2011f`、`b4e7c54` | App Server、Claude Code 原生恢复、Linux 专用用户和 systemd、多节点恢复 |
 | 08 项目知识 | Planner 在固定版本引用 README 和 CI 工程事实 | `cc2011f` | 私有知识存储、检索 API、决策权威性、脱敏审批和共享副本 |
 | 09 权限与密钥 | Owner/Worker 分权，Worker 回答业务问题或读取 Owner 收件箱返回 401 | `1a17822`、`319aa65`、`70781ba` | 项目及环境授权、OpenBao、Secret Broker、短期凭据与恢复 |
@@ -69,3 +69,14 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 保存修订 2，并明确授权 D1 | 审核退回时保留草案 | 会话 `01a1e32f-1ec6-7612-b741-5a9a5160cdb5` 再次指出证据缺口，零子项。重启控制面后仍可读取历史审核 |
 | 从固定提交 `469cef06b81601ac2f382e230157c2e125787e39` 核实两个文件，将摘录和检查步骤纳入修订 3 | D1 批准后派发独立项并阻塞依赖项 | 会话 `01a1e330-3dec-73d2-bb84-d017aa401852` 批准，Goal ACTIVE，一个 READY、一个 BLOCKED。Chrome 的任务详情显示 D1、依据和同一会话 ID |
 | PostgreSQL 集成测试提交过期租约、旧版结果、跨项目结果、重复结果和试图降低 D3 的建议 | 过期和越权写入被拒；重放不重复派发，D3 留待 Owner | 全部通过。启用 PostgreSQL 与 Docker 的回归 52 项通过、零跳过；Go vet、前端生产构建通过 |
+
+## 专题 06 · 已激活 Goal 的滚动修订
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在真实 Worker 执行任务 17 时替换其范围 | 拒绝变更，保留该执行 | HTTP 409。执行 14 继续，并以候选 `3583fb690a323a556a478dc3d46b146a4cb5606d` 通过 docs 验证 |
+| 保存修订 4，更新未执行的任务 18，新增检查项 | 审核期间沿用修订 3；批准后按 key 调整依赖 | Goal 16 显示 PLANNING、active_revision=3、两个子项。批准后恢复 ACTIVE；17 仍属于修订 3，18 保留原 ID 并绑定修订 4，新项 19 等待 18 |
+| 修订 5 移除暂列的检查项，重启控制面 | 当前计划反映移除，历史版本仍可读取 | 19 为 SUPERSEDED；修订 4 有三个里程碑、修订 5 有两个。18 的内容和创建记录仍指向修订 4 |
+| 完成第一个子项 | 保留原执行，父 Issue 保持开放 | 任务 17 的 PR 已合并，Merge SHA 为 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`；任务 18 开始执行时父 Issue 仍为 OPEN。[PR #5](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/5) |
+| 从旧的依赖检查返回结果、覆盖已交付子项、在关闭租约期间再提交计划 | 各次写入被拒，旧结果不能放行已改版任务 | PostgreSQL 集成测试通过，已交付子项的执行 ID 和 Merge SHA 保留。全套 PostgreSQL/Docker 回归 53 项通过、零跳过 |
+| 完成修订后的任务 18 | 从前置 Merge SHA 开始验证，两个必需子项交付后关闭父 Issue | 执行 15 基于 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`，候选 `8ee909d7b313ca88cb3877ced22b44102ff69d65` 经 docs 验证与必需 CI 后合并为 `b179f04fec439a392af1fe1504450931f9f1f203`。Goal 16 为 DONE，Issue 已关闭，回写计数为 2。[PR #6](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/6) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43823799864) · [父 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/4) |

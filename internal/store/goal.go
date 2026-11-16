@@ -35,8 +35,8 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 	var projectID int64
 	var status string
 	var specJSON, planJSON []byte
-	var latest int
-	err := tx.QueryRowContext(ctx, `SELECT t.project_id,t.status,t.spec FROM work_items t WHERE t.id=$1 FOR UPDATE`, id).Scan(&projectID, &status, &specJSON)
+	var latest, active int
+	err := tx.QueryRowContext(ctx, `SELECT t.project_id,t.status,t.spec,COALESCE(t.active_revision,0) FROM work_items t WHERE t.id=$1 FOR UPDATE`, id).Scan(&projectID, &status, &specJSON, &active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -53,7 +53,7 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 	if latest != revision {
 		return ErrConflict
 	}
-	if status == "ACTIVE" || status == "DONE" {
+	if active == revision && (status == "ACTIVE" || status == "DONE") {
 		return nil
 	}
 	if status != "PLANNING" {
@@ -70,9 +70,32 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 	if err = plan.Validate(); err != nil {
 		return ErrConflict
 	}
+	existing, err := rollingChanges(ctx, tx, id, active, plan)
+	if err != nil {
+		return err
+	}
+	for _, child := range existing {
+		if !child.changed {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM work_dependencies WHERE task_id=$1`, child.id); err != nil {
+			return err
+		}
+		if child.removed {
+			if _, err = tx.ExecContext(ctx, `WITH removed AS (UPDATE work_items SET status='SUPERSEDED' WHERE id=$1 RETURNING id)
+				INSERT INTO task_events(task_id,type) SELECT id,'goal_item_superseded' FROM removed`, child.id); err != nil {
+				return err
+			}
+		}
+	}
 	ids := make(map[string]int64)
 	for _, m := range plan.Milestones {
 		for _, item := range m.Items {
+			prior, found := existing[item.Key]
+			if found && !prior.changed {
+				ids[item.Key] = prior.id
+				continue
+			}
 			child := spec
 			child.Mode = ""
 			child.Issue.Title = item.Objective
@@ -89,11 +112,16 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 				state = "BLOCKED"
 			}
 			var childID int64
-			err = tx.QueryRowContext(ctx, `WITH child AS (
+			if found {
+				err = tx.QueryRowContext(ctx, `WITH changed AS (UPDATE work_items SET status=$2,spec=$3,plan_revision=$4 WHERE id=$1 RETURNING id)
+					INSERT INTO task_events(task_id,type) SELECT id,'goal_item_revised' FROM changed RETURNING task_id`, prior.id, state, string(doc), revision).Scan(&childID)
+			} else {
+				err = tx.QueryRowContext(ctx, `WITH child AS (
 				INSERT INTO work_items(project_id,kind,status,spec,goal_id,plan_revision,plan_key)
 				VALUES ($1,'codex_issue',$2,$3,$4,$5,$6) RETURNING id)
 				INSERT INTO task_events(task_id,type) SELECT id,'goal_item_created' FROM child RETURNING task_id`,
-				projectID, state, string(doc), id, revision, item.Key).Scan(&childID)
+					projectID, state, string(doc), id, revision, item.Key).Scan(&childID)
+			}
 			if err != nil {
 				return err
 			}
@@ -109,7 +137,7 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 			}
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='ACTIVE' WHERE id=$1`, id); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='ACTIVE',active_revision=$2 WHERE id=$1`, id, revision); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'plan_activated')`, id); err != nil {

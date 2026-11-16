@@ -63,7 +63,7 @@ func (p deliveryPolicy) releaseDependent(ctx context.Context, data *store.Store,
 	if _, err := localrepo.Git(ctx, repo, "update-ref", "--no-deref", ref, sha); err != nil {
 		return false, err
 	}
-	return true, data.ReleaseDependent(ctx, job.TaskID, sha)
+	return true, data.ReleaseDependent(ctx, job.TaskID, job.Revision, sha)
 }
 
 // Fetch into the authorized object store with an isolated Git config and a fixed GitHub transport.
