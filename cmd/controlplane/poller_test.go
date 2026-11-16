@@ -20,6 +20,55 @@ type pollFixture struct {
 	observed map[int64]int
 	comments []json.RawMessage
 	inbox    []store.Discussion
+	tracked  []store.TrackedIssue
+	closed   []int64
+}
+
+func (f *pollFixture) TrackedIssues(context.Context, int64, int64) ([]store.TrackedIssue, error) {
+	return f.tracked, nil
+}
+
+func (f *pollFixture) CloseSourceIssue(_ context.Context, _, _ int64, issue store.TrackedIssue, _, _ string, _, _ time.Time) error {
+	f.closed = append(f.closed, issue.Number)
+	return nil
+}
+
+func TestPollConfirmsMissingIssuesIndividually(t *testing.T) {
+	f := &pollFixture{}
+	for n := int64(1); n <= 8; n++ {
+		f.tracked = append(f.tracked, store.TrackedIssue{ID: 100 + n, Number: n})
+	}
+	repo := githubProject{ID: 88, FullName: "my-org/project"}
+	get := func(_ context.Context, path string, dst any) error {
+		var n int64
+		if _, err := fmt.Sscanf(path, "repositories/88/issues/%d", &n); err != nil {
+			t.Fatal(err)
+		}
+		i := githubIssue{ID: 100 + n, Number: n, State: "closed", RepoURL: "https://api.github.com/repos/my-org/project",
+			HTMLURL: fmt.Sprintf("https://github.com/my-org/project/issues/%d", n), ClosedAt: "2026-01-05T16:00:00Z", UpdatedAt: "2026-01-05T16:00:01Z"}
+		switch n {
+		case 1:
+			t.Fatal("requested confirmed open issue")
+		case 2:
+			return errors.New("unavailable")
+		case 3:
+			i.State = "open"
+		case 4:
+			i.PullRequest = json.RawMessage("{}")
+		case 5:
+			i.ID++
+		case 6:
+			i.UpdatedAt = "2026-01-04T16:00:01Z"
+		case 7:
+			i.RepoURL += "2"
+		}
+		*dst.(*githubIssue) = i
+		return nil
+	}
+	p := issuePoller{projectID: 3}
+	if err := p.reconcileClosures(context.Background(), f, repo, map[int64]bool{101: true}, get); err != nil || len(f.closed) != 1 || f.closed[0] != 8 {
+		t.Fatalf("confirmed closures %v, err %v", f.closed, err)
+	}
 }
 
 func (f *pollFixture) ObserveIssue(_ context.Context, _ int64, issue store.Issue) (int64, error) {

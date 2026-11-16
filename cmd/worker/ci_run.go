@@ -89,6 +89,9 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 	}
 	run.ID = filepath.Base(dir)
 	finish := func(category, detail string) (validation.Run, error) {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			category, detail = "CANCELLED", "validation cancelled"
+		}
 		run.Finished = time.Now().UTC()
 		run.Failure = category
 		run.Detail = detail
@@ -155,7 +158,12 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 
 func runCheck(parent context.Context, docker localDocker, image, snapshot, dir string, c validation.PlannedCheck, remaining *int64) (result validation.CheckResult) {
 	result = validation.CheckResult{Name: c.Name, Required: c.Required == nil || *c.Required, Started: time.Now().UTC(), Status: "FAILED", Failure: "INFRA_FAILURE", Log: c.Name + ".log"}
-	defer func() { result.Finished = time.Now().UTC() }()
+	defer func() {
+		result.Finished = time.Now().UTC()
+		if errors.Is(parent.Err(), context.Canceled) {
+			result.Status, result.Failure, result.ExitCode = "FAILED", "CANCELLED", nil
+		}
+	}()
 	logFile, err := os.OpenFile(filepath.Join(dir, result.Log), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return

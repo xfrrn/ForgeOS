@@ -88,7 +88,7 @@ func (p Plan) Accepts(r *Run) bool {
 
 func knownFailure(code string) bool {
 	switch code {
-	case "CODE_FAILURE", "BUILD_FAILURE", "TEST_ENV_FAILURE", "INFRA_FAILURE", "TIMEOUT", "CONFIG_FAILURE", "SECURITY_FAILURE":
+	case "CODE_FAILURE", "BUILD_FAILURE", "TEST_ENV_FAILURE", "INFRA_FAILURE", "TIMEOUT", "CANCELLED", "CONFIG_FAILURE", "SECURITY_FAILURE":
 		return true
 	}
 	return false

@@ -33,6 +33,8 @@ type pollStore interface {
 	ObserveIssue(context.Context, int64, store.Issue) (int64, error)
 	RecordComments(context.Context, int64, store.Issue, []json.RawMessage) error
 	ReplaceInbox(context.Context, int64, int64, []store.Discussion) error
+	TrackedIssues(context.Context, int64, int64) ([]store.TrackedIssue, error)
+	CloseSourceIssue(context.Context, int64, int64, store.TrackedIssue, string, string, time.Time, time.Time) error
 }
 
 func pollConfig(id, validation string) (*issuePoller, error) {
@@ -136,6 +138,7 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 	var previousFirst, previousLast int64
 	repeatedPage := false
 	var discussions []store.Discussion
+	open := make(map[int64]bool)
 	for page := 1; ctx.Err() == nil; page++ {
 		path := fmt.Sprintf("repositories/%d/issues?state=open&sort=created&direction=asc&per_page=%d&page=%d", repo.ID, pageSize, page)
 		var issues []githubIssue
@@ -165,6 +168,9 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 				continue
 			}
 			issue, err := repo.issue(raw, raw.Number)
+			if err == nil {
+				open[raw.ID] = true
+			}
 			var taskID int64
 			if err == nil && !raw.hasAgentLabel() {
 				if taskID, err = data.ObserveIssue(ctx, p.projectID, issue); err != nil {
@@ -186,10 +192,46 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 			}
 		}
 		if len(issues) < pageSize {
-			return data.ReplaceInbox(ctx, p.projectID, repo.ID, discussions)
+			if err := data.ReplaceInbox(ctx, p.projectID, repo.ID, discussions); err != nil {
+				return err
+			}
+			return p.reconcileClosures(ctx, data, repo, open, get)
 		}
 	}
 	return ctx.Err()
+}
+
+func (p *issuePoller) reconcileClosures(ctx context.Context, data pollStore, repo githubProject, open map[int64]bool, get githubGET) error {
+	tracked, err := data.TrackedIssues(ctx, p.projectID, repo.ID)
+	if err != nil {
+		return err
+	}
+	for _, issue := range tracked {
+		if open[issue.ID] {
+			continue
+		}
+		var remote githubIssue
+		if err := get(ctx, fmt.Sprintf("repositories/%d/issues/%d", repo.ID, issue.Number), &remote); err != nil {
+			if errors.Is(err, errGHLimit) || ctx.Err() != nil {
+				return err
+			}
+			log.Printf("GitHub poll project %d cannot confirm issue %d: %v", p.projectID, issue.Number, err)
+			continue
+		}
+		if remote.State != "closed" || remote.PullRequest != nil {
+			continue
+		}
+		closed, closeErr := time.Parse(time.RFC3339, remote.ClosedAt)
+		updated, updateErr := time.Parse(time.RFC3339, remote.UpdatedAt)
+		if !repo.matchesIssue(remote, issue.Number) || remote.ID != issue.ID || closeErr != nil || updateErr != nil || updated.Before(closed) {
+			log.Printf("GitHub poll project %d rejected inconsistent closure for issue %d", p.projectID, issue.Number)
+			continue
+		}
+		if err := data.CloseSourceIssue(ctx, p.projectID, repo.ID, issue, remote.HTMLURL, remote.StateReason, closed, updated); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (i githubIssue) hasAgentLabel() bool {

@@ -32,6 +32,7 @@ type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
   id: number; project_id: number; status: string; kind: string
+  source_closure?: { number: number; url: string; closed_at: string; state_reason: string }
   spec?: { issue: Issue; base_commit: string; validation: string; harness?: string; child_harness?: string; project_config_blob?: string }
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery; delivery_refreshes?: { execution_id: number; old_delivery: Delivery; new_base: string; candidate: string }[]
   plan?: Plan
@@ -59,6 +60,7 @@ const events: Record<string, string> = {
   planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
+  source_cancel_requested: '来源 Issue 已关闭，等待执行结算', source_issue_cancelled: '来源 Issue 已关闭，任务已取消',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
   acceptance_rejected: '候选版本已退回', pr_created: '已创建 PR', pr_merged: 'PR 已合并', delivery_completed: '交付完成',
 }
@@ -383,7 +385,7 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, revie
   </section>
 }
 
-function Decision({ taskID, q, request, onAnswer }: { taskID: number; q: Question; request: ApiRequest; onAnswer: () => void }) {
+function Decision({ taskID, q, canAnswer, request, onAnswer }: { taskID: number; q: Question; canAnswer: boolean; request: ApiRequest; onAnswer: () => void }) {
   const [answer, setAnswer] = useState('')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
@@ -398,7 +400,7 @@ function Decision({ taskID, q, request, onAnswer }: { taskID: number; q: Questio
   return <section className="panel detail-card detail-accept">
     <h2>业务决定 #{q.id}</h2><p>{q.question}</p>
     <dl><Fact label="依据">{q.evidence}</Fact><Fact label={`执行 #${q.execution_id}`} code>{q.commit_sha}</Fact></dl>
-    {q.answer ? <p>Owner 答复 · {q.answer}</p> : <form onSubmit={e => { e.preventDefault(); void submit() }}>
+    {q.answer ? <p>Owner 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor={`answer-${q.id}`}>业务答复</label>
       <textarea id={`answer-${q.id}`} required value={answer} onChange={e => setAnswer(e.target.value)}/>
       <button className="button primary" disabled={busy || !answer.trim()}>提交答复</button>
@@ -492,6 +494,9 @@ function Detail({ id, request, onChanged }: Props) {
     </div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
+    {task.source_closure && <p className="detail-notice" role="status"><OutLink href={task.source_closure.url}>Issue #{task.source_closure.number}</OutLink>
+      {' 于 '}{formatTime(task.source_closure.closed_at)} 关闭{task.source_closure.state_reason && `（${task.source_closure.state_reason}）`}。
+      {task.status === 'RUNNING' ? '等待 Worker 停止执行并提交回执。' : '任务已取消。'}</p>}
     <div className="detail-layout">
       <div className="detail-column">
         {task.plan && <section className="panel detail-card">
@@ -525,10 +530,10 @@ function Detail({ id, request, onChanged }: Props) {
         <section className="panel detail-card"><h2><Icon name="Terminal" size={18} />Worker 执行记录<span className="detail-count">{task.attempts.length}</span></h2>
           {task.attempts.length ? <div className="detail-attempts">{[...task.attempts].reverse().map(attempt =>
             <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} request={request} refresh={refresh} />)}</div>
-            : <p className="detail-empty-text">{task.plan ? '尚无执行记录。' : '等待 Worker 领取任务。'}</p>}</section>
+            : <p className="detail-empty-text">{task.plan || task.status === 'CANCELLED' ? '尚无执行记录。' : '等待 Worker 领取任务。'}</p>}</section>
       </div>
       <aside className="detail-column">
-        {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
+        {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} canAnswer={task.status === 'WAITING_INPUT'} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
         {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)}
           reviewPending={(Boolean(task.requires_code_review || last.code_review_state) && last.code_review_state !== 'clear') ||
             Boolean((last.test_plan_state || last.requires_test_plan) && last.test_case_state !== 'passed')} />}

@@ -307,22 +307,25 @@ type githubIssue struct {
 	RepoURL     string          `json:"repository_url"`
 	HTMLURL     string          `json:"html_url"`
 	State       string          `json:"state"`
+	ClosedAt    string          `json:"closed_at"`
+	StateReason string          `json:"state_reason"`
 	PullRequest json.RawMessage `json:"pull_request"`
 	Title, Body string
 	UpdatedAt   string                  `json:"updated_at"`
 	Labels      []struct{ Name string } `json:"labels"`
 }
 
+func (repo githubProject) matchesIssue(remote githubIssue, number int64) bool {
+	return number > 0 && remote.Number == number && remote.ID > 0 && remote.RepoURL == "https://api.github.com/repos/"+repo.FullName &&
+		remote.HTMLURL == fmt.Sprintf("https://github.com/%s/issues/%d", repo.FullName, number)
+}
+
 func (repo githubProject) issue(remote githubIssue, number int64) (store.Issue, error) {
-	htmlURL := fmt.Sprintf("https://github.com/%s/issues/%d", repo.FullName, number)
-	if number <= 0 || remote.Number != number || remote.ID <= 0 || remote.RepoURL != "https://api.github.com/repos/"+repo.FullName {
+	if !repo.matchesIssue(remote, number) {
 		return store.Issue{}, errIdentity
 	}
 	if remote.State != "open" || remote.PullRequest != nil {
 		return store.Issue{}, errNotOpen
-	}
-	if remote.HTMLURL != htmlURL {
-		return store.Issue{}, errIdentity
 	}
 	if _, err := time.Parse(time.RFC3339, remote.UpdatedAt); err != nil {
 		return store.Issue{}, errIdentity
@@ -332,7 +335,7 @@ func (repo githubProject) issue(remote githubIssue, number int64) (store.Issue, 
 		return store.Issue{}, errIssueText
 	}
 	return store.Issue{RepositoryID: repo.ID, Repository: repo.FullName, ID: remote.ID, Number: number,
-		URL: htmlURL, Title: remote.Title, Body: remote.Body, UpdatedAt: remote.UpdatedAt}, nil
+		URL: remote.HTMLURL, Title: remote.Title, Body: remote.Body, UpdatedAt: remote.UpdatedAt}, nil
 }
 
 func requirementPath(w http.ResponseWriter, r *http.Request) (int64, int64, bool) {

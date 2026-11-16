@@ -313,6 +313,8 @@ func respond(w http.ResponseWriter, status int, value any, err error) {
 			Error    string `json:"error"`
 			Revision int64  `json:"retention_revision,omitempty"`
 		}{expiry.Error(), expiry.Revision})
+	case errors.Is(err, store.ErrSourceClosed):
+		problem(w, http.StatusGone, err.Error())
 	case errors.Is(err, store.ErrConflict):
 		problem(w, http.StatusConflict, "request conflicts with the current task state or recorded decision")
 	case err != nil:

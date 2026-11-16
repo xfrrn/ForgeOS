@@ -284,7 +284,7 @@ func (spec IssueSpec) accepts(r Result) bool {
 		}
 		if spec.Validation == "auto" {
 			if run.Decision == nil {
-				if run.Level != "auto" || run.Failure != "CONFIG_FAILURE" || len(run.Checks) != 0 {
+				if run.Level != "auto" || (run.Failure != "CONFIG_FAILURE" && run.Failure != "CANCELLED") || len(run.Checks) != 0 {
 					return false
 				}
 			} else if spec.Policy == nil || run.Decision.Policy != *spec.Policy || run.Decision.Level != run.Level || !validation.ValidLevel(run.Level) {

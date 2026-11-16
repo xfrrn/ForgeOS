@@ -49,7 +49,8 @@ func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq 
 	var digest []byte
 	var source int64
 	err = tx.QueryRowContext(ctx, `SELECT e.lease_hash,COALESCE(t.goal_id,t.id) FROM executions e JOIN work_items t ON t.id=e.task_id
-		WHERE e.id=$1 AND e.uses_checkpoints AND t.kind='codex_issue' AND t.status='RUNNING' AND e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>now() FOR UPDATE OF e`, id).Scan(&digest, &source)
+		WHERE e.id=$1 AND e.uses_checkpoints AND t.kind='codex_issue' AND t.status='RUNNING' AND t.source_closure_id IS NULL
+		AND e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>now() FOR UPDATE OF e,t`, id).Scan(&digest, &source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return page, ErrConflict
 	}

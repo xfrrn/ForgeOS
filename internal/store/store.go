@@ -137,6 +137,9 @@ var retentionHistorySchema string
 //go:embed 038_github_events.sql
 var githubEventsSchema string
 
+//go:embed 039_issue_closures.sql
+var issueClosuresSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -144,6 +147,7 @@ type Project struct {
 }
 
 type Task struct {
+	SourceClosure       json.RawMessage    `json:"source_closure,omitempty"`
 	FeedbackSources     []FeedbackSource   `json:"feedback_sources,omitempty"`
 	RequiresCodeReview  bool               `json:"requires_code_review,omitempty"`
 	Refreshes           []DeliveryRefresh  `json:"delivery_refreshes,omitempty"`
@@ -250,7 +254,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -294,7 +298,7 @@ func (s *Store) CreateTask(ctx context.Context, projectID int64) (Task, error) {
 
 func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var t Task
-	var spec, attempts, events, reviews, delivery, plan, children, questions, refreshes, feedback []byte
+	var spec, attempts, events, reviews, delivery, plan, children, questions, refreshes, feedback, closure []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, p.requires_code_review, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
@@ -323,15 +327,17 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		       FROM work_items c WHERE c.goal_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.execution_id) FROM delivery_refreshes f WHERE f.task_id=t.id),
-		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.feedback_id) FROM feedback_work_items l JOIN dispatchable_feedback f USING(feedback_id) WHERE l.task_id=t.id)
+		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.feedback_id) FROM feedback_work_items l JOIN dispatchable_feedback f USING(feedback_id) WHERE l.task_id=t.id),
+		    (SELECT to_jsonb(c) FROM github_issue_closures c WHERE c.task_id=t.source_closure_id)
 		FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN requirement_revisions frozen ON frozen.id=t.requirement_id WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.RequiresCodeReview, &t.Status, &t.Kind, &t.ActiveRevision, &t.RequirementRevision, &t.LatestRequirement, &spec, &attempts,
-		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions, &refreshes, &feedback)
+		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions, &refreshes, &feedback, &closure)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
 	if err != nil {
 		return Task{}, err
 	}
+	t.SourceClosure = closure
 	if spec != nil {
 		if err = json.Unmarshal(spec, &t.Spec); err != nil {
 			return Task{}, err
@@ -541,13 +547,13 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned, usesCheckpoints bool
+	var abandoned, usesCheckpoints, sourceClosed bool
 	var expectedHash, stored, spec []byte
 	var repo, worker string
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker
+		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id = $1 FOR UPDATE OF e`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker)
+		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -582,7 +588,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker) {
 			return ErrConflict
 		}
-		if result.succeeded() {
+		if result.succeeded() && !sourceClosed {
 			if v := result.Validation; v != nil && v.Run != nil {
 				if verify == nil {
 					return ErrConflict
@@ -638,7 +644,9 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		return err
 	}
 	status, eventType := "DONE", "execution_completed"
-	if !result.succeeded() {
+	if sourceClosed {
+		status, eventType = "CANCELLED", "source_issue_cancelled"
+	} else if !result.succeeded() {
 		status, eventType = "FAILED", "execution_failed"
 	} else if result.Plan != nil {
 		status, eventType = "PLANNING", "planner_completed"
@@ -663,10 +671,10 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned, eligible bool
+	var abandoned, eligible, sourceClosed bool
 	err = tx.QueryRowContext(ctx, `
-		SELECT task_id, abandoned_at IS NOT NULL, result IS NULL AND lease_until <= now()
-		FROM executions WHERE id = $1 FOR UPDATE`, id).Scan(&taskID, &abandoned, &eligible)
+		SELECT e.task_id, e.abandoned_at IS NOT NULL, e.result IS NULL AND e.lease_until <= now(), t.source_closure_id IS NOT NULL
+		FROM executions e JOIN work_items t ON t.id=e.task_id WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &abandoned, &eligible, &sourceClosed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -679,7 +687,11 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 	if _, err = tx.ExecContext(ctx, `UPDATE executions SET abandoned_at = now() WHERE id = $1`, id); err != nil {
 		return err
 	}
-	return finishTask(ctx, tx, taskID, id, "FAILED", "execution_abandoned")
+	status := "FAILED"
+	if sourceClosed {
+		status = "CANCELLED"
+	}
+	return finishTask(ctx, tx, taskID, id, status, "execution_abandoned")
 }
 
 func finishTask(ctx context.Context, tx *sql.Tx, taskID, executionID int64, status, eventType string) error {

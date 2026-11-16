@@ -133,10 +133,13 @@ Runner 读取基础提交的配置，在候选文件的隔离副本中运行。�
 - TEST_ENV_FAILURE；
 - INFRA_FAILURE；
 - TIMEOUT；
+- CANCELLED（执行上下文已取消）；
 - CONFIG_FAILURE；
 - SECURITY_FAILURE。
 
 基础设施故障不应被当成代码缺陷。
+
+关闭来源 Issue 时，已开始的容器检查会随 Worker 中断。运行和被中断的检查记录 CANCELLED，该检查的退出码为空。已完成的检查、候选 SHA 和写入的日志仍可按运行回执读取。
 
 ## 7. 验证规则
 

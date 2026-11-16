@@ -1009,3 +1009,17 @@ PostgreSQL 18 与 Docker 回归 131 项通过、零测试跳过，`go vet ./...`
 | 在原正文后加空格沿用原签名，再重投完整原件；重启控制面并再次重投 | 篡改被拒，真实重复投递复用原回执 | 篡改返回 401，重投均为 200。重启后的四条投递、原文字节和完整任务 JSON 均与重启前一致 |
 
 结束转发后已核实 GitHub 自动移除临时开发 Webhook，验收 Issue 已关闭。启用 PostgreSQL 18 和 Docker 的 134 项 Go 测试通过、零测试跳过，`go vet ./...` 通过。回归覆盖错配仓库、同号异文、原文回读及限流期间收到通知。本次验证了 GitHub 签名到本机正式入口的全程，生产公网代理部署和关闭 Issue 后的任务处置另行验收。
+
+Webhook 接入实现及真实投递证据对应 ForgeOS 提交 `4ea0363db2e93e80be7722e4190e07eacda6c012`。
+
+## 专题 06、10、12 · 来源 Issue 关闭时取消执行或归档 Goal
+
+在私有 beta 仓库创建两个真实 Issue。第一项使用正常 Worker、Codex 和 V2 容器验证。在本地验收克隆的固定基础提交 `65a55e135a89f301e42e8612ecfb7564f60f52a1` 延长构建步骤，以便在运行中关闭 Issue。第二项从 Owner API 建立带依赖的 Goal。两个场景均通过定时轮询读取 GitHub 的实际状态。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 观察到 Docker 正在执行 build 后创建一个同项目任务，再在 GitHub 将来源 Issue 以 not_planned 关闭 | 取消请求先入库，在原执行交回名额前保留队列顺序 | 02:21:00 关闭，02:21:03 观测到请求。执行 1 仍为 RUNNING，后续任务 2 为 READY。02:21:30 原任务转为 CANCELLED，随后任务 2 完成。时间均为 UTC+8。[Issue #52](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/52) |
+| 核对运行回执、容器、中央日志，并重启控制面从 Chrome 打开任务详情 | 候选和已执行检查可追溯，容器已回收，取消记录可查 | 候选 `51488d9b97d1ecb94332ea85ed800cd56dde4b47`；运行 `ci-run-312700951` 与 build 均为 CANCELLED，build 退出码为空。中央日志与本地同为 20 字节，SHA-256 为 `aed2fe905c544caa28ec2c21fd69f5f719fb0bb571f3036f23f675346bdf3d5b`。原容器已移除，任务无交付记录，重启后页面与状态筛选都能查到关闭记录 |
+| 激活含 READY、BLOCKED 两个子项的 Goal，关闭父 Issue，再重新打开并导入一次 | 原 Goal 和子项停止派发，保留计划，不重复创建任务 | Goal 1、子项 2 和 3 全部为 CANCELLED，子项无执行且关联同一关闭回执，原计划逐字段相同。重新激活返回 409，重开后导入仍指向原 Goal，取消列表仍为三项。验收后已再次关闭 Issue。[Issue #53](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/53) |
+
+PostgreSQL 18 和真实 Docker 的全量回归共 9 个有测试的包、137 项通过、零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。回归还覆盖远端对象错配、过时观察、运行中重复关闭、迟到的成功回执及已批准子项的历史保留。

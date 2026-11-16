@@ -35,7 +35,9 @@ func TestTaskListPagesAndFilters(t *testing.T) {
 		}
 		return page
 	}
-	if page := get("/tasks"); page.Items == nil || len(page.Items) != 0 || len(page.Counts) != 12 || page.Counts["ALL"] != 0 {
+	page := get("/tasks?status=CANCELLED")
+	cancelled, hasCancelled := page.Counts["CANCELLED"]
+	if page.Items == nil || len(page.Items) != 0 || len(page.Counts) != 13 || page.Counts["ALL"] != 0 || !hasCancelled || cancelled != 0 {
 		t.Fatal("empty list:", page)
 	}
 	project, err := data.CreateProject(ctx, t.TempDir())
@@ -55,7 +57,7 @@ func TestTaskListPagesAndFilters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := get("/tasks?limit=1")
+	page = get("/tasks?limit=1")
 	if len(page.Items) != 1 || page.Items[0].ID != task.ID || page.NextBefore != task.ID ||
 		page.Items[0].IssueNumber != 8 || page.Items[0].Repository != "Acme/Engine" || page.Items[0].Title != issue.Issue.Title {
 		t.Fatal("first page:", page)
