@@ -24,6 +24,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	registerCheckpoints(mux, data, owner, workers)
 	registerHistory(mux, data, owner, workers)
 	registerDecisions(mux, data, owner, workers)
+	registerMaterials(mux, data, owner, workers)
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
@@ -228,7 +229,11 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, dest any) bool {
-	reader := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	return decodeLimited(w, r, dest, 16<<10)
+}
+
+func decodeLimited(w http.ResponseWriter, r *http.Request, dest any, limit int64) bool {
+	reader := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	reader.DisallowUnknownFields()
 	if err := reader.Decode(dest); err != nil || reader.Decode(new(any)) != io.EOF {
 		problem(w, http.StatusBadRequest, "expected a single JSON object with supported fields")

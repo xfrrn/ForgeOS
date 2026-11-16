@@ -97,6 +97,14 @@ Owner 通过 `GET /projects/{id}/history` 检索某一项目。按项目授权�
 
 节点令牌必须显式获准查询该项目。使用单个兼容 Worker 令牌的部署要为节点配置项目授权后才能查询历史。
 
+### 项目资料、档案和环境说明
+
+Owner 用 `PUT /projects/{id}/materials/{key}` 导入 UTF-8 文本，正文上限为 256 KiB。传入 `previous_revision`、`kind`、`title`、`source` 和 `content`。首次使用修订 0，后续传入要更新的修订号。类型可选 `material`（导入资料）、`profile`（项目背景、负责人等）和 `environment`（机器和环境说明）。凭据值存入密钥管理服务。
+
+Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revision=1` 可读固定版本。每版保留原文、来源、导入时间和基于 UTF-8 原文的 SHA-256。重报相同版本和内容会返回原记录；对已存在的修订提交不同内容返回 409。
+
+列表入口 `GET /projects/{id}/materials` 可按 `kind` 筛选。传入 `q` 返回相关度最高的 30 条当前版本记录和摘要；不传关键词时按 key 浏览，用 `after=<末项 key>` 翻页。项目节点使用同样的读取路径，在前面加 `/internal`，只允许访问授权项目。项目工程文档仍由 Agent 在对应 Git 版本按需读取。
+
 ## 7. 角色上下文
 
 Management、Planner、Development、Review、Test、Operations 获取不同上下文和工具权限。
