@@ -22,6 +22,7 @@ import (
 func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryPolicy) *http.ServeMux {
 	mux := http.NewServeMux()
 	registerCheckpoints(mux, data, owner, workers)
+	registerHistory(mux, data, owner, workers)
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
