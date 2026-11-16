@@ -140,7 +140,7 @@ Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 
 
 1. 在候选预览标签页打开扩展。点击“选择页面元素”，再点需要反馈的元素。Esc 可取消。反馈整页时直接选“反馈整个页面”。
 2. 扩展用首页响应头核对任务、执行和提交，打开已连接工作台的反馈表单。新标签页若尚未连接，按工作台提示登录。核对路径、所选元素、浏览器主版本和视口，再填写观察并提交。页面版本与归档不符时，工作台要求重新选择。
-3. 从原预览的“预览反馈”回看该记录。元素定位使用标签与同类型序号，不读取文本、属性值、输入值、Cookie 或页面存储。页面路径不含查询参数和片段。采集仅在用户调用扩展后进行，扩展清单声明 activeTab 和 scripting 两项权限。[Chrome activeTab 权限说明](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab)
+3. 从原预览的“预览反馈”回看该记录。元素定位使用标签与同类型序号，不读取文本、属性值、输入值、Cookie 或页面存储。页面路径不含查询参数和片段。采集仅在用户调用扩展后进行，扩展使用 activeTab 与 scripting 读取用户选择的候选文档，并用 tabCapture 录制该标签页。[Chrome activeTab 权限说明](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab)
 
 安装 Python Playwright 后，可以用 `python scripts/probe_preview_extension.py --browser <Chrome-for-Testing可执行文件>` 重跑工具栏、取消、选择和隐私回归。探针启动一次性浏览器配置与两个本机页面，不需要项目凭据。验收工作台与数据库的完整场景见[验收记录](acceptance.md)。
 
@@ -199,6 +199,12 @@ Owner 可向 `/tasks/{id}/previews/{preview}/feedback/{feedback}/artifacts` POST
 ## 8. 验收版本约束
 
 人工验收绑定 Commit SHA。验收后代码发生变化时，必须判断是否需要重新自动验证和人工验收。
+
+### 从候选标签页录制交互
+
+重新加载扩展后，在候选预览的工具栏选择“录制当前标签页”。保留新开的录屏核对页，回到候选进行操作。录制跟随最初选定的标签页，切换到其他标签页可继续录制原候选。仅采集视频。项目可用 `data-forgeos-private` 标记不应进入画面的区域；截图所用的表单、内嵌页面及 Shadow DOM 遮挡同样适用于录屏。切换文档或隐私边界改变时，本段丢弃，并恢复页面控件。[Chrome 标签页录制](https://developer.chrome.com/docs/extensions/reference/api/tabCapture)
+
+再次从原候选的工具栏选择“停止录制并核对”，也可在录屏核对页停止。关闭录屏页可丢弃当前段。接近 60 MiB 时自动结束本段，为浏览器编码尾部留出余量。回放后点击“在工作台登记录屏反馈”，核对观察、提交反馈，再单独确认上传。录制画面在确认上传前保存在浏览器内存中；已有回执可从原反馈继续回放。
 
 ### 归档与回放反馈录屏
 

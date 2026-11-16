@@ -2,6 +2,7 @@ const statusLine = document.querySelector('#status')
 const pair = document.querySelector('#pair')
 const pick = document.querySelector('#pick')
 const page = document.querySelector('#page')
+const record = document.querySelector('#record')
 const screenshot = document.querySelector('#screenshot')
 
 async function prepare() {
@@ -28,13 +29,15 @@ async function prepare() {
   const gatewayPreview = preview && url.protocol === 'https:' && owner.protocol === 'https:' && owner.hostname === 'forgeos.' + preview[2] && owner.port === url.port
   if (!preview || (!localPreview && !gatewayPreview)) throw new Error('当前页面不属于已连接工作台的候选预览。')
   statusLine.textContent = '在工作台确认页面路径、填写意见并选择测试用例。'
-  pick.hidden = page.hidden = screenshot.hidden = false
-  async function capture(elementMode, withScreenshot = false) {
+  pick.hidden = page.hidden = screenshot.hidden = record.hidden = false
+  const recording = (await chrome.tabCapture.getCapturedTabs()).some(c => c.tabId === tab.id && ['pending','active'].includes(c.status))
+  if (recording) record.textContent = '停止录制并核对'
+  async function capture(elementMode, kind = '') {
     try {
       const [result] = await chrome.scripting.executeScript({target: {tabId: tab.id}, func: startCapture, args: [paired, url.origin, preview[1], elementMode]})
       if (!result?.result?.ok) throw new Error(result?.result?.error || '无法核对当前候选。')
-      if (withScreenshot) {
-        const review = new URL(chrome.runtime.getURL('screenshot.html'))
+      if (kind) {
+        const review = new URL(chrome.runtime.getURL(kind + '.html'))
         review.hash = new URLSearchParams({tab: String(tab.id), window: String(tab.windowId),
           document: result.documentId, destination: result.result.destination, origin: url.origin}).toString()
         await chrome.tabs.create({url: review.href, active: false, windowId: tab.windowId})
@@ -44,7 +47,15 @@ async function prepare() {
   }
   pick.onclick = () => capture(true)
   page.onclick = () => capture(false)
-  screenshot.onclick = () => capture(false, true)
+  screenshot.onclick = () => capture(false, 'screenshot')
+  record.onclick = async () => {
+    if (!recording) { await capture(false, 'recording'); return }
+    try {
+      const stopped = await chrome.runtime.sendMessage({type: 'stop-recording', tab: tab.id})
+      if (!stopped) throw new Error('请从录屏核对标签页停止录制。')
+      window.close()
+    } catch (err) { statusLine.textContent = err.message }
+  }
 }
 
 async function startCapture(workbench, origin, preview, elementMode) {

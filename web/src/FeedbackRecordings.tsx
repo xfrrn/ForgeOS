@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ApiRequest } from './shared'
 import type { FeedbackArtifactReceipt } from './FeedbackScreenshots'
 
-export function FeedbackRecordings({ api, artifacts, request, saved }: {
-  api: string; artifacts: FeedbackArtifactReceipt[]; request: ApiRequest; saved: () => void
+export function FeedbackRecordings({ api, artifacts, request, saved, captured }: {
+  api: string; artifacts: FeedbackArtifactReceipt[]; request: ApiRequest; saved: () => void; captured?: Blob | null
 }) {
   const [open, setOpen] = useState(false)
   const [clip, setClip] = useState<Blob | null>(null)
@@ -19,6 +19,9 @@ export function FeedbackRecordings({ api, artifacts, request, saved }: {
     setUrl(source)
     return () => URL.revokeObjectURL(source)
   }, [clip])
+  useEffect(() => {
+    if (captured) { setOpen(true); setArchived(0); setClip(captured) }
+  }, [captured])
   async function view(id: number) {
     setBusy(true); setError('')
     try { const blob = await request<Blob>(api + '/' + id, {}, 'blob'); setArchived(id); setClip(blob) }
@@ -47,6 +50,7 @@ export function FeedbackRecordings({ api, artifacts, request, saved }: {
         if (!file.size || file.size > 64 * 1024 * 1024) { setError('请选择 64 MiB 以内的 WebM 录屏。'); return }
         setClip(file)
       }}/></label>
+      {captured && !clip && <button className="detail-text-button" onClick={() => { setArchived(0); setError(''); setClip(captured) }}>重新载入扩展录屏</button>}
       {url && clip && <><video key={url} aria-label={archived ? '已归档录屏' : '待确认录屏'} src={url}
         controls playsInline muted preload="auto" style={{display:'block', maxWidth:'100%'}}
         onLoadedData={() => setPlayable(true)} onError={() => { setPlayable(false); setError('此浏览器无法回放该录屏。') }}/>

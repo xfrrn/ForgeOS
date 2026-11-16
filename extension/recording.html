@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>候选录屏 · ForgeOS</title>
+<style>
+  body { max-width: 960px; margin: 24px auto; padding: 0 16px; font: 16px/1.5 system-ui,sans-serif; color: #18232f }
+  h1 { font-size: 22px } video { display:block; max-width:100%; margin:16px 0 } button { padding:6px 12px } [hidden] { display:none }
+</style>
+<h1>候选录屏</h1><p id="status" role="status">正在准备候选标签页…</p>
+<button id="stop" hidden>停止录制并核对</button>
+<video id="player" hidden controls muted playsinline aria-label="候选录屏预览"></video>
+<button id="send" hidden>在工作台登记录屏反馈</button>
+<button id="discard">关闭并丢弃</button>
+<script src="capture.js"></script><script src="recording.js"></script></html>

@@ -195,6 +195,44 @@ def main():
             moving_review.close()
             print("PASS: changing page rejected and original controls restored")
 
+            def start_recording():
+                with context.expect_page() as created:
+                    press_action(context, p, extension_id, "record")
+                review = created.value
+                expect(review.locator("#stop")).to_be_visible()
+                return review
+
+            p.evaluate("document.body.removeAttribute('data-forgeos-private')")
+            recording = start_recording()
+            expect(p.locator("input").last).to_be_hidden()
+            p.wait_for_timeout(700)
+            press_action(context, p, extension_id, "record")
+            expect(recording.locator("#send")).to_be_visible()
+            expect(p.locator("input").last).to_be_visible()
+            assert recording.locator("video").evaluate("v => v.muted && v.src.startsWith('blob:')")
+            recording.close()
+
+            recording = start_recording()
+            p.evaluate("""() => {
+              const el = document.createElement('div')
+              el.attachShadow({mode:'closed'}).append(document.createElement('input'))
+              document.body.append(el); el.remove()
+            }""")
+            expect(recording.get_by_role("status")).to_contain_text("丢弃")
+            expect(recording.locator("#send")).to_be_hidden()
+            expect(p.locator("input").last).to_be_visible()
+            recording.close()
+
+            recording = start_recording()
+            p.reload()
+            expect(recording.get_by_role("status")).to_contain_text("丢弃")
+            expect(recording.locator("#send")).to_be_hidden()
+            recording.close()
+            recording = start_recording()
+            recording.close()
+            expect(p.locator("input").first).to_be_visible()
+            print("PASS: native tab recording, toolbar stop, privacy rejection, navigation and cancellation")
+
         finally:
             context.close()
             server.shutdown()
