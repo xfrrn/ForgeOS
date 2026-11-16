@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -20,6 +21,30 @@ import (
 )
 
 var previewHost = regexp.MustCompile(`^p-([0-9a-f]{48})\.localhost$`)
+var dnsLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+func previewGateway(domain, port string) (string, error) {
+	if domain == "" && port == "" {
+		return "", nil
+	}
+	// Reserve space for the preview label and its dot in the full DNS name.
+	if len(domain) > 202 {
+		return "", errors.New("FORGEOS_GATEWAY_DOMAIN is too long")
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if !dnsLabel.MatchString(label) {
+			return "", errors.New("FORGEOS_GATEWAY_DOMAIN must be a lower-case DNS name")
+		}
+	}
+	if port == "" || port == "443" {
+		return domain, nil
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
+		return "", errors.New("invalid FORGEOS_GATEWAY_PORT")
+	}
+	return net.JoinHostPort(domain, port), nil
+}
 
 func publicPath(name string) bool {
 	if name == "." || !fs.ValidPath(name) || len(name) > 1024 || strings.ContainsAny(name, "\\:\x00\r\n\t") {
@@ -103,6 +128,10 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 }
 
 func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr string) (func(), error) {
+	gateway, err := previewGateway(os.Getenv("FORGEOS_GATEWAY_DOMAIN"), os.Getenv("FORGEOS_GATEWAY_PORT"))
+	if err != nil {
+		return nil, err
+	}
 	var port int
 	done := func() {}
 	if addr != "" {
@@ -135,7 +164,7 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 			return
 		}
 		receipts, err := data.Previews(r.Context(), id, execution)
-		respond(w, 200, map[string]any{"enabled": port != 0, "previews": receipts}, err)
+		respond(w, 200, map[string]any{"enabled": port != 0, "gateway": gateway, "previews": receipts}, err)
 	}))
 	mux.HandleFunc("POST /tasks/{id}/previews", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

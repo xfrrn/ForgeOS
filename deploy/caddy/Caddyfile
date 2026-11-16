@@ -1,0 +1,35 @@
+{
+	admin off
+	auto_https off
+}
+
+https://*.{$FORGEOS_GATEWAY_DOMAIN}:{$FORGEOS_GATEWAY_PORT:443} {
+	bind {$FORGEOS_GATEWAY_BIND:127.0.0.1}
+	tls {$FORGEOS_TLS_CERT} {$FORGEOS_TLS_KEY} {
+		client_auth {
+			mode require_and_verify
+			trust_pool file {$FORGEOS_CLIENT_CA}
+		}
+	}
+
+	@workbench {
+		host forgeos.{$FORGEOS_GATEWAY_DOMAIN}
+		path / /ui/ /ui/assets/* /tasks /tasks/* /projects /projects/* /executions/*
+	}
+	handle @workbench {
+		reverse_proxy {$FORGEOS_CONTROL_UPSTREAM:127.0.0.1:8080}
+	}
+
+	@preview vars_regexp preview {http.request.host} ^(p-[a-f0-9]{48})[.]
+	handle @preview {
+		reverse_proxy {$FORGEOS_PREVIEW_UPSTREAM:127.0.0.1:8091} {
+			header_up Host {re.preview.1}.localhost:{$FORGEOS_PREVIEW_PORT:8091}
+			header_up -Authorization
+			header_up -Cookie
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

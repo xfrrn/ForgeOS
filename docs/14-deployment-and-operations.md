@@ -69,6 +69,21 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 
 Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动态登记，路由到对应本地实例。
 
+### 私网 HTTPS 入口
+
+使用仓库的 [Caddyfile](../deploy/caddy/Caddyfile)。为工作台与预览分配一个专用私有 DNS 区，例如 `qa.internal.example`。在私有解析器将 `*.qa.internal.example` 指向验收主机的 tailnet 地址，在 tailnet 中为该区配置分流 DNS。工作台域名为 `forgeos.qa.internal.example`。每次启动预览后，工作台会给出该候选独有的 HTTPS 链接。预览停止或到期后原链接失效。
+
+| 设置 | 配置位置和用途 |
+| --- | --- |
+| `FORGEOS_GATEWAY_DOMAIN`、`FORGEOS_GATEWAY_PORT` | Caddy 和控制面使用相同的私有 DNS 区和端口。填写小写 DNS 名，端口默认为 443。 |
+| `FORGEOS_GATEWAY_BIND` | Caddy 绑定本机的 tailnet 地址。本机联调可用默认值 127.0.0.1。 |
+| `FORGEOS_TLS_CERT`、`FORGEOS_TLS_KEY`、`FORGEOS_CLIENT_CA` | Caddy 可读取的 PEM 文件路径。服务端证书覆盖该区的通配域名。客户端 CA 用来核对准入设备的客户端证书。 |
+| `FORGEOS_CONTROL_UPSTREAM`、`FORGEOS_PREVIEW_UPSTREAM`、`FORGEOS_PREVIEW_PORT` | 同机默认分别为 127.0.0.1:8080、127.0.0.1:8091 和 8091。预览端口应对应控制面的 `FORGEOS_PREVIEW_ADDR`。 |
+
+在 Caddy 的服务环境中设置上述变量后，运行 `caddy validate --config deploy/caddy/Caddyfile --adapter caddyfile`，用同一环境运行 `caddy run --config deploy/caddy/Caddyfile --adapter caddyfile`。在验收设备安装受信任的服务端 CA 和该设备自己的客户端证书、私钥。tailnet 访问规则将验收人员对该主机的访问限制到网关端口。登录工作台仍需 Owner 令牌。
+
+工作台仅代理静态 UI 和任务、项目、执行操作的路径。私网预览从另一浏览器来源读取，Caddy 转发到预览监听器时移除 Authorization 和 Cookie。控制面、预览上游及数据库等服务保持原来的本机监听配置。[Caddy 客户端证书配置](https://caddyserver.com/docs/caddyfile/directives/tls) · [反向代理的上游请求头](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+
 ## 5. 资源管理
 
 - 任务并发由 Orchestrator 控制；

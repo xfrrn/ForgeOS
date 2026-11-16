@@ -118,6 +118,8 @@ Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 
 
 通过 `POST /tasks/{id}/previews` 发送 `execution_id`、`commit`、`directory` 和可选 `ttl_seconds`（默认一小时，最长一天）。同一执行、目录和端口已有活动实例时返回原回执。`GET /tasks/{id}/previews?execution_id=…` 查询历次预览，`DELETE /tasks/{id}/previews/{preview}` 停止对应实例。
 
+配置私网网关后，任务详情提供“打开私网预览”。Owner 列表接口的 gateway 字段返回配置的 DNS 区和端口，每个实例的私网地址为 `https://p-<预览 ID>.<gateway>/`。访问时需要网关认可的客户端证书。Caddy 的部署和 DNS 约定见[部署与运行](14-deployment-and-operations.md)。
+
 ## 6. 浏览器反馈扩展
 
 功能：
