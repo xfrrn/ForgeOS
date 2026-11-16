@@ -184,7 +184,7 @@ func runCodexTurn(ctx context.Context, process processLog, bin, workspace, sandb
 	return session, nil
 }
 
-func (w *worker) codexTurn(ctx context.Context, job store.Job, prompt, start string, identity []byte, schema, output string) (string, error) {
+func (w *worker) codexTurn(ctx context.Context, job store.Job, prompt, previous, start string, identity []byte, schema, output string) (string, error) {
 	sandbox := "workspace-write"
 	var options []string
 	if schema != "" {
@@ -194,7 +194,10 @@ func (w *worker) codexTurn(ctx context.Context, job store.Job, prompt, start str
 	run := func(prompt, resume string) (string, error) {
 		return runCodexTurn(ctx, w.processLog(job, "codex", w.codexVersion), w.codex, job.Workspace, sandbox, prompt, resume, options...)
 	}
-	session, err := run(prompt, "")
+	session, err := run(prompt, previous)
+	if session == "" && previous != "" {
+		return previous, err
+	}
 	if !errors.Is(err, errCodexInterrupted) || ctx.Err() != nil {
 		return session, err
 	}
@@ -354,7 +357,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 			result.Harness, result.HarnessVersion = "claude", w.claude.version
 			result.SessionID, err = w.claudeTurn(ctx, job, prompt, result.SessionID, start, dir)
 		} else {
-			result.SessionID, err = w.codexTurn(ctx, job, prompt, start, dir, "", "")
+			result.SessionID, err = w.codexTurn(ctx, job, prompt, result.SessionID, start, dir, "", "")
 		}
 		if err != nil || !job.SupportsCheckpoints {
 			break

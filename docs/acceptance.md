@@ -802,3 +802,15 @@ Codex 实现与只读规划的进程回执对应提交 `39d3f6899ab5c2a75bf72e63
 原生模型进程被强制终止和 Worker 自身重启后的在途恢复仍待验收。
 
 启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、122 项通过，零跳过。Go 静态检查通过。
+
+Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066ec6d73578ac424834b`。
+
+## 阶段三、专题 06、07 · 在原 Codex Thread 处理运行中的 Issue 评论
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在私有 beta 导入 #37，指定 Codex。观察正式 Worker 启动原生进程后，通过 GitHub 在 Issue 下补充手册示例，让正式轮询器采集评论 | 普通评论进入下一个安全检查点；原回合正常结束，后续回合沿用同一 Thread | 三个检查点依次收到 0、1、0 条评论。前两个确认同一 Thread `01a1e506-342b-76f2-873d-4a375463810f`，空的末批没有开启第三个进程。该执行的两个原生 PID 为 35272、35092，均正常退出。两条原生回合记录的工作区相同、审批为 never、workspace-write 禁网。[原始评论](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/37#issuecomment-6921147784) |
+| 在任务详情展开进程记录，核对候选差异和本地 CI，提交候选验收 | 一次执行覆盖原始需求和评论补充，只产生一个候选 | Chrome 可见同一 Thread 的两条进程记录。候选 `48f935199c017f96492f3fa1ead4d1b860793ac9` 只修改指定手册，包含原需求的验收和合并说明，以及评论要求的完整示例句。错误进程回执为 409，正确回报在丢失响应后重报为 204 |
+| 等待本地 CI 和 Actions，核对受保护分支、Issue 评论和重启后的控制面任务 | 合并已验收的候选，保留原讨论和交付回执 | Actions 第一次按演练失败，重跑成功。唯一的 PR #38 合并为 `ca1953f7d1e8ac05e22b8e82612b2a032503dd18`，Issue 已关闭，保留原评论和一条交付回执，重启后任务 JSON 相同。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/38) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43899626076) · [交付回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/37#issuecomment-6921230220) |
+
+验收代理在下一批次请求前等正式轮询器读取评论，以复现实测时序。原生 Codex 直接由 Worker 启动。启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、123 项通过，零跳过。Go 静态检查通过。

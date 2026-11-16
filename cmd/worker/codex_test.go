@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,6 +79,13 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	session := "test-session"
+	if strings.Contains(string(body), "CHECKPOINT_THREAD") {
+		session = "a7090935-460b-4930-8484-0f2008435a45"
+		continued := strings.Contains(string(body), "APPEND_EXAMPLE")
+		if continued != strings.Contains(args, "resume "+session+" -") {
+			os.Exit(2)
+		}
+	}
 	if strings.Contains(string(body), `"acceptance_feedback":`) {
 		session = "test-review-session"
 	}
@@ -131,6 +139,44 @@ func TestCodexTurnRecovery(t *testing.T) {
 				t.Fatal("unexpected successful result", result)
 			}
 		})
+	}
+}
+
+func TestCodexCommentCheckpointResumesThread(t *testing.T) {
+	w, job, base := fixture(t)
+	w.codex, _ = os.Executable()
+	job.Kind, job.SupportsCheckpoints = "codex_issue", true
+	job.Spec = &store.IssueSpec{Issue: store.Issue{Number: 7, Title: "Change README", Body: "CHECKPOINT_THREAD"}, BaseCommit: base, Validation: "docs"}
+	var sessions []string
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		var q struct {
+			Sequence int    `json:"sequence"`
+			Session  string `json:"session_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			t.Error(err)
+			rw.WriteHeader(400)
+			return
+		}
+		if q.Session != "" {
+			sessions = append(sessions, q.Session)
+			rw.WriteHeader(204)
+			return
+		}
+		page := store.CheckpointPage{Checkpoint: store.Checkpoint{ExecutionID: job.ExecutionID, Sequence: q.Sequence}}
+		if q.Sequence == 1 {
+			page.Comments = []store.CommentInput{{EventID: 1, Body: "APPEND_EXAMPLE"}}
+		}
+		json.NewEncoder(rw).Encode(page)
+	}))
+	defer server.Close()
+	w.api, w.client = server.URL, server.Client()
+	result := w.execute(context.Background(), job)
+	if result.ExitCode != 0 || len(sessions) != 2 || sessions[0] != sessions[1] || result.SessionID != sessions[0] {
+		t.Fatal("expected both checkpoints on the original thread", sessions, result)
+	}
+	if git(t, job.Workspace, "show", "HEAD:README.md") != "An implemented change.\nExample: start here." {
+		t.Fatal("missing checkpoint edit")
 	}
 }
 

@@ -76,6 +76,8 @@ Worker 领取时报告 `supports_checkpoints`。已观测到评论的 Issue 及�
 
 Owner 可从任务详情的“查看执行检查点”读取各批的评论数、事件上界、时间和处理会话。API 为 `GET /tasks/{id}/checkpoints?execution_id={execution_id}`。原始版本通过任务评论历史查询。执行租约只允许读取本次运行的批次或确认对应的原生 Session。Worker 失联时已写入的批次和处理回执可分别核对。
 
+在同一次写入执行中，Codex 通过 `exec resume` 将新评论交给上一回合的 Thread，Claude Code 通过 `--resume` 复用 Session。两个批次可对应不同 PID；检查点各自保存处理该批输入的会话。退回重做仍从新 Execution 开始。
+
 取消和紧急暂停可请求尽快安全中断。
 
 ## 7. 第一版并发策略

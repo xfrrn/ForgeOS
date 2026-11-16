@@ -51,7 +51,7 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, job stor
 		"Inspect the relevant repository documents and code. Return only a concise plan in the supplied schema. " +
 		"Give each work item a stable unique ASCII identifier, explicit scope, dependencies by key, verifiable acceptance criteria, deliverables and repository paths as context references. " +
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
-	r.SessionID, err = w.codexTurn(ctx, job, prompt, spec.BaseCommit, identity, schema, output)
+	r.SessionID, err = w.codexTurn(ctx, job, prompt, "", spec.BaseCommit, identity, schema, output)
 	if err != nil {
 		r.Error = err.Error()
 		return r
