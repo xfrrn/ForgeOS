@@ -97,7 +97,7 @@ func publishValidation(root string, task, execution int64, api deliveryAPI) stor
 	}
 }
 
-func (p deliveryPolicy) validationStatus(data *store.Store, root string) http.HandlerFunc {
+func (targets deliveryTargets) validationStatus(data *store.Store, root string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		task, ok := pathID(w, r)
 		var input struct {
@@ -107,7 +107,7 @@ func (p deliveryPolicy) validationStatus(data *store.Store, root string) http.Ha
 		if !ok || !decode(w, r, &input) {
 			return
 		}
-		if p.projectID == 0 {
+		if len(targets) == 0 {
 			problem(w, 403, "GitHub writes are not configured for a project")
 			return
 		}
@@ -115,7 +115,16 @@ func (p deliveryPolicy) validationStatus(data *store.Store, root string) http.Ha
 			problem(w, 400, "provide the execution and full candidate SHA")
 			return
 		}
-		receipt, err := data.PublishCommitStatus(r.Context(), p.projectID, task, input.Execution, input.Commit, publishValidation(root, task, input.Execution, deliveryRequest))
+		work, err := data.Task(r.Context(), task)
+		if err != nil {
+			respond(w, 0, nil, err)
+			return
+		}
+		if _, enabled := targets[work.ProjectID]; !enabled {
+			problem(w, 403, "project is not enabled for delivery")
+			return
+		}
+		receipt, err := data.PublishCommitStatus(r.Context(), work.ProjectID, task, input.Execution, input.Commit, publishValidation(root, task, input.Execution, deliveryRequest))
 		switch {
 		case errors.Is(err, errMissing):
 			problem(w, 409, "candidate commit unavailable in the configured GitHub repository")

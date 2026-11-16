@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -17,6 +20,47 @@ import (
 type deliveryPolicy struct {
 	projectID int64
 	target    string
+}
+
+type deliveryTargets map[int64]string
+
+func configuredDeliveryTargets(id, target, file string) (deliveryTargets, error) {
+	legacy, err := deliveryConfig(id, target)
+	if err != nil {
+		return nil, err
+	}
+	targets := deliveryTargets{}
+	if legacy.projectID != 0 {
+		targets[legacy.projectID] = legacy.target
+	}
+	if file == "" {
+		return targets, nil
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var entries []struct {
+		Project int64  `json:"project_id"`
+		Target  string `json:"target_branch"`
+	}
+	dec := json.NewDecoder(f)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&entries); err != nil || entries == nil || dec.Decode(new(any)) != io.EOF {
+		return nil, errors.New("invalid GitHub delivery project list")
+	}
+	for _, entry := range entries {
+		p, err := deliveryConfig(strconv.FormatInt(entry.Project, 10), entry.Target)
+		if err != nil {
+			return nil, err
+		}
+		if existing, ok := targets[p.projectID]; ok && existing != p.target {
+			return nil, errors.New("conflicting GitHub target branches for the same project")
+		}
+		targets[p.projectID] = p.target
+	}
+	return targets, nil
 }
 
 func deliveryConfig(id, target string) (deliveryPolicy, error) {
@@ -35,7 +79,7 @@ func deliveryConfig(id, target string) (deliveryPolicy, error) {
 	return deliveryPolicy{projectID: projectID, target: target}, nil
 }
 
-func (p deliveryPolicy) review(data *store.Store) http.HandlerFunc {
+func (targets deliveryTargets) review(data *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if !valid {
@@ -57,16 +101,17 @@ func (p deliveryPolicy) review(data *store.Store) http.HandlerFunc {
 			problem(w, http.StatusBadRequest, "provide execution_id, the full candidate commit and approve or reject; rejection requires a note (up to 4096 bytes)")
 			return
 		}
-		publish := false
-		if input.Decision == "approve" && p.projectID != 0 {
+		var publish bool
+		var target string
+		if input.Decision == "approve" && len(targets) > 0 {
 			task, err := data.Task(r.Context(), id)
 			if err != nil {
 				respond(w, 0, nil, err)
 				return
 			}
-			publish = task.ProjectID == p.projectID
+			target, publish = targets[task.ProjectID]
 		}
-		task, err := data.Review(r.Context(), id, input.ExecutionID, input.Commit, input.Decision, input.Note, publish, p.target, input.FeedbackIDs...)
+		task, err := data.Review(r.Context(), id, input.ExecutionID, input.Commit, input.Decision, input.Note, publish, target, input.FeedbackIDs...)
 		respond(w, http.StatusOK, task, err)
 	}
 }

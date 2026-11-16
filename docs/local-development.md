@@ -132,6 +132,17 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 
 ## GitHub 交付
 
+多个项目共用控制面时，将 `FORGEOS_DELIVERY_PROJECTS_FILE` 指向控制面操作员维护的 JSON 文件。每一行配置对应登记接口返回的项目 ID。以下配置让项目 1 交付到 main，项目 2 交付到 release/internal。
+
+```json
+[
+  {"project_id": 1, "target_branch": "main"},
+  {"project_id": 2, "target_branch": "release/internal"}
+]
+```
+
+省略某个条目的 `target_branch` 会使用该仓库的默认分支。文件配置和原单项目环境变量可同时使用；同一项目若声明不同目标，控制面会在启动时报告冲突。重新启动后，新批准的候选采用新配置。所有已启用项目仍使用控制面进程的 GitHub 身份。
+
 默认情况下，通过人工验收只将任务记为 `ACCEPTED`。要让某个项目自动发布，在**批准该候选前**配置控制面的 `FORGEOS_DELIVERY_PROJECT_ID`，使用有权向此仓库推送、管理 PR 和更新 Issue 的 GitHub 身份，再重启控制面。可选 `FORGEOS_DELIVERY_TARGET_BRANCH` 指定目标分支，留空时采用 GitHub 仓库默认分支。使用普通受保护分支权限的凭据。审批发生时会同时保存交付任务，之后更改配置不会把之前的本地验收追溯发布。
 
 交付器根据已验收 SHA 推送任务分支、创建或找回对应 PR，并核对远端 PR 的仓库、目标分支和 head。门禁尚未通过时，`delivery.detail` 说明等待原因；维护者可在 GitHub 完成所需 Review 或检查。合并使用冻结的 head SHA 和 Squash 策略。回写结果并关闭对应简单 Issue 后，任务进入 `DONE`。`delivery.pr_url` 和 `delivery.merge_sha` 可用于核对远端结果。服务重启或外部请求超时后，会先查询已有 PR、合并和反馈，再决定下一步操作。

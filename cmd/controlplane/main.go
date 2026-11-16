@@ -55,7 +55,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	delivery, err := deliveryConfig(os.Getenv("FORGEOS_DELIVERY_PROJECT_ID"), os.Getenv("FORGEOS_DELIVERY_TARGET_BRANCH"))
+	delivery, err := configuredDeliveryTargets(os.Getenv("FORGEOS_DELIVERY_PROJECT_ID"), os.Getenv("FORGEOS_DELIVERY_TARGET_BRANCH"), os.Getenv("FORGEOS_DELIVERY_PROJECTS_FILE"))
 	if err != nil {
 		return err
 	}
@@ -122,8 +122,8 @@ func run(ctx context.Context) error {
 		stopPolling := poller.start(ctx, data, root, ghRead)
 		defer stopPolling()
 	}
-	if delivery.projectID != 0 {
-		stopDelivery := delivery.start(ctx, data, root)
+	for project, target := range delivery {
+		stopDelivery := (deliveryPolicy{projectID: project, target: target}).start(ctx, data, root)
 		defer stopDelivery()
 	}
 	log.Printf("ForgeOS control plane listening on %s", listener.Addr())

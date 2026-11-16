@@ -86,7 +86,7 @@ func refreshCommit(ctx context.Context, repo, oldBase, commit, newBase string) (
 	return sha, err
 }
 
-func (p deliveryPolicy) refresh(data *store.Store, root string) http.HandlerFunc {
+func (targets deliveryTargets) refresh(data *store.Store, root string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -109,7 +109,8 @@ func (p deliveryPolicy) refresh(data *store.Store, root string) http.HandlerFunc
 			respond(w, 0, nil, err)
 			return
 		}
-		if p.projectID <= 0 || task.ProjectID != p.projectID {
+		target, enabled := targets[task.ProjectID]
+		if !enabled {
 			problem(w, http.StatusForbidden, "project is not enabled for delivery")
 			return
 		}
@@ -120,7 +121,7 @@ func (p deliveryPolicy) refresh(data *store.Store, root string) http.HandlerFunc
 			}
 		}
 		d := task.Delivery
-		if d == nil || task.Spec == nil || task.Status != "ACCEPTED" || d.State != "WAITING" || d.PRNumber <= 0 || d.Commit != input.Commit || d.ExecutionID != input.ExecutionID || (p.target != "" && p.target != d.TargetBranch) {
+		if d == nil || task.Spec == nil || task.Status != "ACCEPTED" || d.State != "WAITING" || d.PRNumber <= 0 || d.Commit != input.Commit || d.ExecutionID != input.ExecutionID || (target != "" && target != d.TargetBranch) {
 			respond(w, 0, nil, store.ErrConflict)
 			return
 		}

@@ -70,7 +70,7 @@ func TestWorkerProjectGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux := routes(s, t.TempDir(), "owner", access, deliveryPolicy{})
+	mux := routes(s, t.TempDir(), "owner", access, nil)
 	post := func(token, path string, body any, want int) []byte {
 		t.Helper()
 		doc, err := json.Marshal(body)

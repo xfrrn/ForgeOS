@@ -32,6 +32,34 @@ func TestDeliveryConfig(t *testing.T) {
 	}
 }
 
+func TestConfiguredDeliveryProjects(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "projects.json")
+	write := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(file, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`[{"project_id":2,"target_branch":"release/v1"},{"project_id":3}]`)
+	targets, err := configuredDeliveryTargets("1", "main", file)
+	if err != nil || len(targets) != 3 || targets[1] != "main" || targets[2] != "release/v1" {
+		t.Fatal("expected separate delivery policies", targets, err)
+	}
+	if target, ok := targets[3]; !ok || target != "" {
+		t.Fatal("missing repository-default target")
+	}
+	for _, body := range []string{
+		`[{"project_id":1,"target_branch":"other"}]`,
+		`[{"project_id":2,"target_branch":"bad..branch"}]`,
+		`[{"project_id":0}]`, `[{"project_id":2,"branch":"main"}]`, `null`, `[] []`,
+	} {
+		write(body)
+		if _, err := configuredDeliveryTargets("1", "main", file); err == nil {
+			t.Errorf("accepted invalid policies: %s", body)
+		}
+	}
+}
+
 func TestAcceptanceToDelivery(t *testing.T) {
 	db := testdb.Open(t)
 	data := store.New(db)
@@ -45,7 +73,7 @@ func TestAcceptanceToDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy := deliveryPolicy{projectID: project.ID, target: "main"}
-	mux := routes(data, root, "owner", legacyWorker("worker"), policy)
+	mux := routes(data, root, "owner", legacyWorker("worker"), deliveryTargets{policy.projectID: policy.target})
 	post := func(path, token string, body any, status int) {
 		t.Helper()
 		b, err := json.Marshal(body)

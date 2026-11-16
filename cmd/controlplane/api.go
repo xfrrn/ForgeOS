@@ -20,7 +20,7 @@ import (
 	"forgeos/internal/validation"
 )
 
-func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryPolicy) *http.ServeMux {
+func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryTargets) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /workers", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		nodes, err := data.WorkerNodes(r.Context())

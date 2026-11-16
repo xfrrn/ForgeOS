@@ -9,7 +9,7 @@ import (
 
 // All cases must stop before reaching the database.
 func TestAPIBoundaries(t *testing.T) {
-	api := routes(nil, t.TempDir(), "owner", legacyWorker("worker"), deliveryPolicy{})
+	api := routes(nil, t.TempDir(), "owner", legacyWorker("worker"), nil)
 	for _, tc := range []struct {
 		method, path, token, body string
 		status                    int

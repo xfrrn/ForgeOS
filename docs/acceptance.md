@@ -830,3 +830,18 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 首次将 alpha 配为 auto 校验时，其基础提交缺少 validation.yaml，正式 Worker 返回 CONFIG_FAILURE。另一次将 beta 的批准提交到仅对 alpha 开启交付的控制面，按现有配置只记录本地验收。最终演练使用各自项目的验证配置和交付入口。beta 端口首次绑定失败，经重新确认两个服务均可访问后，复用原候选完成交付。最终演练没有重新扫描数据库导出和日志中的明文；该项既有证据见专题 09 的 Broker 验收。
 
 新增数据库回归还让同一节点同时持有两个项目的租约，交换授权和执行时均被拒，读取另一项目的回执返回未找到。启用 PostgreSQL 18 和真实 Docker 的全量 Go 回归 9 个包、124 项通过，零跳过。Go 静态检查通过。
+
+双项目凭据隔离与交付验收对应提交 `81e2b1139c30e61856aa2b81db6fd1e43f265f97`。
+
+## 阶段四、专题 12 · 单控制面按项目选择交付分支
+
+2026-11-17，通过一份操作员配置让同一个控制面同时负责 alpha 的 main 和 beta 的 codex/accept-project-harness-9c4836。使用各自项目的节点、真实 Codex、Chrome Owner 工作台和受保护的 GitHub 分支。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从同一控制面导入 alpha #16 和 beta #41，分别核对页面差异和目标分支，点击通过验收 | 两项批准各自冻结所属项目的目标，后台独立等待对应仓库的检查 | 两份批准 HTTP 200，响应中的目标分支分别为 main 和 codex/accept-project-harness-9c4836。两次 Actions 首轮按演练失败，重跑完成后才合并 |
+| 从原任务核对 alpha 的必需检查、状态回执和 Issue 关闭 | 只交付 alpha 自己的候选 | 执行 1，候选 `53e4185a05b093d9f8f95b264aab7d4f317bb118`，状态回执 59043755074，合并为 `5592a34169cd7fd7f7c8874b1f65b01a79fe8f8d`。[PR #17](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/17) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43903355852) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/16#issuecomment-6921749246) |
+| 从同一入口核对 beta 的两项必需检查、状态回执和 Issue 关闭，重启控制面 | beta 使用自己的固定分支；两项交付记录可恢复 | 执行 2，候选 `f559c4f5a431fe00978ce740578f049db3a55c6d`，状态回执 59043754713，合并为 `5d40f83c39bb0b51537ab4d03ba4e10061e2f6ba`。重启前后两份完整任务相同。[PR #42](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/42) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43903355714) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/41#issuecomment-6921749145) |
+| 重启时仅启用 alpha，重放 beta 的原批准、发布状态和刷新请求；再将单项目环境变量和文件配置指向同一项目的不同分支 | 原验收可核对，已停用项目不能执行新远端操作；冲突配置启动失败 | 原批准重发返回相同任务；beta 的状态发布、交付刷新均返回 403。alpha 重用原状态回执。分支冲突时控制面非零退出并报告冲突 |
+
+两库实际使用同一个 GitHub CLI 账号。每项目 GitHub App 身份和多项目自动轮询仍待验收。启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、125 项通过，零跳过。Go 静态检查通过。
