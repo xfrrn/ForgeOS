@@ -22,6 +22,12 @@ class Site(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.do_HEAD()
+        if self.path.startswith("/outer"):
+            self.wfile.write(b'<iframe src="/inner?private-frame-query"></iframe>')
+            return
+        if self.path.startswith("/inner"):
+            self.wfile.write(b'<section><input type="password" value="private-frame-value"></section>')
+            return
         self.wfile.write(b'<main><input type="password" id="private-id" name="private-name" value="private-value">'
                          b'<canvas width="400" height="200" style="width:200px;height:100px"></canvas></main>')
 
@@ -137,6 +143,24 @@ def main():
             assert fields["canvas_point"] == ["25.00% 75.00%"]
             assert p.locator(fields["element"][0]).evaluate("el => el.tagName") == "CANVAS"
             print("PASS: scaled Canvas selection retained its relative position")
+            press_action(context, p, extension_id, "pick")
+            expect(tip).to_be_visible()
+            p.evaluate("""() => {const f=document.createElement('iframe');f.src='/outer';document.body.append(f)}""")
+            nested_input = p.frame_locator("iframe").frame_locator("iframe").locator("input")
+            nested_input.press("Escape")
+            expect(tip).to_have_count(0)
+            press_action(context, p, extension_id, "pick")
+            expect(tip).to_be_visible()
+            with context.expect_page() as handoff:
+                nested_input.click()
+            nested_draft = handoff.value
+            nested_draft.wait_for_load_state()
+            assert "private-frame" not in nested_draft.url
+            fields = parse_qs(urlsplit(nested_draft.url).fragment.split("?", 1)[1])
+            assert len(fields["frame"]) == 2 and fields["path"] == ["/"]
+            nested = p.frame_locator(fields["frame"][0]).frame_locator(fields["frame"][1])
+            assert nested.locator(fields["element"][0]).get_attribute("type") == "password"
+            print("PASS: nested iframe locator, late insertion, cancellation, field privacy")
             print("PASS: paired origin, cancellation, structural locator, candidate, path and privacy")
         finally:
             context.close()

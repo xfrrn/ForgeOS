@@ -49,13 +49,14 @@ async function startCapture(workbench, origin, preview, elementMode) {
   if (!response.ok || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit) || !/^[1-9]\d*$/.test(task) || !/^[1-9]\d*$/.test(execution)) {
     return {error: '当前预览已停止或缺少候选信息。'}
   }
-  function destination(element, canvasPoint = '') {
+  function destination(element, canvasPoint = '', frames = []) {
     const edge = /Edg\/(\d+)/.exec(navigator.userAgent)
     const chrome = /Chrome\/(\d+)/.exec(navigator.userAgent)
     const browser = edge ? 'Edge/' + edge[1] : chrome ? 'Chrome/' + chrome[1] : ''
     const capture = new URLSearchParams({commit, execution, path: location.pathname, browser,
       width: String(innerWidth), height: String(innerHeight), element})
     if (canvasPoint) capture.set('canvas_point', canvasPoint)
+    for (const frame of frames) capture.append('frame', frame)
     return workbench + '/#/tasks/' + task + '/previews/' + preview + '/feedback?' + capture
   }
   if (!elementMode) return {ok: true, destination: destination('')}
@@ -66,34 +67,53 @@ async function startCapture(workbench, origin, preview, elementMode) {
   tip.textContent = '点击要批注的元素，按 Esc 取消'
   tip.style.cssText = 'position:fixed;inset:12px auto auto 12px;z-index:2147483647;padding:8px 12px;background:#17232e;color:white;font:14px system-ui;pointer-events:none'
   document.documentElement.append(tip)
+  const listeners = new AbortController()
+  const documents = new WeakSet()
   const cleanup = () => {
     tip.remove()
-    window.removeEventListener('click', select, true)
-    window.removeEventListener('keydown', cancel, true)
+    listeners.abort()
     clearTimeout(timer)
     delete globalThis.forgeosCancelPick
   }
   function cancel(e) { if (e.key === 'Escape') cleanup() }
-  function select(e) {
-    if (!e.isTrusted || !(e.target instanceof Element)) return
-    e.preventDefault(); e.stopImmediatePropagation()
+  function locator(element) {
     const steps = []
-    for (let el = e.target; el; el = el.parentElement) {
+    for (let el = element; el; el = el.parentElement) {
       let index = 1
       for (let prev = el.previousElementSibling; prev; prev = prev.previousElementSibling) if (prev.localName === el.localName) index++
       steps.unshift(el.localName + ':nth-of-type(' + index + ')')
     }
+    return steps.join(' > ')
+  }
+  function select(e) {
+    if (!e.isTrusted || e.target.nodeType !== Node.ELEMENT_NODE) return
+    e.preventDefault(); e.stopImmediatePropagation()
+    const frames = []
+    for (let win = e.target.ownerDocument.defaultView; win !== window; win = win.parent) {
+      if (!win?.frameElement) return
+      frames.unshift(locator(win.frameElement))
+    }
     let point = ''
-    if (e.target instanceof HTMLCanvasElement) {
+    if (e.target.localName === 'canvas') {
       const box = e.target.getBoundingClientRect()
       const percent = ratio => Math.max(0, Math.min(100, ratio * 100)).toFixed(2) + '%'
       if (box.width && box.height) point = percent((e.clientX - box.left) / box.width) + ' ' + percent((e.clientY - box.top) / box.height)
     }
     cleanup()
-    window.open(destination(steps.join(' > '), point), '_blank', 'noopener,noreferrer')
+    window.open(destination(locator(e.target), point, frames), '_blank', 'noopener,noreferrer')
   }
-  window.addEventListener('click', select, true)
-  window.addEventListener('keydown', cancel, true)
+  function listen(doc) {
+    if (!doc || documents.has(doc)) return
+    documents.add(doc)
+    const opts = {capture: true, signal: listeners.signal}
+    doc.defaultView.addEventListener('click', select, opts)
+    doc.defaultView.addEventListener('keydown', cancel, opts)
+    doc.addEventListener('load', e => {
+      if (e.target.localName === 'iframe') listen(e.target.contentDocument)
+    }, opts)
+    for (const frame of doc.querySelectorAll('iframe')) listen(frame.contentDocument)
+  }
+  listen(document)
   const timer = setTimeout(cleanup, 60000)
   globalThis.forgeosCancelPick = cleanup
   return {ok: true}

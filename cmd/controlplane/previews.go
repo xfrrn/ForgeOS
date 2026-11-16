@@ -81,7 +81,7 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; base-uri 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'none'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'; base-uri 'self'")
 		h, p, err := net.SplitHostPort(r.Host)
 		match := previewHost.FindStringSubmatch(h)
 		if err != nil || p != strconv.Itoa(port) || match == nil || (r.Method != "GET" && r.Method != "HEAD") || r.Header.Get("Service-Worker") != "" {
