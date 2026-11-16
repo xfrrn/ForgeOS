@@ -37,6 +37,8 @@
 
 ## 三、复杂需求协作
 
+进入本阶段前，已在两个临时私有仓库从工作台复验按 SHA 交付，包括必需检查失败、重跑、合并与 Issue 回写。[逐项验收证据](acceptance.md)
+
 单个 Work Item 已能独立交付后，引入 Planner 和 Management Agent。Planner 根据仓库资料把一个 Goal 拆成有依赖的 Milestone 和 Work Item，控制面保存 Plan Revision，并将就绪的子项交给既有执行链。需要 Owner 决定的问题进入队列，在安全检查点暂停和恢复。管理页沿用任务详情，增加任务树、待回答的问题和验收反馈入口。
 
 在同一个 Goal 上逐步加入只读 Review、按风险选择的验证等级、项目验收规则与 Playbook。需要人工检查页面的任务再接 Tailscale 私网预览和浏览器批注，把反馈绑定到正在验收的 Commit。项目知识和决策记录为后续子项提供有来源的上下文。

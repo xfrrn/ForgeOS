@@ -209,8 +209,8 @@ func TestRemoteDeliveryReconcilesWritesAndGates(t *testing.T) {
 	if err := step(); err != nil || merges != 0 {
 		t.Fatal("review gate:", err)
 	}
-	review, rollup = "APPROVED", "FAILURE"
-	if err := step(); err != nil || merges != 0 {
+	review, rollup, mergeState = "APPROVED", "FAILURE", "BLOCKED"
+	if err := step(); err != nil || merges != 0 || d.Detail != "GitHub checks failed for the accepted head" {
 		t.Fatal("CI gate:", err)
 	}
 	rollup, mergeState = "SUCCESS", "BLOCKED"

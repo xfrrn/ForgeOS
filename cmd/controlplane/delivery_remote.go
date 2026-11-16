@@ -314,14 +314,20 @@ func mergeGates(ctx context.Context, api deliveryAPI, i store.Issue, d store.Del
 		p.BaseRefName != d.TargetBranch || p.HeadRefName != d.Branch || len(p.Commits.Nodes) != 1 || p.Commits.Nodes[0].Commit.Oid != d.Commit {
 		return "GitHub has not confirmed merge gates for the accepted head", nil
 	}
+	var rollup *struct{ State string }
+	if json.Unmarshal(p.Commits.Nodes[0].Commit.StatusCheckRollup, &rollup) != nil {
+		return "GitHub has not confirmed check status for the accepted head", nil
+	}
+	if rollup != nil && rollup.State != "SUCCESS" {
+		if rollup.State == "FAILURE" || rollup.State == "ERROR" {
+			return "GitHub checks failed for the accepted head", nil
+		}
+		return "waiting for successful GitHub checks", nil
+	}
 	var review *string
 	if p.IsDraft == nil || *p.IsDraft || p.Mergeable != "MERGEABLE" || p.MergeStateStatus != "CLEAN" ||
 		json.Unmarshal(p.ReviewDecision, &review) != nil || (review != nil && *review != "APPROVED") {
 		return "waiting for GitHub reviews, branch protection or conflict resolution", nil
-	}
-	var rollup *struct{ State string }
-	if json.Unmarshal(p.Commits.Nodes[0].Commit.StatusCheckRollup, &rollup) != nil || (rollup != nil && rollup.State != "SUCCESS") {
-		return "waiting for successful GitHub checks", nil
 	}
 	return "", nil
 }

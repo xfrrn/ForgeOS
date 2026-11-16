@@ -6,9 +6,9 @@
 | --- | --- | --- |
 | 一 · 空库迁移、登记、派发、重启查询 | 2026-11-16 在独立 PostgreSQL 18 空库启动控制面，通过 HTTP 登记仓库、创建任务。独立 Worker 在 execution-2 工作区返回退出码 0 和仓库 HEAD `65d40b2a22dcec366c5146ed5924c607b09f7cbd`。重启控制面，任务 2 完整 JSON 相同，符合预期。 | Linux 专用身份与 systemd 见专题 07、14。 |
 | 一 · 并发、失败、重报、失联 | 通过 HTTP 领取任务 1，再创建任务 2。第二次领取返回 204，任务 2 为 READY。回报受控失败后任务 1 为 FAILED，重报返回 204，任务和事件完全相同。PostgreSQL 集成测试覆盖过期租约及人工结束。 | 真实节点中断、在已有远端副作用下恢复见阶段四。 |
-| 二 · Issue 识别、去重和执行 | beta 实库通过 `GET /projects/1/inbox` 得到普通讨论 [2,1]，任务列表为空。Worker 查询返回 401。用 Owner 连续两次导入 #2 均得任务 1，收件箱只剩 #1。关闭 Poller 后重启控制面，记录一致。alpha 重复导入 #1 均得任务 3，真实 Codex 生成候选。 | 已验收普通讨论与手动导入；带模板标签的真实自动派发待复验。 |
-| 二 · 验证、页面验收与退回 | 现有任务列表、详情、差异和验收事务。React 生产构建通过。 | 浏览器验收、旧 SHA 拒绝、新 SHA 重新验证、容器 Go CI 待复验。 |
-| 二 · PR、必需 CI、Squash Merge、Issue 回写 | 通过 GitHub 只读 API 复核历史私有仓库 PR 4 已合并，合并 SHA 为 `a85dff98331e513cd34f242241d158bf81c2620d`。 | 当前版本需从页面走到合并，实际制造一次必需 CI 失败并检查阻塞。 |
+| 二 · Issue 识别、去重和执行 | beta 实库通过 `GET /projects/1/inbox` 得到普通讨论 [2,1]，任务列表为空。Worker 查询返回 401。Owner 两次转换 #2 均得任务 1，重启后收件箱只剩 #1。另一验收库为 beta #1 加模板标签后，Poller 创建任务 7，按编号同步仍返回同一任务。 | 通过。收件箱实现 `319aa65526b5e5e84fb04caca0300a939ee9a34c`。 |
+| 二 · 验证、页面验收与退回 | alpha 任务 3 重复导入不变。在 Chrome 打开候选差异，退回 `93a7c42e`，真实 Codex 在新工作区补写示例，生成 `785df9cf`。两个候选各有对应 SHA 的 docs 验证。旧批准返回 409，新批准在页面返回 ACCEPTED。 | 通过。两次按 Owner 身份的页面操作均由 Playwright 执行。 |
+| 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 简单工作项可复用执行和交付。 | 规划版本、Git 计划、依赖调度、任务树、分项交付、父 Issue 关闭条件待实现与验收。 |
 | 三 · 决策、事件与恢复 | 现有执行记录原生 Session 和验收反馈。 | 角色权限、问题队列、需求修订、安全检查点、事件合并、会话恢复待实现与验收。 |
 | 三 · 审查、验证规则与验收方法 | 已有 docs 和 go-test 两项预设验证。 | 只读 Review、V1–V4 风险判定、仓库规则、Playbook、测试计划待实现与验收。 |
