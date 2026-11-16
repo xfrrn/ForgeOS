@@ -17,6 +17,8 @@ func TestAPIBoundaries(t *testing.T) {
 		{"POST", "/tasks", "", "{}", http.StatusUnauthorized},
 		{"GET", "/tasks", "", "", http.StatusUnauthorized},
 		{"GET", "/tasks", "worker", "", http.StatusUnauthorized},
+		{"GET", "/projects/1/shares", "worker", "", http.StatusUnauthorized},
+		{"GET", "/projects/1/shares?before=-1", "owner", "", http.StatusBadRequest},
 		{"GET", "/tasks?limit=0", "owner", "", http.StatusBadRequest},
 		{"GET", "/tasks?limit=101", "owner", "", http.StatusBadRequest},
 		{"GET", "/tasks?before=-1", "owner", "", http.StatusBadRequest},

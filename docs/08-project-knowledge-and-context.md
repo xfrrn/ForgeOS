@@ -36,6 +36,10 @@ Agent 在执行时自主读取当前任务所需文档，不由中台预先复�
 
 ### 发布一份脱敏副本
 
+Owner 在“项目接入 → 项目资料”打开要共享的具体修订，选择“起草脱敏副本”，填写接收项目编号、脱敏标题和正文。提交后会打开该副本的审核记录。通过项目页的“共享经验”可以翻阅发出的副本、刷新审核结果、按审核摘要发布或撤销。在接收项目选择“接收的经验”可核对已发布内容。
+
+源项目 Owner 通过 `GET /projects/{id}/shares` 分页查询发出的副本，按 ID 倒序每页最多 30 项，下一页传 `before=<末项ID>`。单个审核回执及接收项目的读取接口如下。
+
 1. Owner 从源项目向 `POST /projects/{id}/shares` 提交 `material_key`、固定 `revision`、目标项目 `recipient`、脱敏后的 `title` 和 `content`。完全照搬原文的请求返回 409。返回的 ID 绑定来源版本、接收项目和不可改写的副本。相同请求重用 ID。
 2. 在源项目配置的 `worker management` 读取原版本和拟共享内容，在独立只读会话中审查其依据、是否含有私有标识或敏感细节。Owner 通过 `GET /projects/{id}/shares/{share}` 查看结论和理由。`revise` 时可重新提交修正版，`needs_owner` 时先澄清不确定的披露范围。
 3. 审核为 `approve` 后，Owner 向 `POST /projects/{id}/shares/{share}/publication` 提交 `{"action":"publish","digest":"<审核过的副本摘要>"}`。目标项目的 `GET /projects/{id}/shared-experience` 开始返回副本，节点使用对应的 `/internal` 读取入口。只提供标题、正文、摘要、共享 ID 和发布时间。源资料、内部引用及审核笔记保留在源项目。

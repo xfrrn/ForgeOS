@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { ShareDraft } from './ProjectShares'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 
 const kinds = { material: '导入资料', profile: '项目档案', environment: '环境说明' }
@@ -140,6 +141,6 @@ export function ProjectMaterials({ project, request }: { project: number; reques
       {doc.revision < latest
         ? <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
         : <button className="button" disabled={busy} onClick={() => edit(doc)}>编辑此修订</button>}
-    </div></section>}
+    </div><ShareDraft key={doc.key + '/' + doc.revision} project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
   </div>
 }

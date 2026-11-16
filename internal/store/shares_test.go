@@ -36,6 +36,16 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 		t.Fatal(string(raw), err)
 	}
 	id := receipt.ID
+	outgoing, err := s.OutgoingShares(ctx, source.ID, 0)
+	if err != nil || !strings.Contains(string(outgoing), receipt.Digest) || strings.Contains(string(outgoing), "review_lease") {
+		t.Fatal(string(outgoing), err)
+	}
+	for _, page := range []struct{ project, before int64 }{{target.ID, 0}, {source.ID, id}} {
+		items, err := s.OutgoingShares(ctx, page.project, page.before)
+		if err != nil || string(items) != "[]" {
+			t.Fatal(string(items), err)
+		}
+	}
 	job, err := s.ClaimShareReview(ctx, source.ID)
 	if err != nil || job == nil || job.Share.OriginalContent != m.Content {
 		t.Fatal(err)

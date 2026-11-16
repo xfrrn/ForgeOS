@@ -65,17 +65,32 @@ func registerShares(mux *http.ServeMux, data *store.Store, owner string, workers
 		out, err := data.SetSharePublished(r.Context(), id, share, input.Digest, input.Action == "publish")
 		respond(w, 200, out, err)
 	}))
-	registerProjectRead(mux, "shared-experience", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+	beforeID := func(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		var before int64
 		if r.URL.Query().Has("before") {
 			var err error
 			before, err = strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
 			if err != nil || before < 1 {
 				problem(w, 400, "invalid shared experience cursor")
-				return
+				return 0, false
 			}
 		}
-		out, err := data.SharedExperience(r.Context(), id, before)
-		respond(w, 200, out, err)
+		return before, true
+	}
+	mux.HandleFunc("GET /projects/{id}/shares", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		if before, ok := beforeID(w, r); ok {
+			out, err := data.OutgoingShares(r.Context(), id, before)
+			respond(w, 200, out, err)
+		}
+	}))
+	registerProjectRead(mux, "shared-experience", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+		if before, ok := beforeID(w, r); ok {
+			out, err := data.SharedExperience(r.Context(), id, before)
+			respond(w, 200, out, err)
+		}
 	})
 }

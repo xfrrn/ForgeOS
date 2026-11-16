@@ -65,6 +65,17 @@ func (s *Store) ShareReceipt(ctx context.Context, project, id int64) (json.RawMe
 	return doc, err
 }
 
+func (s *Store) OutgoingShares(ctx context.Context, project, before int64) (json.RawMessage, error) {
+	if _, err := s.Project(ctx, project); err != nil {
+		return nil, err
+	}
+	var page json.RawMessage
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY id DESC),'[]') FROM
+		(SELECT * FROM knowledge_share_receipts WHERE project_id=$1 AND ($2::bigint=0 OR id<$2)
+		 ORDER BY id DESC LIMIT 30) r`, project, before).Scan(&page)
+	return page, err
+}
+
 func (s *Store) ClaimShareReview(ctx context.Context, project int64) (*ManagementJob, error) {
 	job := ManagementJob{ProjectID: project, MinimumLevel: "D3", Share: &ShareReviewInput{}}
 	d := job.Share

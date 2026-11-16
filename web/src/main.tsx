@@ -6,6 +6,7 @@ import TaskList from './TaskList'
 import { WorkerNodes } from './WorkerNodes'
 import { DecisionQuestions } from './DecisionQuestions'
 import { Projects } from './Projects'
+import { ProjectShares } from './ProjectShares'
 import { ProjectDecisions } from './ProjectDecisions'
 import { ProjectMaterials } from './ProjectMaterials'
 import { Icon, requestWith } from './shared'
@@ -60,16 +61,19 @@ function App() {
   const queue = route === '/review'
   const nodes = route === '/workers'
   const questions = route === '/questions'
-  const projectRoute = /^\/projects\/([1-9]\d*)\/(materials|decisions)$/.exec(route)
+  const projectRoute = /^\/projects\/([1-9]\d*)\/(materials|decisions|shares(?:\/[1-9]\d*)?)$/.exec(route)
   const projectID = projectRoute && Number.isSafeInteger(Number(projectRoute[1])) ? Number(projectRoute[1]) : undefined
   const materials = projectID && projectRoute?.[2] === 'materials'
   const decisions = projectID && projectRoute?.[2] === 'decisions'
-  const projects = route === '/projects' || Boolean(projectID)
+  const sharePath = projectRoute?.[2].split('/')
+  const shareID = sharePath?.[1] ? Number(sharePath[1]) : undefined
+  const shares = projectID && sharePath?.[0] === 'shares' && (shareID === undefined || Number.isSafeInteger(shareID))
+  const projects = route === '/projects' || Boolean(materials || decisions || shares)
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?)?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
   const valid = Boolean(id || queue || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
-  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
+  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
   }, [])
@@ -118,6 +122,7 @@ function App() {
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} request={request} onChanged={refreshCounts}/> :
         nodes ? <WorkerNodes request={request}/> :
+        shares && projectID ? <ProjectShares key={route} project={projectID} receipt={shareID} request={request}/> :
         decisions && projectID ? <ProjectDecisions key={projectID} project={projectID} request={request}/> :
         materials && projectID ? <ProjectMaterials key={projectID} project={projectID} request={request}/> :
         projects ? <Projects request={request}/> :
