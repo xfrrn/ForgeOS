@@ -45,7 +45,7 @@ func TestAcceptanceToDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy := deliveryPolicy{projectID: project.ID, target: "main"}
-	mux := routes(data, root, "owner", "worker", policy)
+	mux := routes(data, root, "owner", legacyWorker("worker"), policy)
 	post := func(path, token string, body any, status int) {
 		t.Helper()
 		b, err := json.Marshal(body)

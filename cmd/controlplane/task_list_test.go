@@ -19,7 +19,7 @@ func TestTaskListPagesAndFilters(t *testing.T) {
 	if err := data.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	api := routes(data, t.TempDir(), "owner", "worker", deliveryPolicy{})
+	api := routes(data, t.TempDir(), "owner", legacyWorker("worker"), deliveryPolicy{})
 	get := func(path string) store.TaskPage {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, path, nil)

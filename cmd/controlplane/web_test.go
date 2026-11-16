@@ -11,7 +11,7 @@ import (
 func TestWebEntryAndAssets(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("FORGEOS_WEB_ROOT", root)
-	api := routes(nil, t.TempDir(), "owner", "worker", deliveryPolicy{})
+	api := routes(nil, t.TempDir(), "owner", legacyWorker("worker"), deliveryPolicy{})
 	get := func(url string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		api.ServeHTTP(w, httptest.NewRequest("GET", url, nil))

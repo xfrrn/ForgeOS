@@ -15,6 +15,8 @@ import (
 	"reflect"
 	"strconv"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 var (
@@ -293,6 +295,17 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 }
 
 func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabilities ...bool) (*Job, error) {
+	return s.ClaimForProjects(ctx, worker, workspaceRoot, nil, capabilities...)
+}
+
+func (s *Store) WorkerOwnsExecution(ctx context.Context, id int64, worker string, projects []int64) (bool, error) {
+	var allowed bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM executions e JOIN work_items t ON t.id=e.task_id
+		WHERE e.id=$1 AND e.worker=$2 AND t.project_id=ANY($3::bigint[]))`, id, worker, pq.Array(projects)).Scan(&allowed)
+	return allowed, err
+}
+
+func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot string, projects []int64, capabilities ...bool) (*Job, error) {
 	if !filepath.IsAbs(workspaceRoot) || worker == "" {
 		return nil, errors.New("worker and absolute workspace root required")
 	}
@@ -310,14 +323,14 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	canVerify := len(capabilities) > 4 && capabilities[4]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
-		WHERE candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1 OR ($5 AND candidate.spec ? 'verify_commit'))
+		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1 OR ($5 AND candidate.spec ? 'verify_commit'))
 		  AND ($5 OR NOT COALESCE(candidate.spec ? 'verify_commit',false))
 		  AND ($4 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects)).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

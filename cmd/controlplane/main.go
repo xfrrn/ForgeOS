@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -36,9 +35,11 @@ func run(ctx context.Context) error {
 	if err != nil || !net.ParseIP(host).IsLoopback() {
 		return errors.New("FORGEOS_LISTEN_ADDR must use a loopback IP and port")
 	}
-	owner, worker := os.Getenv("FORGEOS_OWNER_TOKEN"), os.Getenv("FORGEOS_WORKER_TOKEN")
-	if strings.TrimSpace(owner) == "" || strings.TrimSpace(worker) == "" || owner == worker {
-		return errors.New("set distinct FORGEOS_OWNER_TOKEN and FORGEOS_WORKER_TOKEN")
+	owner := os.Getenv("FORGEOS_OWNER_TOKEN")
+	manager := os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
+	workers, err := loadWorkers(os.Getenv("FORGEOS_WORKERS_FILE"), os.Getenv("FORGEOS_WORKER_TOKEN"), owner, manager)
+	if err != nil {
+		return err
 	}
 	root := os.Getenv("FORGEOS_REPO_ROOT")
 	info, err := os.Stat(root)
@@ -72,8 +73,8 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("apply database migration: %w", err)
 	}
 
-	mux := routes(data, root, owner, worker, delivery)
-	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), os.Getenv("FORGEOS_MANAGEMENT_TOKEN"), owner, worker); err != nil {
+	mux := routes(data, root, owner, workers, delivery)
+	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), manager, owner, workers); err != nil {
 		return err
 	}
 	server := &http.Server{

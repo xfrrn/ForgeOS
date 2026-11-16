@@ -19,9 +19,9 @@ import (
 	"forgeos/internal/store"
 )
 
-func routes(data *store.Store, root, owner, worker string, delivery deliveryPolicy) *http.ServeMux {
+func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryPolicy) *http.ServeMux {
 	mux := http.NewServeMux()
-	registerCheckpoints(mux, data, owner, worker)
+	registerCheckpoints(mux, data, owner, workers)
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
@@ -121,7 +121,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 		respond(w, http.StatusOK, task, err)
 	}))
 
-	mux.HandleFunc("POST /internal/claim", authorized(worker, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /internal/claim", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		var input struct {
 			Worker              string `json:"worker"`
 			WorkspaceRoot       string `json:"workspace_root"`
@@ -138,7 +138,11 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 			problem(w, http.StatusBadRequest, "provide a worker identity and absolute workspace_root")
 			return
 		}
-		job, err := data.Claim(r.Context(), input.Worker, input.WorkspaceRoot, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation)
+		if grant.id != "" && input.Worker != grant.id {
+			problem(w, http.StatusForbidden, "claim does not match the authenticated Worker")
+			return
+		}
+		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -146,7 +150,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 		respond(w, http.StatusOK, job, err)
 	}))
 
-	mux.HandleFunc("POST /internal/executions/{id}/result", authorized(worker, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /internal/executions/{id}/result", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if !valid {
 			return

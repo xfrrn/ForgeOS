@@ -9,12 +9,12 @@ import (
 	"forgeos/internal/store"
 )
 
-func registerManagement(mux *http.ServeMux, data *store.Store, project, token, owner, worker string) error {
+func registerManagement(mux *http.ServeMux, data *store.Store, project, token, owner string, workers workerAccess) error {
 	if project == "" && token == "" {
 		return nil
 	}
 	id, err := strconv.ParseInt(project, 10, 64)
-	if err != nil || id <= 0 || strings.TrimSpace(token) == "" || owner == token || worker == token {
+	if err != nil || id <= 0 || strings.TrimSpace(token) == "" || owner == token || workers.match(token) != nil {
 		return errors.New("set FORGEOS_MANAGEMENT_PROJECT_ID and a distinct FORGEOS_MANAGEMENT_TOKEN")
 	}
 	mux.HandleFunc("POST /internal/management/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
