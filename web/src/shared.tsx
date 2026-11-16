@@ -50,7 +50,8 @@ export class ApiError extends Error {
 
 export function requestWith(token: string, onUnauthorized: () => void): ApiRequest {
   return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
-    if (path !== '/workers' && !/^\/executions\/[1-9]\d*\/(?:cancel|pause-ci|resume-ci)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
+    const materialPath = /^\/projects\/[1-9]\d*\/materials(?:\?[^#]*|\/[^/?#\\]+(?:\?revision=[1-9]\d*)?)?$/.test(path)
+    if (!materialPath && path !== '/workers' && !/^\/executions\/[1-9]\d*\/(?:cancel|pause-ci|resume-ci)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + token)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')

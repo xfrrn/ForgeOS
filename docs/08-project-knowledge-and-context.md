@@ -106,6 +106,10 @@ Owner 通过 `GET /projects/{id}/history` 检索某一项目。按项目授权�
 
 ### 项目资料、档案和环境说明
 
+在工作台的“项目接入”选择对应项目的“项目资料”，填写标识、类型、标题、来源和正文即可导入。搜索可组合关键词与类型；不填关键词时可继续加载后续资料。打开资料可查看正文、时间、来源和摘要，逐版回读。两位 Owner 同时编辑时，后提交者的草稿保留在当前页面，并显示服务器上的修订。核对后可明确选择新修订作为编辑基础。
+
+在已登记的测试项目中，用已配置的 `FORGEOS_OWNER_TOKEN` 运行 `python scripts/probe_project_materials.py <控制面地址> <项目ID>`。脚本使用 Playwright 和 Chrome，创建一条独立资料并核对两份浏览器会话的冲突与历史回读。
+
 Owner 用 `PUT /projects/{id}/materials/{key}` 导入 UTF-8 文本，正文上限为 256 KiB。传入 `previous_revision`、`kind`、`title`、`source` 和 `content`。首次使用修订 0，后续传入要更新的修订号。类型可选 `material`（导入资料）、`profile`（项目背景、负责人等）和 `environment`（机器和环境说明）。凭据值存入密钥管理服务。
 
 Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revision=1` 可读固定版本。每版保留原文、来源、导入时间和基于 UTF-8 原文的 SHA-256。重报相同版本和内容会返回原记录；对已存在的修订提交不同内容返回 409。

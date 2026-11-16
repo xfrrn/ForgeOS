@@ -164,3 +164,10 @@ h2 { font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
 .registered-project h3 { margin: 0 0 6px; }
 .registered-project code { overflow-wrap: anywhere; }
 .registered-project > div { min-width: 0; }
+
+.material-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.material-form label { display: grid; gap: 4px; margin: 10px 0; }
+.material-form input, .material-form select, .material-form textarea {
+  width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit;
+}
+.material-content { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

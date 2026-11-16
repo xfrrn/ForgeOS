@@ -6,6 +6,7 @@ import TaskList from './TaskList'
 import { WorkerNodes } from './WorkerNodes'
 import { DecisionQuestions } from './DecisionQuestions'
 import { Projects } from './Projects'
+import { ProjectMaterials } from './ProjectMaterials'
 import { Icon, requestWith } from './shared'
 import './style.css'
 
@@ -58,12 +59,14 @@ function App() {
   const queue = route === '/review'
   const nodes = route === '/workers'
   const questions = route === '/questions'
-  const projects = route === '/projects'
+  const materialRoute = /^\/projects\/([1-9]\d*)\/materials$/.exec(route)
+  const materialProject = materialRoute && Number.isSafeInteger(Number(materialRoute[1])) ? Number(materialRoute[1]) : undefined
+  const projects = route === '/projects' || Boolean(materialProject)
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?)?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
   const valid = Boolean(id || queue || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
-  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
+  const title = preview ? '预览反馈' : id ? '任务详情' : queue ? '验收队列' : nodes ? '执行节点' : questions ? '待答问题' : materialProject ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
   }, [])
@@ -112,6 +115,7 @@ function App() {
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} request={request} onChanged={refreshCounts}/> :
         nodes ? <WorkerNodes request={request}/> :
+        materialProject ? <ProjectMaterials key={materialProject} project={materialProject} request={request}/> :
         projects ? <Projects request={request}/> :
         questions ? <DecisionQuestions request={request} onChanged={refreshCounts}/> :
         valid ? <TaskList key={queue ? 'review' : 'all'} queue={queue} request={request} onCounts={setCounts}/> :
