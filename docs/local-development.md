@@ -57,6 +57,14 @@ Owner 从成功的 HEAD 任务读取仓库清单，展开 `project.yaml`，选�
 
 Owner 可向 `POST /tasks/{id}/repository-analysis` 发送 `{}` 首次派发，使用 `GET` 回读。失败后发送 `{"previous_attempt":1}` 重试已观察到的失败轮次。原生 Agent 会话与固定来源随成功结果归档。
 
+从同一清单的“初始化报告”可以归档当前证据。每版保存当时的归纳状态、输出和来源、仓库身份、项目画像与环境资料的修订及摘要，以及对应固定提交的所有启动检查和回执。包清单与密钥需求来自同一次 HEAD 检查。较早的清单若没有记录密钥需求，报告会标明缺少可核对的声明。版本内容可以在原克隆离线后读取。
+
+| Owner 接口 | 结果 |
+| --- | --- |
+| `POST /tasks/{id}/initialization-reports` | 以已生成清单的 HEAD 任务 ID 归档快照。有新证据时新增版本，相同证据复用最新版本。 |
+| `GET /tasks/{id}/initialization-reports` | 按版本倒序列出归档时间。 |
+| `GET /tasks/{id}/initialization-reports/{revision}` | 读取该版本的完整报告，与工作台“下载 JSON”内容一致。 |
+
 启动服务后，Owner 可从工作台的“项目接入”登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后选择“运行 HEAD 检查”进入任务详情。原 Worker 未上线时任务显示待执行；成功后可核对仓库的完整提交号。如果失败，保留原任务，在项目页选择“重新检查”生成下一次检查。
 
 Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。

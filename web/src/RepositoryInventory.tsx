@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Fact, Status, formatTime, type ApiRequest } from './shared'
 import { RepositoryAnalysis } from './RepositoryAnalysis'
+import { InitializationReports } from './InitializationReports'
 
 type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string
   local_environments?: Record<string, {start_script: string; port: number; health_path: string; timeout_seconds: number}>
@@ -70,6 +71,7 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       {report.repository_id && <Fact label="已绑定仓库 ID">{report.repository_id}</Fact>}
     </dl>
     <RepositoryAnalysis task={task} request={request}/>
+    <InitializationReports task={task} request={request}/>
     {report.files.length ? report.files.map(f => <details className="inventory-file" key={f.path}>
       <summary><code>{f.path}</code> · {kinds[f.kind]}</summary>
       <p>Git blob · <code>{f.blob}</code></p>
