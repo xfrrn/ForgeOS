@@ -142,3 +142,5 @@
 .inventory-file { padding: 9px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .inventory-file summary { cursor: pointer; }
 .inventory-file p { font-size: 13px; margin: 6px 0; }
+
+.plan-revisions { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }

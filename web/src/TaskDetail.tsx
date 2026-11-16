@@ -1,3 +1,4 @@
+import GoalPlan, { type Plan, type GoalChild } from './GoalPlan'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, Fact, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
 import './detail.css'
@@ -42,8 +43,6 @@ type Review = { execution_id: number; commit: string; decision: string; note: st
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
-type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
-type Plan = { revision: number; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
@@ -54,10 +53,10 @@ type Task = {
   execution: Attempt | null; attempts: Attempt[]; events: TaskEvent[]; reviews?: Review[]; delivery?: Delivery; delivery_refreshes?: { execution_id: number; old_delivery: Delivery; new_base: string; candidate: string }[]
   plan?: Plan
   requirement_revision?: number; latest_requirement?: number; active_revision?: number; goal_id?: number; plan_revision?: number
-  children?: { id: number; key: string; status: string }[]
+  children?: GoalChild[]
   questions?: Question[]
 }
-type Props = { id: number; request: ApiRequest; onChanged: () => void }
+type Props = { id: number; planRevision?: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
@@ -456,7 +455,7 @@ function RefreshDelivery({ id, delivery, request, reload }: { id: number; delive
     <button className="button" disabled={busy} onClick={() => void submit()}>在最新目标版本上重新验证</button></div>
 }
 
-function Detail({ id, request, onChanged }: Props) {
+function Detail({ id, planRevision, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -519,7 +518,6 @@ function Detail({ id, request, onChanged }: Props) {
   const result = last?.result
   const delivery = task.delivery
   const reviews = task.reviews ?? []
-  const children = new Map(task.children?.map(child => [child.key, child]))
   const canReview = task.status === 'WAITING_ACCEPTANCE' && task.spec && last?.status === 'COMPLETED' &&
     result?.exit_code === 0 && result.commit && fullSHA.test(result.commit) && result.validation?.commit === result.commit &&
     result.validation.exit_code === 0 && !reviews.some(review => review.execution_id === last.id)
@@ -531,7 +529,7 @@ function Detail({ id, request, onChanged }: Props) {
         <Fact label="实现 Harness">{(task.spec.child_harness || task.spec.harness) === 'claude' ? 'Claude Code' : 'Codex'}</Fact>
         <Fact label="project.yaml 对象" code>{task.spec.project_config_blob}</Fact>
       </dl></details>}
-      {task.goal_id && <a href={`#/tasks/${task.goal_id}`}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
+      {task.goal_id && <a href={`#/tasks/${task.goal_id}${task.plan_revision ? `/plans/${task.plan_revision}` : ''}`}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
       <div className="detail-subtitle">{issue ? <><Icon name="GitBranch" size={15} /><span>{issue.repository}</span><span aria-hidden="true">/</span>
         <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · {task.startup ? <>{task.startup.environment} · <a href={`#/tasks/${task.startup.source_task_id}`}>来源 HEAD 检查 #{task.startup.source_task_id}</a> · <code>{task.startup.commit}</code></> : task.kind}</span>}
         <button className="button detail-refresh" disabled={loading} onClick={() => refresh()}><Icon name="RefreshCw" size={15} />刷新</button>
@@ -555,27 +553,8 @@ function Detail({ id, request, onChanged }: Props) {
     <div className="detail-layout">
       <div className="detail-column">
         {task.kind === 'git_head' && task.status === 'DONE' && <RepositoryInventory task={task.id} request={request}/>}
-        {task.plan && <section className="panel detail-card">
-          <h2>Goal 计划 · 修订 {task.plan.revision}</h2>
-          <p>{task.plan.plan.objective}</p>
-          {task.active_revision && task.active_revision !== task.plan.revision ? <p>待审批修订 · 当前生效版本 {task.active_revision}</p> : null}
-          {task.plan.review && <div><h3>Management 审核 · {task.plan.review.effective_level}</h3>
-            <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[task.plan.review.verdict] ?? task.plan.review.verdict}</Fact>
-              <Fact label="理由">{task.plan.review.rationale}</Fact><Fact label="依据">{task.plan.review.evidence}</Fact>
-              {task.plan.review.validation_minimum && <Fact label="建议最低验证等级">{task.plan.review.validation_minimum}</Fact>}
-              <Fact label="审核会话" code>{task.plan.review.session_id}</Fact></dl>
-          </div>}
-          {task.plan.plan.milestones.map((milestone, index) => <div key={index}>
-            <h3>{milestone.name}</h3>
-            <ul>{milestone.items?.map(item => <li key={item.key}>
-              {children.has(item.key) ? <a href={`#/tasks/${children.get(item.key)!.id}`}>{item.key} · {item.objective} <Status value={children.get(item.key)!.status}/></a>
-                : <strong>{item.key} · {item.objective}</strong>}
-              <dl><Fact label="范围">{item.scope}</Fact><Fact label="验收条件">{item.acceptance_criteria}</Fact>
-                <Fact label="交付物">{item.deliverables}</Fact>
-                {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}</dl>
-            </li>)}</ul>
-          </div>)}
-        </section>}
+        {(task.plan || planRevision) && <GoalPlan key={planRevision ?? 'latest'} taskID={task.id}
+          selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}/>}
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
           {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={`#/tasks/${f.task_id}/previews/${f.preview}/feedback`}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}

@@ -69,7 +69,7 @@ function App() {
   const shareID = sharePath?.[1] ? Number(sharePath[1]) : undefined
   const shares = projectID && sharePath?.[0] === 'shares' && (shareID === undefined || Number.isSafeInteger(shareID))
   const projects = route === '/projects' || Boolean(materials || decisions || shares)
-  const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?)?$/.exec(route)
+  const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9}))?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
   const valid = Boolean(id || queue || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
@@ -120,7 +120,7 @@ function App() {
     </header>
     <main id="content" tabIndex={-1} className="content">
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
-        id ? <TaskDetail key={id} id={id} request={request} onChanged={refreshCounts}/> :
+        id ? <TaskDetail key={id} id={id} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
         nodes ? <WorkerNodes request={request}/> :
         shares && projectID ? <ProjectShares key={route} project={projectID} receipt={shareID} request={request}/> :
         decisions && projectID ? <ProjectDecisions key={projectID} project={projectID} request={request}/> :

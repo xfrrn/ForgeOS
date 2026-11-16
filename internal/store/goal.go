@@ -10,9 +10,10 @@ import (
 )
 
 type GoalChild struct {
-	ID     int64  `json:"id"`
-	Key    string `json:"key"`
-	Status string `json:"status"`
+	Revision int    `json:"plan_revision"`
+	ID       int64  `json:"id"`
+	Key      string `json:"key"`
+	Status   string `json:"status"`
 }
 
 // ActivatePlan materializes one reviewed revision and its dependencies in a single transaction.

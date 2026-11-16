@@ -41,7 +41,7 @@ func TestRollingDraftHoldsReadyWorkUntilApproval(t *testing.T) {
 		t.Fatal("stale activation", err)
 	}
 	active, err := s.ActivatePlan(ctx, task.ID, 2)
-	if err != nil || active.ActiveRevision != 2 || active.Children[0].ID != first.Children[0].ID {
+	if err != nil || active.ActiveRevision != 2 || active.Children[0].Revision != 2 || first.Children[0].Revision != 1 || active.Children[0].ID != first.Children[0].ID {
 		t.Fatal(active, err)
 	}
 	job, err := s.Claim(ctx, "worker", t.TempDir(), true)
