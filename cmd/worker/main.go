@@ -188,16 +188,22 @@ func (w *worker) run(ctx context.Context) error {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if len(os.Args) == 2 && os.Args[1] == "review-candidate" {
+		if err := runCandidateReview(ctx, os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	management := len(os.Args) == 2 && os.Args[1] == "management"
 	if len(os.Args) > 1 && !management {
-		log.Fatal("usage: worker [management]")
+		log.Fatal("usage: worker [management|review-candidate]")
 	}
 	w, err := fromEnv(management)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if management {
 		err = w.runManagement(ctx)
 	} else {

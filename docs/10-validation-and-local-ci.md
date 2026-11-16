@@ -43,6 +43,16 @@
 
 LLM Finding 必须核对证据，不能只凭模型标签自动认定真实漏洞。
 
+本地入口为 `worker review-candidate`。用非 root 审查账号设置 `FORGEOS_REPO_ROOT` 和原生 Claude Code 的 `FORGEOS_CLAUDE_BIN`，通过标准输入传入一个 JSON 对象。
+
+```json
+{"repo":"example","base_commit":"<完整基础 SHA>","commit":"<完整候选 SHA>","requirement":"队列达到上限时拒绝新增工作。"}
+```
+
+Worker 从授权仓库的 Git 对象读取变更文件的前后内容和模式，基础必须是候选的祖先。每次审查启动独立的 Claude 会话，向其提供固定输入，关闭文件、命令、网络工具和 MCP；审查进程在临时目录工作。输出包括两个 SHA、原生 Session、摘要和发现列表。每条发现绑定 base 或 candidate 的文件与一基行号。Worker 逐条核对原文行，`evidence_verified` 表示引用是否匹配。技术结论仍需结合上下文判断。
+
+当前文本审查入口支持最多 128 个变更路径、前后文本合计 192 KiB。二进制、非普通文件或超限输入会明确报错，保留人工审查。命令输出可独立留档。
+
 ## 5. Local CI Runner
 
 接口建议：

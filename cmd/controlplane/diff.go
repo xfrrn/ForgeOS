@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -79,31 +78,10 @@ type commitDiff struct {
 const maxDiffBytes = 256 << 10
 
 func readCommitDiff(ctx context.Context, repo, base, commit string) (commitDiff, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	cmd := localrepo.GitCommand(ctx, repo, "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+	output, truncated, err := localrepo.LimitedGit(ctx, repo, maxDiffBytes, "diff", "--no-color", "--no-ext-diff", "--no-textconv",
 		"--no-renames", "--submodule=short", "--ignore-submodules=none", base, commit, "--")
-	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return commitDiff{}, err
 	}
-	if err = cmd.Start(); err != nil {
-		return commitDiff{}, err
-	}
-	output, err := io.ReadAll(io.LimitReader(stdout, maxDiffBytes+1))
-	truncated := len(output) > maxDiffBytes
-	if truncated || err != nil {
-		cancel()
-	}
-	exit := cmd.Wait()
-	switch {
-	case err != nil:
-		return commitDiff{}, err
-	case truncated:
-		return commitDiff{string(output[:maxDiffBytes]), true}, nil
-	case exit != nil:
-		return commitDiff{}, exit
-	default:
-		return commitDiff{string(output), false}, nil
-	}
+	return commitDiff{string(output), truncated}, nil
 }
