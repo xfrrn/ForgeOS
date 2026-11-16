@@ -127,6 +127,8 @@ func TestRetryReportWithoutExecutingTwice(t *testing.T) {
 			return
 		}
 		switch r.URL.Path {
+		case "/internal/workers/ci-cleanup":
+			rw.Write([]byte("[]"))
 		case "/internal/workers/heartbeat":
 			rw.WriteHeader(204)
 		case "/internal/claim":

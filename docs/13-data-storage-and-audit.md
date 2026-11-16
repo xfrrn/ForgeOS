@@ -99,11 +99,17 @@ Owner 可用 `GET /projects/{id}/ci-retention` 读取项目策略，用 `PUT` �
 
 控制面在启动时及每分钟清理已到期的中央文件。存储故障时保留待清理记录，下次扫描重试。运维可用 `SELECT execution_id,file,kind,confirmed_at,expired_at,removed_at FROM ci_archive_files WHERE expired_at IS NOT NULL AND removed_at IS NULL` 查询积压。备份恢复时应配套恢复 PostgreSQL 与同一时点的工件目录。Worker 工作区、离线备份及预览反馈有各自的生命周期。
 
+**Worker 本地 CI 文件。** Owner 通过 `GET /projects/{id}/local-ci-retention` 读取本地副本策略，用 `PUT` 整体替换。字段与中央 CI 策略相同，按执行结果的确认时间计算。默认各类文件无限期保留。两份策略分别设置；例如只提交 `{"artifact_seconds":86400}`，该项目的本地构建产物保留一天，本地日志和报告继续保留。
+
+控制面记录到期文件和当时的策略修订。Worker 启动时及每分钟按节点与项目授权领取待清理文件，每页 32 项。它检查 SQLite 中对应的任务、执行和上传队列，核对本地 `run.json` 的运行号、执行号、节点及文件摘要。待传文件、内容不匹配的文件和符号链接留在原处，可修复后重试。清理前重新向中央提交内容，收到 204 或中央策略的 410 后才移除本地常规文件。运行回执、未声明的文件和其他工作区不在清理范围内。
+
+离线期间到期的文件在节点重新连接后处理。延长期限仍保留已经到期的记录。Worker 启动及每 24 小时复查已确认的清理项，处理从旧备份恢复后重新出现的文件。PostgreSQL 可用 `SELECT execution_id,file,local_revision,local_expired_at,local_removed_at FROM ci_archive_files WHERE local_expired_at IS NOT NULL` 查询策略修订、首次到期与节点首次确认时间。确认时间为空的项会继续重试。还原 Worker 状态时应同时还原同一控制面地址及节点身份的 SQLite 与工作区。
+
 预览反馈的 PNG 存放在控制面账号私有目录。可用绝对路径 `FORGEOS_ARTIFACT_ROOT` 指定，默认是该账号 HOME 下的 `.forgeos/artifacts`。PostgreSQL 保存反馈编号、文件键、类型、大小和 SHA-256，经原反馈关联任务、执行和候选。Owner 从原反馈读取文件时会重新校验长度和摘要，损坏返回 503。在保留期内重传同一份已脱敏图片可修复文件并复用原回执。
 
 Owner 可用 `GET /projects/{id}/screenshot-retention` 查询反馈截图的中央保留期，用 `PUT` 提交 `{"seconds":2592000}` 设为 30 天，或提交 `{"seconds":0}` 设为无限期。默认无限期。期限从每张截图首次归档起算；改变策略会对该项目仍有效的历史截图重新计算到期时间。已到期截图的读取和同反馈同图重传返回 410。工作台的反馈历史显示“已到期”，并保留附件编号、字节数和 SHA-256。控制面启动和每分钟扫描到期 PNG；`feedback_artifacts.expires_at` 记录期限，`removed_at` 记录中央文件清理完成时间。
 
-Owner 可用 `GET /projects/{id}/retention-history` 追查中央文件的保留期限。结果按修订编号降序，每页最多 100 条。用 `?before=<本页最后一个 id>` 读取更早的记录。每次有效变更在设置策略的事务内记录项目、范围（`ci` 或 `feedback_screenshot`）、角色、前后配置和时间；重复提交相同配置复用已有修订。角色 `owner` 表示持 Owner 身份提交，当前凭据体系只区分角色。
+Owner 可用 `GET /projects/{id}/retention-history` 追查中央及节点文件的保留期限。结果按修订编号降序，每页最多 100 条。用 `?before=<本页最后一个 id>` 读取更早的记录。每次有效变更在设置策略的事务内记录项目、范围（`ci`、`local_ci` 或 `feedback_screenshot`）、角色、前后配置和时间；重复提交相同配置复用已有修订。角色 `owner` 表示持 Owner 身份提交，当前凭据体系只区分角色。
 
 文件到期的 410 响应可包含 `retention_revision`，与 `ci_archive_files` 或 `feedback_artifacts` 中的同名字段对应。通过该编号可以找到让文件到期的策略；后来更改期限仍保留原关联。升级到数据库版本 37 时，已有的非默认配置以 `actor=migration` 登记一次，`previous_policy` 为空。审计启用前已到期的文件继续返回 410，响应省略未知的修订编号。
 

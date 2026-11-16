@@ -298,11 +298,11 @@ func (w *worker) run(ctx context.Context) error {
 		return err
 	}
 	child, stop := context.WithCancel(ctx)
-	filesDone := make(chan struct{})
-	go func() {
-		defer close(filesDone)
-		w.publishCIFiles(child)
-	}()
+	var maintenance sync.WaitGroup
+	for _, run := range []func(context.Context){w.publishCIFiles, w.sweepLocalCI} {
+		maintenance.Add(1)
+		go func() { defer maintenance.Done(); run(child) }()
+	}
 	done := make(chan error, 1)
 	go func() {
 		t := time.NewTicker(15 * time.Second)
@@ -325,7 +325,7 @@ func (w *worker) run(ctx context.Context) error {
 		err = w.runQueue(child, caps)
 	}
 	stop()
-	<-filesDone
+	maintenance.Wait()
 	return errors.Join(err, <-done)
 }
 

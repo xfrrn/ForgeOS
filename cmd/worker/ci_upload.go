@@ -67,6 +67,10 @@ func (w *worker) publishCIFiles(ctx context.Context) {
 
 func (w *worker) uploadCIFile(ctx context.Context, path, run, file string, digest validation.FileDigest) error {
 	content, localErr := w.ciUploadContent(run, file, digest)
+	return w.sendCIContent(ctx, path, run, file, content, localErr)
+}
+
+func (w *worker) sendCIContent(ctx context.Context, path, run, file string, content []byte, localErr error) error {
 	method := http.MethodPut
 	if localErr != nil {
 		// Even a lost local file can leave the retry queue once the server retires it.
