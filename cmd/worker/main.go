@@ -31,6 +31,7 @@ type worker struct {
 	claude                                  claudeCLI
 	planner                                 bool
 	slots                                   int
+	modelSlots, ciSlots                     int
 	client                                  *http.Client
 	journal                                 *sql.DB
 }
@@ -88,13 +89,14 @@ func fromEnv(role string) (*worker, error) {
 			return nil, err
 		}
 	}
-	w.slots = 1
-	if raw := os.Getenv("FORGEOS_WORKER_SLOTS"); raw != "" {
-		n, err := strconv.ParseInt(raw, 10, 32)
-		if err != nil || n < 1 {
-			return nil, errors.New("FORGEOS_WORKER_SLOTS must be a positive integer")
-		}
-		w.slots = int(n)
+	if w.slots, err = workerSlots("FORGEOS_WORKER_SLOTS", 1); err != nil {
+		return nil, err
+	}
+	if w.modelSlots, err = workerSlots("FORGEOS_WORKER_MODEL_SLOTS", w.slots); err != nil {
+		return nil, err
+	}
+	if w.ciSlots, err = workerSlots("FORGEOS_WORKER_CI_SLOTS", w.slots); err != nil {
+		return nil, err
 	}
 	if w.token == "" || !filepath.IsAbs(w.repoRoot) || !filepath.IsAbs(w.workspaceRoot) {
 		return nil, errors.New("set FORGEOS_WORKER_TOKEN, absolute FORGEOS_REPO_ROOT and FORGEOS_WORKSPACE_ROOT")
@@ -173,6 +175,18 @@ func wait(ctx context.Context) {
 	}
 }
 
+func workerSlots(key string, fallback int) (int, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback, nil
+	}
+	n, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return int(n), nil
+}
+
 func temporary(status int) bool {
 	return status == 0 || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status >= 500
 }
@@ -185,9 +199,10 @@ func (w *worker) run(ctx context.Context) error {
 	w.journal = journal
 	defer journal.Close()
 	writer := w.codex != "" || w.claude.bin != ""
-	caps := store.WorkerCapabilities{SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
+	caps := store.WorkerCapabilities{SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
-	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Slots: w.slots, Capabilities: caps}
+	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(),
+		Slots: w.slots, ModelSlots: w.modelSlots, CISlots: w.ciSlots, Capabilities: caps}
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
 			status, err := w.post(ctx, "/internal/workers/heartbeat", h, nil)

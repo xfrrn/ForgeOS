@@ -1,0 +1,86 @@
+package store
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"errors"
+)
+
+// A live pre-upgrade Issue has no phase information. Reserve both budgets until it settles.
+const workerUsage = `SELECT count(*) AS reserved,
+	count(*) FILTER (WHERE e.resource_kind='model' OR (NOT e.resource_managed AND t.kind='codex_issue')) AS model_reserved,
+	count(*) FILTER (WHERE e.resource_kind='ci' OR (NOT e.resource_managed AND t.kind='codex_issue')) AS ci_reserved
+	FROM executions e JOIN work_items t ON e.task_id=t.id
+	WHERE e.worker=n.worker AND e.result IS NULL AND e.abandoned_at IS NULL`
+
+type ResourceRequest struct {
+	Lease   string `json:"lease_token"`
+	Step    int64  `json:"step"`
+	Kind    string `json:"kind"`
+	Release bool   `json:"release,omitempty"`
+}
+
+// ReserveExecutionResource returns false without an error when the node's budget is full.
+func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r ResourceRequest) (bool, error) {
+	if r.Step <= 0 || (r.Kind != "model" && r.Kind != "ci") || r.Lease == "" {
+		return false, ErrConflict
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	hash := sha256.Sum256([]byte(r.Lease))
+	var worker, kind string
+	var step int64
+	var limit int
+	err = tx.QueryRowContext(ctx, `SELECT n.worker, e.resource_step, e.resource_kind,
+		COALESCE(CASE WHEN $3='model' THEN n.model_slots ELSE n.ci_slots END,n.slots)
+		FROM executions e JOIN worker_nodes n ON n.worker=e.worker
+		WHERE e.id=$1 AND e.lease_hash=$2 AND e.resource_managed AND e.result IS NULL AND e.abandoned_at IS NULL
+		FOR UPDATE OF n,e`, execution, hash[:], r.Kind).Scan(&worker, &step, &kind, &limit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrConflict
+	}
+	if err != nil {
+		return false, err
+	}
+	if r.Release {
+		if r.Step != step || (kind != "" && kind != r.Kind) {
+			return false, ErrConflict
+		}
+		kind = ""
+	} else if step != r.Step || kind != r.Kind {
+		if r.Step != step+1 || kind != "" {
+			return false, ErrConflict
+		}
+		var used int
+		err := tx.QueryRowContext(ctx, `SELECT CASE WHEN $2='model' THEN usage.model_reserved ELSE usage.ci_reserved END
+			FROM worker_nodes n CROSS JOIN LATERAL (`+workerUsage+`) usage WHERE n.worker=$1
+			AND EXISTS(SELECT 1 FROM executions WHERE id=$3 AND lease_until>clock_timestamp())`, worker, r.Kind, execution).Scan(&used)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, ErrConflict
+		}
+		if err != nil {
+			return false, err
+		}
+		if used >= limit {
+			return false, nil
+		}
+		step, kind = r.Step, r.Kind
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE executions SET resource_step=$2,resource_kind=$3
+		WHERE id=$1 AND lease_until>clock_timestamp()`, execution, step, kind)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n != 1 {
+		return false, ErrConflict
+	}
+	return true, tx.Commit()
+}

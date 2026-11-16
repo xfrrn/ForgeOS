@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
 type Node = { worker: string; os: string; arch: string; cpus: number; slots: number; reserved: number
+  model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
   last_seen: string; online: boolean; capabilities: Record<string, boolean> }
 
 const capabilities: Record<string, string> = { supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划',
@@ -29,6 +30,7 @@ export function WorkerNodes({ request }: { request: ApiRequest }) {
     {!error && !nodes.length && <p>{loaded ? '尚未收到 Worker 心跳。' : '正在读取节点…'}</p>}
     {nodes.map(n => <article key={n.worker}><h2>{n.worker}</h2><p>{n.online ? '在线' : '心跳超时'} · {n.os} / {n.arch} · {n.cpus} 个逻辑 CPU</p>
       <p>已占名额 {n.reserved} / {n.slots}</p><p>最近心跳　<time dateTime={n.last_seen}>{formatTime(n.last_seen)}</time></p>
+      {n.model_slots && n.ci_slots && <p>模型名额 {n.model_reserved} / {n.model_slots} · CI 名额 {n.ci_reserved} / {n.ci_slots}</p>}
       <p>{['Git HEAD', ...Object.entries(capabilities).filter(([key]) => n.capabilities[key]).map(([, label]) => label)].join(' · ')}</p>
     </article>)}</section>
 }

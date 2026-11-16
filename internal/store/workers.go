@@ -51,6 +51,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
+	SupportsResources      bool `json:"supports_resources,omitempty"`
 	SupportsCodex          bool `json:"supports_codex"`
 	SupportsClaude         bool `json:"supports_claude"`
 	SupportsRework         bool `json:"supports_rework"`
@@ -63,6 +64,7 @@ type WorkerCapabilities struct {
 
 func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilities {
 	return WorkerCapabilities{
+		SupportsResources:      c.SupportsResources && node.SupportsResources,
 		SupportsCodex:          c.SupportsCodex && node.SupportsCodex,
 		SupportsClaude:         c.SupportsClaude && node.SupportsClaude,
 		SupportsRework:         c.SupportsRework && node.SupportsRework,
@@ -80,6 +82,8 @@ type WorkerHeartbeat struct {
 	Arch         string             `json:"arch"`
 	CPUs         int                `json:"cpus"`
 	Slots        int                `json:"slots"`
+	ModelSlots   int                `json:"model_slots,omitempty"`
+	CISlots      int                `json:"ci_slots,omitempty"`
 	Capabilities WorkerCapabilities `json:"capabilities"`
 }
 
@@ -88,6 +92,8 @@ var platformName = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 func (h WorkerHeartbeat) Valid() bool {
 	return strings.TrimSpace(h.Worker) != "" && len(h.Worker) <= 128 && !strings.ContainsAny(h.Worker, "\x00\r\n") &&
 		platformName.MatchString(h.OS) && platformName.MatchString(h.Arch) &&
+		((h.ModelSlots == 0 && h.CISlots == 0 && !h.Capabilities.SupportsResources) ||
+			(h.Capabilities.SupportsResources && h.ModelSlots >= 1 && h.ModelSlots <= 2147483647 && h.CISlots >= 1 && h.CISlots <= 2147483647)) &&
 		h.CPUs >= 1 && h.CPUs <= 2147483647 && h.Slots >= 1 && h.Slots <= 2147483647
 }
 
@@ -99,18 +105,18 @@ func (s *Store) RecordHeartbeat(ctx context.Context, h WorkerHeartbeat) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO worker_nodes(worker,os,arch,cpus,slots,capabilities)
-		VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(worker) DO UPDATE SET
+	_, err = s.db.ExecContext(ctx, `INSERT INTO worker_nodes(worker,os,arch,cpus,slots,capabilities,model_slots,ci_slots)
+		VALUES($1,$2,$3,$4,$5,$6,NULLIF($7::integer,0),NULLIF($8::integer,0)) ON CONFLICT(worker) DO UPDATE SET
 		os=excluded.os,arch=excluded.arch,cpus=excluded.cpus,slots=excluded.slots,
-		capabilities=excluded.capabilities,last_seen=clock_timestamp()`, h.Worker, h.OS, h.Arch, h.CPUs, h.Slots, caps)
+		model_slots=excluded.model_slots,ci_slots=excluded.ci_slots,
+		capabilities=excluded.capabilities,last_seen=clock_timestamp()`, h.Worker, h.OS, h.Arch, h.CPUs, h.Slots, caps, h.ModelSlots, h.CISlots)
 	return err
 }
 
 func (s *Store) WorkerNodes(ctx context.Context) (json.RawMessage, error) {
 	var result json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(n) || jsonb_build_object(
-		'online',n.last_seen > now() - interval '45 seconds',
-		'reserved',(SELECT count(*) FROM executions e WHERE e.worker=n.worker AND e.result IS NULL AND e.abandoned_at IS NULL)
-		) ORDER BY n.worker),'[]'::jsonb) FROM worker_nodes n`).Scan(&result)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(n) || to_jsonb(usage) || jsonb_build_object(
+		'online',n.last_seen > now() - interval '45 seconds') ORDER BY n.worker),'[]'::jsonb)
+		FROM worker_nodes n CROSS JOIN LATERAL (`+workerUsage+`) usage`).Scan(&result)
 	return result, err
 }

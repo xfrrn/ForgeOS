@@ -14,7 +14,7 @@
 | 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经风险分级后交付。Goal 34 的 Management 审核将子项提升至 V4。beta #17 从全局方法生成测试计划、澄清并复审，两项用例实测通过后交付。 | 通过上述候选场景。预览和反馈见下一行。 |
 | 三 · 预览、批注与知识 | Chrome、Caddy 双向 TLS、DOM 与 Canvas 批注、六类反馈、阻塞澄清、从反馈退回修订及新候选批准均已实测。beta #19 还验证了从反馈修订需求、采用和再次执行。项目知识的来源、决策索引和审核后的共享副本见专题 08。 | 外部设备与 tailnet、动态应用、独立 Staging、扩展内截图采集和录屏待验收。工作台截图遮挡、标注与归档已实测。React 与 Vue 的同源 iframe 批注已实测。独立新工作项已从反馈 #2 实测到 beta PR #21 合并。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
-| 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。Claude Code 已交付 Owner 明确选择的 beta #22，以及项目配置和标签自动派发的 #24。持久节点登记、心跳和能力查询见专题 07。数据库、反馈截图和工作区恢复演练见专题 14。 | 普通执行的节点容量、跨项目派发及失联占位已实测，见本页末尾。GitHub 四类写入的响应丢失恢复见 beta #27。CI 与模型的独立资源预算、压力与节点原生会话恢复待验收。 |
+| 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。Claude Code 已交付 Owner 明确选择的 beta #22，以及项目配置和标签自动派发的 #24。持久节点登记、心跳和能力查询见专题 07。数据库、反馈截图和工作区恢复演练见专题 14。 | 普通执行的节点容量、跨项目派发及失联占位已实测，见本页末尾。GitHub 四类写入的响应丢失恢复见 beta #27。普通 Worker 的模型与候选 CI 独立名额已在 alpha #20、beta #45 验收。独立角色预算、压力与节点原生会话恢复待验收。 |
 
 MVP 页面验收与 GitHub 门禁证据对应基线、收件箱和交付诊断提交，最后一项为 `32c0fa07cc09eaf98750e588682d0f9701dd92f4`。两个私有项目已在同一 PostgreSQL 中分别派发和交付，并验证项目专用业务凭据的访问边界，见本页阶段四实测。GitHub 操作共用本机 CLI 身份，GitHub App 最小授权仍待验收。
 
@@ -56,7 +56,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 11 预览与人工验收 | 工作项归档计划、覆盖审核及用例实测；Caddy、静态预览、DOM/Canvas 和同源嵌套 iframe 选择、用例关联、六类 Management 分类、阻塞澄清、按反馈退回和批准、从反馈修订需求及派发独立工作项（beta #19–21）、工作台 PNG 标注与遮挡归档 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`、`7565fa6`、`e71b7c8`、`978d184`、`71e6c9a`、`7fe001f`、`ec7a462`、`17bb819`、`c561e40`、`99de4f6`、`bf27241`、`7cbd8a3`、`5a5d685`、`d34260b`、`2b805b4`、`5279f11`、`c382473` | 动态预览、Staging、扩展截图采集与录屏；外部 tailnet 设备待验收 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付 | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5` | Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照、交付证据链与反馈截图校验回读 | `1a17822`、`83ea262`、`5447445`、`c382473` | 执行领取和结果离线补报见下文。完整审计载荷、工件元数据与保留策略、其余进程和会话事件缓冲仍待验收 |
-| 14 部署与运维 | Windows 主机、Docker Linux 引擎、Ubuntu systemd 重启与派发；PostgreSQL、OpenBao 和反馈截图备份恢复；Caddy 双向 TLS 网关。工作区恢复后已用独立 Worker 继续派发 | `1a17822`、`32c0fa0`、`bd1c734`、`06ed00b`、`ab013b6`、`ec7a462`、`42ba820` | 节点执行名额见下文。外部设备私网访问、CI 与模型独立预算、其他工件恢复、失联模型会话恢复待验收 |
+| 14 部署与运维 | Windows 主机、Docker Linux 引擎、Ubuntu systemd 重启与派发；PostgreSQL、OpenBao 和反馈截图备份恢复；Caddy 双向 TLS 网关。工作区恢复后已用独立 Worker 继续派发 | `1a17822`、`32c0fa0`、`bd1c734`、`06ed00b`、`ab013b6`、`ec7a462`、`42ba820` | 节点执行名额见下文。普通 Worker 的模型与候选 CI 独立名额见 alpha #20、beta #45。外部设备私网访问、独立角色及跨节点共享预算、其他工件恢复、失联模型会话恢复待验收 |
 | 15–16 路线与开放项 | 基座、单项目闭环、两子项 Goal 场景、第二个项目交付有以上记录 | 本表所列提交 | [开放事项 A–C](16-open-decisions.md)中其余真实环境与协议要求，以及全路线最终回归 |
 
 ## 专题 05–06 · Management 对计划修订的真实审核
@@ -859,3 +859,17 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 | 在 Chrome 以 Owner 核对两份文档差异并批准，待 GitHub 必需检查重跑成功后核对 PR、回写和控制面重启 | 两库分别交付按本项目规则生成的候选，保留讨论和交付评论 | alpha 候选 `eca73bb07027627a0640121d21b2a004662569d3`，合并 `8c8a314b6a72c939f0d9c214c25c016f7376f530`。[PR #19](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/19) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43904786638) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/18#issuecomment-6921948584)。beta 候选 `4bd43cb76582ac651cad9e09f37a6650e42d4fc8`，合并 `42c39e9698aebb2fc6f05080f2f045ff206fde5c`。[PR #44](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/44) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43904791081) · [回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/43#issuecomment-6921950067)。两项均已关闭 Issue，重启前后任务 JSON 相同 |
 
 启用 PostgreSQL 18 和真实 Docker 的全量 Go 回归 9 个包、126 项通过，零跳过。Go 静态检查通过。两库共用 GitHub CLI 身份；GitHub App 最小授权仍待实测。
+
+单控制面轮询两个项目对应提交 `76499c179711ac2c93fece4c6b4a3aef659ef67f`。
+
+## 阶段四、专题 06、07、14 · 同一 Worker 分别限制模型和候选 CI
+
+2026-11-17，在两个私有项目各派发一个 Issue。节点 budget-worker 的普通工作项容量为 2，模型和 CI 各为 1。alpha 使用 Codex 和 docs 校验，beta 使用 Claude Code 和项目声明的三项 Docker 检查。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 经转发代理领取模型名额，使首次成功响应丢失；观察两个项目的竞争 | 重试保留原名额，每个执行只启动一个原生模型进程 | alpha 执行 2，Codex Thread `01a1e529-90f7-7953-ac98-2cdbfbff42ec`；beta 执行 1，Claude Session `08d010e1-ad8f-44a9-b140-2056ec661d83`。beta 等待模型时收到 31 次 429。每项各一个原生进程，均退出 0 |
+| 延迟转发已结束阶段的释放请求，在 Chrome 打开执行节点，重启控制面，再放行；让 beta 尝试领取尚占用的 CI 名额 | 不同资源的名额可同时持有，同类请求排队；重启保留占用，结算后释放全部名额 | 页面与接口均读取到工作项 2/2、模型 1/1、CI 1/1，控制面重启后仍相同。beta 领取 CI 收到一次 429，释放后完成三项 Docker 检查。两项候选等待 Owner 时三类占用均为零。并存观察针对名额，代理人为延长了首项 CI 的持有时间 |
+| Owner 在 Chrome 核对并批准两个候选，等待各自 Actions 从失败重跑至通过，再重启并核对回执 | 每库只合并批准 SHA，并关闭原 Issue；交付证据可重新读取 | alpha 候选 `a4f790b45e29c1f7def58d3c28d7b4938c24662e`，合并 `99b295b93bab431978cc80d1dd90fc6c55231559`。[PR #21](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/21) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43906842688) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/20#issuecomment-6922234379)。beta 候选 `40825fbf01d81125066cc4cba6731c76fb5eb13b`，合并 `b06f526c9b6955597c277cc16733ced24079763b`。[PR #46](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/46) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43906853449) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/45#issuecomment-6922235994) |
+
+PostgreSQL 18 回归覆盖并发申请、旧步骤重放、旧节点升级及租约过期后由 Owner 结束执行。启用 PostgreSQL 和真实 Docker 的 Go 全量回归为 9 个包、127 项通过、零跳过。Go 静态检查和 Web 生产构建通过。独立角色、共用同一模型账号的多节点总额度及持续高负载仍待验收。

@@ -300,13 +300,21 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 
 func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job store.Job) store.Result {
 	spec := job.Spec
+	budget := executionResources{worker: w, job: job}
+	validate := func(candidate string) (store.ValidationResult, error) {
+		return withResource(ctx, &budget, "ci", func() (store.ValidationResult, error) {
+			return w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, candidate, spec)
+		})
+	}
 	if spec != nil && spec.VerifyCommit != "" {
 		result := store.Result{BaseCommit: spec.BaseCommit, Commit: spec.VerifyCommit}
 		if _, err := checkedWorktree(ctx, repo, workspace, spec.VerifyCommit); err != nil {
 			return failed("could not check out refreshed candidate", err)
 		}
-		report, err := w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, spec.VerifyCommit, spec)
-		result.Validation = &report
+		report, err := validate(spec.VerifyCommit)
+		if report.Commit != "" {
+			result.Validation = &report
+		}
 		if err != nil {
 			result.ExitCode = 1
 			result.Error = err.Error()
@@ -323,7 +331,13 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		return failed("open execution checkpoint", err)
 	}
 	if spec.Mode == "plan" {
-		result = w.planIssue(ctx, repo, workspace, job, comments)
+		result, err = withResource(ctx, &budget, "model", func() (store.Result, error) {
+			return w.planIssue(ctx, repo, workspace, job, comments), nil
+		})
+		if err != nil {
+			result.ExitCode, result.Error = 1, err.Error()
+			return result
+		}
 		if result.ExitCode == 0 {
 			if _, err = w.checkpoint(ctx, job, 0, result.SessionID); err != nil {
 				return failed("confirm planning checkpoint", err)
@@ -353,12 +367,17 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		if err != nil {
 			break
 		}
-		if spec.Harness == "claude" {
-			result.Harness, result.HarnessVersion = "claude", w.claude.version
-			result.SessionID, err = w.claudeTurn(ctx, job, prompt, result.SessionID, start, dir)
-		} else {
-			result.SessionID, err = w.codexTurn(ctx, job, prompt, result.SessionID, start, dir, "", "")
+		session, turnErr := withResource(ctx, &budget, "model", func() (string, error) {
+			if spec.Harness == "claude" {
+				result.Harness, result.HarnessVersion = "claude", w.claude.version
+				return w.claudeTurn(ctx, job, prompt, result.SessionID, start, dir)
+			}
+			return w.codexTurn(ctx, job, prompt, result.SessionID, start, dir, "", "")
+		})
+		if session != "" {
+			result.SessionID = session
 		}
+		err = turnErr
 		if err != nil || !job.SupportsCheckpoints {
 			break
 		}
@@ -375,8 +394,10 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 	}
 	if err == nil {
 		var report store.ValidationResult
-		report, err = w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, result.Commit, spec)
-		result.Validation = &report
+		report, err = validate(result.Commit)
+		if report.Commit != "" {
+			result.Validation = &report
+		}
 		if err == nil && report.ExitCode != 0 {
 			err = errors.New("local validation failed")
 		}

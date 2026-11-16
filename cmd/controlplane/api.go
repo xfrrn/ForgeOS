@@ -173,6 +173,19 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		respond(w, http.StatusOK, job, err)
 	}))
 
+	mux.HandleFunc("POST /internal/executions/{id}/resource", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var input store.ResourceRequest
+		if !ok || !decode(w, r, &input) {
+			return
+		}
+		granted, err := data.ReserveExecutionResource(r.Context(), id, input)
+		if err == nil && !granted {
+			problem(w, http.StatusTooManyRequests, "node resource capacity is in use")
+			return
+		}
+		respond(w, http.StatusNoContent, nil, err)
+	}))
 	mux.HandleFunc("POST /internal/executions/{id}/renew", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

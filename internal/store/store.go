@@ -123,6 +123,9 @@ var feedbackArtifactsTable string
 //go:embed 033_worker_nodes.sql
 var workerNodesTable string
 
+//go:embed 034_execution_resources.sql
+var executionResourcesSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -185,6 +188,7 @@ type Event struct {
 }
 
 type Job struct {
+	ManageResources     bool       `json:"manage_resources,omitempty"`
 	RecordProcesses     bool       `json:"record_processes,omitempty"`
 	LeaseSeconds        int        `json:"lease_seconds,omitempty"`
 	SupportsCheckpoints bool       `json:"supports_checkpoints,omitempty"`
@@ -234,7 +238,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -421,6 +425,10 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			return nil, err
 		}
 		caps = caps.intersect(node)
+		if node.SupportsResources && !caps.SupportsResources {
+			// The registered node requires model and CI reservations for Issue jobs.
+			caps.SupportsCodex, caps.SupportsClaude, caps.SupportsValidation = false, false, false
+		}
 	}
 	canAssess := caps.SupportsDeclaredChecks && caps.SupportsRiskPolicy
 	err = tx.QueryRowContext(ctx, `
@@ -470,6 +478,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		}
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		j.RecordProcesses = j.Spec.VerifyCommit == ""
+		j.ManageResources = registered != nil && caps.SupportsResources
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
@@ -491,9 +500,9 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	j.Workspace = filepath.Join(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	j.LeaseSeconds = executionLeaseSeconds(j.Kind)
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, lease_until)
-		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7,
-		    clock_timestamp() + $6 * interval '1 second')`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints)
+		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until)
+		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7,$8,
+		    clock_timestamp() + $6 * interval '1 second')`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources)
 	if err != nil {
 		return nil, err
 	}
