@@ -37,3 +37,24 @@ func TestHarnessProcessHistory(t *testing.T) {
 		t.Fatal("process that failed before session initialization lost its evidence")
 	}
 }
+
+func TestCodexProcessHistoryAcrossThreads(t *testing.T) {
+	ok := 0
+	now := time.Now().UTC()
+	result := Result{Harness: "codex", HarnessVersion: "0.169.0-alpha.11.1", SessionID: "last-thread"}
+	first := HarnessProcess{Instance: 1, PID: 40, Harness: result.Harness, Version: result.HarnessVersion,
+		Session: "first-thread", Started: now, Exited: now, ExitCode: &ok}
+	last := first
+	last.Instance, last.PID, last.Session = 2, 41, result.SessionID
+	history := ProcessHistory{first, last}
+	if !history.matches(result) || !ValidHarnessVersion(result.Harness, result.HarnessVersion) {
+		t.Fatal("distinct Codex comment rounds were rejected")
+	}
+	result.SessionID = first.Session
+	if history.matches(result) {
+		t.Fatal("accepted a final Session from an earlier process")
+	}
+	if ValidHarnessVersion("codex", "0.169.0-alpha..1") || ValidHarnessVersion("claude", result.HarnessVersion) {
+		t.Fatal("accepted an invalid CLI version")
+	}
+}

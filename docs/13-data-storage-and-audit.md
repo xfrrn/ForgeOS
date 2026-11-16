@@ -23,7 +23,7 @@ FROM attempts ORDER BY claimed_at, execution_id;
 
 `buffered_at` 有值、`settled_at` 为空表示仍待确认。结果冲突时 `outcome` 为 `conflict`，可在该执行行读取 `conflicting_result`。PostgreSQL 中的正式任务状态与 Owner 决定保持有效。
 
-查询 Claude 原生会话及同一次执行经历的进程：
+查询原生会话及同一次执行经历的 Claude 或 Codex 进程：
 
 ```sql
 SELECT a.execution_id, p.instance, p.harness, p.version, p.pid,
@@ -34,9 +34,9 @@ ORDER BY p.instance;
 
 尚未记录退出时间仅表示缺少退出回执。核对正在运行的进程时还需比对节点、可执行文件与实际进程状态。
 
-新控制面在 Claude 实现任务的领取回执中设置 `record_processes`。Worker 将本次执行的进程记录按本机实例号排序，与结果一同写入 SQLite 待报队列。控制面校验 Harness、版本、会话、退出码和时间后，在同一个完成事务中写入 PostgreSQL。重复回报须与已存回执一致。
+新控制面在实现及只读规划任务的领取回执中设置 `record_processes`。Worker 将本次执行的进程记录按本机实例号排序，与结果一同写入 SQLite 待报队列。控制面校验 Harness、版本、会话、退出码和时间后，在同一个完成事务中写入 PostgreSQL。重复回报须与已存回执一致。
 
-从 `GET /tasks/{id}` 的执行结果读取 `processes`；也可在工作台展开对应执行下的“Harness 进程记录”。PID 的含义限定在回执中的执行节点。进程实例号和 Session 分别记录，同一 Session 可以经历多个 PID。没有采集进程数据的历史结果仍按原样展示。运行中尚未完成的进程，可从该节点的本地恢复日志查询。
+从 `GET /tasks/{id}` 的执行结果读取 `processes`；也可在工作台展开对应执行下的“Harness 进程记录”。PID 的含义限定在回执中的执行节点。进程实例号和 Session 分别记录，同一 Session 可以经历多个 PID。没有采集进程数据的历史结果仍按原样展示。运行中尚未完成的进程，可从该节点的本地恢复日志查询。Codex 的每一轮记录其实际 Thread；成功回执的 Session 对应最后完成的进程。版本取自该节点所运行的 `codex --version`，保留预发布标记。
 
 ## 2. 事件记录
 

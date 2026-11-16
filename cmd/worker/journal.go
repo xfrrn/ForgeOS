@@ -104,6 +104,10 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 		if err != nil {
 			return fmt.Errorf("read process receipts for execution %d: %w", job.ExecutionID, err)
 		}
+		if result.Processes != nil {
+			first := (*result.Processes)[0]
+			result.Harness, result.HarnessVersion = first.Harness, first.Version
+		}
 	}
 	report, err := json.Marshal(struct {
 		LeaseToken string `json:"lease_token"`

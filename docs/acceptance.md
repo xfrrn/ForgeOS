@@ -46,7 +46,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | --- | --- | --- | --- |
 | 00–01 产品与端到端流程 | 两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭 | `1a17822`、`32c0fa0`、`5447445` | 远程外部设备、知识归档、完整项目初始化 |
 | 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行 | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6` | 通知、节点资源管理、其余管理协调与动态预览能力 |
-| 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3` | Claude 已完成执行的进程归档及工作台查询见下文。跨节点工件、运行中 Session/Process 和其余 Harness 待验收 |
+| 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3` | 已完成的 Claude、Codex 实现及只读规划进程归档和工作台查询见下文。跨节点工件、运行中的中央进程视图、独立审核角色待验收 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3` | 通用命令队列、运行中暂停与取消 |
 | 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b` | 节点登记与普通执行容量见下文。进程中断后的原生会话恢复、Linux 模型登录复用、多节点恢复待验收 |
@@ -771,3 +771,17 @@ Claude 中断回合恢复对应提交 `d78ae18dc75305efe6e36386356e5358be96ea16`
 | 停止 Worker，通过 Chrome 以 Owner 身份展开对应执行的进程记录，核对 PID 与原生会话，批准候选并等待交付，重启控制面 | 不依赖在线节点即可读取记录；归档与交付关联稳定 | Chrome 可见 PID 和 Session。候选 `71c36f2e15a7237ce29ac722ee523868b5808e1d` 的受保护 PR #32 经两项必需检查后合并为 `7703deef8476a79fa6e6dd3c5f964de8aed52d14`。Issue 已关闭，完整任务 JSON 在控制面重启前后相等。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/32) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43895866795) · [交付回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/31#issuecomment-6920701144) |
 
 首次浏览器定位同时匹配了外围执行和内部检查的折叠控件。改为选择进程记录自己的标题后，从同一候选继续验收。当前中央工作台显示已回报的 Claude 执行；运行中状态仍须查询节点日志。PostgreSQL 18 与真实 Docker 全量回归 9 个包、117 项通过，零跳过。Go 静态检查及工作台生产构建通过。
+
+Claude 进程记录归档与工作台对应提交 `91a150bc0759fb8449707dbfb1dfa2e126679d9a`。
+
+## 阶段四、专题 04、07、13 · Codex 实现与只读规划的进程回执
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在项目配置默认 Claude 的私有 beta 库中，为 #33 明确选择 Codex 实现。比对运行中的原生可执行文件、SQLite、控制面 API 和 Owner 工作台 | 实际 PID、完整版本、原生 Thread 与退出结果一致 | 四处均指向 PID 17244。版本 `0.169.0-alpha.11.1`，Thread `01a1e4f9-de2d-74e1-9df3-9d9eca1821fd`，退出码 0。错误 Thread 的回报返回 409；正确回报的响应丢失后，相同正文重报得到 204。[Issue #33](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/33) |
+| 核对唯一改动的手册、固定候选和本地 CI，批准并等待受保护分支交付 | 一次尝试产生同一候选和已确认合并回执 | 候选 `c4c6e7e5840afb74e41d6a2c2b6dc5febf964e1a`，PR #34 两项检查均成功，合并为 `8124de0fae6c74100b3ad9e25b59f56386ad2fa6`。Issue 已关闭，重启控制面后任务 JSON 相同。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/34) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43897051354) |
+| 在独立 schema 中，于同一 Issue 开放期间以规划模式导入。正式 Worker 只读生成计划，在 Chrome 展开进程并重启控制面 | 规划保持基础提交不变，执行绑定规划进程和版本 | 实测 PID 2004，Thread `01a1e4fa-6876-7100-879e-2f5fd64804b3`，版本相同，退出码 0。任务为 PLANNING，修订 1 与执行计划相同，工作区干净、HEAD 仍为 `7703deef8476a79fa6e6dd3c5f964de8aed52d14`。重启后任务 JSON 相同 |
+
+进程记录在执行结果回报后进入中央工作台。独立管理、审查进程及节点重启后的在途会话恢复仍待验收。
+
+启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、118 项通过，零跳过。Go 静态检查及工作台生产构建通过。

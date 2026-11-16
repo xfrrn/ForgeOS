@@ -27,7 +27,7 @@ import (
 
 type worker struct {
 	api, token, id, repoRoot, workspaceRoot string
-	codex                                   string
+	codex, codexVersion                     string
 	claude                                  claudeCLI
 	planner                                 bool
 	slots                                   int
@@ -116,6 +116,16 @@ func fromEnv(role string) (*worker, error) {
 	w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
 	if err != nil {
 		return nil, err
+	}
+	if w.codex != "" {
+		w.codexVersion, err = readCodexVersion(w.codex)
+		if err != nil {
+			if os.Getenv("FORGEOS_CODEX_BIN") != "" {
+				return nil, err
+			}
+			log.Printf("skipping discovered Codex: %v", err)
+			w.codex, w.planner = "", false
+		}
 	}
 	w.claude, err = findClaude(os.Getenv("FORGEOS_CLAUDE_BIN"))
 	if err != nil {

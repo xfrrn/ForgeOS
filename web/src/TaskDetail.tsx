@@ -262,7 +262,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {start && <Fact label="领取时间">{formatTime(start.at)}</Fact>}
       <Fact label="Worktree" code>{attempt.workspace}</Fact>
       {attempt.requirement_revision && <Fact label="执行绑定需求">{attempt.requirement_revision}</Fact>}
-      {result?.harness === 'claude' && <Fact label="执行 Harness">Claude Code {result.harness_version}</Fact>}
+      {result?.harness && <Fact label="执行 Harness">{result.harness === 'claude' ? 'Claude Code' : 'Codex'} {result.harness_version}</Fact>}
       {result?.session_id && <Fact label={result.harness === 'claude' ? 'Claude Code Session' : 'Codex Session'} code>{result.session_id}</Fact>}
       {result?.base_commit && <Fact label="基础 SHA" code>{result.base_commit}</Fact>}
       {result?.commit && <Fact label={task.spec ? '候选 SHA' : '提交 SHA'} code>{result.commit}</Fact>}

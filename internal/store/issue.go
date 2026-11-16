@@ -229,14 +229,24 @@ func (spec IssueSpec) ValidHarness() bool {
 
 var harnessVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
+var codexVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[[:alnum:]-]+(\.[[:alnum:]-]+)*)?(\+[[:alnum:]-]+(\.[[:alnum:]-]+)*)?$`)
+
+func ValidHarnessVersion(harness, version string) bool {
+	return len(version) <= 64 && (harness == "claude" && harnessVersion.MatchString(version) || harness == "codex" && codexVersion.MatchString(version))
+}
+
 func (spec IssueSpec) accepts(r Result) bool {
-	if r.Processes != nil && (spec.VerifyCommit != "" || spec.Harness != "claude" || !r.Processes.matches(r)) {
+	if r.Processes != nil && !r.Processes.matches(r) {
 		return false
 	}
-	if (r.Harness == "") != (r.HarnessVersion == "") || (r.Harness != "" && (len(r.HarnessVersion) > 64 || !harnessVersion.MatchString(r.HarnessVersion))) {
+	if (r.Harness == "") != (r.HarnessVersion == "") || (r.Harness != "" && !ValidHarnessVersion(r.Harness, r.HarnessVersion)) {
 		return false
 	}
-	if r.Harness != "" && (r.Harness != spec.Harness || r.Harness != "claude" || spec.VerifyCommit != "") {
+	expected := spec.Harness
+	if expected == "" {
+		expected = "codex"
+	}
+	if r.Harness != "" && (r.Harness != expected || spec.VerifyCommit != "") {
 		return false
 	}
 	if spec.Harness == "claude" && spec.VerifyCommit == "" && (r.ExitCode == 0 || r.SessionID != "") && r.Harness != "claude" {

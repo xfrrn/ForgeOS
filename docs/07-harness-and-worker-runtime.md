@@ -82,6 +82,8 @@ Owner 可在导入 Issue 时提交 `{"validation":"auto","harness":"claude"}`，
 - 普通等待、回答和进程重启不自动创建新 Execution。
 - Session 丢失时用 Handoff Context 创建新 Session，并保留关联。
 
+Codex 写入回合与只读 Planner 从 CLI 的 `thread.started` 获取 Thread ID。两者共用进程登记与退出回执，保留原生版本号、PID 和每轮实际会话。管理与审查角色的独立调用仍沿用各自的回执。
+
 正式 Worker 通过 Claude Code 的 `stream-json` 读取原生初始化和终态事件。SQLite 的 `harness_processes` 为每个启动的适配器进程记录本地实例号、PID、探测到的版本、开始时间、CLI 确认的 Session、退出时间与退出码。使用原生可执行文件时，该 PID 即 Claude 进程的 PID。通过租约摘要关联 `attempts` 下的同一次执行。
 
 若已确认 Session 的进程以非零状态退出，且没有收到终态，Worker 等待旧进程退出，向控制面确认原租约，核对原工作区、分离 HEAD、Git 目录和起始提交后，使用相同工具权限与 `--resume <session>` 恢复一次。恢复提示要求先检查现有编辑，再完成剩余工作。已报告的模型失败、身份不符、失去租约、变更起始提交或取消中的任务保留失败状态。一个执行无需为这次恢复创建新的 Worktree。

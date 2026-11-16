@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -144,34 +143,18 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 	if err != nil {
 		return "", errors.New("cannot open Claude result stream")
 	}
-	if err = cmd.Start(); err != nil {
-		return "", errors.New("could not start Claude Code")
-	}
-	key := sha256.Sum256([]byte(job.LeaseToken))
-	local := context.WithoutCancel(ctx)
-	record, err := w.journal.ExecContext(local, `INSERT INTO harness_processes(lease_hash,harness,version,pid) VALUES(?,'claude',?,?)`, key[:], w.claude.version, cmd.Process.Pid)
-	var instance int64
-	if err == nil {
-		instance, err = record.LastInsertId()
-	}
-	if err != nil {
-		stream.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		return "", fmt.Errorf("record Claude process: %w", err)
+	process := w.processLog(job, "claude", w.claude.version)
+	if err := process.start(cmd, stream); err != nil {
+		return "", err
 	}
 	stop := context.AfterFunc(ctx, func() { stream.Close() })
 	defer stop()
-	session, completed, parseErr := readClaudeEvents(stream, resume, func(id string) error {
-		_, err := w.journal.ExecContext(local, "UPDATE harness_processes SET session_id=? WHERE instance=?", id, instance)
-		return err
-	})
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session)
 	if parseErr != nil && !errors.Is(parseErr, errClaudeTurnFailed) {
 		stream.Close()
 		_ = cmd.Process.Kill()
 	}
-	exit := cmd.Wait()
-	_, err = w.journal.ExecContext(local, "UPDATE harness_processes SET exited_at=CURRENT_TIMESTAMP,exit_code=? WHERE instance=?", cmd.ProcessState.ExitCode(), instance)
+	exit, err := process.wait(cmd)
 	switch {
 	case err != nil:
 		return session, fmt.Errorf("record Claude process exit: %w", err)

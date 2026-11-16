@@ -46,6 +46,19 @@ func findCodex(configured string) (string, bool, error) {
 	return "", false, nil
 }
 
+func readCodexVersion(bin string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "--version")
+	cmd.Env = harnessEnv()
+	out, err := cmd.Output()
+	version, found := strings.CutPrefix(strings.TrimSpace(string(out)), "codex-cli ")
+	if err != nil || !found || !store.ValidHarnessVersion("codex", version) {
+		return "", errors.New("cannot identify the Codex CLI version")
+	}
+	return version, nil
+}
+
 func harnessEnv() []string {
 	var env []string
 	for _, entry := range os.Environ() {
@@ -78,7 +91,7 @@ func issuePrompt(issue store.Issue, feedback string, comments []store.CommentInp
 	return prompt, nil
 }
 
-func runCodexTurn(ctx context.Context, bin, workspace, sandbox, prompt string, options ...string) (string, error) {
+func runCodexTurn(ctx context.Context, process processLog, bin, workspace, sandbox, prompt string, options ...string) (string, error) {
 	// Preserve the CLI login, but keep account plugins, hooks, approvals and service tokens out of Issue execution.
 	args := []string{"-a", "never", "exec", "--ignore-user-config", "--ignore-rules",
 		"--disable", "apps", "--disable", "plugins", "--disable", "hooks", "-c", "mcp_servers={}",
@@ -97,8 +110,8 @@ func runCodexTurn(ctx context.Context, bin, workspace, sandbox, prompt string, o
 	if err != nil {
 		return "", errors.New("could not open Codex event stream")
 	}
-	if err = cmd.Start(); err != nil {
-		return "", errors.New("could not start Codex")
+	if err = process.start(cmd, stream); err != nil {
+		return "", err
 	}
 	closeOnCancel := context.AfterFunc(ctx, func() { stream.Close() })
 	defer closeOnCancel()
@@ -122,6 +135,7 @@ func runCodexTurn(ctx context.Context, bin, workspace, sandbox, prompt string, o
 				err = errors.New("invalid Codex session ID")
 			} else {
 				session = event.ThreadID
+				err = process.session(session)
 			}
 		case "turn.completed":
 			complete = true
@@ -139,7 +153,10 @@ func runCodexTurn(ctx context.Context, bin, workspace, sandbox, prompt string, o
 		stream.Close()
 		_ = cmd.Process.Kill()
 	}
-	exit := cmd.Wait()
+	exit, journalErr := process.wait(cmd)
+	if journalErr != nil {
+		return session, fmt.Errorf("record Codex process exit: %w", journalErr)
+	}
 	switch {
 	case ctx.Err() != nil:
 		return session, ctx.Err()
@@ -259,7 +276,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		return failed("open execution checkpoint", err)
 	}
 	if spec.Mode == "plan" {
-		result = w.planIssue(ctx, repo, workspace, *spec, comments)
+		result = w.planIssue(ctx, repo, workspace, job, comments)
 		if result.ExitCode == 0 {
 			if _, err = w.checkpoint(ctx, job, 0, result.SessionID); err != nil {
 				return failed("confirm planning checkpoint", err)
@@ -293,7 +310,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 			result.Harness, result.HarnessVersion = "claude", w.claude.version
 			result.SessionID, err = w.claudeTurn(ctx, job, prompt, result.SessionID, start, dir)
 		} else {
-			result.SessionID, err = runCodexTurn(ctx, w.codex, workspace, "workspace-write", prompt)
+			result.SessionID, err = runCodexTurn(ctx, w.processLog(job, "codex", w.codexVersion), w.codex, workspace, "workspace-write", prompt)
 		}
 		if err != nil || !job.SupportsCheckpoints {
 			break
