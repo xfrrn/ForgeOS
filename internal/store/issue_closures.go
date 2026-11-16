@@ -15,7 +15,7 @@ type TrackedIssue struct {
 
 // Accepted deliveries and an in-flight Goal closure reconcile their own remote writes.
 const pendingSource = `t.goal_id IS NULL AND t.github_issue_id IS NOT NULL AND t.source_closure_id IS NULL
-	AND t.close_lease IS NULL AND t.status IN ('READY','RUNNING','PLANNING','ACTIVE','BLOCKED','WAITING_INPUT','WAITING_ACCEPTANCE','FAILED')`
+	AND t.close_lease IS NULL AND t.status IN ('READY','RUNNING','PLANNING','ACTIVE','BLOCKED','WAITING_INPUT','WAITING_ACCEPTANCE','PAUSED','FAILED')`
 
 func (s *Store) TrackedIssues(ctx context.Context, project, repository int64) ([]TrackedIssue, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT t.github_issue_id,(t.spec->'issue'->>'number')::bigint
@@ -60,7 +60,7 @@ func (s *Store) CloseSourceIssue(ctx context.Context, project, repository int64,
 	}
 	_, err = tx.ExecContext(ctx, `WITH stopped AS (
 		UPDATE work_items SET source_closure_id=$1,status=CASE WHEN status='RUNNING' THEN status ELSE 'CANCELLED' END
-		WHERE (id=$1 OR goal_id=$1) AND status IN ('READY','RUNNING','PLANNING','ACTIVE','BLOCKED','WAITING_INPUT','WAITING_ACCEPTANCE','FAILED')
+		WHERE (id=$1 OR goal_id=$1) AND status IN ('READY','RUNNING','PLANNING','ACTIVE','BLOCKED','WAITING_INPUT','WAITING_ACCEPTANCE','PAUSED','FAILED')
 		RETURNING id,status
 	) INSERT INTO task_events(task_id,execution_id,type)
 	SELECT id,(SELECT max(e.id) FROM executions e WHERE e.task_id=stopped.id),

@@ -37,7 +37,8 @@ func TestTaskListPagesAndFilters(t *testing.T) {
 	}
 	page := get("/tasks?status=CANCELLED")
 	cancelled, hasCancelled := page.Counts["CANCELLED"]
-	if page.Items == nil || len(page.Items) != 0 || len(page.Counts) != 13 || page.Counts["ALL"] != 0 || !hasCancelled || cancelled != 0 {
+	paused, hasPaused := page.Counts["PAUSED"]
+	if page.Items == nil || len(page.Items) != 0 || len(page.Counts) != 14 || page.Counts["ALL"] != 0 || !hasCancelled || cancelled != 0 || !hasPaused || paused != 0 {
 		t.Fatal("empty list:", page)
 	}
 	project, err := data.CreateProject(ctx, t.TempDir())

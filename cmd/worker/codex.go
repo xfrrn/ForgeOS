@@ -301,7 +301,13 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job store.Job) store.Result {
 	spec := job.Spec
 	budget := executionResources{worker: w, job: job}
-	validate := func(candidate string) (store.ValidationResult, error) {
+	validate := func(candidate, session string) (store.ValidationResult, error) {
+		if job.ReportCICandidate {
+			err := w.recordCICandidate(ctx, job, candidate, session)
+			if err != nil {
+				return store.ValidationResult{}, err
+			}
+		}
 		return withResource(ctx, &budget, "ci", func() (store.ValidationResult, error) {
 			return w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, candidate, spec)
 		})
@@ -311,7 +317,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		if _, err := checkedWorktree(ctx, repo, workspace, spec.VerifyCommit); err != nil {
 			return failed("could not check out refreshed candidate", err)
 		}
-		report, err := validate(spec.VerifyCommit)
+		report, err := validate(spec.VerifyCommit, "")
 		if report.Commit != "" {
 			result.Validation = &report
 		}
@@ -394,7 +400,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 	}
 	if err == nil {
 		var report store.ValidationResult
-		report, err = validate(result.Commit)
+		report, err = validate(result.Commit, result.SessionID)
 		if report.Commit != "" {
 			result.Validation = &report
 		}

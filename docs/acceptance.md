@@ -1204,3 +1204,17 @@ Maven 清单对应 ForgeOS 提交 `9e88bdd57971956e382d9141057b4ed9861e6fe7`。
 | 重启控制面，在 Chrome 回读执行与事件并查询远端 Issue | 已取消任务保持终态，重复请求安全；来源 Issue 仍开放 | 浏览器显示 Owner 取消结算事件，取消按钮已移除。原执行保留请求时间，无交付记录，GitHub 回读 OPEN。核对后另行关闭验收 Issue |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 150 项通过，零测试跳过。已覆盖并发重报、成功回执与取消交错、过期租约结算和非 Owner 请求。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+Owner 主动取消运行中任务对应 ForgeOS 提交 `84758c5b8d561b37ddefc2a103c75e2b2b4e9710`。
+
+## 专题 06、10 · 暂停 CI 后恢复同一候选的验证
+
+真实验收使用私有 beta、PostgreSQL 18 schema `cipause_5e3a49a2`、正式 Worker、Chrome 和 Docker。时间均为 UTC+8。[验收 Issue #55](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/55)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 等原生 Codex 结束，确认 Docker 正在运行 build，排入 T-2，再从任务页暂停 T-1 的 CI | 先固定候选并登记请求，随后停止检查、释放名额 | 执行 1，候选 `aae51b5ff79b882a489d52e9869bd11aa3e47c11`。04:21:40 点击暂停，重复 POST 返回 204。T-1 当时仍 RUNNING。04:22:09 收到原 V2 运行 `ci-run-2186646805` 的 CANCELLED 回执，进入 PAUSED，T-2 随后完成 |
+| 下载原检查的 build.log，检查原容器，重启控制面后筛选 PAUSED | 暂停任务、日志及固定 SHA 可以复核 | 日志与节点原件逐字节相同，SHA-256 为 `62fde2cd4ebcf34475c2f2458b1a5ff5566f6f9567368c56ee91da7cbeeee5b2`。原容器已回收。筛选结果包含 T-1，浏览器可见暂停事件及恢复按钮 |
+| 从 Chrome 恢复，重复同一次恢复请求，再启动 Worker | 只排入一次验证，复用候选 SHA、重新执行全部检查并等待 Owner 验收 | 04:22:12 进入 READY。执行 3 在新 Worktree 验证原 SHA，V2 运行 `ci-run-3733003939` 通过，04:23:46 进入 WAITING_ACCEPTANCE。新执行没有模型 Session。执行 1 的原生会话 `01a1e604-db7d-7882-9d40-5cccf796c57d` 与取消回执均留存。GitHub 仍为 OPEN，核对后单独关闭测试 Issue |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 151 项通过，零测试跳过。任务列表覆盖 PAUSED 状态，数据库用例覆盖错租约、换 SHA、提前恢复、旧请求重放和暂停期间关闭来源 Issue。Go 静态检查、TypeScript 检查和 Web 生产构建通过。

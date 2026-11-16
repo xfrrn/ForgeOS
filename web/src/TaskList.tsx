@@ -6,7 +6,7 @@ type Summary = {
   issue_number?: number; pr_number?: number; worker?: string; updated_at: string | null
 }
 type Page = { items: Summary[]; counts: Record<string, number>; next_before?: number }
-const filters = ['PLANNING', 'ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'WAITING_INPUT', 'WAITING_ACCEPTANCE', 'ACCEPTED', 'DONE', 'FAILED', 'SUPERSEDED', 'CANCELLED']
+const filters = ['PLANNING', 'ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'PAUSED', 'WAITING_INPUT', 'WAITING_ACCEPTANCE', 'ACCEPTED', 'DONE', 'FAILED', 'SUPERSEDED', 'CANCELLED']
 const metrics = [
   { key: 'ALL', name: '全部任务', icon: 'Layers3', color: 'blue' },
   { key: 'RUNNING', name: '执行中', icon: 'Activity', color: 'cyan' },

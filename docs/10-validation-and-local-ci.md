@@ -101,6 +101,8 @@ Runner 读取基础提交的配置，在候选文件的隔离副本中运行。�
 
 在工作台的“逐项检查”可核对日志文件名、字节数及摘要，点击文件名旁的下载按钮即可取回日志、报告和产物。Owner API 为 `GET /tasks/{task}/executions/{execution}/ci/{run}/{file}`，其中 `file` 取回执内的归档文件名。返回下载附件，每次发送前核对大小与 SHA-256。任务、执行、运行号或文件名不匹配时返回 404，已登记的文件暂缺或损坏时返回 503。历史日志缺少摘要时只显示原有文件名。
 
+实现 Worker 进入 CI 前向控制面登记候选提交。任务页可暂停这次 CI，查看原检查的取消回执、日志和已经产生的文件，再对同一提交恢复完整验证。两次运行各有独立 Execution 与运行编号。工作台操作见[专题 06 的命令队列](06-orchestration-and-planning.md#6-命令队列)。
+
 支持集中归档的控制面确认执行结果后，Worker 在清除待报正文的同一 SQLite 事务中登记待传文件。后台独立传输，失败的文件在 30 秒后可重试。控制面只保存与该执行回执完全一致的字节；具名 Worker 的项目与执行授权同样适用于上传。旧控制面或旧 Worker 仍可上报原有验证结果。需要补传历史文件或修复损坏副本时，使用该节点的 Worker 凭据向上述路径前加 `/internal`，以 PUT 发送原文件字节。成功和重传均返回 204。备份或恢复本地运行目录时，用独立回执调用 `worker verify-ci-run`。[CI 归档恢复步骤](14-deployment-and-operations.md#核对恢复的-ci-运行目录)
 
 从正常 Issue 入口指定 `{"validation":"auto","task_type":"documentation","target":"pull_request"}` 可按候选变化选级。项目基础提交包含 validation.yaml 或 acceptance.yaml 时，显式指定 V1–V4、docs 或 go-test 也会启用风险评估。指定等级作为最低要求，docs 和 go-test 分别对应 V1 和 V2。GitHub Issue 以 PR 为最低交付目标，可指定 staging 提高要求。没有仓库配置且按原方式请求 docs 或 go-test 的任务继续使用原检查。手动导入与按标签轮询采用相同规则，Goal 子项继承策略，修订或重新验证会针对新的 SHA 重新计算。

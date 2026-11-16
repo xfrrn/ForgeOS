@@ -19,7 +19,7 @@ export function Icon({ name, size = 17, ...props }: LucideProps & { name: keyof 
 
 export const statusLabels: Record<string, string> = {
   WAITING_INPUT: '等待回答',
-  CANCELLED: '已取消', SUPERSEDED: '已从计划移除', PLANNING: '规划中', ACTIVE: '目标执行中', BLOCKED: '等待依赖', READY: '待执行', RUNNING: '执行中', WAITING_ACCEPTANCE: '待验收',
+  PAUSED: '已暂停', CANCELLED: '已取消', SUPERSEDED: '已从计划移除', PLANNING: '规划中', ACTIVE: '目标执行中', BLOCKED: '等待依赖', READY: '待执行', RUNNING: '执行中', WAITING_ACCEPTANCE: '待验收',
   ACCEPTED: '已验收', DONE: '已完成', FAILED: '失败', COMPLETED: '执行成功',
   PENDING: '待交付', WAITING: '等待合并', MERGED: '已合并',
 }
@@ -50,7 +50,7 @@ export class ApiError extends Error {
 
 export function requestWith(token: string, onUnauthorized: () => void): ApiRequest {
   return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
-    if (path !== '/workers' && !/^\/executions\/[1-9]\d*\/cancel$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
+    if (path !== '/workers' && !/^\/executions\/[1-9]\d*\/(?:cancel|pause-ci|resume-ci)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + token)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')

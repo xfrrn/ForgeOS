@@ -7,6 +7,20 @@ import (
 	"net/http"
 )
 
+func (w *worker) recordCICandidate(ctx context.Context, job store.Job, sha, session string) error {
+	for ctx.Err() == nil {
+		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/ci-candidate", job.ExecutionID), map[string]string{"lease_token": job.LeaseToken, "commit": sha, "session_id": session}, nil)
+		if status == http.StatusNoContent && err == nil {
+			return nil
+		}
+		if !temporary(status) {
+			return fmt.Errorf("CI candidate checkpoint rejected (HTTP %d)", status)
+		}
+		wait(ctx)
+	}
+	return ctx.Err()
+}
+
 func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session string) ([]store.CommentInput, error) {
 	if !job.SupportsCheckpoints {
 		return nil, nil

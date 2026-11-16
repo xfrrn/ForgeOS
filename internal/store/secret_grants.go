@@ -40,7 +40,7 @@ func (s *Store) ApproveSecretGrant(ctx context.Context, m SecretMeta, g SecretGr
 		SELECT t.project_id,t.id,e.id,e.worker,m.environment,m.name,m.risk,m.updated_at,$7,$8,$9,$10,$11
 		FROM executions e JOIN work_items t ON t.id=e.task_id JOIN project_secret_metadata m ON m.project_id=t.project_id
 		WHERE t.project_id=$1 AND e.id=$2 AND e.worker=$3 AND m.environment=$4 AND m.name=$5 AND m.updated_at=$6
-		AND m.risk IN ('S0','S1','S2') AND e.result IS NULL AND e.abandoned_at IS NULL AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.owner_cancel_requested_at IS NULL
+		AND m.risk IN ('S0','S1','S2') AND e.result IS NULL AND e.abandoned_at IS NULL AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.owner_cancel_requested_at IS NULL AND e.ci_pause_requested_at IS NULL
 		AND least(e.lease_until,$9::timestamptz)>clock_timestamp()
 		ON CONFLICT (execution_id,request_key) DO UPDATE SET request_key=EXCLUDED.request_key
 		WHERE (g.project_id,g.principal,g.environment,g.name,g.metadata_updated_at,g.version,g.purpose,g.expires_at,g.max_uses)
@@ -103,7 +103,7 @@ func (s *Store) UseSecret(ctx context.Context, project, id int64, principal stri
 		JOIN project_secret_metadata m ON (m.project_id,m.environment,m.name)=(g.project_id,g.environment,g.name)
 		WHERE g.project_id=$1 AND g.id=$2 AND e.worker=$3 AND g.principal=$3 AND g.execution_id=$4
 		AND g.environment=$5 AND g.name=$6 AND g.purpose=$7 AND g.revoked_at IS NULL AND g.risk=m.risk AND g.metadata_updated_at=m.updated_at
-		AND t.project_id=g.project_id AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.owner_cancel_requested_at IS NULL AND e.result IS NULL AND e.abandoned_at IS NULL
+		AND t.project_id=g.project_id AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.owner_cancel_requested_at IS NULL AND e.ci_pause_requested_at IS NULL AND e.result IS NULL AND e.abandoned_at IS NULL
 		AND least(e.lease_until,g.expires_at)>clock_timestamp() FOR UPDATE OF g FOR SHARE OF e,t,m`,
 		project, id, principal, u.ExecutionID, u.Environment, u.Name, u.Purpose).Scan(&hash, &version, &limit, &until, &m.Risk)
 	if errors.Is(err, sql.ErrNoRows) {

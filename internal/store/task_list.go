@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var taskStatuses = []string{"PLANNING", "ACTIVE", "BLOCKED", "READY", "RUNNING", "WAITING_INPUT", "WAITING_ACCEPTANCE", "ACCEPTED", "DONE", "FAILED", "SUPERSEDED", "CANCELLED"}
+var taskStatuses = []string{"PLANNING", "ACTIVE", "BLOCKED", "READY", "RUNNING", "PAUSED", "WAITING_INPUT", "WAITING_ACCEPTANCE", "ACCEPTED", "DONE", "FAILED", "SUPERSEDED", "CANCELLED"}
 
 func ValidTaskStatus(status string) bool {
 	return slices.Contains(taskStatuses, status)

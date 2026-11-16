@@ -179,6 +179,25 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 		respond(w, http.StatusNoContent, nil, err)
 	}))
 
+	for _, action := range []string{"pause-ci", "resume-ci"} {
+		mux.HandleFunc("POST /executions/{id}/"+action, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+			if id, ok := pathID(w, r); ok {
+				respond(w, http.StatusNoContent, nil, data.ControlCI(r.Context(), id, action == "resume-ci"))
+			}
+		}))
+	}
+	mux.HandleFunc("POST /internal/executions/{id}/ci-candidate", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var input struct {
+			Lease   string `json:"lease_token"`
+			Commit  string `json:"commit"`
+			Session string `json:"session_id"`
+		}
+		if ok && decode(w, r, &input) {
+			respond(w, http.StatusNoContent, nil, data.RecordCICandidate(r.Context(), id, input.Lease, input.Commit, input.Session))
+		}
+	}))
+
 	mux.HandleFunc("POST /executions/{id}/cancel", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if valid {

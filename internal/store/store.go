@@ -158,6 +158,9 @@ var initializationReportsSchema string
 //go:embed 045_owner_cancellation.sql
 var ownerCancellationSchema string
 
+//go:embed 046_ci_pause.sql
+var ciPauseSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -192,6 +195,9 @@ type Task struct {
 }
 
 type Execution struct {
+	CICandidate            string           `json:"ci_candidate,omitempty"`
+	CIPauseRequestedAt     *time.Time       `json:"ci_pause_requested_at,omitempty"`
+	CIResumedAt            *time.Time       `json:"ci_resumed_at,omitempty"`
 	OwnerCancelRequestedAt *time.Time       `json:"owner_cancel_requested_at,omitempty"`
 	ReviewFeedback         []ReviewFeedback `json:"review_feedback,omitempty"`
 	TestCaseState          string           `json:"test_case_state,omitempty"`
@@ -223,6 +229,7 @@ type Event struct {
 }
 
 type Job struct {
+	ReportCICandidate   bool         `json:"report_ci_candidate,omitempty"`
 	Startup             *StartupSpec `json:"startup,omitempty"`
 	ManageResources     bool         `json:"manage_resources,omitempty"`
 	RecordProcesses     bool         `json:"record_processes,omitempty"`
@@ -276,7 +283,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -333,6 +340,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
+		        'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
 		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,
 		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
 		            FROM candidate_review_feedback f WHERE f.execution_id=e.id AND t.status='WAITING_ACCEPTANCE'
@@ -544,6 +552,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
 			return nil, err
 		}
+		j.ReportCICandidate = j.Spec.Mode != "plan"
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		j.RecordProcesses = j.Spec.VerifyCommit == ""
 		j.ManageResources = registered != nil && caps.SupportsResources
@@ -597,13 +606,14 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned, usesCheckpoints, sourceClosed, ownerCancel bool
+	var abandoned, usesCheckpoints, sourceClosed, ownerCancel, ciPause bool
+	var ciCandidate string
 	var expectedHash, stored, spec []byte
 	var repo, worker, kind string
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL,t.kind
+		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL,e.ci_pause_requested_at IS NOT NULL,COALESCE(e.ci_candidate,''),t.kind
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &kind)
+		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &ciPause, &ciCandidate, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -643,13 +653,13 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if err = json.Unmarshal(spec, &issue); err != nil {
 			return err
 		}
-		if !issue.accepts(result) {
+		if !issue.accepts(result) || (ciCandidate != "" && result.Commit != "" && result.Commit != ciCandidate) {
 			return ErrConflict
 		}
 		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker) {
 			return ErrConflict
 		}
-		if result.succeeded() && !sourceClosed && !ownerCancel {
+		if result.succeeded() && !sourceClosed && !ownerCancel && !ciPause {
 			if v := result.Validation; v != nil && v.Run != nil {
 				if verify == nil {
 					return ErrConflict
@@ -709,6 +719,8 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		status, eventType = "CANCELLED", "source_issue_cancelled"
 	} else if ownerCancel {
 		status, eventType = "CANCELLED", "owner_cancelled"
+	} else if ciPause {
+		status, eventType = "PAUSED", "ci_paused"
 	} else if !result.succeeded() {
 		status, eventType = "FAILED", "execution_failed"
 	} else if result.Plan != nil {
@@ -734,10 +746,10 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 	}
 	defer tx.Rollback()
 	var taskID int64
-	var abandoned, eligible, cancelled bool
+	var abandoned, eligible, cancelled, ciPause bool
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.abandoned_at IS NOT NULL, e.result IS NULL AND e.lease_until <= now(), t.source_closure_id IS NOT NULL OR e.owner_cancel_requested_at IS NOT NULL
-		FROM executions e JOIN work_items t ON t.id=e.task_id WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &abandoned, &eligible, &cancelled)
+		SELECT e.task_id, e.abandoned_at IS NOT NULL, e.result IS NULL AND e.lease_until <= now(), t.source_closure_id IS NOT NULL OR e.owner_cancel_requested_at IS NOT NULL, e.ci_pause_requested_at IS NOT NULL
+		FROM executions e JOIN work_items t ON t.id=e.task_id WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &abandoned, &eligible, &cancelled, &ciPause)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -753,6 +765,8 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 	status := "FAILED"
 	if cancelled {
 		status = "CANCELLED"
+	} else if ciPause {
+		status = "PAUSED"
 	}
 	return finishTask(ctx, tx, taskID, id, status, "execution_abandoned")
 }
