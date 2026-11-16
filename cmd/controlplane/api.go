@@ -304,11 +304,15 @@ func decodeLimited(w http.ResponseWriter, r *http.Request, dest any, limit int64
 }
 
 func respond(w http.ResponseWriter, status int, value any, err error) {
+	var expiry store.RetentionExpiry
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		problem(w, http.StatusNotFound, "resource not found")
-	case errors.Is(err, store.ErrScreenshotExpired):
-		problem(w, http.StatusGone, err.Error())
+	case errors.As(err, &expiry):
+		writeJSON(w, http.StatusGone, struct {
+			Error    string `json:"error"`
+			Revision int64  `json:"retention_revision,omitempty"`
+		}{expiry.Error(), expiry.Revision})
 	case errors.Is(err, store.ErrConflict):
 		problem(w, http.StatusConflict, "request conflicts with the current task state or recorded decision")
 	case err != nil:

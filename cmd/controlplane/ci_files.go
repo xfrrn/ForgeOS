@@ -36,6 +36,23 @@ func registerCIFiles(mux *http.ServeMux, data *store.Store, owner string, worker
 	})
 	mux.HandleFunc("GET /projects/{id}/ci-retention", policy)
 	mux.HandleFunc("PUT /projects/{id}/ci-retention", policy)
+	mux.HandleFunc("GET /projects/{id}/retention-history", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var before int64
+		if value := r.URL.Query().Get("before"); value != "" {
+			var err error
+			before, err = strconv.ParseInt(value, 10, 64)
+			if err != nil || before <= 0 {
+				problem(w, 400, "before must be a positive revision ID")
+				return
+			}
+		}
+		history, err := data.RetentionHistory(r.Context(), id, before)
+		respond(w, 200, history, err)
+	}))
 	const path = "/tasks/{task}/executions/{id}/ci/{run}/{file}"
 	const probeRoute = "HEAD /internal" + path
 	serve := func(w http.ResponseWriter, r *http.Request) {
@@ -88,9 +105,6 @@ func registerCIFiles(mux *http.ServeMux, data *store.Store, owner string, worker
 			return nil
 		})
 		switch {
-		case errors.Is(err, store.ErrCIExpired):
-			problem(w, http.StatusGone, "CI 文件已按项目保留策略到期")
-			return
 		case fileStatus != 0:
 			problem(w, fileStatus, err.Error())
 			return

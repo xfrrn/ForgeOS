@@ -26,21 +26,32 @@ func (s *Store) ScreenshotRetention(ctx context.Context, project int64, seconds 
 		return 0, err
 	}
 	defer tx.Rollback()
-	err = tx.QueryRowContext(ctx, "UPDATE projects SET screenshot_seconds=$2 WHERE id=$1 RETURNING screenshot_seconds", project, *seconds).Scan(&current)
+	var before, after []byte
+	err = tx.QueryRowContext(ctx, `SELECT jsonb_build_object('seconds',screenshot_seconds),jsonb_build_object('seconds',$2::integer)
+		FROM projects WHERE id=$1 FOR UPDATE`, project, *seconds).Scan(&before, &after)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNotFound
 	}
 	if err != nil {
 		return 0, err
 	}
-	// Only live receipts adopt the new deadline. An expired receipt stays expired.
-	_, err = tx.ExecContext(ctx, `UPDATE feedback_artifacts a SET expires_at=a.created_at + make_interval(secs=>NULLIF($2::int,0))
-		FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id
-		WHERE a.feedback_id=f.id AND p.project_id=$1 AND a.removed_at IS NULL AND (a.expires_at IS NULL OR a.expires_at>statement_timestamp())`, project, current)
+	revision, err := recordRetentionChange(ctx, tx, project, "feedback_screenshot", before, after)
 	if err != nil {
 		return 0, err
 	}
-	return current, tx.Commit()
+	if _, err = tx.ExecContext(ctx, "UPDATE projects SET screenshot_seconds=$2,screenshot_revision=COALESCE($3,screenshot_revision) WHERE id=$1", project, *seconds, revision); err != nil {
+		return 0, err
+	}
+	// Only live receipts adopt the new deadline. An expired receipt stays expired.
+	_, err = tx.ExecContext(ctx, `UPDATE feedback_artifacts a SET expires_at=a.created_at + make_interval(secs=>NULLIF($2::int,0)),
+		retention_revision=project.screenshot_revision
+		FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id
+		JOIN projects project ON project.id=p.project_id
+		WHERE a.feedback_id=f.id AND p.project_id=$1 AND a.removed_at IS NULL AND (a.expires_at IS NULL OR a.expires_at>statement_timestamp())`, project, *seconds)
+	if err != nil {
+		return 0, err
+	}
+	return *seconds, tx.Commit()
 }
 
 type FeedbackArtifact struct {
@@ -63,9 +74,10 @@ func (s *Store) SaveFeedbackScreenshot(ctx context.Context, task int64, preview 
 	defer tx.Rollback()
 	var execution int64
 	var seconds int32
-	err = tx.QueryRowContext(ctx, `SELECT p.execution_id,project.screenshot_seconds FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id
+	var revision sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT p.execution_id,project.screenshot_seconds,project.screenshot_revision FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id
 		JOIN projects project ON project.id=p.project_id
-		WHERE p.task_id=$1 AND p.id=$2 AND f.id=$3 FOR SHARE OF project FOR UPDATE OF f`, task, preview, feedback).Scan(&execution, &seconds)
+		WHERE p.task_id=$1 AND p.id=$2 AND f.id=$3 FOR SHARE OF project FOR UPDATE OF f`, task, preview, feedback).Scan(&execution, &seconds, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
@@ -73,15 +85,15 @@ func (s *Store) SaveFeedbackScreenshot(ctx context.Context, task int64, preview 
 		return a, err
 	}
 	a = FeedbackArtifact{Key: fmt.Sprintf("tasks/%d/feedback/%d/%s.png", task, feedback, digest), MIME: "image/png", Bytes: size, SHA256: digest}
-	err = tx.QueryRowContext(ctx, `INSERT INTO feedback_artifacts(feedback_id,storage_key,mime,bytes,sha256,expires_at)
-		VALUES($1,$2,$3,$4,$5,now()+make_interval(secs=>NULLIF($6::int,0)))
-		ON CONFLICT(feedback_id,sha256) DO NOTHING RETURNING id`, feedback, a.Key, a.MIME, size, digest, seconds).Scan(&a.ID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO feedback_artifacts(feedback_id,storage_key,mime,bytes,sha256,expires_at,retention_revision)
+		VALUES($1,$2,$3,$4,$5,now()+make_interval(secs=>NULLIF($6::int,0)),$7)
+		ON CONFLICT(feedback_id,sha256) DO NOTHING RETURNING id`, feedback, a.Key, a.MIME, size, digest, seconds, revision).Scan(&a.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		var expired bool
-		err = tx.QueryRowContext(ctx, `SELECT id,removed_at IS NOT NULL OR COALESCE(expires_at<=clock_timestamp(),false)
-			FROM feedback_artifacts WHERE feedback_id=$1 AND sha256=$2 FOR UPDATE`, feedback, digest).Scan(&a.ID, &expired)
+		err = tx.QueryRowContext(ctx, `SELECT id,removed_at IS NOT NULL OR COALESCE(expires_at<=clock_timestamp(),false),retention_revision
+			FROM feedback_artifacts WHERE feedback_id=$1 AND sha256=$2 FOR UPDATE`, feedback, digest).Scan(&a.ID, &expired, &revision)
 		if err == nil && expired {
-			return a, ErrScreenshotExpired
+			return a, RetentionExpiry{ErrScreenshotExpired, revision.Int64}
 		}
 	} else if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES($1,$2,'feedback_screenshot_saved')`, task, execution)
@@ -99,14 +111,15 @@ func (s *Store) SaveFeedbackScreenshot(ctx context.Context, task int64, preview 
 func (s *Store) FeedbackArtifact(ctx context.Context, task int64, preview string, feedback, id int64) (FeedbackArtifact, error) {
 	var a FeedbackArtifact
 	var expired bool
-	err := s.db.QueryRowContext(ctx, `SELECT a.id,a.storage_key,a.mime,a.bytes,a.sha256,a.removed_at IS NOT NULL OR COALESCE(a.expires_at<=statement_timestamp(),false) FROM feedback_artifacts a
+	var revision sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT a.id,a.storage_key,a.mime,a.bytes,a.sha256,a.removed_at IS NOT NULL OR COALESCE(a.expires_at<=statement_timestamp(),false),a.retention_revision FROM feedback_artifacts a
 		JOIN preview_feedback f ON f.id=a.feedback_id JOIN static_preview_receipts p ON p.id=f.preview_id
-		WHERE p.task_id=$1 AND p.id=$2 AND f.id=$3 AND a.id=$4`, task, preview, feedback, id).Scan(&a.ID, &a.Key, &a.MIME, &a.Bytes, &a.SHA256, &expired)
+		WHERE p.task_id=$1 AND p.id=$2 AND f.id=$3 AND a.id=$4`, task, preview, feedback, id).Scan(&a.ID, &a.Key, &a.MIME, &a.Bytes, &a.SHA256, &expired, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
 	if err == nil && expired {
-		return a, ErrScreenshotExpired
+		return a, RetentionExpiry{ErrScreenshotExpired, revision.Int64}
 	}
 	return a, err
 }

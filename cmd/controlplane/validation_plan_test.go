@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http/httptest"
@@ -163,9 +164,28 @@ func TestDeclaredChecksRequiredForIssue(t *testing.T) {
 		close(release)
 		must(<-upload)
 		must(<-policy)
-		do("GET", file, "owner", "", 410)
+		expired := do("GET", file, "owner", "", 410)
+		var gone struct {
+			Revision int64 `json:"retention_revision"`
+		}
+		must(json.Unmarshal(expired.Body.Bytes(), &gone))
+		if gone.Revision == 0 {
+			t.Fatal("expired file has no policy revision")
+		}
 		do("HEAD", "/internal"+file, "runner", "", 410)
 		do("PUT", retention, "owner", `{}`, 200)
+		do("PUT", retention, "owner", `{}`, 200)
+		history := fmt.Sprintf("/projects/%d/retention-history", project.ID)
+		do("GET", history, "runner", "", 401)
+		var revisions []struct {
+			ID           int64
+			Actor, Scope string
+			Policy       store.CIRetention
+		}
+		must(json.Unmarshal(do("GET", history, "owner", "", 200).Body.Bytes(), &revisions))
+		if len(revisions) != 3 || revisions[1].ID != gone.Revision || revisions[1].Actor != "owner" || revisions[1].Scope != "ci" || revisions[1].Policy.LogSeconds != 86400 {
+			t.Fatalf("unexpected policy revisions: %+v", revisions)
+		}
 		do("PUT", "/internal"+file, "runner", content, 410)
 		busy := errors.New("storage offline")
 		if err := data.PurgeCIFiles(ctx, func(store.CIArchiveFile) error { return busy }); !errors.Is(err, busy) {

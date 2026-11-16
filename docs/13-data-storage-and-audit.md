@@ -103,6 +103,10 @@ Owner 可用 `GET /projects/{id}/ci-retention` 读取项目策略，用 `PUT` �
 
 Owner 可用 `GET /projects/{id}/screenshot-retention` 查询反馈截图的中央保留期，用 `PUT` 提交 `{"seconds":2592000}` 设为 30 天，或提交 `{"seconds":0}` 设为无限期。默认无限期。期限从每张截图首次归档起算；改变策略会对该项目仍有效的历史截图重新计算到期时间。已到期截图的读取和同反馈同图重传返回 410。工作台的反馈历史显示“已到期”，并保留附件编号、字节数和 SHA-256。控制面启动和每分钟扫描到期 PNG；`feedback_artifacts.expires_at` 记录期限，`removed_at` 记录中央文件清理完成时间。
 
+Owner 可用 `GET /projects/{id}/retention-history` 追查中央文件的保留期限。结果按修订编号降序，每页最多 100 条。用 `?before=<本页最后一个 id>` 读取更早的记录。每次有效变更在设置策略的事务内记录项目、范围（`ci` 或 `feedback_screenshot`）、角色、前后配置和时间；重复提交相同配置复用已有修订。角色 `owner` 表示持 Owner 身份提交，当前凭据体系只区分角色。
+
+文件到期的 410 响应可包含 `retention_revision`，与 `ci_archive_files` 或 `feedback_artifacts` 中的同名字段对应。通过该编号可以找到让文件到期的策略；后来更改期限仍保留原关联。升级到数据库版本 37 时，已有的非默认配置以 `actor=migration` 登记一次，`previous_policy` 为空。审计启用前已到期的文件继续返回 410，响应省略未知的修订编号。
+
 - 重要决策和任务元数据长期保留；
 - 原始日志按可配置期限保留；
 - 大体积录屏和构建产物按项目策略保留；
