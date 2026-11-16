@@ -873,3 +873,17 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 | Owner 在 Chrome 核对并批准两个候选，等待各自 Actions 从失败重跑至通过，再重启并核对回执 | 每库只合并批准 SHA，并关闭原 Issue；交付证据可重新读取 | alpha 候选 `a4f790b45e29c1f7def58d3c28d7b4938c24662e`，合并 `99b295b93bab431978cc80d1dd90fc6c55231559`。[PR #21](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/21) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43906842688) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/20#issuecomment-6922234379)。beta 候选 `40825fbf01d81125066cc4cba6731c76fb5eb13b`，合并 `b06f526c9b6955597c277cc16733ced24079763b`。[PR #46](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/46) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43906853449) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/45#issuecomment-6922235994) |
 
 PostgreSQL 18 回归覆盖并发申请、旧步骤重放、旧节点升级及租约过期后由 Owner 结束执行。启用 PostgreSQL 和真实 Docker 的 Go 全量回归为 9 个包、127 项通过、零跳过。Go 静态检查和 Web 生产构建通过。独立角色、共用同一模型账号的多节点总额度及持续高负载仍待验收。
+
+普通 Worker 独立模型与 CI 名额对应提交 `e8a84ea087fd7d6d4ff1c40db93c5727d2c50352`。
+
+## 专题 10、13、14 · 恢复 CI 运行回执、日志、报告和产物
+
+2026-11-17，从私有 beta #47 导入正式工作项。Codex 生成候选，Worker 在 Docker 中按项目配置执行三项检查。另用独立 Runner 检查含非空日志、报告、产物及可选失败项的固定候选。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Owner 在 Chrome 核对候选并批准，等待两个必需检查成功，核对已关闭的 Issue | 已交付候选保留绑定执行和提交的 CI 回执 | 任务 1、执行 1、Runner `archive-runner`、运行 `ci-run-3326424383`，候选 `7ca38462210cca41418fc92e7e0c782b55443ffa`，合并 `4e85a882d1173169966556a22200034f6a3a7f04`。[PR #48](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/48) · [Actions 重跑](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43909046862) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/47#issuecomment-6922587678) |
+| 停止演练服务，用 pg_dump 及 tar 备份。用 pg_restore 恢复到同机另一个空数据库，将运行目录还原到新的工作区根；从隔离控制面查询原任务及 Chrome 检查详情 | 恢复库独立给出同一份回执，包括三个空日志的大小和 SHA-256。运行元数据、日志、报告均可核验 | 任务 JSON 与源端相同。备份库摘要 `d172e090895f3a68e2eb87a0ac9d28349a8e10845974ad51b2fb6333b4259ca7`，运行目录压缩包摘要 `310c4e26b87eab208cb09877b298ded7ba0dde4bf3b0fefe72518081b43a80f7`。源端和恢复端均核对了三个日志和两个输出文件；逐个移除均返回非零，复原后全部通过 |
+| 用独立入口重新验证固定候选 `df7547f581d76629137ff4f21a0cdab490875c18`。在副本中分别更改非空日志、报告和产物的一个字节，保持大小；另改运行元数据，再提供历史回执 | 内容或身份变化均被发现，旧日志缺少独立摘要时应点明缺项 | 运行 `ci-run-3857521277` 的两个日志、报告和产物均通过原始核验。220 字节的 manifest.log、manifest-1.bin 和 manifest-2.bin 分别被改写时，核验退出非零。Runner 身份变化及未知元数据字段均被拒。复原后重新通过。历史 `ci-run-1876710922` 明确报告缺少日志摘要 |
+
+Docker 回归还覆盖超出 1 MiB 的检查输出，核对截断提示也计入最终文件摘要。启用 PostgreSQL 18 和真实 Docker 后，Go 全量回归 9 个包、127 项通过、零跳过，Go 静态检查和 Web 生产构建均通过。按项目定期清理、跨节点在线回读原始文件仍待验收。

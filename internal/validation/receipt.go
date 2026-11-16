@@ -24,6 +24,9 @@ func (r *Run) Valid() bool {
 			return false
 		}
 		seen[c.Name] = true
+		if d := c.LogDigest; d != nil && (d.Bytes < 0 || d.Bytes > int64(MaxLogBytes) || !digest.MatchString(d.SHA256)) {
+			return false
+		}
 		prev = c.Finished
 		switch c.Status {
 		case "PASSED":

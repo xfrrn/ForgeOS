@@ -160,8 +160,17 @@ func runCheck(parent context.Context, docker localDocker, image, snapshot, dir s
 	if err != nil {
 		return
 	}
-	defer logFile.Close()
-	logger := &cappedLog{dest: logFile, remaining: 1 << 20}
+	logger := &cappedLog{dest: logFile, remaining: validation.LogLimit}
+	defer func() {
+		closeErr := logFile.Close()
+		data, err := archivedFile(dir, result.Log, int64(validation.MaxLogBytes))
+		if err != nil || closeErr != nil {
+			result.Status, result.Failure = "FAILED", "INFRA_FAILURE"
+			return
+		}
+		digest := fileDigest(data)
+		result.LogDigest = &digest
+	}()
 	options, name, err := ciContainerOptions(snapshot)
 	if err != nil {
 		return

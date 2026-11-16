@@ -224,6 +224,22 @@ git -C /state/work/execution-1 diff --binary
 
 用服务账号执行 Git 检查。对照源记录核对工作项、执行编号、绝对路径、HEAD、索引、工作区差异和未跟踪文件的内容摘要。确认历史任务可从 Owner API 查询后，再派发一个独立 `git_head` 工作项。新的执行应获得自己的目录。若源执行原本失联，另行核对它的租约、会话和远端已产生的结果，再决定如何恢复。
 
+### 核对恢复的 CI 运行目录
+
+声明式 CI 将日志、报告、产物及 `run.json` 写在 Runner 的工作区根目录下。上节的工作区归档已经包含这些目录。分机部署时，按运行回执的 `runner` 到对应节点保存或恢复文件，同一时间点备份 PostgreSQL。在源端停写后和隔离恢复后分别核对一次。下面从数据库取指定执行的权威回执；也可以从 Owner 的任务详情中选择该次执行的 `result.validation.run`。独立运行 `worker validate-candidate` 时，将其标准输出另存到受限的独立备份介质上，作为对应回执。
+
+```sh
+set -eu
+umask 077
+# 执行号及目录取自本次恢复记录。在源端换用 forgeos-source 和源节点目录。
+PGSERVICE=forgeos-restore psql -XAtq -v ON_ERROR_STOP=1 -v execution_id="$execution_id" <<'SQL' > "$backup_dir/verify-run.json"
+SELECT result->'validation'->'run' FROM executions WHERE id = :'execution_id'::bigint;
+SQL
+FORGEOS_WORKSPACE_ROOT="$restored_workspace_root" worker verify-ci-run < "$backup_dir/verify-run.json"
+```
+
+核对程序先比对运行目录的 `run.json` 与输入回执，再检查每个登记的日志、报告和产物是否为普通文件、长度及 SHA-256 是否一致。成功时输出运行编号、Runner、执行号、候选 SHA 和已核对的文件数。退出非零时，从独立备份恢复相应文件后重新核对。老版本回执可继续查看；缺少日志摘要时，日志完整性保持待验收。用随运行目录保存的 `run.json` 作为唯一依据无法辨别目录与回执一并被替换的情况。
+
 ## 7. 不属于第一版的内容
 
 - Kubernetes；

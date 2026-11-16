@@ -2,6 +2,10 @@ package validation
 
 import "time"
 
+const LogLimit = 1 << 20
+const LogTruncation = "\n[remaining CI output omitted]\n"
+const MaxLogBytes = LogLimit + len(LogTruncation)
+
 // Run identifies the immutable inputs and the outputs retained by the runner.
 type Run struct {
 	ExecutionID   int64         `json:"execution_id,omitempty"`
@@ -23,15 +27,21 @@ type Run struct {
 }
 
 type CheckResult struct {
-	Name     string    `json:"name"`
-	Required bool      `json:"required"`
-	Started  time.Time `json:"started_at"`
-	Finished time.Time `json:"finished_at"`
-	ExitCode *int      `json:"exit_code"`
-	Status   string    `json:"status"`
-	Failure  string    `json:"failure,omitempty"`
-	Log      string    `json:"log"`
-	Outputs  []Output  `json:"outputs,omitempty"`
+	Name      string      `json:"name"`
+	Required  bool        `json:"required"`
+	Started   time.Time   `json:"started_at"`
+	Finished  time.Time   `json:"finished_at"`
+	ExitCode  *int        `json:"exit_code"`
+	Status    string      `json:"status"`
+	Failure   string      `json:"failure,omitempty"`
+	Log       string      `json:"log"`
+	LogDigest *FileDigest `json:"log_digest,omitempty"`
+	Outputs   []Output    `json:"outputs,omitempty"`
+}
+
+type FileDigest struct {
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
 }
 
 type Output struct {

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +26,7 @@ func TestDeclaredChecksInLocalContainer(t *testing.T) {
 checks:
   report:
     type: static
-    command: ["sh","-c","printf checked > receipt && test -f README.md"]
+    command: ["sh","-c","printf checked > receipt && test -f README.md && head -c 1048600 /dev/zero"]
     timeout_seconds: 10
     reports: [receipt]
   advisory:
@@ -60,6 +63,38 @@ profiles:
 	}
 	if _, err = os.Stat(filepath.Join(repo, "receipt")); !os.IsNotExist(err) {
 		t.Fatal("runner wrote to candidate checkout")
+	}
+	stored, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verify := func() error { return verifyCIRun(out, bytes.NewReader(stored), io.Discard) }
+	if err = verify(); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(out, run.ID, "report.log")
+	log, err := os.ReadFile(logPath)
+	if err != nil || len(log) != validation.MaxLogBytes || !bytes.HasSuffix(log, []byte(validation.LogTruncation)) {
+		t.Fatalf("archived log size %d, error %v", len(log), err)
+	}
+	log[0] ^= 1
+	if err = os.WriteFile(logPath, log, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = verify(); err == nil || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("modified log verified: %v", err)
+	}
+	// Stored receipts from earlier workers remain valid; their logs cannot be independently verified.
+	run.Checks[0].LogDigest = nil
+	stored, err = json.Marshal(run)
+	if err != nil || !run.Valid() {
+		t.Fatal("invalid legacy receipt", err)
+	}
+	if err = os.WriteFile(filepath.Join(out, run.ID, "run.json"), stored, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = verify(); err == nil || !strings.Contains(err.Error(), "no stored log digest") {
+		t.Fatalf("legacy log reported verified: %v", err)
 	}
 	badConfig := validationCommit(t, repo, "validation.yaml", strings.Replace(cfg, "reports: [receipt]", "reports: [absent]", 1))
 	next := validationCommit(t, repo, "README.md", "next candidate\n")

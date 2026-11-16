@@ -8,6 +8,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
   decision?: { rules_blob?: string; changed_paths: number; reasons: { source: string; level: string; evidence: string }[] }
   started_at: string; finished_at: string; failure?: string
   checks: { name: string; required: boolean; status: string; failure?: string; exit_code: number | null; log: string
+    log_digest?: { bytes: number; sha256: string }
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type HarnessProcess = { instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
@@ -85,7 +86,8 @@ function DeclaredChecks({ run }: { run: CheckRun }) {
       <ul>{run.decision.reasons.map(r => <li key={r.source + ':' + r.evidence}>{r.level} · {r.source} · {r.evidence}</li>)}</ul></>}
     <ol>{run.checks.map(c => <li key={c.name}><strong>{c.name}</strong> · {c.required ? '必需' : '可选'} · {c.status === 'PASSED' ? '通过' : c.failure || '失败'}
       <dl className="detail-facts"><Fact label="退出码" code>{c.exit_code ?? '无退出码'}</Fact>
-        <Fact label="检查时间">{formatTime(c.started_at)} — {formatTime(c.finished_at)}</Fact><Fact label="本地日志" code>{c.log}</Fact></dl>
+        <Fact label="检查时间">{formatTime(c.started_at)} — {formatTime(c.finished_at)}</Fact><Fact label="本地日志" code>{c.log}{c.log_digest && ` · ${c.log_digest.bytes} 字节`}</Fact>
+        {c.log_digest && <Fact label="日志 SHA-256" code>{c.log_digest.sha256}</Fact>}</dl>
       {c.outputs?.map(o => <dl key={o.file} className="detail-facts"><Fact label={o.kind === 'report' ? '报告' : '产物'}>{o.source} · {o.bytes} 字节</Fact>
         <Fact label="归档文件" code>{o.file}</Fact><Fact label="SHA-256" code>{o.sha256}</Fact></dl>)}
     </li>)}</ol>

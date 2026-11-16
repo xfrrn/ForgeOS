@@ -312,6 +312,12 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) == 2 && os.Args[1] == "verify-ci-run" {
+		if err := verifyCIRun(os.Getenv("FORGEOS_WORKSPACE_ROOT"), os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "review-candidate" {
 		if err := runCandidateReview(ctx, os.Stdin, os.Stdout); err != nil {
 			log.Fatal(err)
@@ -323,7 +329,7 @@ func main() {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" {
-		log.Fatal("usage: worker [management|reviewer|test-agent|review-candidate|validate-candidate|plan-tests|review-test-plan]")
+		log.Fatal("usage: worker [management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {

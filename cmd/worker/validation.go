@@ -17,6 +17,7 @@ import (
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
+	"forgeos/internal/validation"
 )
 
 // Validate the committed Git objects. A file left outside the commit cannot make a check pass.
@@ -173,7 +174,7 @@ func checkGo(ctx context.Context, repo, candidate string) error {
 		return errors.New("cannot create local CI log")
 	}
 	defer logFile.Close()
-	log := &cappedLog{dest: logFile, remaining: 1 << 20}
+	log := &cappedLog{dest: logFile, remaining: validation.LogLimit}
 	cmd.Stdout, cmd.Stderr = log, log
 	err = cmd.Run()
 	if err != nil {
@@ -205,7 +206,7 @@ func (l *cappedLog) Write(p []byte) (int, error) {
 	}
 	if take < len(p) && !l.truncated {
 		l.truncated = true
-		if _, err := io.WriteString(l.dest, "\n[remaining CI output omitted]\n"); err != nil {
+		if _, err := io.WriteString(l.dest, validation.LogTruncation); err != nil {
 			return take, err
 		}
 	}
