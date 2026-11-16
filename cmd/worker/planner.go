@@ -23,7 +23,8 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, job stor
 		r.Error = "read-only structured planning is unavailable"
 		return r
 	}
-	if _, err := checkedWorktree(ctx, repo, workspace, spec.BaseCommit); err != nil {
+	identity, err := checkedWorktree(ctx, repo, workspace, spec.BaseCommit)
+	if err != nil {
 		r.Error = err.Error()
 		return r
 	}
@@ -50,7 +51,7 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, job stor
 		"Inspect the relevant repository documents and code. Return only a concise plan in the supplied schema. " +
 		"Give each work item a stable unique ASCII identifier, explicit scope, dependencies by key, verifiable acceptance criteria, deliverables and repository paths as context references. " +
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
-	r.SessionID, err = runCodexTurn(ctx, w.processLog(job, "codex", w.codexVersion), w.codex, workspace, "read-only", prompt, "--output-schema", schema, "--output-last-message", output)
+	r.SessionID, err = w.codexTurn(ctx, job, prompt, spec.BaseCommit, identity, schema, output)
 	if err != nil {
 		r.Error = err.Error()
 		return r

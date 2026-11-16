@@ -8,7 +8,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 ## A. 需要真实环境验证
 
-1. Codex App Server 0.169.0-alpha.11.1 已实测 stdio 初始化、只读 Thread、Turn 事件、新进程恢复与中断。审批交互、Worker 自动调度和其他版本兼容性待测。
+1. Codex App Server 0.169.0-alpha.11.1 已实测 stdio 初始化、只读 Thread、Turn 事件、新进程恢复与中断。正式 Worker 在 beta #35 使用 CLI 的 `exec resume`，写入和只读规划均在适配器丢失终态后恢复原 Thread 与沙箱。App Server 的审批交互、Worker 接入和其他版本兼容性待测。
 2. Claude Code 2.1.310 已在 Windows 真实验证 Headless Session Resume、问题答复和权限拒绝。正式 Worker 已交付私有 beta 的 Issue #22，任务页关联原生会话、版本和候选。beta #29 已从正式 Worker 实测 Claude 适配器丢失终态后退出，使用另一进程恢复原生会话和原工作区并完成交付。Linux 服务身份、原生模型进程被强制终止以及 Worker 自身重启后的会话恢复仍待验收。
 3. 同一 Linux 用户下多个 CLI 进程共享认证状态时的并发和账号限额行为。
 4. Ubuntu systemd 的非 root 身份、HOME、PATH、回环代理例外、工作区与重启已验收。专用用户下的模型登录复用和经代理的真实模型请求待测。
@@ -24,8 +24,8 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 1. Agent Profile 的版本和配置结构。
 2. Harness Adapter 的正式 Go 接口与错误模型。
 3. ACP 内部消息 JSON Schema。
-4. Execution/Session/Process 状态机的精确定义。
-5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。原生 Session 恢复仍待验收。
+4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。原生 CLI 被强制终止、节点重启后的会话恢复和跨 Session 交接仍待验收。
+5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。适配器异常退出后，正式 Worker 已验证在原租约内恢复会话，见 B.4。
 6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。运行取消、日志和产物读取接口、保留策略仍待补齐。
 7. `acceptance.yaml`、全局 Playbook、任务内计划生成、覆盖审查、修订归档和逐用例实测门禁已验证。六类预览反馈均有 Owner 处置入口。需求变更已实测到新候选页面，新工作项已独立完成真实 GitHub 交付，来源 Issue 保持开放。工作台已核对截图像素与归档回执。扩展截图采集、录屏和真实外部设备访问仍待验收。
 8. 单项目交付已在真实仓库核对固定任务分支、PR 编号、验收 SHA、最终合并 SHA 与 Issue 评论。私有 beta #27 已实测创建 PR、请求 Squash Merge、发布回执评论和关闭 Issue 四次写入成功后分别丢失响应。每次重启控制面均能读取远端状态继续交付，只有一个 PR、一次合并和一条评论。[PR #28](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/28) · [唯一交付回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/27#issuecomment-6919716568)

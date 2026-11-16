@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +24,7 @@ type claudeCLI struct {
 }
 
 var claudeVersion = regexp.MustCompile(`^([0-9]+\.[0-9]+\.[0-9]+) \(Claude Code\)$`)
-var claudeSession = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var nativeSessionID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 func findClaude(configured string) (claudeCLI, error) {
 	if configured == "" {
@@ -76,7 +75,7 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 		return nil, errors.New("cannot read Claude user settings")
 	}
 	if resume != "" {
-		if !claudeSession.MatchString(resume) {
+		if !nativeSessionID.MatchString(resume) {
 			return nil, errors.New("invalid Claude session ID")
 		}
 		args = append(args, "--resume", resume)
@@ -111,7 +110,7 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 		}
 		switch {
 		case event.Type == "system" && event.Subtype == "init":
-			if session != "" || !claudeSession.MatchString(event.Session) || (expected != "" && event.Session != expected) {
+			if session != "" || !nativeSessionID.MatchString(event.Session) || (expected != "" && event.Session != expected) {
 				return session, completed, errors.New("unexpected Claude Code session")
 			}
 			if err := confirmed(event.Session); err != nil {
@@ -175,13 +174,8 @@ func (w *worker) claudeTurn(ctx context.Context, job store.Job, prompt, previous
 	if !errors.Is(err, errClaudeInterrupted) || ctx.Err() != nil {
 		return session, err
 	}
-	status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/renew", job.ExecutionID), map[string]string{"lease_token": job.LeaseToken}, nil)
-	if err != nil || status != http.StatusNoContent {
-		return session, errors.New("cannot confirm lease for interrupted Claude session")
-	}
-	tip, err := checkedWorktreeTip(ctx, job.Workspace, identity)
-	if err != nil || tip != start {
-		return session, errors.New("cannot confirm original Claude worktree and starting commit")
+	if err := w.confirmRecovery(ctx, job, start, identity); err != nil {
+		return session, err
 	}
 	prompt = "The previous process was interrupted. Inspect existing edits in this worktree and finish only the remaining authorized work.\n" + prompt
 	_, err = w.runClaudeProcess(ctx, job, prompt, session)

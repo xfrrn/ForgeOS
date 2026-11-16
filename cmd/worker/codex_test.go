@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,6 +25,33 @@ func TestMain(m *testing.M) {
 	}
 	body, err := io.ReadAll(os.Stdin)
 	args := strings.Join(os.Args[1:], " ")
+	if strings.Contains(string(body), "SIMULATED_CODEX_RECOVERY") {
+		const thread = "a7090935-460b-4930-8484-0f2008435a45"
+		resume := slices.Contains(os.Args, "resume")
+		id := thread
+		if resume && strings.Contains(string(body), "WRONG_THREAD") {
+			id = "046dddd8-2527-45e7-a67f-701b406412aa"
+		}
+		fmt.Printf(`{"type":"thread.started","thread_id":"%s"}`+"\n", id)
+		if !resume {
+			if os.WriteFile("progress.md", []byte("First edit.\n"), 0600) != nil {
+				os.Exit(2)
+			}
+			if strings.Contains(string(body), "TERMINAL_FAILURE") {
+				fmt.Println(`{"type":"turn.failed"}`)
+			}
+			os.Exit(23)
+		}
+		b, err := os.ReadFile("progress.md")
+		if err != nil || string(b) != "First edit.\n" || !slices.Contains(os.Args, thread) || !strings.Contains(args, "--sandbox workspace-write") {
+			os.Exit(2)
+		}
+		if os.WriteFile("progress.md", append(b, []byte("Finished.\n")...), 0600) != nil {
+			os.Exit(2)
+		}
+		fmt.Println(`{"type":"turn.completed"}`)
+		os.Exit(0)
+	}
 	if strings.Contains(args, "--sandbox read-only") {
 		if err != nil || !strings.Contains(args, "--ignore-user-config") || !strings.Contains(args, "--output-schema") || os.Getenv("FORGEOS_WORKER_TOKEN") != "" || os.Getenv("GH_TOKEN") != "" {
 			os.Exit(2)
@@ -72,6 +102,36 @@ func TestMain(m *testing.M) {
 	}
 	fmt.Println(`{"type":"turn.completed"}`)
 	os.Exit(0)
+}
+
+func TestCodexTurnRecovery(t *testing.T) {
+	for _, input := range []string{"RESUME", "WRONG_THREAD", "TERMINAL_FAILURE"} {
+		t.Run(input, func(t *testing.T) {
+			w, job, base := fixture(t)
+			w.codex, _ = os.Executable()
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				if input == "TERMINAL_FAILURE" || r.URL.Path != "/internal/executions/12/renew" {
+					t.Errorf("unexpected request %s", r.URL.Path)
+				}
+				rw.WriteHeader(204)
+			}))
+			defer server.Close()
+			w.api, w.client = server.URL, server.Client()
+			job.Kind = "codex_issue"
+			job.Spec = &store.IssueSpec{Issue: store.Issue{Number: 7, Title: "SIMULATED_CODEX_RECOVERY " + input}, BaseCommit: base, Validation: "docs"}
+			result := w.execute(context.Background(), job)
+			if result.SessionID != "a7090935-460b-4930-8484-0f2008435a45" {
+				t.Fatal("lost original thread", result)
+			}
+			if input == "RESUME" {
+				if result.ExitCode != 0 || result.Commit == "" || git(t, job.Workspace, "show", "HEAD:progress.md") != "First edit.\nFinished." {
+					t.Fatal("did not finish original working copy", result)
+				}
+			} else if result.ExitCode == 0 || result.Commit != "" {
+				t.Fatal("unexpected successful result", result)
+			}
+		})
+	}
 }
 
 func TestReadOnlyPlanner(t *testing.T) {

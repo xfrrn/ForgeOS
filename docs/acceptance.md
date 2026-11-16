@@ -49,7 +49,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3` | 已完成的 Claude、Codex 实现及只读规划进程归档和工作台查询见下文。跨节点工件、运行中的中央进程视图、独立审核角色待验收 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3` | 通用命令队列、运行中暂停与取消 |
-| 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b` | 节点登记与普通执行容量见下文。进程中断后的原生会话恢复、Linux 模型登录复用、多节点恢复待验收 |
+| 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b` | 节点登记与普通执行容量见下文。Claude 实现、Codex 实现与只读规划的终态丢失恢复见下文。原生进程被强制终止、Linux 模型登录复用、多节点恢复待验收 |
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与恢复、状态接口、执行租约与用途绑定、一次性解包、签发与失败审计 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`、`72cd89d`、`8c83ac8` | 生产专用操作策略、其他节点身份与证书轮换 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`，Management 提级见下文 | 运行管理和归档保留策略 |
@@ -785,3 +785,20 @@ Claude 进程记录归档与工作台对应提交 `91a150bc0759fb8449707dbfb1dfa
 进程记录在执行结果回报后进入中央工作台。独立管理、审查进程及节点重启后的在途会话恢复仍待验收。
 
 启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、118 项通过，零跳过。Go 静态检查及工作台生产构建通过。
+
+Codex 实现与只读规划的进程回执对应提交 `39d3f6899ab5c2a75bf72e635b349788e2ae1b64`。
+
+## 阶段四、专题 07 · Codex 终态传输丢失后恢复原 Thread
+
+2026-11-16，在 Windows 用正式 Worker、Codex CLI 0.169.0-alpha.11.1 和私有 beta #35 验收。适配器在首个原生 CLI 正常退出后丢弃 `turn.completed` 并以 1 退出；恢复进程转发完整事件。分别核对原生会话中的两条 `turn_context`、原生 PID、适配器退出码和 Owner 任务页。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 选 Codex 实现 #35，丢失首个终态，让 Worker 自行恢复 | 同一 Execution、Thread 和工作区完成授权改动，保留原权限 | 原生 PID 35548 → 17848，Thread `01a1e4ff-b270-7df1-8696-df3e87d4a033`。两次均为 workspace-write、网络关闭、审批 never。适配器 PID 45196 → 868，退出码 1 → 0。只有一次执行，候选只修改指定手册。[Issue #35](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/35) |
+| 提交错误进程会话、重复提交正确回执，经 Owner 验收后等待受保护分支交付 | 错误回执被拒，正确回报幂等；两项必需检查通过后才可合并 | 分别为 409、204。候选 `e8a172b7e5f2d8ae9526352131236c8b23faa300` 通过本地 CI；Actions 首次按演练失败，重跑通过，PR #36 合并为 `4e1d4b148c06c4575effd6c4b16bd5f675c90b4e`。Issue 已关闭，只有一条交付评论。控制面重启后任务 JSON 相同。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/36) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43898251585) · [交付评论](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/35#issuecomment-6921039550) |
+| 在独立 schema 中将同一开放 Issue 作为只读规划导入，重复丢失首个终态 | 同一只读 Thread 在干净的固定基础提交重新输出计划 | 原生 PID 38656 → 3284，Thread `01a1e4ff-cc08-7562-a8f5-b4fdc03e83f0`。两次均为 read-only、审批 never，工作目录一致。适配器 PID 37724 → 50792，退出码 1 → 0。修订 1 与执行结果相同，工作区干净，HEAD 保持 `8124de0fae6c74100b3ad9e25b59f56386ad2fa6`，控制面重启后可复查 |
+| 回归夹具写入半个文件并以 23 退出，再分别返回原 Thread、错误 Thread 和明确失败事件 | 成功时保留已有编辑；会话身份不符或模型明确失败时禁止产生候选 | 原 Thread 补全了同一文件，另外两种情况均返回失败且无候选；明确失败场景没有续约请求 |
+
+原生模型进程被强制终止和 Worker 自身重启后的在途恢复仍待验收。
+
+启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、122 项通过，零跳过。Go 静态检查通过。

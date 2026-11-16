@@ -64,3 +64,15 @@ func (w *worker) renewWhileRunning(ctx context.Context, job store.Job, ttl time.
 	}
 	return nil
 }
+
+func (w *worker) confirmRecovery(ctx context.Context, job store.Job, start string, identity []byte) error {
+	status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/renew", job.ExecutionID), map[string]string{"lease_token": job.LeaseToken}, nil)
+	if err != nil || status != http.StatusNoContent {
+		return errors.New("cannot confirm lease for interrupted session")
+	}
+	tip, err := checkedWorktreeTip(ctx, job.Workspace, identity)
+	if err != nil || tip != start {
+		return errors.New("cannot confirm original worktree and starting commit")
+	}
+	return nil
+}
