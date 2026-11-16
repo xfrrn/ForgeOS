@@ -66,19 +66,13 @@ func (w *worker) publishCIFiles(ctx context.Context) {
 }
 
 func (w *worker) uploadCIFile(ctx context.Context, path, run, file string, digest validation.FileDigest) error {
-	dir := filepath.Join(w.workspaceRoot, run)
-	st, err := os.Lstat(dir)
-	if err != nil || !st.IsDir() {
-		return errors.New("local CI run directory unavailable")
+	content, localErr := w.ciUploadContent(run, file, digest)
+	method := http.MethodPut
+	if localErr != nil {
+		// Even a lost local file can leave the retry queue once the server retires it.
+		method = http.MethodHead
 	}
-	content, err := archivedFile(dir, file, digest.Bytes)
-	if err != nil {
-		return err
-	}
-	if validation.DigestBytes(content) != digest {
-		return errors.New("local file does not match the CI receipt")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, w.api+path, bytes.NewReader(content))
+	req, err := http.NewRequestWithContext(ctx, method, w.api+path, bytes.NewReader(content))
 	if err != nil {
 		return err
 	}
@@ -89,8 +83,31 @@ func (w *worker) uploadCIFile(ctx context.Context, path, run, file string, diges
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusGone {
+		log.Printf("execution archive %s/%s expired under project policy", run, file)
+		return nil
+	}
+	if localErr != nil {
+		return localErr
+	}
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("archive returned HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (w *worker) ciUploadContent(run, file string, digest validation.FileDigest) ([]byte, error) {
+	dir := filepath.Join(w.workspaceRoot, run)
+	st, err := os.Lstat(dir)
+	if err != nil || !st.IsDir() {
+		return nil, errors.New("local CI run directory unavailable")
+	}
+	content, err := archivedFile(dir, file, digest.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	if validation.DigestBytes(content) != digest {
+		return nil, errors.New("local file does not match the CI receipt")
+	}
+	return content, nil
 }

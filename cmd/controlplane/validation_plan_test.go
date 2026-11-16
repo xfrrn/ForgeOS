@@ -19,7 +19,8 @@ import (
 
 func TestDeclaredChecksRequiredForIssue(t *testing.T) {
 	ctx := context.Background()
-	data := store.New(testdb.Open(t))
+	db := testdb.Open(t)
+	data := store.New(db)
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -126,6 +127,57 @@ func TestDeclaredChecksRequiredForIssue(t *testing.T) {
 		do("GET", strings.Replace(file, run.ID, "ci-run-999", 1), "owner", "", 404)
 		do("PUT", "/internal"+file, "runner", content+"x", 422)
 		do("PUT", "/internal"+strings.Replace(file, "format.log", "extra.bin", 1), "runner", content, 404)
+		retention := fmt.Sprintf("/projects/%d/ci-retention", project.ID)
+		do("PUT", retention, "runner", `{"log_seconds":1}`, 401)
+		do("PUT", retention, "owner", `{"log_seconds":-1}`, 400)
+		do("PUT", retention, "owner", "null", 400)
+		do("HEAD", "/internal"+file, "runner", "", 204)
+		_, err = db.Exec("UPDATE ci_archive_files SET confirmed_at=now()-interval '2 days' WHERE execution_id=$1", job.ExecutionID)
+		must(err)
+		do("PUT", retention, "owner", `{"artifact_seconds":10}`, 200)
+		do("GET", file, "owner", "", 200)
+		locked, release := make(chan struct{}), make(chan struct{})
+		upload, policy := make(chan error, 1), make(chan error, 1)
+		go func() {
+			upload <- data.AccessCIFile(ctx, task.ID, job.ExecutionID, run.ID, "format.log", func(validation.FileDigest) error {
+				close(locked)
+				<-release
+				return saveArtifact(fmt.Sprintf("ci/%d/%d/%s/format.log", task.ID, job.ExecutionID, run.ID), []byte(content))
+			})
+		}()
+		select {
+		case <-locked:
+		case err := <-upload:
+			t.Fatalf("could not open upload: %v", err)
+		}
+		go func() {
+			_, err := data.ProjectCIRetention(ctx, project.ID, &store.CIRetention{LogSeconds: 86400})
+			policy <- err
+		}()
+		select {
+		case err := <-policy:
+			close(release)
+			t.Fatalf("policy overtook an in-flight upload: %v", err)
+		case <-time.After(50 * time.Millisecond):
+		}
+		close(release)
+		must(<-upload)
+		must(<-policy)
+		do("GET", file, "owner", "", 410)
+		do("HEAD", "/internal"+file, "runner", "", 410)
+		do("PUT", retention, "owner", `{}`, 200)
+		do("PUT", "/internal"+file, "runner", content, 410)
+		busy := errors.New("storage offline")
+		if err := data.PurgeCIFiles(ctx, func(store.CIArchiveFile) error { return busy }); !errors.Is(err, busy) {
+			t.Fatalf("cleanup lost storage failure: %v", err)
+		}
+		must(data.PurgeCIFiles(ctx, removeCIFile))
+		name, err := artifactPath(fmt.Sprintf("ci/%d/%d/%s/format.log", task.ID, job.ExecutionID, run.ID))
+		must(err)
+		if _, err = os.Stat(name); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("expired bytes remain: %v", err)
+		}
+		must(data.PurgeCIFiles(ctx, func(store.CIArchiveFile) error { return errors.New("removed twice") }))
 	})
 	tk, err := data.Task(ctx, task.ID)
 	must(err)

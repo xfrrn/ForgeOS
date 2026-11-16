@@ -89,6 +89,16 @@ ORDER BY p.instance;
 
 CI 日志、报告与产物的中央副本位于 `FORGEOS_ARTIFACT_ROOT/ci/<任务号>/<执行号>/<运行号>/<归档文件名>`。执行结果 JSON 保存对应的大小与 SHA-256。Worker 的 SQLite 表 `ci_uploads` 只保存待传文件引用和重试时间，确认上传后清除。可以用 `SELECT run_id,file,bytes,retry_at FROM ci_uploads` 查看积压。源文件损坏时，恢复与回执匹配的本地文件后，待传项会继续重试。已确认上传的副本可由 Owner 独立下载。
 
+Owner 可用 `GET /projects/{id}/ci-retention` 读取项目策略，用 `PUT` 整体替换。以下示例让中央日志保留 7 天、检查报告 30 天、构建产物 1 天。
+
+```json
+{"log_seconds":604800,"report_seconds":2592000,"artifact_seconds":86400}
+```
+
+期限从控制面确认执行结果的时间起算，适用于该项目已有和以后的回执。各字段为非负整数秒，省略或设为零表示该类无限期保留，首次配置前各项均为零。缩短期限可使历史文件立即到期。到期后，Owner 下载和 Worker 补传返回 410，延长期限也不能恢复文件。Worker 据此移除待传项。任务详情仍可读取原候选、检查结果、文件大小和摘要。
+
+控制面在启动时及每分钟清理已到期的中央文件。存储故障时保留待清理记录，下次扫描重试。运维可用 `SELECT execution_id,file,kind,confirmed_at,expired_at,removed_at FROM ci_archive_files WHERE expired_at IS NOT NULL AND removed_at IS NULL` 查询积压。备份恢复时应配套恢复 PostgreSQL 与同一时点的工件目录。Worker 工作区、离线备份及预览反馈有各自的生命周期。
+
 预览反馈的 PNG 存放在控制面账号私有目录。可用绝对路径 `FORGEOS_ARTIFACT_ROOT` 指定，默认是该账号 HOME 下的 `.forgeos/artifacts`。PostgreSQL 保存反馈编号、文件键、类型、大小和 SHA-256，经原反馈关联任务、执行和候选。Owner 从原反馈读取文件时会重新校验长度和摘要，损坏返回 503。重传同一份已脱敏图片可修复文件并复用原回执。截图清理期限和跨节点存储仍待验收。
 
 - 重要决策和任务元数据长期保留；

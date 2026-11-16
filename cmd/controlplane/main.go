@@ -126,6 +126,9 @@ func run(ctx context.Context) error {
 		stopDelivery := (deliveryPolicy{projectID: project, target: target}).start(ctx, data, root)
 		defer stopDelivery()
 	}
+	sweepCtx, stopSweep := context.WithCancel(ctx)
+	defer stopSweep()
+	go sweepCIFiles(sweepCtx, data)
 	log.Printf("ForgeOS control plane listening on %s", listener.Addr())
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()

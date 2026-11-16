@@ -26,10 +26,10 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 3. ACP 内部消息 JSON Schema。
 4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。原生 CLI 被强制终止、节点重启后的会话恢复和跨 Session 交接仍待验收。
 5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。适配器异常退出后，正式 Worker 已验证在原租约内恢复会话，见 B.4。
-6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。beta #49 验证了 Worker 后台传输、从 Owner 工作台下载原始日志和产物，以及 Windows 节点向 Linux 控制面传送文件。运行取消与保留策略仍待补齐。
+6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。beta #49 验证了 Worker 后台传输、从 Owner 工作台下载原始日志和产物，以及 Windows 节点向 Linux 控制面传送文件。中央 CI 文件按项目分类型到期清理见专题 13。运行取消仍待补齐。
 7. `acceptance.yaml`、全局 Playbook、任务内计划生成、覆盖审查、修订归档和逐用例实测门禁已验证。六类预览反馈均有 Owner 处置入口。需求变更已实测到新候选页面，新工作项已独立完成真实 GitHub 交付，来源 Issue 保持开放。工作台已核对截图像素与归档回执。扩展截图采集、录屏和真实外部设备访问仍待验收。
 8. 单项目交付已在真实仓库核对固定任务分支、PR 编号、验收 SHA、最终合并 SHA 与 Issue 评论。私有 beta #27 已实测创建 PR、请求 Squash Merge、发布回执评论和关闭 Issue 四次写入成功后分别丢失响应。每次重启控制面均能读取远端状态继续交付，只有一个 PR、一次合并和一条评论。[PR #28](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/28) · [唯一交付回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/27#issuecomment-6919716568)
-9. Artifact 保留和清理策略。
+9. 中央 CI 日志、报告和构建产物的项目保留策略已从真实文件、历史数据库及离线 Worker 队列验收。Worker 本地副本、反馈截图及录屏的期限仍待补齐。
 10. 多 Worker 认证和证书轮换。
 
 ## C. 产品交互待细化

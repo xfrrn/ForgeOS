@@ -85,6 +85,43 @@ func saveArtifact(key string, content []byte) error {
 	return os.Rename(f.Name(), name)
 }
 
+func removeArtifact(key string) error {
+	name, err := artifactPath(key)
+	if err != nil {
+		return err
+	}
+	root, err := artifactPath(".")
+	if err != nil {
+		return err
+	}
+	if name == root {
+		return errors.New("expected a file beneath artifact storage")
+	}
+	for dir := filepath.Dir(name); dir != root; dir = filepath.Dir(dir) {
+		info, err := os.Lstat(dir)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unexpected directory in artifact storage")
+		}
+	}
+	info, err := os.Lstat(name)
+	if err == nil {
+		if !info.Mode().IsRegular() {
+			return errors.New("expected a regular archived file")
+		}
+		err = os.Remove(name)
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
 func registerFeedbackArtifacts(mux *http.ServeMux, data *store.Store, owner, base string) {
 	path := base + "/{feedback}/artifacts"
 	mux.HandleFunc("POST "+path, authorized(owner, func(w http.ResponseWriter, r *http.Request) {

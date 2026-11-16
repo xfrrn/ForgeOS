@@ -11,8 +11,10 @@ var runID = regexp.MustCompile("^ci-run-[0-9]{1,20}$")
 var digest = regexp.MustCompile("^[0-9a-f]{64}$")
 var checkName = regexp.MustCompile("^[a-z][a-z0-9_-]{0,63}$")
 
+func ValidRunID(id string) bool { return runID.MatchString(id) }
+
 func (r *Run) Valid() bool {
-	if !runID.MatchString(r.ID) || r.Started.IsZero() || r.Finished.Before(r.Started) || r.Checks == nil || len(r.Checks) > 64 || len(r.Detail) > 2048 ||
+	if !ValidRunID(r.ID) || r.Started.IsZero() || r.Finished.Before(r.Started) || r.Checks == nil || len(r.Checks) > 64 || len(r.Detail) > 2048 ||
 		(r.Failure != "" && !knownFailure(r.Failure)) || (r.Image != "" && (len(r.Image) != 71 || !strings.HasPrefix(r.Image, "sha256:") || !digest.MatchString(r.Image[7:]))) {
 		return false
 	}
