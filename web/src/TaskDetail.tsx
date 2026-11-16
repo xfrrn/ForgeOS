@@ -32,6 +32,7 @@ const events: Record<string, string> = {
   plan_activated: '计划已生效', goal_item_created: '从计划创建工作项',
   dependencies_delivered: '前置交付已确认',
   decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
+  goal_delivered: '全部子项已交付，父 Issue 已关闭',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',

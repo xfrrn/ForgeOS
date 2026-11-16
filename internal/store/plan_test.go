@@ -114,4 +114,37 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if err != nil || secondJob == nil || secondJob.TaskID != next.TaskID || secondJob.Spec.BaseCommit != merged {
 		t.Fatalf("did not freeze delivered base: %+v %v", secondJob, err)
 	}
+	if c, err := s.ClaimGoalClosure(ctx, p.ID); c != nil || err != nil {
+		t.Fatalf("premature parent closure: %v %v", c, err)
+	}
+	candidate = strings.Repeat("d", 40)
+	if err := s.Complete(ctx, secondJob.ExecutionID, secondJob.LeaseToken, Result{Commit: candidate, BaseCommit: merged,
+		SessionID: "second-child", Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review(ctx, secondJob.TaskID, secondJob.ExecutionID, candidate, "approve", "reviewed", true, "main"); err != nil {
+		t.Fatal(err)
+	}
+	d, err = s.ClaimDelivery(ctx, p.ID)
+	if err != nil || d == nil {
+		t.Fatal(d, err)
+	}
+	d.PRNumber, d.PRURL, d.MergeSHA, d.State = 6, "https://github.com/example/repo/pull/6", strings.Repeat("e", 40), "DONE"
+	if err := s.SaveDelivery(ctx, *d); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.ClaimGoalClosure(ctx, p.ID)
+	if err != nil || c == nil || c.ID != task.ID {
+		t.Fatal(c, err)
+	}
+	if duplicate, err := s.ClaimGoalClosure(ctx, p.ID); duplicate != nil || err != nil {
+		t.Fatalf("duplicate closure claim: %v %v", duplicate, err)
+	}
+	if err := s.CompleteGoal(ctx, *c); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := s.Task(ctx, task.ID)
+	if err != nil || parent.Status != "DONE" || parent.Events[len(parent.Events)-1].Type != "goal_delivered" {
+		t.Fatalf("parent completion: %v %v", parent, err)
+	}
 }

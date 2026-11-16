@@ -337,6 +337,10 @@ func mergeGates(ctx context.Context, api deliveryAPI, i store.Issue, d store.Del
 
 func finishIssue(ctx context.Context, api deliveryAPI, path string, closeIssue bool, d store.Delivery) error {
 	message := fmt.Sprintf("ForgeOS task %d delivered in %s.\n\nAccepted commit: `%s`\nMerge commit: `%s`", d.TaskID, d.PRURL, d.Commit, d.MergeSHA)
+	return syncIssueFeedback(ctx, api, path, closeIssue, message)
+}
+
+func syncIssueFeedback(ctx context.Context, api deliveryAPI, path string, closeIssue bool, message string) error {
 	found := false
 	for page := 1; !found; page++ {
 		var comments []struct{ Body string }

@@ -1,6 +1,6 @@
 # ForgeOS · 内部项目 Agent 工程管理中台
 
-**当前阶段：单项目交付与任务工作台。** 控制面将 GitHub Issue 交给本地 Codex，Worker 在独立 Git Worktree 修改并验证。维护者可在浏览器中搜索任务、对照 Issue 与实际差异验收具体 SHA、查看最终 PR 和合并提交。已启用 GitHub 写入的项目在验收通过后自动交付。[本地运行指南](docs/local-development.md)
+**当前阶段为复杂需求协作。** 单项目 Issue 已跑通 Codex 修改、页面验收和 GitHub 交付。维护者还可把 Issue 升级为版本化 Goal，激活里程碑下的工作项，在浏览器回答候选验收中的业务问题。控制面核对前置合并后派发后续工作，全部子项交付后关闭父 Issue。[本地运行指南](docs/local-development.md) · [各阶段验收与缺口](docs/acceptance.md)
 
 ForgeOS 让维护者在远程提交需求，由自有机器上的 Worker 调用 Codex 等 Harness，在独立 Git Worktree 中修改代码。控制面跟踪任务、验证和验收，满足交付条件后将代码合入 GitHub，并把结果写回 Issue。生产发布由人工负责。
 

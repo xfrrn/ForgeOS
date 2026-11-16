@@ -118,6 +118,9 @@ func (p deliveryPolicy) start(parent context.Context, data *store.Store, root st
 			stepCtx, stop := context.WithTimeout(ctx, 75*time.Second)
 			claimed, err := p.step(stepCtx, data, root, advanceGitHub)
 			if err == nil && !claimed {
+				claimed, err = p.closeGoal(stepCtx, data, root)
+			}
+			if err == nil && !claimed {
 				claimed, err = p.releaseDependent(stepCtx, data, root, &lastDependent)
 			}
 			stop()
