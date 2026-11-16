@@ -32,10 +32,11 @@ type PlanItem struct {
 }
 
 type PlanRevision struct {
-	TaskID   int64     `json:"task_id"`
-	Revision int       `json:"revision"`
-	Plan     Plan      `json:"plan"`
-	At       time.Time `json:"at"`
+	TaskID    int64     `json:"task_id"`
+	Revision  int       `json:"revision"`
+	Plan      Plan      `json:"plan"`
+	At        time.Time `json:"at"`
+	GitCommit string    `json:"git_commit,omitempty"`
 }
 
 var planItemKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -115,8 +116,8 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 	}
 	rev = PlanRevision{TaskID: taskID, Revision: previous + 1, Plan: plan}
 	var same bool
-	err = tx.QueryRowContext(ctx, `SELECT at,plan=$3::jsonb FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
-		taskID, rev.Revision, string(doc)).Scan(&rev.At, &same)
+	err = tx.QueryRowContext(ctx, `SELECT at,plan=$3::jsonb,COALESCE(git_commit,'') FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
+		taskID, rev.Revision, string(doc)).Scan(&rev.At, &same, &rev.GitCommit)
 	if err == nil {
 		if !same {
 			return rev, ErrConflict
@@ -150,8 +151,8 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 func (s *Store) PlanRevision(ctx context.Context, taskID int64, revision int64) (PlanRevision, error) {
 	var rev PlanRevision
 	var doc []byte
-	err := s.db.QueryRowContext(ctx, `SELECT task_id,revision,at,plan FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
-		taskID, revision).Scan(&rev.TaskID, &rev.Revision, &rev.At, &doc)
+	err := s.db.QueryRowContext(ctx, `SELECT task_id,revision,at,plan,COALESCE(git_commit,'') FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
+		taskID, revision).Scan(&rev.TaskID, &rev.Revision, &rev.At, &doc, &rev.GitCommit)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrNotFound
 	}
@@ -160,4 +161,18 @@ func (s *Store) PlanRevision(ctx context.Context, taskID int64, revision int64) 
 	}
 	err = json.Unmarshal(doc, &rev.Plan)
 	return rev, err
+}
+
+func (s *Store) RecordPlanArchive(ctx context.Context, taskID, revision int64, sha string) error {
+	if !validCommit(sha) {
+		return ErrConflict
+	}
+	var stored string
+	err := s.db.QueryRowContext(ctx, `UPDATE plan_revisions SET git_commit=$3
+		WHERE task_id=$1 AND revision=$2 AND (git_commit IS NULL OR git_commit=$3) RETURNING git_commit`,
+		taskID, revision, sha).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	return err
 }

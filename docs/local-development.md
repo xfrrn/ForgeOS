@@ -115,6 +115,8 @@ Owner 向 `POST /tasks/{id}/plans` 提交以下结构。首次提交传 `previou
 
 `GET /tasks/{id}` 和任务详情页展示当前版本，`GET /tasks/{id}/plans/{revision}` 可查询指定历史版本。原执行和验收记录随任务保留。草案进入 PLANNING，Worker 不领取父项。
 
+确定正式计划后，Owner 调用 `POST /tasks/{id}/plans/{revision}/archive`。返回的 `git_commit` 对应项目仓库中的独立快照，以需求冻结的基础提交为父提交。用 `git show refs/forgeos/plans/goal-1/r2:.forgeos/plans/goal-1.json` 可读取任务 1 的第二版计划。每版单独保留，可重复归档；引用内容冲突返回 409。该操作写本地项目 Git。远端交付仍经既有验收流程。
+
 ## GitHub 交付
 
 默认情况下，通过人工验收只将任务记为 `ACCEPTED`。要让某个项目自动发布，在**批准该候选前**配置控制面的 `FORGEOS_DELIVERY_PROJECT_ID`，使用有权向此仓库推送、管理 PR 和更新 Issue 的 GitHub 身份，再重启控制面。可选 `FORGEOS_DELIVERY_TARGET_BRANCH` 指定目标分支，留空时采用 GitHub 仓库默认分支。使用普通受保护分支权限的凭据。审批发生时会同时保存交付任务，之后更改配置不会把之前的本地验收追溯发布。
