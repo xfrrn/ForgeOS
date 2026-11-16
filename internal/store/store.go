@@ -31,6 +31,9 @@ var issueSchema string
 //go:embed 003_delivery.sql
 var deliverySchema string
 
+//go:embed 004_inbox.sql
+var inboxSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -112,7 +115,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}

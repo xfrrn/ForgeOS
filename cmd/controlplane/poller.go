@@ -22,6 +22,11 @@ type issuePoller struct {
 	validation string
 }
 
+type pollStore interface {
+	issueStore
+	ReplaceInbox(context.Context, int64, int64, []store.Discussion) error
+}
+
 func pollConfig(id, validation string) (*issuePoller, error) {
 	if id == "" && validation == "" {
 		return nil, nil
@@ -33,7 +38,7 @@ func pollConfig(id, validation string) (*issuePoller, error) {
 	return &issuePoller{projectID, validation}, nil
 }
 
-func (p *issuePoller) start(ctx context.Context, data issueStore, root string, get githubGET) func() {
+func (p *issuePoller) start(ctx context.Context, data pollStore, root string, get githubGET) func() {
 	ctx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
 	go func() {
@@ -60,7 +65,7 @@ func (p *issuePoller) start(ctx context.Context, data issueStore, root string, g
 	}
 }
 
-func (p *issuePoller) scan(ctx context.Context, data issueStore, root string, get githubGET) error {
+func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get githubGET) error {
 	project, err := data.Project(ctx, p.projectID)
 	if err != nil {
 		return err
@@ -71,8 +76,9 @@ func (p *issuePoller) scan(ctx context.Context, data issueStore, root string, ge
 	}
 	var previousFirst, previousLast int64
 	repeatedPage := false
+	var discussions []store.Discussion
 	for page := 1; ctx.Err() == nil; page++ {
-		path := fmt.Sprintf("repositories/%d/issues?state=open&labels=%s&sort=created&direction=asc&per_page=%d&page=%d", repo.ID, agentLabel, pageSize, page)
+		path := fmt.Sprintf("repositories/%d/issues?state=open&sort=created&direction=asc&per_page=%d&page=%d", repo.ID, pageSize, page)
 		var issues []githubIssue
 		if err := get(ctx, path, &issues); err != nil {
 			return err
@@ -96,10 +102,14 @@ func (p *issuePoller) scan(ctx context.Context, data issueStore, root string, ge
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if raw.State != "open" || raw.PullRequest != nil || !raw.hasAgentLabel() {
+			if raw.State != "open" || raw.PullRequest != nil {
 				continue
 			}
 			issue, err := repo.issue(raw, raw.Number)
+			if err == nil && !raw.hasAgentLabel() {
+				discussions = append(discussions, store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL})
+				continue
+			}
 			if err == nil {
 				_, err = data.ImportIssue(ctx, p.projectID, store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: p.validation})
 			}
@@ -108,7 +118,7 @@ func (p *issuePoller) scan(ctx context.Context, data issueStore, root string, ge
 			}
 		}
 		if len(issues) < pageSize {
-			return nil
+			return data.ReplaceInbox(ctx, p.projectID, repo.ID, discussions)
 		}
 	}
 	return ctx.Err()

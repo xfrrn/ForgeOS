@@ -38,6 +38,23 @@ type issueStore interface {
 type githubGET func(context.Context, string, any) error
 
 func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner string) {
+	mux.HandleFunc("GET /projects/{id}/inbox", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var before int64
+		if q := r.URL.Query(); q.Has("before") {
+			var err error
+			before, err = strconv.ParseInt(q.Get("before"), 10, 64)
+			if err != nil || before < 1 {
+				problem(w, http.StatusBadRequest, "before must be a positive issue number")
+				return
+			}
+		}
+		items, err := data.Inbox(r.Context(), id, before)
+		respond(w, http.StatusOK, items, err)
+	}))
 	mux.HandleFunc("POST /projects/{id}/issues/{number}", authorized(owner, importIssue(data, root, ghRead)))
 }
 

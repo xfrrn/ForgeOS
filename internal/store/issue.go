@@ -58,21 +58,8 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		return Task{}, err
 	}
 	defer tx.Rollback()
-	var bound sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT github_repository_id FROM projects WHERE id = $1 FOR UPDATE`, projectID).Scan(&bound)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Task{}, ErrNotFound
-	}
-	if err != nil {
+	if err := bindRepository(ctx, tx, projectID, issue.RepositoryID); err != nil {
 		return Task{}, err
-	}
-	if bound.Valid && bound.Int64 != issue.RepositoryID {
-		return Task{}, ErrConflict
-	}
-	if !bound.Valid {
-		if _, err = tx.ExecContext(ctx, `UPDATE projects SET github_repository_id = $2 WHERE id = $1`, projectID, issue.RepositoryID); err != nil {
-			return Task{}, err
-		}
 	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `
@@ -94,6 +81,25 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		return Task{}, err
 	}
 	return s.Task(ctx, id)
+}
+
+func bindRepository(ctx context.Context, tx *sql.Tx, projectID, repositoryID int64) error {
+	var bound sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT github_repository_id FROM projects WHERE id = $1 FOR UPDATE`, projectID).Scan(&bound)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !bound.Valid {
+		_, err = tx.ExecContext(ctx, `UPDATE projects SET github_repository_id = $2 WHERE id = $1`, projectID, repositoryID)
+		return err
+	}
+	if bound.Int64 != repositoryID {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (s *Store) RetryIssueExecution(ctx context.Context, executionID int64) (Task, error) {

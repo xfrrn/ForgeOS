@@ -67,6 +67,8 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 
 按标签自动接入时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，`FORGEOS_POLL_VALIDATION` 为上述一种验证方式。Owner 在 GitHub 仓库中为 Agent 任务模板配置 `forgeos-agent` 标签，Poller 只派发带该标签的开放 Issue，逐页读取并与手动导入共用去重逻辑。普通讨论可由 Owner 通过编号显式转为任务。默认采用按编号派单。
 
+启用 Poller 后，用 Owner 身份访问 `GET /projects/{id}/inbox` 查看开放的普通讨论。结果按 Issue 编号倒序排列，每页最多 100 项，下一页传 `?before=上一页最后的编号`。完整扫描结束后刷新收件箱，重复同步不会为普通讨论启动 Worker。通过下表的按编号导入接口转换后，讨论立即从收件箱移出。
+
 ## 人工验收与退回
 
 先用 Owner 身份读取任务并查看原始 Issue、验证结果与实际差异。以下 PowerShell 命令在持有运行配置的终端执行，`$taskId` 换成要验收的任务编号。

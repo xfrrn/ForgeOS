@@ -15,6 +15,12 @@ import (
 type pollFixture struct {
 	importFixture
 	received map[int64]int
+	inbox    []store.Discussion
+}
+
+func (f *pollFixture) ReplaceInbox(_ context.Context, _, _ int64, items []store.Discussion) error {
+	f.inbox = items
+	return nil
 }
 
 func (f *pollFixture) ImportIssue(_ context.Context, _ int64, s store.IssueSpec) (store.Task, error) {
@@ -36,13 +42,13 @@ func TestPollConfig(t *testing.T) {
 
 func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 	root, path, base := issueTestRepo(t)
-	data := &pollFixture{importFixture{path: path}, make(map[int64]int)}
+	data := &pollFixture{importFixture: importFixture{path: path}, received: make(map[int64]int)}
 	p, err := pollConfig("3", "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var reads int
-	endpoint := "repositories/88/issues?state=open&labels=forgeos-agent&sort=created&direction=asc&per_page=" + strconv.Itoa(pageSize) + "&page="
+	endpoint := "repositories/88/issues?state=open&sort=created&direction=asc&per_page=" + strconv.Itoa(pageSize) + "&page="
 	get := func(_ context.Context, path string, dst any) error {
 		reads++
 		if path == "repos/my-org/project" {
@@ -84,7 +90,7 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if reads != 8 || len(data.received) != 3 || data.received[5] != 2 || data.received[int64(pageSize+1)] != 2 ||
+	if reads != 8 || len(data.inbox) != pageSize-6 || data.inbox[0].Number != 6 || len(data.received) != 3 || data.received[5] != 2 || data.received[int64(pageSize+1)] != 2 ||
 		data.spec.BaseCommit != base || data.spec.Validation != "docs" || data.spec.Issue.RepositoryID != 88 {
 		t.Fatalf("reads=%d received=%v spec=%+v", reads, data.received, data.spec)
 	}
@@ -93,7 +99,7 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 func TestPollingStopsDuringRequest(t *testing.T) {
 	root, path, _ := issueTestRepo(t)
 	p := &issuePoller{3, "go-test"}
-	data := &importFixture{path: path}
+	data := &pollFixture{importFixture: importFixture{path: path}}
 	started := make(chan struct{})
 	get := func(ctx context.Context, _ string, _ any) error {
 		close(started)
