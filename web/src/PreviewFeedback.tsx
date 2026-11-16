@@ -26,7 +26,11 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   const [validation, setValidation] = useState('auto')
   const [harness, setHarness] = useState('')
   const [draft, setDraft] = useState<{ feedback: number; revision: number; original: string; body: string } | null>(null)
-  const [key, setKey] = useState(() => crypto.randomUUID())
+  const nonce = capture.get('screenshot') || ''
+  const extension = capture.get('extension') || ''
+  const [screenshot, setScreenshot] = useState<Blob | null>(null)
+  const [screenshotFeedback, setScreenshotFeedback] = useState(0)
+  const [key, setKey] = useState<string>(() => nonce || crypto.randomUUID())
   const api = `/tasks/${task}/previews/${preview}/feedback`
   const mismatch = Boolean(captureQuery && page && (capture.get('commit') !== page.preview.commit || capture.get('execution') !== String(page.preview.execution_id)))
   useEffect(() => {
@@ -35,9 +39,27 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
       .catch(e => { if (!controller.signal.aborted) setError(e.message) })
     return () => controller.abort()
   }, [api, request, version])
+  const candidate = page?.preview.commit
+  useEffect(() => {
+    if (!candidate || !nonce || mismatch || screenshot) return
+    if (!window.opener || !/^chrome-extension:\/\/[a-p]{32}$/.test(extension) || !/^[a-f0-9-]{36}$/.test(nonce)) {
+      setError('截图来源不可用，请从原扩展标签页重新打开工作台。'); return
+    }
+    const channel = new MessageChannel()
+    const timer = window.setTimeout(() => setError('未收到截图，请从原扩展标签页重新打开工作台。'), 8000)
+    channel.port1.onmessage = event => {
+      clearTimeout(timer)
+      if (!(event.data instanceof Blob) || event.data.type !== 'image/png' || event.data.size > 16 * 1024 * 1024) {
+        setError('扩展传入的截图格式或大小无效。'); return
+      }
+      setScreenshot(event.data); setError('')
+    }
+    window.opener.postMessage({type: 'forgeos-screenshot-ready', nonce, route: window.location.hash}, extension, [channel.port2])
+    return () => { clearTimeout(timer); channel.port1.close() }
+  }, [candidate, extension, mismatch, nonce, screenshot])
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!page || busy || mismatch) return
+    if (!page || busy || mismatch || (nonce && !screenshot)) return
     setBusy(true); setError(''); setMessage('')
     try {
       const result = await request<{ id: number }>(api, { method: 'POST', body: JSON.stringify({ request_id: key,
@@ -47,6 +69,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         frames: capture.getAll('frame'),
         canvas_point: capture.get('canvas_point') || '',
         width: Number(capture.get('width')), height: Number(capture.get('height')) }) })
+      if (screenshot && !screenshotFeedback) setScreenshotFeedback(result.id)
       setMessage(`反馈 #${result.id} 已登记。`); setNote(''); setKey(crypto.randomUUID()); setVersion(n => n + 1)
     } catch (e) { setError(e instanceof Error ? e.message : '反馈提交失败。') }
     finally { setBusy(false) }
@@ -102,11 +125,12 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         {captureQuery && <div><p>采集环境　{capture.get('browser')} · {capture.get('width')} × {capture.get('height')}</p>
           <FramePath frames={capture.getAll('frame')}/>{capture.get('element') && <p>所选元素　<code>{capture.get('element')}</code></p>}
           {capture.get('canvas_point') && <p>画布位置（左、上）　{capture.get('canvas_point')}</p>}</div>}
-        <label>页面路径（省略查询参数和片段）<input required maxLength={2048} value={path} onChange={e => setPath(e.target.value)} /></label>
+        {nonce && !mismatch && <p role="status">{screenshot ? (screenshotFeedback ? `截图已关联反馈 #${screenshotFeedback}。` : '已收到截图。登记观察后可遮挡、标注并确认上传。') : '正在从扩展读取截图…'}</p>}
+        <label>页面路径（省略查询参数和片段）<input readOnly={Boolean(nonce)} required maxLength={2048} value={path} onChange={e => setPath(e.target.value)} /></label>
         <label>关联测试用例<select value={caseID} onChange={e => setCaseID(e.target.value)}><option value="">无关联用例</option>
           {page.plan?.cases.map(c => <option key={c.id} value={c.id}>{c.id} · {c.objective}</option>)}</select></label>
         <label>观察结果或修改意见<textarea required maxLength={8192} value={note} onChange={e => setNote(e.target.value)} /></label>
-        <button className="button" disabled={busy || mismatch || !note.trim()}>提交反馈</button>
+        <button className="button" disabled={busy || mismatch || !note.trim() || Boolean(nonce && !screenshot)}>提交反馈</button>
       </fieldset></form><h2>该预览的反馈</h2>
       <button className="detail-text-button" onClick={() => { setError(''); setVersion(n => n + 1) }}>刷新反馈分类</button>
       {!page.feedback.length && <p>尚无反馈。</p>}
@@ -114,7 +138,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         {f.body.case_id && ` · 计划 v${f.body.plan_revision} · ${f.body.case_id}`}</p><p>{f.body.note}</p>
         <FramePath frames={f.body.frames}/>{f.body.element && <p>元素 <code>{f.body.element}</code></p>}
         {f.body.canvas_point && <p>画布位置（左、上）　{f.body.canvas_point}</p>}
-        <FeedbackScreenshots api={`${api}/${f.id}/artifacts`} artifacts={f.artifacts ?? []} request={request}
+        <FeedbackScreenshots api={`${api}/${f.id}/artifacts`} artifacts={f.artifacts ?? []} request={request} captured={screenshotFeedback === f.id ? screenshot : null}
           saved={() => { setMessage(`已保存反馈 #${f.id} 的截图。`); setVersion(n => n + 1) }}/>
         {f.review ? <p>Owner 已{f.review.decision === 'approve' ? '通过验收' : '退回修改'}　{f.review.note}</p> :
           page.at_acceptance && ['acceptance', 'bug', 'ui_change'].includes(f.classification?.category ?? '') &&

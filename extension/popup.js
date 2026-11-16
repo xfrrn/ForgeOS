@@ -2,6 +2,7 @@ const statusLine = document.querySelector('#status')
 const pair = document.querySelector('#pair')
 const pick = document.querySelector('#pick')
 const page = document.querySelector('#page')
+const screenshot = document.querySelector('#screenshot')
 
 async function prepare() {
   const [tab] = await chrome.tabs.query({active: true, currentWindow: true})
@@ -27,17 +28,23 @@ async function prepare() {
   const gatewayPreview = preview && url.protocol === 'https:' && owner.protocol === 'https:' && owner.hostname === 'forgeos.' + preview[2] && owner.port === url.port
   if (!preview || (!localPreview && !gatewayPreview)) throw new Error('当前页面不属于已连接工作台的候选预览。')
   statusLine.textContent = '在工作台确认页面路径、填写意见并选择测试用例。'
-  pick.hidden = page.hidden = false
-  async function capture(elementMode) {
+  pick.hidden = page.hidden = screenshot.hidden = false
+  async function capture(elementMode, withScreenshot = false) {
     try {
       const [result] = await chrome.scripting.executeScript({target: {tabId: tab.id}, func: startCapture, args: [paired, url.origin, preview[1], elementMode]})
       if (!result?.result?.ok) throw new Error(result?.result?.error || '无法核对当前候选。')
-      if (result.result.destination) await chrome.tabs.create({url: result.result.destination})
+      if (withScreenshot) {
+        const review = new URL(chrome.runtime.getURL('screenshot.html'))
+        review.hash = new URLSearchParams({tab: String(tab.id), window: String(tab.windowId),
+          document: result.documentId, destination: result.result.destination, origin: url.origin}).toString()
+        await chrome.tabs.create({url: review.href, active: false, windowId: tab.windowId})
+      } else if (result.result.destination) await chrome.tabs.create({url: result.result.destination})
       window.close()
     } catch (err) { statusLine.textContent = err.message }
   }
   pick.onclick = () => capture(true)
   page.onclick = () => capture(false)
+  screenshot.onclick = () => capture(false, true)
 }
 
 async function startCapture(workbench, origin, preview, elementMode) {

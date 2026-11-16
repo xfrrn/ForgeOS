@@ -162,6 +162,39 @@ def main():
             assert nested.locator(fields["element"][0]).get_attribute("type") == "password"
             print("PASS: nested iframe locator, late insertion, cancellation, field privacy")
             print("PASS: paired origin, cancellation, structural locator, candidate, path and privacy")
+            p.evaluate("""() => {
+              document.body.style.background='white'
+              const marker=document.createElement('input')
+              marker.type='password'
+              marker.style.cssText='position:fixed;top:10px;left:10px;width:80px;height:50px;background:magenta;z-index:99'
+              document.body.append(marker)
+            }""")
+            with context.expect_page() as staged:
+                press_action(context, p, extension_id, "screenshot")
+            review = staged.value
+            expect(review.get_by_role("button", name="在工作台标注并登记反馈")).to_be_visible()
+            masked = review.locator("#image").evaluate("""async el => {
+              await el.decode()
+              const canvas=document.createElement('canvas');canvas.width=el.naturalWidth;canvas.height=el.naturalHeight
+              const ctx=canvas.getContext('2d');ctx.drawImage(el,0,0)
+              return Array.from(ctx.getImageData(30,30,1,1).data)
+            }""")
+            assert masked == [255,255,255,255]
+            assert "discard-query" not in review.url and "private-value" not in review.url
+            expect(p.locator("input").last).to_be_visible()
+            review.get_by_role("button", name="关闭并丢弃").click()
+            print("PASS: active-tab screenshot hid the password field and discard closed the staging tab")
+            p.evaluate("window.captureTimer = setInterval(() => document.body.toggleAttribute('data-forgeos-private'), 5)")
+            with context.expect_page() as moving:
+                press_action(context, p, extension_id, "screenshot")
+            moving_review = moving.value
+            expect(moving_review.get_by_role("status")).to_contain_text("隐私区域发生变化")
+            expect(moving_review.locator("#send")).to_be_hidden()
+            p.evaluate("clearInterval(window.captureTimer)")
+            expect(p.locator("input").last).to_be_visible()
+            moving_review.close()
+            print("PASS: changing page rejected and original controls restored")
+
         finally:
             context.close()
             server.shutdown()

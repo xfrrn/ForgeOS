@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>核对候选截图 · ForgeOS</title>
+<style>
+  body { max-width: 960px; margin: 24px auto; padding: 0 16px; font: 16px/1.5 system-ui,sans-serif; color: #18232f }
+  h1 { font-size: 22px } img { display: block; max-width: 100%; border: 1px solid #aaa; margin: 16px 0 }
+  button { padding: 6px 12px } [hidden] { display: none }
+</style>
+<h1>核对候选截图</h1>
+<p id="status" role="status">正在截取原预览标签页的可见区域…</p>
+<img id="image" hidden alt="待确认的候选视口截图">
+<button id="send" hidden>在工作台标注并登记反馈</button>
+<button id="discard">关闭并丢弃</button>
+<script src="screenshot.js"></script></html>

@@ -25,8 +25,8 @@ function paint(canvas: HTMLCanvasElement, image: ImageBitmap, marks: Mark[]) {
   }
 }
 
-export function FeedbackScreenshots({ api, artifacts, request, saved }: {
-  api: string; artifacts: ScreenshotReceipt[]; request: ApiRequest; saved: () => void
+export function FeedbackScreenshots({ api, artifacts, request, saved, captured }: {
+  api: string; artifacts: ScreenshotReceipt[]; request: ApiRequest; saved: () => void; captured?: Blob | null
 }) {
   const [open, setOpen] = useState(false)
   const [image, setImage] = useState<ImageBitmap | null>(null)
@@ -46,7 +46,7 @@ export function FeedbackScreenshots({ api, artifacts, request, saved }: {
   function reset() {
     setImage(null); setMarks([]); setBox(blank); setDrag(null); setView(0); start.current = null; setError('')
   }
-  async function load(file?: File, receipt?: ScreenshotReceipt) {
+  async function load(file?: Blob, receipt?: ScreenshotReceipt) {
     reset(); setBusy(true)
     try {
       const blob = file ?? await request<Blob>(api + '/' + receipt!.id, {}, 'blob')
@@ -61,6 +61,9 @@ export function FeedbackScreenshots({ api, artifacts, request, saved }: {
     } catch (e) { setError(e instanceof Error ? e.message : '无法读取截图。') }
     finally { setBusy(false) }
   }
+  useEffect(() => {
+    if (captured) { setOpen(true); void load(captured) }
+  }, [captured])
   function point(e: PointerEvent<HTMLCanvasElement>) {
     const el = e.currentTarget
     const area = el.getBoundingClientRect()
@@ -98,6 +101,7 @@ export function FeedbackScreenshots({ api, artifacts, request, saved }: {
       <label>选择本机 PNG 截图<input type="file" accept="image/png" onChange={e => {
         const f = e.target.files?.[0]; e.target.value = ''; if (f) void load(f)
       }}/></label>
+      {captured && !image && <button className="detail-text-button" onClick={() => void load(captured)}>重新载入扩展截图</button>}
       {error && <p role="alert">{error}</p>}
       {image && <><p>{view ? `已归档截图 #${view}` : '在图上拖动矩形或输入坐标，确认敏感区域已遮挡后提交。'} · {image.width} × {image.height}</p>
         {!view && <label>标注方式<select value={mask ? 'mask' : 'outline'} onChange={e => setMask(e.target.value === 'mask')}>
