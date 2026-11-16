@@ -58,5 +58,6 @@
 |---|---|
 | [project.yaml.example](schemas/project.yaml.example) | 项目标识、仓库与本地目录、Harness、交付策略 |
 | [validation.yaml.example](schemas/validation.yaml.example) | 接入项目的检查命令、超时和检查组合 |
+| [validation.schema.json](schemas/validation.schema.json) | 版本 1 的验证配置合同，控制面读取配置时使用 |
 | [acceptance.yaml.example](schemas/acceptance.yaml.example) | 按模块路径选择验收方法、最低验证等级和人工验收条件 |
 | [agent-message.example.json](schemas/agent-message.example.json) | Agent 决策请求的发送方、接收方、证据引用与幂等键 |

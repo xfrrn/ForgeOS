@@ -23,6 +23,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	mux := http.NewServeMux()
 	registerCheckpoints(mux, data, owner, workers)
 	registerHistory(mux, data, owner, workers)
+	registerValidationPlan(mux, data, root, owner, workers)
 	registerDecisions(mux, data, owner, workers)
 	registerMaterials(mux, data, owner, workers)
 	registerShares(mux, data, owner, workers)

@@ -22,6 +22,19 @@
 
 仓库配置不能授予自身更高权限。验证配置修改需独立审查，敏感能力由 Policy Engine 控制。
 
+版本 1 的机器可读合同见[正式 Schema](../schemas/validation.schema.json)，项目可从[现成示例](../schemas/validation.yaml.example)起步。将 `validation.yaml` 提交到项目根目录。每项检查声明类型、参数数组和 1–3600 秒超时，可声明相对工作目录、报告和产物文件。环境为 `ci`，可省略；`required` 默认 true。未知字段、重复键、越界路径和未定义的检查引用会导致整份配置无效。
+
+Owner 通过 `GET /projects/{id}/validation-plan?commit=<完整 SHA>&level=V3` 检查固定版本。获该项目授权的节点使用相同路径前加 `/internal`。返回的 `config_blob` 是实际读取的 Git blob。控制面按等级累加各 Profile 的检查并去重。以下是可判定计划齐备所需的检查类别。
+
+| 等级 | 目标 Profile | 本级新增必需类型 |
+| --- | --- | --- |
+| V1 | fast | static |
+| V2 | standard | unit、build |
+| V3 | integration | integration |
+| V4 | critical | security、regression |
+
+可选检查保留在计划中；只有必需检查计入覆盖。目标 Profile 或必需类别缺失时，响应 `ready=false` 并逐项列出 `missing`。这是配置检查结果。实际检查的退出码、报告和交付判定由执行流程记录。
+
 ## 3. 验证等级
 
 - V1：格式、Lint、类型检查；
