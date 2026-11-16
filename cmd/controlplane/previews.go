@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"forgeos/internal/localrepo"
+	"forgeos/internal/preview"
 	"forgeos/internal/store"
 )
 
@@ -75,8 +76,8 @@ func previewBlob(ctx context.Context, repo, commit, name string) ([]byte, error)
 	return data, err
 }
 
-// The preview origin serves only committed assets. It has no control-plane routes or credentials.
-func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
+// The capability origin has no control-plane routes or browser credentials.
+func previewAssets(data *store.Store, root string, port int, backend *previewBackend, gateway string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -84,7 +85,25 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'none'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'; base-uri 'self'")
 		h, p, err := net.SplitHostPort(r.Host)
 		match := previewHost.FindStringSubmatch(h)
-		if err != nil || p != strconv.Itoa(port) || match == nil || (r.Method != "GET" && r.Method != "HEAD") || r.Header.Get("Service-Worker") != "" {
+		if err != nil || p != strconv.Itoa(port) || match == nil || r.Header.Get("Service-Worker") != "" {
+			http.NotFound(w, r)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		source, err := data.PreviewSource(ctx, match[1], port)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("X-ForgeOS-Commit", source.Commit)
+		w.Header().Set("X-ForgeOS-Task", strconv.FormatInt(source.Task, 10))
+		w.Header().Set("X-ForgeOS-Execution", strconv.FormatInt(source.Execution, 10))
+		if source.Environment == "local-mock" {
+			backend.forward(w, r, match[1], gateway)
+			return
+		}
+		if r.Method != "GET" && r.Method != "HEAD" {
 			http.NotFound(w, r)
 			return
 		}
@@ -93,13 +112,6 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 			name += "index.html"
 		}
 		if !publicPath(name) {
-			http.NotFound(w, r)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		source, err := data.PreviewSource(ctx, match[1], port)
-		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
@@ -122,15 +134,16 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 			contentType = "application/octet-stream"
 		}
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("X-ForgeOS-Commit", source.Commit)
-		w.Header().Set("X-ForgeOS-Task", strconv.FormatInt(source.Task, 10))
-		w.Header().Set("X-ForgeOS-Execution", strconv.FormatInt(source.Execution, 10))
 		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(body))
 	}
 }
 
 func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr string) (func(), error) {
 	gateway, err := previewGateway(os.Getenv("FORGEOS_GATEWAY_DOMAIN"), os.Getenv("FORGEOS_GATEWAY_PORT"))
+	if err != nil {
+		return nil, err
+	}
+	backend, err := newPreviewBackend()
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +160,7 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 		if err != nil {
 			return nil, err
 		}
-		server := &http.Server{Handler: previewAssets(data, root, port), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+		server := &http.Server{Handler: previewAssets(data, root, port, backend, gateway), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 25 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 		go func() {
 			if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("preview listener stopped: %v", err)
@@ -166,7 +179,7 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 			return
 		}
 		receipts, err := data.Previews(r.Context(), id, execution)
-		respond(w, 200, map[string]any{"enabled": port != 0, "gateway": gateway, "previews": receipts}, err)
+		respond(w, 200, map[string]any{"enabled": port != 0, "applications": backend != nil && port != 0, "gateway": gateway, "previews": receipts}, err)
 	}))
 	mux.HandleFunc("POST /tasks/{id}/previews", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
@@ -178,10 +191,11 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 			return
 		}
 		var req struct {
-			Execution int64  `json:"execution_id"`
-			Commit    string `json:"commit"`
-			Directory string `json:"directory"`
-			Seconds   int    `json:"ttl_seconds"`
+			Execution   int64  `json:"execution_id"`
+			Commit      string `json:"commit"`
+			Directory   string `json:"directory"`
+			Environment string `json:"environment"`
+			Seconds     int    `json:"ttl_seconds"`
 		}
 		if !decodeLimited(w, r, &req, 8<<10) {
 			return
@@ -189,8 +203,13 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 		if req.Seconds == 0 {
 			req.Seconds = 3600
 		}
-		if !publicPath(req.Directory) || !gitCommit.MatchString(req.Commit) || req.Execution < 1 || req.Seconds < 1 || req.Seconds > 86400 {
-			problem(w, 400, "provide a public subdirectory, fixed execution and commit, and TTL from 1 to 86400 seconds")
+		app := req.Environment == "local-mock"
+		if app && backend == nil {
+			problem(w, 503, "configure the preview manager")
+			return
+		}
+		if (app && req.Directory != "") || (!app && ((req.Environment != "" && req.Environment != "local") || !publicPath(req.Directory))) || !gitCommit.MatchString(req.Commit) || req.Execution < 1 || req.Seconds < 1 || req.Seconds > 86400 {
+			problem(w, 400, "provide a static directory or local-mock environment, a fixed execution and commit, and TTL from 1 to 86400 seconds")
 			return
 		}
 		task, err := data.Task(r.Context(), id)
@@ -219,6 +238,21 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 			problem(w, 409, "candidate repository unavailable")
 			return
 		}
+		if app {
+			ctx, cancel := context.WithTimeout(r.Context(), 7*time.Minute)
+			defer cancel()
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(7*time.Minute + 5*time.Second))
+			receipt, err := data.OpenApplicationPreview(ctx, id, req.Execution, req.Commit, port, req.Seconds, func(key string, expires time.Time) error {
+				return backend.change(ctx, key, &preview.Lease{Repo: localrepo.RelativePath(root, repo), Commit: req.Commit, Expires: expires})
+			})
+			var failure *managerFailure
+			if errors.As(err, &failure) {
+				problem(w, failure.status, failure.message)
+				return
+			}
+			respond(w, 200, receipt, err)
+			return
+		}
 		if _, err = previewBlob(r.Context(), repo, req.Commit, req.Directory+"/index.html"); err != nil {
 			problem(w, 422, "directory must contain a committed, readable index.html up to 8 MiB")
 			return
@@ -231,8 +265,22 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 		if !ok {
 			return
 		}
-		err := data.StopPreview(r.Context(), id, r.PathValue("preview"))
+		key := r.PathValue("preview")
+		environment, err := data.StopPreview(r.Context(), id, key)
+		if err == nil && environment == "local-mock" {
+			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+			defer cancel()
+			if err = backend.change(ctx, key, nil); err != nil {
+				problem(w, 503, "preview access revoked; retry stop to confirm container removal")
+				return
+			}
+		}
 		respond(w, 204, nil, err)
 	}))
-	return done, nil
+	return func() {
+		done()
+		if backend != nil {
+			backend.client.CloseIdleConnections()
+		}
+	}, nil
 }

@@ -8,7 +8,7 @@ const categories: Record<string, string> = { acceptance: '验收通过', bug: 'B
 function FramePath({ frames }: { frames?: string[] }) {
   return frames?.length ? <div>所属 iframe（从外到内）<ol>{frames.map((frame, i) => <li key={i}><code>{frame}</code></li>)}</ol></div> : null
 }
-type Page = { repository: string; latest_requirement: number | null; at_acceptance: boolean; preview: { project_id: number; execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
+type Page = { repository: string; latest_requirement: number | null; at_acceptance: boolean; preview: { project_id: number; execution_id: number; commit: string; directory: string; environment: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
 export function PreviewFeedback({ task, preview, captureQuery, request }: { task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
   const capture = new URLSearchParams(captureQuery)
@@ -123,7 +123,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   }
   return <section className="panel"><a href={`#/tasks/${task}`}>返回任务 T-{task}</a><h1>预览反馈</h1>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    {page && <><p>执行 {page.preview.execution_id} · {page.preview.directory} · <code>{page.preview.commit}</code></p>
+    {page && <><p>执行 {page.preview.execution_id} · {page.preview.environment === 'local-mock' ? '应用预览（local-mock）' : page.preview.directory} · <code>{page.preview.commit}</code></p>
       <form onSubmit={submit}><fieldset><legend>记录观察</legend>
         {mismatch && <p role="alert">捕获页面的候选或执行与此预览不一致，请返回预览重新选择。</p>}
         {captureQuery && <div><p>采集环境　{capture.get('browser')} · {capture.get('width')} × {capture.get('height')}</p>
