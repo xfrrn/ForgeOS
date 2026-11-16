@@ -46,15 +46,15 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | --- | --- | --- | --- |
 | 00–01 产品与端到端流程 | 两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭 | `1a17822`、`32c0fa0`、`5447445` | 远程外部设备、知识归档、完整项目初始化 |
 | 02–03 系统与模块 | 独立控制面和 Worker、PostgreSQL、同源 React 页面、只读规划和交付器均从实际入口运行 | `1a17822`、`cc2011f` | 分类、管理角色的协调职责、通知、节点资源管理、知识与预览服务 |
-| 04 领域模型 | 同一任务关联历史执行、计划修订、候选、验收、子 PR 和 Merge SHA | `5d30bcf`、`94b6b08`、`70781ba` | 独立 Requirement Revision、Validation Run 和 Artifact 标识，以及完整 Session/Process 模型 |
+| 04 领域模型 | 同一任务关联历史执行、计划修订、候选、验收、子 PR 和 Merge SHA | `5d30bcf`、`94b6b08`、`70781ba` | 独立 Validation Run 和 Artifact 标识，以及完整 Session/Process 模型 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版 | `70781ba`、`f8503c5` | 跨操作 D0–D3 策略、ACP 路由、批量答复 |
-| 06 规划与编排 | 任务 16 自动生成草案，Goal 13 显式激活；后继项从实际合并版本执行 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07` | 运行时事件批处理和安全中断 |
+| 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840` | 运行时事件批处理和安全中断 |
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session ID、工作区和真实失联租约验证 | `1a17822`、`cc2011f`、`b4e7c54` | App Server、Claude Code 原生恢复、Linux 专用用户和 systemd、多节点恢复 |
 | 08 项目知识 | Planner 在固定版本引用 README 和 CI 工程事实 | `cc2011f` | 私有知识存储、检索 API、决策权威性、脱敏审批和共享副本 |
 | 09 权限与密钥 | Owner/Worker 分权，Worker 回答业务问题或读取 Owner 收件箱返回 401 | `1a17822`、`319aa65`、`70781ba` | 项目及环境授权、OpenBao、Secret Broker、短期凭据与恢复 |
 | 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、失败的 Actions 门禁、候选变化后重新验证 | `1a17822`、`32c0fa0` | 只读审查、V1–V4、仓库验证 Schema、检查报告与 GitHub 状态回传 |
 | 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
-| 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 不提前关闭父 Issue | `319aa65`、`32c0fa0`、`94b6b08`、`5447445` | Issue 修改/评论进入事件队列、Webhook、细粒度凭据和第二人审查实测 |
+| 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 不提前关闭父 Issue | `319aa65`、`32c0fa0`、`94b6b08`、`5447445` | Issue 评论采集及变化在检查点的处理、Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
 | 14 部署与运维 | Windows 主机、独立 PostgreSQL、Docker Linux 引擎和控制面重启实测 | `1a17822`、`32c0fa0` | Linux 常驻服务、私网访问、资源预算、数据库/OpenBao/工件备份恢复演练 |
 | 15–16 路线与开放项 | 基座、单项目闭环、两子项 Goal 场景、第二个项目交付有以上记录 | 本表所列提交 | [开放事项 A–C](16-open-decisions.md)中其余真实环境与协议要求，以及全路线最终回归 |
@@ -80,3 +80,12 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 完成第一个子项 | 保留原执行，父 Issue 保持开放 | 任务 17 的 PR 已合并，Merge SHA 为 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`；任务 18 开始执行时父 Issue 仍为 OPEN。[PR #5](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/5) |
 | 从旧的依赖检查返回结果、覆盖已交付子项、在关闭租约期间再提交计划 | 各次写入被拒，旧结果不能放行已改版任务 | PostgreSQL 集成测试通过，已交付子项的执行 ID 和 Merge SHA 保留。全套 PostgreSQL/Docker 回归 53 项通过、零跳过 |
 | 完成修订后的任务 18 | 从前置 Merge SHA 开始验证，两个必需子项交付后关闭父 Issue | 执行 15 基于 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`，候选 `8ee909d7b313ca88cb3877ced22b44102ff69d65` 经 docs 验证与必需 CI 后合并为 `b179f04fec439a392af1fe1504450931f9f1f203`。Goal 16 为 DONE，Issue 已关闭，回写计数为 2。[PR #6](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/6) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43823799864) · [父 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/4) |
+
+## 专题 04、12 · 来源需求修订与执行绑定
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 GitHub 导入 alpha #7，然后在真实 Worker 执行时修改正文并重复导入 | 工作项保持唯一，修订 2 可读取，执行继续使用版本 1 | 任务 20，执行 16，绑定 Requirement ID 5。两个版本都能查到相应正文；候选 `114d73ef1e26ed33eaf2cc58b6b74fe5b56a03dc` 通过 docs 验证。[输入 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/7) |
+| 再改一次无派单标签的 Issue，启动真实轮询器，打开 Chrome 任务详情 | 自动观察修订 3，浏览新旧正文，既有候选保持待验收 | 页面显示三版，可从第 3 版回看第 2 版。原工作项仍为 WAITING_ACCEPTANCE，只有一次执行、两条需求变化事件 |
+| 重启控制面，重放同步，查询既有子任务 18 的需求版本 | 没有新增执行或修订，既有子执行可追溯到原 Goal | 任务 20 保持最新版本 3、执行绑定 1；18 的执行与 Goal 16 原始需求对应同一个 ID |
+本次 PostgreSQL 与 Docker 回归 54 项通过，零失败、零跳过。Go vet 和前端生产构建通过。

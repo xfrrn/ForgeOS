@@ -38,6 +38,19 @@ type issueStore interface {
 type githubGET func(context.Context, string, any) error
 
 func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner string) {
+	mux.HandleFunc("GET /tasks/{id}/requirements/{revision}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
+		if err != nil || n < 1 {
+			problem(w, http.StatusBadRequest, "provide a positive requirement revision")
+			return
+		}
+		rev, err := data.RequirementRevision(r.Context(), id, n)
+		respond(w, http.StatusOK, rev, err)
+	}))
 	mux.HandleFunc("GET /projects/{id}/inbox", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

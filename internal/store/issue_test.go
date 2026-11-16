@@ -64,7 +64,7 @@ func TestIssueMigrationAndDelivery(t *testing.T) {
 	}
 	for i := 0; i < cap(replays); i++ {
 		got := <-replays
-		if got.ID != task.ID || got.Spec == nil || *got.Spec != spec || len(got.Events) != 1 {
+		if got.ID != task.ID || got.Spec == nil || *got.Spec != spec || len(got.Events) != 2 || got.RequirementRevision != 1 || got.LatestRequirement != 2 {
 			t.Fatalf("replay changed the imported snapshot: %+v", got)
 		}
 	}
@@ -92,7 +92,7 @@ func TestIssueMigrationAndDelivery(t *testing.T) {
 		t.Fatalf("issue claim lost source spec: %v", err)
 	}
 	got, err := s.Task(ctx, task.ID)
-	if err != nil || got.Execution == nil || time.Until(got.Execution.LeaseUntil) < 20*time.Minute {
+	if err != nil || got.Execution == nil || got.Execution.RequirementID <= 0 || got.Execution.RequirementRevision != 1 || time.Until(got.Execution.LeaseUntil) < 20*time.Minute {
 		t.Fatalf("issue lease too short: %+v %v", got, err)
 	}
 	candidate := strings.Repeat("a", 40)
@@ -120,7 +120,7 @@ func TestIssueMigrationAndDelivery(t *testing.T) {
 	}
 	final, err := s.Task(ctx, task.ID)
 	if err != nil || final.Status != "WAITING_ACCEPTANCE" || final.Execution.Status != "COMPLETED" ||
-		!reflect.DeepEqual(final.Execution.Result, &success) || len(final.Events) != 3 {
+		!reflect.DeepEqual(final.Execution.Result, &success) || len(final.Events) != 4 {
 		t.Fatalf("lost candidate or validation: %+v %v", final, err)
 	}
 

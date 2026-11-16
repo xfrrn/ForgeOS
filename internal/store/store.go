@@ -55,6 +55,9 @@ var managementSchema string
 //go:embed 011_rolling.sql
 var rollingSchema string
 
+//go:embed 012_requirements.sql
+var requirementSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -62,35 +65,39 @@ type Project struct {
 }
 
 type Task struct {
-	ActiveRevision int                `json:"active_revision,omitempty"`
-	Questions      []DecisionQuestion `json:"questions,omitempty"`
-	GoalID         int64              `json:"goal_id,omitempty"`
-	PlanRevision   int                `json:"plan_revision,omitempty"`
-	PlanKey        string             `json:"plan_key,omitempty"`
-	Children       []GoalChild        `json:"children,omitempty"`
-	ID             int64              `json:"id"`
-	ProjectID      int64              `json:"project_id"`
-	Kind           string             `json:"kind"`
-	Spec           *IssueSpec         `json:"spec,omitempty"`
-	Status         string             `json:"status"`
-	Execution      *Execution         `json:"execution"`
-	Attempts       []Execution        `json:"attempts"`
-	Events         []Event            `json:"events"`
-	Reviews        []Review           `json:"reviews,omitempty"`
-	Delivery       *Delivery          `json:"delivery,omitempty"`
-	Plan           *PlanRevision      `json:"plan,omitempty"`
+	RequirementRevision int                `json:"requirement_revision,omitempty"`
+	LatestRequirement   int                `json:"latest_requirement,omitempty"`
+	ActiveRevision      int                `json:"active_revision,omitempty"`
+	Questions           []DecisionQuestion `json:"questions,omitempty"`
+	GoalID              int64              `json:"goal_id,omitempty"`
+	PlanRevision        int                `json:"plan_revision,omitempty"`
+	PlanKey             string             `json:"plan_key,omitempty"`
+	Children            []GoalChild        `json:"children,omitempty"`
+	ID                  int64              `json:"id"`
+	ProjectID           int64              `json:"project_id"`
+	Kind                string             `json:"kind"`
+	Spec                *IssueSpec         `json:"spec,omitempty"`
+	Status              string             `json:"status"`
+	Execution           *Execution         `json:"execution"`
+	Attempts            []Execution        `json:"attempts"`
+	Events              []Event            `json:"events"`
+	Reviews             []Review           `json:"reviews,omitempty"`
+	Delivery            *Delivery          `json:"delivery,omitempty"`
+	Plan                *PlanRevision      `json:"plan,omitempty"`
 }
 
 type Execution struct {
-	ID           int64      `json:"id"`
-	Status       string     `json:"status"`
-	Worker       string     `json:"worker"`
-	Workspace    string     `json:"workspace"`
-	LeaseUntil   time.Time  `json:"lease_until"`
-	LeaseExpired bool       `json:"lease_expired"`
-	AbandonedAt  *time.Time `json:"abandoned_at,omitempty"`
-	EndReason    string     `json:"end_reason,omitempty"`
-	Result       *Result    `json:"result"`
+	RequirementID       int64      `json:"requirement_id,omitempty"`
+	RequirementRevision int        `json:"requirement_revision,omitempty"`
+	ID                  int64      `json:"id"`
+	Status              string     `json:"status"`
+	Worker              string     `json:"worker"`
+	Workspace           string     `json:"workspace"`
+	LeaseUntil          time.Time  `json:"lease_until"`
+	LeaseExpired        bool       `json:"lease_expired"`
+	AbandonedAt         *time.Time `json:"abandoned_at,omitempty"`
+	EndReason           string     `json:"end_reason,omitempty"`
+	Result              *Result    `json:"result"`
 }
 
 type Event struct {
@@ -144,7 +151,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -191,14 +198,14 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var spec, attempts, events, reviews, delivery, plan, children, questions []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
-		SELECT t.id, t.project_id, t.status, t.kind, COALESCE(t.active_revision,0),t.spec,
+		SELECT t.id, t.project_id, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
-		        'id', e.id, 'worker', e.worker, 'workspace', e.workspace,
+		        'id', e.id, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'abandoned_at', e.abandoned_at,
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
 		        'result', e.result) ORDER BY e.id)
-		     FROM executions e WHERE e.task_id = t.id), '[]'),
+		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id WHERE e.task_id = t.id), '[]'),
 		    (SELECT jsonb_agg(jsonb_build_object(
 		        'id', v.id, 'execution_id', v.execution_id, 'type', v.type, 'at', v.at) ORDER BY v.id)
 		     FROM task_events v WHERE v.task_id = t.id),
@@ -210,7 +217,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    (SELECT jsonb_agg(jsonb_build_object('id',c.id,'key',c.plan_key,'status',c.status) ORDER BY c.id)
 		       FROM work_items c WHERE c.goal_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id)
-		FROM work_items t WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &t.ActiveRevision, &spec, &attempts,
+		FROM work_items t LEFT JOIN requirement_revisions frozen ON frozen.id=t.requirement_id WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &t.ActiveRevision, &t.RequirementRevision, &t.LatestRequirement, &spec, &attempts,
 		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
@@ -337,8 +344,8 @@ func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabil
 	hash := sha256.Sum256([]byte(j.LeaseToken))
 	j.Workspace = filepath.Join(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, lease_until)
-		VALUES ($1, $2, $3, $4, $5, now() + CASE WHEN $6 = 'codex_issue'
+		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, lease_until)
+		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2), now() + CASE WHEN $6 = 'codex_issue'
 		    THEN interval '25 minutes' ELSE interval '2 minutes' END)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.Kind)
 	if err != nil {
 		return nil, err

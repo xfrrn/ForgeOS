@@ -117,8 +117,8 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 					INSERT INTO task_events(task_id,type) SELECT id,'goal_item_revised' FROM changed RETURNING task_id`, prior.id, state, string(doc), revision).Scan(&childID)
 			} else {
 				err = tx.QueryRowContext(ctx, `WITH child AS (
-				INSERT INTO work_items(project_id,kind,status,spec,goal_id,plan_revision,plan_key)
-				VALUES ($1,'codex_issue',$2,$3,$4,$5,$6) RETURNING id)
+				INSERT INTO work_items(project_id,kind,status,spec,goal_id,plan_revision,plan_key,requirement_id)
+				VALUES ($1,'codex_issue',$2,$3,$4,$5,$6,(SELECT requirement_id FROM work_items WHERE id=$4)) RETURNING id)
 				INSERT INTO task_events(task_id,type) SELECT id,'goal_item_created' FROM child RETURNING task_id`,
 					projectID, state, string(doc), id, revision, item.Key).Scan(&childID)
 			}

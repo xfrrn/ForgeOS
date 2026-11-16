@@ -15,7 +15,16 @@ import (
 type pollFixture struct {
 	importFixture
 	received map[int64]int
+	observed map[int64]int
 	inbox    []store.Discussion
+}
+
+func (f *pollFixture) ObserveIssue(_ context.Context, _ int64, issue store.Issue) error {
+	if f.observed == nil {
+		f.observed = map[int64]int{}
+	}
+	f.observed[issue.Number]++
+	return nil
 }
 
 func (f *pollFixture) ReplaceInbox(_ context.Context, _, _ int64, items []store.Discussion) error {
@@ -89,6 +98,9 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 		if err := p.scan(context.Background(), data, root, get); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if data.observed[6] != 2 || data.received[6] != 0 {
+		t.Fatal("ordinary discussion was dispatched or omitted", data.observed[6], data.received[6])
 	}
 	if reads != 8 || len(data.inbox) != pageSize-6 || data.inbox[0].Number != 6 || len(data.received) != 3 || data.received[5] != 2 || data.received[int64(pageSize+1)] != 2 ||
 		data.spec.BaseCommit != base || data.spec.Validation != "docs" || data.spec.Issue.RepositoryID != 88 {

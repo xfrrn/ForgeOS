@@ -72,10 +72,13 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		INSERT INTO task_events(task_id, type) SELECT id, 'issue_imported' FROM created
 		RETURNING task_id`, projectID, issue.ID, string(snapshot)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, `SELECT id FROM work_items WHERE project_id = $1 AND github_issue_id = $2`,
+		err = tx.QueryRowContext(ctx, `SELECT id FROM work_items WHERE project_id = $1 AND github_issue_id = $2 FOR UPDATE`,
 			projectID, issue.ID).Scan(&id)
 	}
 	if err != nil {
+		return Task{}, err
+	}
+	if err = recordRequirement(ctx, tx, id, issue); err != nil {
 		return Task{}, err
 	}
 	if err = tx.Commit(); err != nil {

@@ -24,6 +24,7 @@ type issuePoller struct {
 
 type pollStore interface {
 	issueStore
+	ObserveIssue(context.Context, int64, store.Issue) error
 	ReplaceInbox(context.Context, int64, int64, []store.Discussion) error
 }
 
@@ -107,6 +108,9 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 			}
 			issue, err := repo.issue(raw, raw.Number)
 			if err == nil && !raw.hasAgentLabel() {
+				if err = data.ObserveIssue(ctx, p.projectID, issue); err != nil {
+					return err
+				}
 				discussions = append(discussions, store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL})
 				continue
 			}
