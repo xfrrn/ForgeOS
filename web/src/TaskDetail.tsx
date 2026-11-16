@@ -10,7 +10,8 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
   checks: { name: string; required: boolean; status: string; failure?: string; exit_code: number | null; log: string
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
-type Result = { commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
+type HarnessProcess = { instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
+type Result = { commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   review_feedback?: { id: number; preview_id: string; decision: 'approve' | 'reject'; note: string }[]
   test_plan_revision?: number; test_plan_state?: string; test_case_state?: string; test_case_attempts?: number; requires_test_plan?: boolean
@@ -270,6 +271,17 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
+    {result?.processes && result.processes.length > 0 && <details>
+      <summary>Harness 进程记录（{result.processes.length}）</summary>
+      {result.processes.map(p => <dl className="detail-facts" key={p.instance}>
+        <Fact label="进程 PID" code>{p.pid}</Fact>
+        <Fact label="Harness 版本">{p.harness} {p.version}</Fact>
+        <Fact label="开始时间">{formatTime(p.started_at)}</Fact>
+        <Fact label="退出时间">{formatTime(p.exited_at)}</Fact>
+        <Fact label="进程退出码" code>{p.exit_code}</Fact>
+        {p.session_id && <Fact label="原生会话" code>{p.session_id}</Fact>}
+      </dl>)}
+    </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
     {result?.error && <p className="detail-problem" role="status">{result.error}</p>}
     {validation ? <section className={'detail-validation ' + (validation.exit_code === 0 ? 'passed' : 'failed')}>

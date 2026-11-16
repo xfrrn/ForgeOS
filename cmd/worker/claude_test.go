@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -60,6 +61,16 @@ func TestClaudeProcessRecovery(t *testing.T) {
 				case "/internal/executions/12/renew":
 					rw.WriteHeader(status)
 				case "/internal/executions/12/result":
+					var result store.Result
+					if err := json.NewDecoder(r.Body).Decode(&result); err != nil || result.Processes == nil {
+						t.Error("missing process receipts", err)
+					} else {
+						rows := *result.Processes
+						if len(rows) == 0 || rows[0].ExitCode == nil || *rows[0].ExitCode != 23 ||
+							status == 204 && (len(rows) != 2 || rows[1].Session != rows[0].Session || rows[1].Instance <= rows[0].Instance) {
+							t.Error("inconsistent recovered process history")
+						}
+					}
 					rw.WriteHeader(204)
 				default:
 					t.Errorf("unexpected request %s", r.URL.Path)
@@ -74,6 +85,7 @@ func TestClaudeProcessRecovery(t *testing.T) {
 			}
 			defer w.journal.Close()
 			j.Kind = "codex_issue"
+			j.RecordProcesses = true
 			j.Spec = &store.IssueSpec{Issue: store.Issue{Number: 7, Title: "Resume"}, Harness: "claude", BaseCommit: base, Validation: "docs"}
 			if err := w.executeAndReport(ctx, j, time.Now()); err != nil {
 				t.Fatal(err)

@@ -230,6 +230,9 @@ func (spec IssueSpec) ValidHarness() bool {
 var harnessVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 func (spec IssueSpec) accepts(r Result) bool {
+	if r.Processes != nil && (spec.VerifyCommit != "" || spec.Harness != "claude" || !r.Processes.matches(r)) {
+		return false
+	}
 	if (r.Harness == "") != (r.HarnessVersion == "") || (r.Harness != "" && (len(r.HarnessVersion) > 64 || !harnessVersion.MatchString(r.HarnessVersion))) {
 		return false
 	}

@@ -82,6 +82,7 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		instance INTEGER PRIMARY KEY, lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), harness TEXT NOT NULL, version TEXT NOT NULL,
 		pid INTEGER NOT NULL, started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, session_id TEXT, exited_at TEXT, exit_code INTEGER
 	);
+	CREATE INDEX IF NOT EXISTS harness_processes_attempt ON harness_processes(lease_hash,instance);
 	CREATE INDEX IF NOT EXISTS pending_attempts ON attempts(execution_id) WHERE report IS NOT NULL`)
 	if err != nil {
 		db.Close()
@@ -98,6 +99,12 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 		return fmt.Errorf("record claim for execution %d: %w", job.ExecutionID, err)
 	}
 	result := w.executeWithLease(ctx, job, requested)
+	if job.RecordProcesses {
+		result.Processes, err = w.processHistory(context.WithoutCancel(ctx), key[:])
+		if err != nil {
+			return fmt.Errorf("read process receipts for execution %d: %w", job.ExecutionID, err)
+		}
+	}
 	report, err := json.Marshal(struct {
 		LeaseToken string `json:"lease_token"`
 		store.Result
@@ -112,6 +119,34 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 		return fmt.Errorf("buffer result for execution %d: %w", job.ExecutionID, err)
 	}
 	return w.sendReceipt(ctx, key[:], job.ExecutionID, report)
+}
+
+func (w *worker) processHistory(ctx context.Context, key []byte) (*store.ProcessHistory, error) {
+	rows, err := w.journal.QueryContext(ctx, `SELECT instance,pid,harness,version,coalesce(session_id,''),started_at,exited_at,exit_code
+		FROM harness_processes WHERE lease_hash=? ORDER BY instance`, key)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var history store.ProcessHistory
+	for rows.Next() {
+		var p store.HarnessProcess
+		var start, end string
+		if err := rows.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &start, &end, &p.ExitCode); err != nil {
+			return nil, err
+		}
+		if p.Started, err = time.Parse(time.DateTime, start); err != nil {
+			return nil, err
+		}
+		if p.Exited, err = time.Parse(time.DateTime, end); err != nil {
+			return nil, err
+		}
+		history = append(history, p)
+	}
+	if err := rows.Err(); err != nil || len(history) == 0 {
+		return nil, err
+	}
+	return &history, nil
 }
 
 func (w *worker) replayReceipts(ctx context.Context) error {

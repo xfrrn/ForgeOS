@@ -185,6 +185,7 @@ type Event struct {
 }
 
 type Job struct {
+	RecordProcesses     bool       `json:"record_processes,omitempty"`
 	LeaseSeconds        int        `json:"lease_seconds,omitempty"`
 	SupportsCheckpoints bool       `json:"supports_checkpoints,omitempty"`
 	Kind                string     `json:"kind"`
@@ -198,6 +199,7 @@ type Job struct {
 }
 
 type Result struct {
+	Processes      *ProcessHistory   `json:"processes,omitempty"`
 	Harness        string            `json:"harness,omitempty"`
 	HarnessVersion string            `json:"harness_version,omitempty"`
 	Plan           *Plan             `json:"plan,omitempty"`
@@ -467,6 +469,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			return nil, err
 		}
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
+		j.RecordProcesses = j.Spec.Harness == "claude" && j.Spec.VerifyCommit == ""
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
@@ -543,6 +546,9 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 			return ErrConflict
 		}
 		return nil
+	}
+	if spec == nil && result.Processes != nil {
+		return ErrConflict
 	}
 	if spec != nil {
 		var issue IssueSpec

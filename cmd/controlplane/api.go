@@ -197,15 +197,16 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			return
 		}
 		var input struct {
-			LeaseToken     string      `json:"lease_token"`
-			Plan           *store.Plan `json:"plan"`
-			Commit         string      `json:"commit"`
-			ExitCode       *int        `json:"exit_code"`
-			Error          string      `json:"error"`
-			BaseCommit     string      `json:"base_commit"`
-			SessionID      string      `json:"session_id"`
-			Harness        string      `json:"harness"`
-			HarnessVersion string      `json:"harness_version"`
+			LeaseToken     string                `json:"lease_token"`
+			Processes      *store.ProcessHistory `json:"processes"`
+			Plan           *store.Plan           `json:"plan"`
+			Commit         string                `json:"commit"`
+			ExitCode       *int                  `json:"exit_code"`
+			Error          string                `json:"error"`
+			BaseCommit     string                `json:"base_commit"`
+			SessionID      string                `json:"session_id"`
+			Harness        string                `json:"harness"`
+			HarnessVersion string                `json:"harness_version"`
 			Validation     *struct {
 				Profile  string          `json:"profile"`
 				Commit   string          `json:"commit"`
@@ -233,7 +234,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			return
 		}
 		result := store.Result{Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error, Harness: input.Harness, HarnessVersion: input.HarnessVersion,
-			BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan}
+			BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan, Processes: input.Processes}
 		if v := input.Validation; v != nil {
 			if v.ExitCode == nil || *v.ExitCode < -1 || *v.ExitCode > 2147483647 {
 				problem(w, http.StatusBadRequest, "validation requires an explicit exit code")

@@ -13,7 +13,7 @@
 | Plan Revision | 某一版本的规划快照 |
 | Execution | 一次实际执行尝试 |
 | Session | Harness 原生持续会话 |
-| Process Instance | 操作系统进程实例 |
+| Process Instance | 一次启动的操作系统进程。Claude 执行回执记录节点内实例号、PID、版本、原生 Session、起止时间及退出码，由 Execution 关联其节点和工作区 |
 | Workspace | 一个 Execution 使用的工作目录/Worktree |
 | Decision | 管理 Agent 或人工形成的决策 |
 | Approval Request | 对具体操作或计划的审批请求 |
