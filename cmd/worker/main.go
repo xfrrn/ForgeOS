@@ -198,6 +198,12 @@ func (w *worker) run(ctx context.Context) error {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) == 2 && os.Args[1] == "validate-candidate" {
+		if err := runCICandidate(ctx, os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "review-candidate" {
 		if err := runCandidateReview(ctx, os.Stdin, os.Stdout); err != nil {
 			log.Fatal(err)
@@ -209,7 +215,7 @@ func main() {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" {
-		log.Fatal("usage: worker [management|reviewer|review-candidate]")
+		log.Fatal("usage: worker [management|reviewer|review-candidate|validate-candidate]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {

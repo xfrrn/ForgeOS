@@ -39,9 +39,14 @@ type Plan struct {
 	Ready      bool           `json:"ready"`
 }
 
+func FullCommit(sha string) bool { return fullCommit.MatchString(sha) }
+func ValidLevel(level string) bool {
+	return level == "V1" || level == "V2" || level == "V3" || level == "V4"
+}
+
 func ReadPlan(ctx context.Context, repo, commit, level string) (Plan, error) {
 	var plan Plan
-	if !fullCommit.MatchString(commit) || !(level == "V1" || level == "V2" || level == "V3" || level == "V4") {
+	if !FullCommit(commit) || !ValidLevel(level) {
 		return plan, errors.New("provide a full commit and a level V1 through V4")
 	}
 	out, err := localrepo.Git(ctx, repo, "cat-file", "-t", commit)

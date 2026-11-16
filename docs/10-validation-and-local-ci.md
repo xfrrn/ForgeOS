@@ -83,6 +83,16 @@ Worker 从授权仓库的 Git 对象读取变更文件的前后内容和模式�
 
 ## 5. Local CI Runner
 
+从非 root Worker 运行 `worker validate-candidate`。设置 `FORGEOS_REPO_ROOT`、`FORGEOS_WORKSPACE_ROOT`、`FORGEOS_WORKER_ID`；`FORGEOS_CI_IMAGE` 可选择本机已缓存的 Linux 镜像，默认 `golang:1.25-alpine`。镜像需提供标准 shell、sleep、cp、rm、tar 和项目声明的工具。向标准输入写入一个 JSON 对象，例如：
+
+```json
+{"repo":"example","base_commit":"<基础提交全 SHA>","commit":"<候选全 SHA>","level":"V2"}
+```
+
+Runner 读取基础提交的配置，在候选文件的隔离副本中运行。每个检查各用一个无网络、非 root、只读根文件系统的容器。临时项目副本支持编译与生成报告。Runner 将本地镜像固定到内容 ID，把使用者声明的参数数组直接交给容器执行。工作目录相对于项目根，报告和产物路径相对于本检查的工作目录。
+
+命令输出 JSON，必需检查未通过时返回非零。工作区根下的 `ci-run-*/run.json` 保存运行身份、配置版本及 blob、候选 SHA、等级、镜像、时间、各检查退出码、状态和文件引用。超时检查的退出码为 null。每项日志最多保留 1 MiB，每个输出文件上限 8 MiB，每次运行最多收集 64 MiB。输出记录包含来源、大小和 SHA-256。缺少承诺的报告或产物会令该检查失败。每次重跑使用新的运行目录。
+
 接口建议：
 - create_run；
 - get_run；
