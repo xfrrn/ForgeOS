@@ -15,6 +15,7 @@ type Validation = { profile: string; commit: string; exit_code: number; output: 
 type HarnessProcess = { instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
   ci_candidate?: string; ci_pause_requested_at?: string
   owner_cancel_requested_at?: string
   review_feedback?: { id: number; preview_id: string; decision: 'approve' | 'reject'; note: string }[]
@@ -273,6 +274,7 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
 }
 
 function Execution({ attempt, task, latest, request, refresh }: { attempt: Attempt; task: Task; latest: boolean; request: ApiRequest; refresh: (message: string) => void }) {
+  const observed = attempt.observed_process
   const result = attempt.result
   const validation = result?.validation
   const start = task.events.find(event => event.execution_id === attempt.id && event.type === 'execution_claimed')
@@ -297,6 +299,16 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
+    {observed && <section><h4>最近的节点进程报告</h4>
+      <dl className="detail-facts">
+        <Fact label="上报时状态">{observed.exited_at ? '进程已退出' : '进程运行中'}</Fact>
+        <Fact label="控制面收到时间">{formatTime(observed.observed_at)}</Fact>
+        <Fact label="进程实例" code>{observed.instance}</Fact><Fact label="节点 PID" code>{observed.pid}</Fact>
+        <Fact label="Harness 版本">{observed.harness} {observed.version}</Fact>
+        <Fact label="开始时间">{formatTime(observed.started_at)}</Fact>
+        {observed.session_id && <Fact label="原生会话" code>{observed.session_id}</Fact>}
+        {observed.exited_at && <><Fact label="退出时间">{formatTime(observed.exited_at)}</Fact><Fact label="进程退出码" code>{observed.exit_code}</Fact></>}
+      </dl></section>}
     {result?.processes && result.processes.length > 0 && <details>
       <summary>Harness 进程记录（{result.processes.length}）</summary>
       {result.processes.map(p => <dl className="detail-facts" key={p.instance}>

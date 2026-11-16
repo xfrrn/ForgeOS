@@ -107,6 +107,12 @@ func TestWorkerProjectGrants(t *testing.T) {
 	path := fmt.Sprintf("/internal/executions/%d/result", job.ExecutionID)
 	renew := fmt.Sprintf("/internal/executions/%d/renew", job.ExecutionID)
 	lease := map[string]string{"lease_token": job.LeaseToken}
+	processPath := fmt.Sprintf("/internal/executions/%d/process", job.ExecutionID)
+	pulse := store.ProcessReport{LeaseToken: job.LeaseToken, Process: store.HarnessProcess{Instance: 1, PID: 7, Harness: "codex", Version: "1.2.3", Started: time.Now()}}
+	post("beta", processPath, pulse, 403)
+	post("owner", processPath, pulse, 401)
+	// A Git HEAD check does not run a model.
+	post("alpha", processPath, pulse, 409)
 	post("beta", renew, lease, 403)
 	post("alpha", renew, lease, 204)
 	report, err := s.WorkerNodes(ctx)

@@ -6,14 +6,20 @@ import (
 )
 
 type HarnessProcess struct {
-	Instance int64     `json:"instance"`
-	PID      int       `json:"pid"`
-	Harness  string    `json:"harness"`
-	Version  string    `json:"version"`
-	Session  string    `json:"session_id,omitempty"`
-	Started  time.Time `json:"started_at"`
-	Exited   time.Time `json:"exited_at"`
-	ExitCode *int      `json:"exit_code"`
+	Instance int64      `json:"instance"`
+	PID      int        `json:"pid"`
+	Harness  string     `json:"harness"`
+	Version  string     `json:"version"`
+	Session  string     `json:"session_id,omitempty"`
+	Started  time.Time  `json:"started_at"`
+	Exited   *time.Time `json:"exited_at,omitempty"`
+	ExitCode *int       `json:"exit_code"`
+}
+
+func (p HarnessProcess) Valid() bool {
+	return p.Instance > 0 && p.PID > 0 && ValidHarnessVersion(p.Harness, p.Version) && !p.Started.IsZero() &&
+		(p.Exited == nil && p.ExitCode == nil || p.Exited != nil && !p.Exited.Before(p.Started) && p.ExitCode != nil && *p.ExitCode >= -1) &&
+		len(p.Session) <= 128 && strings.Trim(p.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
 }
 
 type ProcessHistory []HarnessProcess
@@ -25,9 +31,8 @@ func (history ProcessHistory) matches(result Result) bool {
 	var previous int64
 	var latestSession string
 	for _, p := range history {
-		if p.Instance <= previous || p.PID < 1 || p.Harness != result.Harness || p.Version != result.HarnessVersion ||
-			p.Started.IsZero() || p.Exited.Before(p.Started) || p.ExitCode == nil || *p.ExitCode < -1 ||
-			len(p.Session) > 128 || strings.Trim(p.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" || result.Harness == "claude" && p.Session != "" && result.SessionID != "" && p.Session != result.SessionID {
+		if p.Instance <= previous || !p.Valid() || p.Harness != result.Harness || p.Version != result.HarnessVersion ||
+			p.Exited == nil || result.Harness == "claude" && p.Session != "" && result.SessionID != "" && p.Session != result.SessionID {
 			return false
 		}
 		previous = p.Instance

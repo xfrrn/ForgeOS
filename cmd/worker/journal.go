@@ -131,24 +131,19 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 }
 
 func (w *worker) processHistory(ctx context.Context, key []byte) (*store.ProcessHistory, error) {
-	rows, err := w.journal.QueryContext(ctx, `SELECT instance,pid,harness,version,coalesce(session_id,''),started_at,exited_at,exit_code
-		FROM harness_processes WHERE lease_hash=? ORDER BY instance`, key)
+	rows, err := w.journal.QueryContext(ctx, readHarnessProcess+` WHERE lease_hash=? ORDER BY instance`, key)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var history store.ProcessHistory
 	for rows.Next() {
-		var p store.HarnessProcess
-		var start, end string
-		if err := rows.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &start, &end, &p.ExitCode); err != nil {
+		p, err := scanHarnessProcess(rows)
+		if err != nil {
 			return nil, err
 		}
-		if p.Started, err = time.Parse(time.DateTime, start); err != nil {
-			return nil, err
-		}
-		if p.Exited, err = time.Parse(time.DateTime, end); err != nil {
-			return nil, err
+		if p.Exited == nil {
+			return nil, errors.New("harness process has no exit receipt")
 		}
 		history = append(history, p)
 	}

@@ -192,7 +192,7 @@ func (w *worker) codexTurn(ctx context.Context, job store.Job, prompt, previous,
 		options = []string{"--output-schema", schema, "--output-last-message", output}
 	}
 	run := func(prompt, resume string) (string, error) {
-		return runCodexTurn(ctx, w.processLog(job, "codex", w.codexVersion), w.codex, job.Workspace, sandbox, prompt, resume, options...)
+		return runCodexTurn(ctx, w.processLog(ctx, job, "codex", w.codexVersion), w.codex, job.Workspace, sandbox, prompt, resume, options...)
 	}
 	session, err := run(prompt, previous)
 	if session == "" && previous != "" {

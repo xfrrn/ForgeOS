@@ -262,6 +262,18 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		respond(w, http.StatusNoContent, nil, err)
 	}))
+	workers.handle(mux, "POST /internal/executions/{id}/process", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var report store.ProcessReport
+		if !ok || !decode(w, r, &report) {
+			return
+		}
+		if len(report.LeaseToken) != 64 || !report.Process.Valid() {
+			problem(w, 400, "invalid execution process report")
+			return
+		}
+		respond(w, 204, nil, data.ObserveProcess(r.Context(), id, report))
+	}))
 	workers.handle(mux, "POST /internal/executions/{id}/renew", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

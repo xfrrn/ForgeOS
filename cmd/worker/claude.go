@@ -142,7 +142,7 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 	if err != nil {
 		return "", errors.New("cannot open Claude result stream")
 	}
-	process := w.processLog(job, "claude", w.claude.version)
+	process := w.processLog(ctx, job, "claude", w.claude.version)
 	if err := process.start(cmd, stream); err != nil {
 		return "", err
 	}

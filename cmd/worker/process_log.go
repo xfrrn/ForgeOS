@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
@@ -15,13 +16,21 @@ type processLog struct {
 	lease   [32]byte
 	harness string
 	version string
+	updates chan struct{}
 	id      int64
 }
 
-func (w *worker) processLog(job store.Job, harness, version string) processLog {
-	return processLog{db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
+func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {
+	updates, _ := ctx.Value(processUpdatesKey{}).(chan struct{})
+	return processLog{updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
 }
 
+func (p *processLog) notify() {
+	select {
+	case p.updates <- struct{}{}:
+	default:
+	}
+}
 func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start harness process: %w", err)
@@ -40,6 +49,7 @@ func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
 		_ = cmd.Wait()
 		return fmt.Errorf("record harness process: %w", err)
 	}
+	p.notify()
 	return nil
 }
 
@@ -48,6 +58,9 @@ func (p *processLog) session(session string) error {
 		return nil
 	}
 	_, err := p.db.Exec("UPDATE harness_processes SET session_id=? WHERE instance=?", session, p.id)
+	if err == nil {
+		p.notify()
+	}
 	return err
 }
 
@@ -55,6 +68,9 @@ func (p *processLog) wait(cmd *exec.Cmd) (exitErr, journalErr error) {
 	exitErr = cmd.Wait()
 	if p.db != nil {
 		_, journalErr = p.db.Exec("UPDATE harness_processes SET exited_at=CURRENT_TIMESTAMP,exit_code=? WHERE instance=?", cmd.ProcessState.ExitCode(), p.id)
+		if journalErr == nil {
+			p.notify()
+		}
 	}
 	return exitErr, journalErr
 }

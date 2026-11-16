@@ -46,7 +46,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | --- | --- | --- | --- |
 | 00–01 产品与端到端流程 | 两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭 | `1a17822`、`32c0fa0`、`5447445` | 远程外部设备、知识归档、完整项目初始化 |
 | 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行 | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6` | 通知、节点资源管理、其余管理协调与动态预览能力 |
-| 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3` | 已完成的 Claude、Codex 实现及只读规划进程归档和工作台查询见下文。跨节点 CI 文件下载见 beta #49；其他跨节点工件、运行中的中央进程视图、独立审核角色待验收 |
+| 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3` | 已完成的 Claude、Codex 实现及只读规划进程归档和工作台查询见下文。跨节点 CI 文件下载见 beta #49；普通模型执行的中央进程视图见 beta #57、#59。其他跨节点工件及独立审核角色待验收 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版。跨项目验收问题的批量答复见本页末尾 | `70781ba`、`f8503c5`，批量答复见下文 | 跨操作 D0–D3 策略、ACP 路由及其他阶段的问题汇总 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3` | 通用命令队列、运行中暂停与取消 |
 | 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b` | 节点登记与普通执行容量见下文。Claude 实现、Codex 实现与只读规划的终态丢失恢复见下文。原生进程被强制终止、Linux 模型登录复用、多节点恢复待验收 |
@@ -1421,3 +1421,15 @@ PostgreSQL 18 测试 schema 为 `ruby_0a2dc902`。原生对照在隔离 Docker �
 | 修改 Kotlin 的 compileOnly 与目录指向；重新检查，归档两份报告，然后移开克隆、重启控制面 | 新旧快照都可从工作台独立回读 | 提交 `ce90667c482b2f1107bba59ddca961cc62695182` 中，compileOnly 改为 example.direct:updated，库别名对应 example.core:next。Chrome 和归档 JSON 分别恢复初版及新版结果 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 163 项通过，零跳过。Go vet、TypeScript 检查与 Web 生产构建通过。
+
+### 专题 04、07 · 工作台查看运行中的原生 Harness 进程
+
+Windows 正式 Worker、PostgreSQL 18、Chrome 与私有 beta 的两条真实 Issue。两次运行各从独立 schema 启动，在模型进程自然运行期间重启控制面，任务完成后通过候选验收，交付器等待必需 CI、合并并关闭来源 Issue。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 打开 Codex 执行的“最近的节点进程报告”，比对操作系统中的可执行文件，重启控制面并查询同一任务 | 执行仍在运行，节点 PID、原生 Thread 和实例保持一致 | Codex 0.169.0-alpha.11.1，实例 1，PID 37808，Thread `01a1e690-3aab-7be3-a88e-965cc29ccf34`。最终回执为相同身份、退出码 0。候选 `cc2e8e2b2725009acc7598146c8efa98a4d86222`，合并 `b2e756a8c738b79a188d8e0cc1926b7b40a0333d`。[PR #58](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/58) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/57#issuecomment-6931860523) |
+| 以 Claude Code 复验同一操作，随后对照完整进程记录及交付回执 | 工作台能在进程退出前显示实际 Claude PID 和初始化事件确认的 Session | Claude Code 2.1.310，实例 1，PID 43664，Session `efadacc8-2f95-4555-ab76-7c681a523028`。重启后仍在运行，最终退出码 0。候选 `0a7b4ba401fc24802b5450616ad654207eb425d1`，合并 `6abb5f7fc4e75ecc198dcb0b8776be37516af903`。[PR #60](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/60) · [Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/59#issuecomment-6931930995) |
+| 以错误租约、过期租约或其他节点回报，重放旧实例、旧会话字段和退出前状态 | 只接受任务授权范围内的新观察；旧状态不得覆盖现值 | PostgreSQL 和 HTTP 回归分别核对冲突、越权、非模型任务以及相同退出回报的重试。两次真实交付均在 acceptance-check 和 forgeos/local-ci 成功后合并 |
+
+全量 Go 回归启用 PostgreSQL 18 和 Docker，164 项通过，零跳过。增加节点权限断言后再运行了控制面节点测试。Go vet、TypeScript 检查与 Web 生产构建通过。本项验证控制面重启；Worker 自身重启后的在途会话恢复另行验收。

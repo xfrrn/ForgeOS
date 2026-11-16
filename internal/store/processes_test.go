@@ -7,12 +7,13 @@ import (
 
 func TestHarnessProcessHistory(t *testing.T) {
 	now := time.Now().UTC()
+	firstEnd, lastEnd := now.Add(time.Second), now.Add(2*time.Second)
 	ok, interrupted := 0, 23
 	result := Result{Harness: "claude", HarnessVersion: "2.1.310", SessionID: "session"}
 	first := HarnessProcess{Instance: 1, PID: 7, Harness: result.Harness, Version: result.HarnessVersion,
-		Session: result.SessionID, Started: now, Exited: now.Add(time.Second), ExitCode: &interrupted}
+		Session: result.SessionID, Started: now, Exited: &firstEnd, ExitCode: &interrupted}
 	last := first
-	last.Instance, last.Started, last.Exited, last.ExitCode = 2, first.Exited, first.Exited.Add(time.Second), &ok
+	last.Instance, last.Started, last.Exited, last.ExitCode = 2, firstEnd, &lastEnd, &ok
 	if !(ProcessHistory{first, last}).matches(result) {
 		t.Fatal("PID reuse across distinct process instances should preserve the history")
 	}
@@ -21,7 +22,7 @@ func TestHarnessProcessHistory(t *testing.T) {
 		func(p *HarnessProcess) { p.PID = 0 },
 		func(p *HarnessProcess) { p.Version = "other" },
 		func(p *HarnessProcess) { p.Session = "different" },
-		func(p *HarnessProcess) { p.Exited = now },
+		func(p *HarnessProcess) { p.Exited = &now },
 		func(p *HarnessProcess) { p.ExitCode = nil },
 		func(p *HarnessProcess) { p.ExitCode = &interrupted },
 	} {
@@ -43,7 +44,7 @@ func TestCodexProcessHistoryAcrossThreads(t *testing.T) {
 	now := time.Now().UTC()
 	result := Result{Harness: "codex", HarnessVersion: "0.169.0-alpha.11.1", SessionID: "last-thread"}
 	first := HarnessProcess{Instance: 1, PID: 40, Harness: result.Harness, Version: result.HarnessVersion,
-		Session: "first-thread", Started: now, Exited: now, ExitCode: &ok}
+		Session: "first-thread", Started: now, Exited: &now, ExitCode: &ok}
 	last := first
 	last.Instance, last.PID, last.Session = 2, 41, result.SessionID
 	history := ProcessHistory{first, last}

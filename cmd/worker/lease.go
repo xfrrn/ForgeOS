@@ -20,6 +20,13 @@ func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested 
 		return failed("execution lease elapsed before work started", nil)
 	}
 	active, cancel := context.WithCancel(ctx)
+	if job.ReportLiveProcess && w.journal != nil {
+		updates := make(chan struct{}, 1)
+		active = context.WithValue(active, processUpdatesKey{}, updates)
+		finished := make(chan struct{})
+		go func() { defer close(finished); w.reportProcesses(active, job, updates) }()
+		defer func() { cancel(); <-finished }()
+	}
 	done := make(chan error, 1)
 	go func() {
 		err := w.renewWhileRunning(active, job, ttl, deadline)
