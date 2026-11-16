@@ -40,7 +40,11 @@ func (f *importFixture) Project(context.Context, int64) (store.Project, error) {
 	return store.Project{ID: 3, Path: f.path}, nil
 }
 
-func (f *importFixture) ImportIssue(_ context.Context, _ int64, spec store.IssueSpec) (store.Task, error) {
+func (f *importFixture) FeedbackDispatch(context.Context, int64, int64, store.FeedbackSource) (*store.Task, error) {
+	return nil, nil
+}
+
+func (f *importFixture) ImportIssue(_ context.Context, _ int64, spec store.IssueSpec, _ ...store.FeedbackSource) (store.Task, error) {
 	f.spec = &spec
 	return store.Task{ID: 12, Spec: &spec, Kind: "codex_issue"}, nil
 }

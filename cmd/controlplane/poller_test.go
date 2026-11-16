@@ -38,7 +38,7 @@ func (f *pollFixture) ReplaceInbox(_ context.Context, _, _ int64, items []store.
 	return nil
 }
 
-func (f *pollFixture) ImportIssue(_ context.Context, _ int64, s store.IssueSpec) (store.Task, error) {
+func (f *pollFixture) ImportIssue(_ context.Context, _ int64, s store.IssueSpec, _ ...store.FeedbackSource) (store.Task, error) {
 	f.received[s.Issue.Number]++
 	f.spec = &s
 	return store.Task{}, nil

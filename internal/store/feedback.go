@@ -73,12 +73,14 @@ func (f PreviewFeedback) Valid() bool {
 func (s *Store) PreviewFeedbackPage(ctx context.Context, task int64, preview string) (json.RawMessage, error) {
 	var out json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('preview',to_jsonb(r),
+        'repository',(SELECT spec->'issue'->>'repository' FROM work_items WHERE id=r.task_id),
         'latest_requirement',(SELECT max(v.revision) FROM work_items t JOIN requirement_revisions v ON v.task_id=COALESCE(t.goal_id,t.id) WHERE t.id=r.task_id),
         'at_acceptance',EXISTS(SELECT 1 FROM work_items t WHERE t.id=r.task_id AND t.status='WAITING_ACCEPTANCE'
              AND r.execution_id=(SELECT max(id) FROM executions WHERE task_id=t.id)),
         'feedback',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',f.id,'created_at',f.created_at,'author','owner',
             'state',CASE WHEN f.classified_at IS NOT NULL THEN 'classified' WHEN f.review_until>now() THEN 'in_review' ELSE 'awaiting_review' END,
             'classification',f.classification,'classified_at',f.classified_at,'body',f.body,
+            'work_item',(SELECT jsonb_build_object('id',t.id,'number',t.spec->'issue'->'number') FROM feedback_work_items l JOIN work_items t ON t.id=l.task_id WHERE l.feedback_id=f.id),
             'requirement',(SELECT jsonb_build_object('revision',v.revision,'task_id',v.task_id) FROM requirement_revisions v WHERE v.feedback_id=f.id),
             'review',(SELECT jsonb_build_object('decision',a.decision,'note',a.note) FROM acceptance_review_feedback l
                 JOIN acceptance_reviews a USING(execution_id) WHERE l.feedback_id=f.id),

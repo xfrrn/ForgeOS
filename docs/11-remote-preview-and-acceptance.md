@@ -170,12 +170,16 @@ Owner 使用 `GET /tasks/{id}/previews/{preview}/feedback` 读取预览上下文
 
 当前候选处于 WAITING_ACCEPTANCE 时，Owner 可对“阻塞或澄清”反馈点击“转入澄清”，编辑问题并提交。任务进入 WAITING_INPUT，页面给出原问题与答复入口。答复后恢复同一次执行的候选验收；预览下保留问题编号、问题和 Owner 答复。使用普通问题接口 `POST /tasks/{id}/questions`，另传 `feedback_id`、键 `feedback-<编号>` 和分类回执的原文引用。控制面核对反馈归属、类别、执行和候选，原问题、任务状态与事件在同一事务中写入。
 
-## 8. 验收版本约束
-
 对于“需求变更”，点击“从反馈修订需求”，以最新修订的正文为起点编辑并保存。反馈历史提供目标任务和修订号，任务的需求历史可返回来源预览。保存后由 Owner 在任务检查点采用；已规划的 Goal 沿用计划修订流程。API 为 `POST /tasks/{id}/previews/{preview}/feedback/requirements`，字段为 `feedback_id`、`execution_id`、`commit`、`previous_revision`、`body`。相同请求返回原修订，沿用过期基础版本的另一份草案返回 409。
+
+对于“新工作项”，点击“派发独立工作项”。Owner 可从表单在当前仓库新建 GitHub Issue，也可选用已有的独立开放 Issue。核对 Issue 编号与正文，选择验证方式后确认派发。Worker 执行目标 Issue 的授权范围。来源反馈与新任务提供双向链接。已导入的目标复用原工作项，同一条反馈只能指向一个独立目标。
+
+这个操作复用 `POST /projects/{id}/issues/{number}`。请求增加 `feedback_source`，其中包含 `feedback_id`、`task_id`、`preview`、`execution_id` 和 `commit`。控制面核对项目、观察来源、分类和独立目标后，将来源关系和派发写在同一事务中。重复请求优先读取本地回执，已交付并关闭的目标仍可查询。
 
 任务页的“候选验收”列出本次执行各预览下已分类的验收、Bug 和 UI 反馈。Owner 可勾选一条或多条并核对原始依据。验收类可随“通过验收”提交，Bug 和 UI 类可随“退回修改”提交。退回时填写给 Worker 的修订说明。控制面把反馈编号和验收决定一起保存。新执行从退回候选开始修订，Worker 读取 Owner 的说明。原预览仍能查到对应决定。
 
 调用 `POST /tasks/{id}/acceptance` 时，可在现有字段旁传入 `feedback_ids` 编号数组。决定绑定执行、候选 SHA、类别和所选编号集合。重放时可调整编号顺序，改变编号集合会返回 409。正常的测试计划、代码审查和用例门禁同样适用于引用反馈的批准。
+
+## 8. 验收版本约束
 
 人工验收绑定 Commit SHA。验收后代码发生变化时，必须判断是否需要重新自动验证和人工验收。

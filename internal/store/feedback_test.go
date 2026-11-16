@@ -110,6 +110,64 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatalf("classification events %d: %v", count, err)
 		}
 	})
+	t.Run("dispatch an independent work item once", func(t *testing.T) {
+		target := *task.Spec
+		target.Issue.ID++
+		target.Issue.Number++
+		source := FeedbackSource{FeedbackID: first, TaskID: task.ID, Preview: preview.ID, Execution: execution, Commit: sha}
+		if _, err := s.ImportIssue(ctx, p.ID, target, source); !errors.Is(err, ErrConflict) {
+			t.Fatal("dispatched acceptance feedback", err)
+		}
+		f.Request = "502453fb-9f35-466b-ac0c-7908e73acb14"
+		f.Note = "Document the history report separately."
+		id, err := s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source.FeedbackID = id
+		j, err := s.ClaimFeedback(ctx, p.ID)
+		if err != nil || j == nil || j.ID != id {
+			t.Fatal(j, err)
+		}
+		if err := s.ClassifyFeedback(ctx, p.ID, id, j.Lease, FeedbackClassification{Category: "new_work_item", Evidence: f.Note, Rationale: "Independent document", Session: "new-document"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.FeedbackDispatch(ctx, p.ID, task.Spec.Issue.Number, source); !errors.Is(err, ErrConflict) {
+			t.Fatal("accepted original Issue", err)
+		}
+		if _, err := s.FeedbackDispatch(ctx, p.ID+1, target.Issue.Number, source); !errors.Is(err, ErrConflict) {
+			t.Fatal("accepted wrong project", err)
+		}
+		results := make(chan response, 3)
+		for range cap(results) {
+			go func() { item, err := s.ImportIssue(ctx, p.ID, target, source); results <- response{item.ID, err} }()
+		}
+		var itemID int64
+		for range cap(results) {
+			r := <-results
+			if r.err != nil || r.id == 0 || (itemID != 0 && r.id != itemID) {
+				t.Fatal(r)
+			}
+			itemID = r.id
+		}
+		saved, err := s.FeedbackDispatch(ctx, p.ID, target.Issue.Number, source)
+		if err != nil || saved == nil || saved.ID != itemID || len(saved.FeedbackSources) != 1 || saved.FeedbackSources[0] != source {
+			t.Fatal(saved, err)
+		}
+		var events int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM task_events WHERE type='feedback_work_item_dispatched' AND task_id=$1 AND execution_id=$2", task.ID, execution).Scan(&events); err != nil || events != 1 {
+			t.Fatal(events, err)
+		}
+		target.Issue.ID++
+		target.Issue.Number++
+		if _, err := s.ImportIssue(ctx, p.ID, target, source); !errors.Is(err, ErrConflict) {
+			t.Fatal("reassigned feedback", err)
+		}
+		var tasks int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM work_items").Scan(&tasks); err != nil || tasks != 2 {
+			t.Fatal("unrelated task created", tasks, err)
+		}
+	})
 }
 
 func TestFeedbackContextValidation(t *testing.T) {

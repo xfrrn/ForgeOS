@@ -27,6 +27,7 @@ type Question = { id: number; execution_id: number; commit_sha: string; question
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
 type Plan = { revision: number; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
+  feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
   id: number; project_id: number; status: string; kind: string
   spec?: { issue: Issue; base_commit: string; validation: string }
@@ -50,6 +51,7 @@ const events: Record<string, string> = {
   requirement_adopted: '已采用新的需求修订',
   requirement_observed: '已记录新的 Issue 需求版本',
   requirement_revised_from_feedback: 'Owner 已从预览反馈修订需求',
+  feedback_work_item_dispatched: '已从反馈派发独立工作项',
   management_reviewed: 'Management 已审核本版计划',
   planner_completed: '只读 Planner 已提交草案',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
@@ -480,6 +482,7 @@ function Detail({ id, request, onChanged }: Props) {
           </div>)}
         </section>}
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
+          {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={`#/tasks/${f.task_id}/previews/${f.preview}/feedback`}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}
           <div className="detail-issue-text" tabIndex={0} aria-label="Issue 正文">{issue.body || '此 Issue 没有正文。'}</div>
           {task.latest_requirement && <RequirementHistory id={id} latest={task.latest_requirement} request={request}

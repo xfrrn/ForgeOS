@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-type Note = { id: number; created_at: string; state: string; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Note = { id: number; created_at: string; state: string; work_item?: { id: number; number: number }; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
 const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
-type Page = { latest_requirement: number | null; at_acceptance: boolean; preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
+type Page = { repository: string; latest_requirement: number | null; at_acceptance: boolean; preview: { project_id: number; execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
 export function PreviewFeedback({ task, preview, captureQuery, request }: { task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
   const capture = new URLSearchParams(captureQuery)
@@ -17,6 +17,9 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   const [version, setVersion] = useState(0)
   const [asking, setAsking] = useState(0)
   const [question, setQuestion] = useState('')
+  const [dispatching, setDispatching] = useState(0)
+  const [issueNumber, setIssueNumber] = useState('')
+  const [validation, setValidation] = useState('auto')
   const [draft, setDraft] = useState<{ feedback: number; revision: number; original: string; body: string } | null>(null)
   const [key, setKey] = useState(() => crypto.randomUUID())
   const api = `/tasks/${task}/previews/${preview}/feedback`
@@ -73,6 +76,18 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     } catch (e) { setVersion(n => n + 1); setError(e instanceof Error ? e.message : '无法保存需求修订。') }
     finally { setBusy(false) }
   }
+  async function dispatch(e: FormEvent) {
+    e.preventDefault()
+    if (!page || busy || !dispatching || !/^[1-9]\d*$/.test(issueNumber)) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const item = await request<{ id: number }>(`/projects/${page.preview.project_id}/issues/${issueNumber}`, { method: 'POST',
+        body: JSON.stringify({ validation, feedback_source: { feedback_id: dispatching, task_id: task, preview,
+          execution_id: page.preview.execution_id, commit: page.preview.commit } }) })
+      setDispatching(0); setVersion(n => n + 1); setMessage(`已关联工作项 T-${item.id}。`)
+    } catch (e) { setError(e instanceof Error ? e.message : '派发失败。') }
+    finally { setBusy(false) }
+  }
   return <section className="panel"><a href={`#/tasks/${task}`}>返回任务 T-{task}</a><h1>预览反馈</h1>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {page && <><p>执行 {page.preview.execution_id} · {page.preview.directory} · <code>{page.preview.commit}</code></p>
@@ -99,6 +114,17 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
         {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
           <p>Management 会话　<code>{f.classification.session_id}</code></p></details>}
+        {f.work_item ? <a href={`#/tasks/${f.work_item.id}`}>查看独立工作项 T-{f.work_item.id} · Issue #{f.work_item.number}</a> :
+          f.classification?.category === 'new_work_item' && (dispatching === f.id ?
+            <form onSubmit={dispatch}><fieldset disabled={busy}><legend>按独立 Issue 派发</legend>
+              <a href={`https://github.com/${page.repository}/issues/new`} target="_blank" rel="noreferrer">在 {page.repository} 新建 Issue</a>
+              <label>独立 Issue 编号<input required inputMode="numeric" pattern="[1-9][0-9]*" value={issueNumber} onChange={e => setIssueNumber(e.target.value)} /></label>
+              {/^[1-9]\d*$/.test(issueNumber) && <a href={`https://github.com/${page.repository}/issues/${issueNumber}`} target="_blank" rel="noreferrer">核对 Issue #{issueNumber}</a>}
+              <label>验证方式<select value={validation} onChange={e => setValidation(e.target.value)}>
+                {['auto','docs','go-test','V1','V2','V3','V4'].map(v => <option key={v}>{v}</option>)}</select></label>
+              <button className="button" disabled={!issueNumber}>确认派发</button>
+              <button type="button" className="detail-text-button" onClick={() => setDispatching(0)}>取消</button></fieldset></form> :
+            <button className="button" disabled={busy} onClick={() => { setDispatching(f.id); setIssueNumber(''); setValidation('auto') }}>派发独立工作项</button>)}
         {f.requirement ? <a href={`#/tasks/${f.requirement.task_id}`}>到任务查看需求修订 {f.requirement.revision}</a> :
           f.classification?.category === 'requirement_change' && Boolean(page.latest_requirement) && (draft?.feedback === f.id ?
             <fieldset><legend>基于需求修订 {draft.revision} 建立新版本</legend>

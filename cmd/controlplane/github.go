@@ -33,7 +33,12 @@ var (
 
 type issueStore interface {
 	Project(context.Context, int64) (store.Project, error)
-	ImportIssue(context.Context, int64, store.IssueSpec) (store.Task, error)
+	ImportIssue(context.Context, int64, store.IssueSpec, ...store.FeedbackSource) (store.Task, error)
+}
+
+type issueImporter interface {
+	issueStore
+	FeedbackDispatch(context.Context, int64, int64, store.FeedbackSource) (*store.Task, error)
 }
 
 type githubGET func(context.Context, string, any) error
@@ -92,7 +97,7 @@ func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner strin
 	mux.HandleFunc("POST /projects/{id}/issues/{number}", authorized(owner, importIssue(data, root, ghRead)))
 }
 
-func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
+func importIssue(data issueImporter, root string, get githubGET) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, valid := pathID(w, r)
 		if !valid {
@@ -104,10 +109,11 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 			return
 		}
 		var input struct {
-			Validation string `json:"validation"`
-			Mode       string `json:"mode"`
-			TaskType   string `json:"task_type"`
-			Target     string `json:"target"`
+			Validation string                `json:"validation"`
+			Mode       string                `json:"mode"`
+			TaskType   string                `json:"task_type"`
+			Target     string                `json:"target"`
+			Feedback   *store.FeedbackSource `json:"feedback_source"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -122,6 +128,15 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
+		var sources []store.FeedbackSource
+		if input.Feedback != nil {
+			prior, err := data.FeedbackDispatch(ctx, id, number, *input.Feedback)
+			if err != nil || prior != nil {
+				respond(w, http.StatusOK, prior, err)
+				return
+			}
+			sources = append(sources, *input.Feedback)
+		}
 		project, err := data.Project(ctx, id)
 		if err != nil {
 			respond(w, 0, nil, err)
@@ -151,7 +166,7 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 			problem(w, status, err.Error())
 			return
 		}
-		task, err := data.ImportIssue(ctx, id, source.spec(issue, input.Validation, input.Mode, policy))
+		task, err := data.ImportIssue(ctx, id, source.spec(issue, input.Validation, input.Mode, policy), sources...)
 		if errors.Is(err, store.ErrConflict) {
 			problem(w, http.StatusConflict, "GitHub issue or repository conflicts with the stored project mapping")
 			return

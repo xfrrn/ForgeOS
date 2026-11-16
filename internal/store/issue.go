@@ -53,9 +53,36 @@ func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
 	return p, err
 }
 
-func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec) (Task, error) {
+type FeedbackSource struct {
+	FeedbackID int64  `json:"feedback_id"`
+	TaskID     int64  `json:"task_id"`
+	Preview    string `json:"preview"`
+	Execution  int64  `json:"execution_id"`
+	Commit     string `json:"commit"`
+}
+
+const dispatchSourceSQL = ` FROM dispatchable_feedback f WHERE f.project_id=$1 AND f.issue_number<>$2
+	AND f.feedback_id=$3 AND f.task_id=$4 AND f.preview=$5 AND f.execution_id=$6 AND f.commit=$7`
+
+// Look up the local receipt before contacting GitHub so retries also work after delivery or closure.
+func (s *Store) FeedbackDispatch(ctx context.Context, project, number int64, src FeedbackSource) (*Task, error) {
+	var id, priorNumber int64
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(l.task_id,0),COALESCE((target.spec->'issue'->>'number')::bigint,0)
+		FROM (SELECT f.feedback_id`+dispatchSourceSQL+`) f LEFT JOIN feedback_work_items l USING(feedback_id)
+		LEFT JOIN work_items target ON target.id=l.task_id`, project, number, src.FeedbackID, src.TaskID, src.Preview, src.Execution, src.Commit).Scan(&id, &priorNumber)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && id != 0 && priorNumber != number) {
+		return nil, ErrConflict
+	}
+	if err != nil || id == 0 {
+		return nil, err
+	}
+	task, err := s.Task(ctx, id)
+	return &task, err
+}
+
+func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec, sources ...FeedbackSource) (Task, error) {
 	issue := spec.Issue
-	if spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
+	if len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
 		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
 		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") {
 		return Task{}, ErrConflict
@@ -90,6 +117,22 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 	}
 	if err = recordRequirement(ctx, tx, id, issue); err != nil {
 		return Task{}, err
+	}
+	if len(sources) == 1 {
+		src := sources[0]
+		var linked bool
+		err = tx.QueryRowContext(ctx, `WITH source AS (SELECT f.feedback_id`+dispatchSourceSQL+`),
+			created AS (INSERT INTO feedback_work_items(feedback_id,task_id) SELECT feedback_id,$8 FROM source
+				ON CONFLICT(feedback_id) DO NOTHING RETURNING feedback_id),
+			event AS (INSERT INTO task_events(task_id,execution_id,type) SELECT $4,$6,'feedback_work_item_dispatched' FROM created)
+			SELECT EXISTS(SELECT 1 FROM created) OR EXISTS(SELECT 1 FROM source JOIN feedback_work_items USING(feedback_id) WHERE task_id=$8)`,
+			projectID, issue.Number, src.FeedbackID, src.TaskID, src.Preview, src.Execution, src.Commit, id).Scan(&linked)
+		if err != nil {
+			return Task{}, err
+		}
+		if !linked {
+			return Task{}, ErrConflict
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return Task{}, err

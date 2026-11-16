@@ -114,6 +114,9 @@ var feedbackReviewsTable string
 //go:embed 030_feedback_requirements.sql
 var feedbackRequirementsTable string
 
+//go:embed 031_feedback_work_items.sql
+var feedbackWorkItemsTable string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -121,6 +124,7 @@ type Project struct {
 }
 
 type Task struct {
+	FeedbackSources     []FeedbackSource   `json:"feedback_sources,omitempty"`
 	RequiresCodeReview  bool               `json:"requires_code_review,omitempty"`
 	Refreshes           []DeliveryRefresh  `json:"delivery_refreshes,omitempty"`
 	RequirementRevision int                `json:"requirement_revision,omitempty"`
@@ -219,7 +223,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -263,7 +267,7 @@ func (s *Store) CreateTask(ctx context.Context, projectID int64) (Task, error) {
 
 func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var t Task
-	var spec, attempts, events, reviews, delivery, plan, children, questions, refreshes []byte
+	var spec, attempts, events, reviews, delivery, plan, children, questions, refreshes, feedback []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, p.requires_code_review, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
@@ -291,9 +295,10 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    (SELECT jsonb_agg(jsonb_build_object('id',c.id,'key',c.plan_key,'status',c.status) ORDER BY c.id)
 		       FROM work_items c WHERE c.goal_id=t.id),
 		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id),
-		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.execution_id) FROM delivery_refreshes f WHERE f.task_id=t.id)
+		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.execution_id) FROM delivery_refreshes f WHERE f.task_id=t.id),
+		    (SELECT jsonb_agg(to_jsonb(f) ORDER BY f.feedback_id) FROM feedback_work_items l JOIN dispatchable_feedback f USING(feedback_id) WHERE l.task_id=t.id)
 		FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN requirement_revisions frozen ON frozen.id=t.requirement_id WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.RequiresCodeReview, &t.Status, &t.Kind, &t.ActiveRevision, &t.RequirementRevision, &t.LatestRequirement, &spec, &attempts,
-		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions, &refreshes)
+		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions, &refreshes, &feedback)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -322,6 +327,11 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	}
 	if questions != nil {
 		if err = json.Unmarshal(questions, &t.Questions); err != nil {
+			return Task{}, err
+		}
+	}
+	if feedback != nil {
+		if err = json.Unmarshal(feedback, &t.FeedbackSources); err != nil {
 			return Task{}, err
 		}
 	}
