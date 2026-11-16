@@ -94,6 +94,7 @@ func TestRetryReportWithoutExecutingTwice(t *testing.T) {
 	w, job, head := fixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	w.token = "test-worker"
 	var claims, reports int
 	s := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -139,5 +140,61 @@ func TestRetryReportWithoutExecutingTwice(t *testing.T) {
 	}
 	if claims != 2 || reports != 2 {
 		t.Fatalf("claims=%d reports=%d", claims, reports)
+	}
+}
+
+func TestReplayDurableReceipt(t *testing.T) {
+	for _, status := range []int{http.StatusNoContent, http.StatusConflict} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			ctx := context.Background()
+			w, job, head := fixture(t)
+			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			var first json.RawMessage
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				var report json.RawMessage
+				if r.URL.Path != "/internal/executions/12/result" || json.NewDecoder(r.Body).Decode(&report) != nil {
+					t.Error("unexpected report request")
+				}
+				if first == nil {
+					first = report
+					rw.WriteHeader(http.StatusForbidden)
+					return
+				}
+				if string(first) != string(report) {
+					t.Error("replayed receipt differs from the original")
+				}
+				rw.WriteHeader(status)
+			}))
+			defer server.Close()
+			w.api, w.client, w.id = server.URL, server.Client(), "node"
+			db, err := w.openJournal(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w.journal = db
+			err = w.executeAndReport(ctx, job)
+			db.Close()
+			if err == nil {
+				t.Fatal("unconfirmed result was reported as confirmed")
+			}
+			w.journal, err = w.openJournal(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.journal.Close()
+			if err := w.replayReceipts(ctx); err != nil {
+				t.Fatal(err)
+			}
+			var outcome, candidate, conflict string
+			var cleared bool
+			err = w.journal.QueryRow("SELECT outcome,candidate,report IS NULL,coalesce(conflicting_result,'') FROM attempts").Scan(&outcome, &candidate, &cleared, &conflict)
+			if err != nil || candidate != head || !cleared || strings.Contains(conflict, job.LeaseToken) {
+				t.Fatal("invalid recovery record", err)
+			}
+			if status == http.StatusConflict && (outcome != "conflict" || !strings.Contains(conflict, head)) ||
+				status == http.StatusNoContent && (outcome != "confirmed" || conflict != "") {
+				t.Fatalf("wrong outcome %s", outcome)
+			}
+		})
 	}
 }

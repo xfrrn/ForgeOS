@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ type worker struct {
 	planner                                 bool
 	slots                                   int
 	client                                  *http.Client
+	journal                                 *sql.DB
 }
 
 func fromEnv(role string) (*worker, error) {
@@ -166,6 +168,12 @@ func temporary(status int) bool {
 }
 
 func (w *worker) run(ctx context.Context) error {
+	journal, err := w.openJournal(ctx)
+	if err != nil {
+		return err
+	}
+	w.journal = journal
+	defer journal.Close()
 	writer := w.codex != "" || w.claude.bin != ""
 	caps := store.WorkerCapabilities{SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
@@ -205,7 +213,9 @@ func (w *worker) run(ctx context.Context) error {
 			}
 		}
 	}()
-	err := w.runQueue(child, caps)
+	if err = w.replayReceipts(child); err == nil {
+		err = w.runQueue(child, caps)
+	}
 	stop()
 	return errors.Join(err, <-done)
 }
@@ -253,32 +263,6 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		return nil
 	}
 	return context.Cause(ctx)
-}
-
-func (w *worker) executeAndReport(ctx context.Context, job store.Job) error {
-	result := w.execute(ctx, job)
-	report := struct {
-		LeaseToken string `json:"lease_token"`
-		store.Result
-	}{job.LeaseToken, result}
-	path := fmt.Sprintf("/internal/executions/%d/result", job.ExecutionID)
-	for {
-		// Give an interrupted execution one bounded chance to record its outcome on shutdown.
-		status, _ := w.post(context.WithoutCancel(ctx), path, report, nil)
-		if status == http.StatusNoContent {
-			log.Printf("execution %d reported (exit %d)", job.ExecutionID, result.ExitCode)
-			return nil
-		}
-		if status == http.StatusConflict {
-			log.Printf("execution %d result conflicts with the recorded lease or outcome", job.ExecutionID)
-			return nil
-		}
-		if ctx.Err() != nil || !temporary(status) {
-			return fmt.Errorf("execution %d result not acknowledged (HTTP %d)", job.ExecutionID, status)
-		}
-		log.Printf("execution %d result pending (HTTP %d), retrying", job.ExecutionID, status)
-		wait(ctx)
-	}
 }
 
 func main() {

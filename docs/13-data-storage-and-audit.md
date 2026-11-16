@@ -9,6 +9,20 @@
 - 本地文件/对象存储：日志、截图、录屏、报告、构建产物。
 - Worker SQLite：断线期间的事件缓冲和本地恢复日志。
 
+### Worker 执行恢复日志
+
+正式 Worker 在启动任务前，将领取时间、任务号、执行号和工作区写入本地 SQLite。执行结束时，先在同一条记录保存候选、退出码、原生会话 ID 和完整待报结果，再发送给控制面。重启并完成身份登记后，Worker 先补报已有结果，再领取新任务。补报沿用原执行租约。控制面确认后清除待报正文和租约令牌；遇到 409 时保留去除令牌的冲突结果，供维护者和控制面记录核对。进程在写入结果前中断时，本地只有领取记录，恢复流程不会因此重跑该任务。
+
+数据库默认位于服务用户 HOME 的 `.forgeos/worker`。可设置绝对路径 `FORGEOS_WORKER_STATE_DIR`，独立于仓库和工作区。控制面地址和 Worker ID 决定数据库文件名。重启后要沿用原身份、地址和状态目录。待补报的正文含该执行的租约令牌，目录限服务账号访问。Linux 使用 0700；Windows 选用只有服务账号和管理员可读的目录。读取本地恢复进度时，只查询所需列，例如在相应的 SQLite 文件上执行：
+
+```sql
+SELECT execution_id, task_id, workspace, claimed_at, buffered_at, settled_at,
+       exit_code, candidate, session_id, outcome
+FROM attempts ORDER BY claimed_at, execution_id;
+```
+
+`buffered_at` 有值、`settled_at` 为空表示仍待确认。结果冲突时 `outcome` 为 `conflict`，可在该执行行读取 `conflicting_result`。PostgreSQL 中的正式任务状态与 Owner 决定保持有效。
+
 ## 2. 事件记录
 
 事件建议采用追加式记录，至少包含：
