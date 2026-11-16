@@ -19,7 +19,8 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 	}
 	mux.HandleFunc("POST /internal/management/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var capabilities struct {
-			Shares bool `json:"supports_shares"`
+			Shares    bool `json:"supports_shares"`
+			TestPlans bool `json:"supports_test_plans"`
 		}
 		if r.ContentLength != 0 && !decode(w, r, &capabilities) {
 			return
@@ -27,6 +28,13 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		job, err := data.ClaimManagement(r.Context(), id)
 		if err == nil && job == nil && capabilities.Shares {
 			job, err = data.ClaimShareReview(r.Context(), id)
+		}
+		if err == nil && job == nil && capabilities.TestPlans {
+			var plan *store.TestPlanJob
+			plan, err = data.ClaimTestPlan(r.Context(), id, "management")
+			if plan != nil {
+				job = &store.ManagementJob{TestPlan: plan}
+			}
 		}
 		if err == nil && job == nil {
 			w.WriteHeader(http.StatusNoContent)
@@ -57,5 +65,6 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		respond(w, http.StatusNoContent, nil, err)
 	}))
+	registerTestPlanResult(mux, "/internal/management/test-plans/result", data, token, id, "management")
 	return nil
 }

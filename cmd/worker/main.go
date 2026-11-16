@@ -58,17 +58,20 @@ func fromEnv(role string) (*worker, error) {
 		}
 		return w, nil
 	}
-	if role == "management" {
+	if role == "management" || role == "test-agent" {
 		w.token = os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
+		if role == "test-agent" {
+			w.token = os.Getenv("FORGEOS_TEST_AGENT_TOKEN")
+		}
 		if strings.TrimSpace(w.token) == "" {
-			return nil, errors.New("set FORGEOS_MANAGEMENT_TOKEN")
+			return nil, fmt.Errorf("set the dedicated %s token", role)
 		}
 		w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
 		if err != nil {
 			return nil, err
 		}
 		if !w.planner {
-			return nil, errors.New("management requires local Codex with structured output")
+			return nil, fmt.Errorf("%s requires local Codex with structured output", role)
 		}
 		return w, nil
 	}
@@ -226,14 +229,16 @@ func main() {
 	if len(os.Args) == 2 {
 		role = os.Args[1]
 	}
-	if len(os.Args) > 1 && role != "management" && role != "reviewer" {
-		log.Fatal("usage: worker [management|reviewer|review-candidate|validate-candidate|plan-tests|review-test-plan]")
+	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" {
+		log.Fatal("usage: worker [management|reviewer|test-agent|review-candidate|validate-candidate|plan-tests|review-test-plan]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if role == "reviewer" {
+	if role == "test-agent" {
+		err = w.runTestAgent(ctx)
+	} else if role == "reviewer" {
 		err = w.runReviewer(ctx)
 	} else if role == "management" {
 		err = w.runManagement(ctx)

@@ -27,7 +27,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 4. Execution/Session/Process 状态机的精确定义。
 5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。原生 Session 恢复及多 Worker 租约续约仍待细化。
 6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。运行取消、日志和产物读取接口、保留策略仍待补齐。
-7. `acceptance.yaml`、全局 Playbook、独立 Test Agent 计划生成及 Management 逐项覆盖审查已实测。工作项内的计划派发、持久化和测试执行证据仍待补齐。
+7. `acceptance.yaml`、全局 Playbook、工作项内 Test Agent 和 Management 的计划派发、覆盖审查、修订归档及批准门禁已实测。用例执行证据和预览反馈仍待补齐。
 8. 单项目交付已在真实仓库核对固定任务分支、PR 编号、验收 SHA、最终合并 SHA 与 Issue 评论。创建 PR、合并、评论和关闭 Issue 后丢失响应的恢复场景由模拟远端覆盖。
 9. Artifact 保留和清理策略。
 10. 多 Worker 认证和证书轮换。

@@ -80,6 +80,14 @@ Test Agent 在独立只读会话中读取固定差异、基础规则、验收标
 
 每个标准均返回所引用的用例、判定及理由。步骤与证据足以证明预期时为 covered，缺少可观测步骤或证据时为 gap，业务条件不足时为 needs_clarification。总结果优先呈现 changes_requested，其次是 needs_clarification。回执绑定计划 JSON 的 SHA-256、两个提交及两次会话。覆盖审查完成后，用例仍需要实际执行并记录结果。
 
+### 在工作项中派发与修订测试计划
+
+控制面配置 `FORGEOS_TEST_AGENT_PROJECT_ID`、`FORGEOS_TEST_AGENT_TOKEN`，以及同一项目的 Management 身份。Test Agent 节点设置回环 API 地址和专用令牌，运行 `worker test-agent`；Management 节点运行 `worker management`。两者使用独立只读会话和凭据，控制面提供已冻结的输入。
+
+在任务详情展开最新的已验证候选，打开“查看测试计划”。可以逐行补充验收标准，也可直接点击“生成测试计划”。任务绑定的原始需求始终参与生成。控制面归档该候选的基础、差异、仓库规则、方法库及标准。Test Agent 完成计划后，Management 会自动领取覆盖审查。页面按修订展示来源、用例、环境、步骤、计划采集的证据、澄清问题和覆盖结论。
+
+Owner 接口 `POST /tasks/{id}/test-plans` 接受 `execution_id`、`commit`、`previous_revision` 及可选的 `criteria`。首次提交使用 0。同一请求重试返回原修订；需要重试失败作业或提供澄清时，以当前修订号申请新版本。按 `GET /tasks/{id}/test-plans?execution_id=…&revision=…` 读取历史，省略 revision 返回最新版本。请求计划后，当前修订的覆盖审查必须通过才能批准候选；退回候选仍可用。工作台上的“待执行”表示计划尚未提供用例运行证据。
+
 ## 5. 远程预览
 
 Preview 必须绑定：

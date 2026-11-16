@@ -432,3 +432,15 @@ Management 提高计划验证下限对应 ForgeOS 提交 `0420f455c76949ddb9d524
 | 检查 beta #15 两项文档用例，核对步骤和证据 | 两项均有可操作的检查，总结果 covered，用例保持 pending | 会话 `01a1e415-6ed0-7642-889b-0b74ab713b14` 分别引用了对应的 TC 编号。候选 `bb383121eea44590f4db686735466844fc8ad865`，计划摘要 `3c803e466bb47638d205d9b3b722caa7251834aee0a1aab9bddaa1648c3b3e63` |
 | 在同一候选把第一个用例改为仅查看 docs 目录，保留原标准、预期和编号 | 目录截图无法证明文中出现指定测试名称，审核指出缺口 | 会话 `01a1e415-6ecf-78a2-a030-ebafa28200dc` 将第一项判为 gap、第二项为 covered，总结果 changes_requested，收到不同计划摘要 `879bc089893f4eda00b975e37bd4ee043e025c18fcb9411598e34f18d4649a4f` |
 | 核查 ledger 计划中的模糊性能要求；另以已修改的原始标准提交旧计划 | 未解决的标准保持澄清；来源发生变化时拒绝旧计划 | 会话 `01a1e415-6ed0-75a0-863c-4a9ca31d5a80` 给两个容量标准 covered、性能标准 needs_clarification。错来源请求返回非零且没有审查回执 |
+
+独立覆盖审查对应 ForgeOS 提交 `e71b7c8b142f4dceccf7d3665c54ae7d037edae3`。
+
+## 专题 11、13 · 候选任务内派发计划、覆盖门禁与修订归档
+
+导入 beta #17，开发 Worker 生成任务 36、执行 30、候选 `3f20ee3a6a1cf53c37fe90d9b326cc5b992f49de`。基础为 `f4972a88317187fda5d169d788287c8d7a7ffe4e`，唯一变化是 docs/empty-queue.md。[Issue #17](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/17)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 Chrome 生成测试计划，附加“应该很快”的标准。尝试普通 Worker 领取 Test Agent 作业、使用错误 SHA、重发原请求并尝试直接批准候选 | 身份与候选必须匹配，重发复用修订，覆盖未通过时不能批准 | 错角色 401，错 SHA 与批准请求均为 409，原请求返回同一修订。Test Agent 会话 `01a1e41e-b9b4-7dd3-86fb-032cfd20532c` 和 Management 会话 `01a1e41f-0bb7-7a63-9d69-88a916166c7f` 对修订 1 返回 needs_clarification |
+| 通过 Chrome 将补充标准明确为两种容量输入和对应布尔结果，生成修订 2；阅读审查、翻回修订 1，并重启控制面 | 新修订保留原始 Issue，独立生成与审核；两个版本均可复查 | 两个新会话分别为 `01a1e41f-5855-7ea1-b352-1087a77f273f` 和 `01a1e41f-ce12-7741-be2d-3bc561206adc`。第二版 covered，两项用例仍为 pending，计划摘要 `359a406bbb3a8c0565e41a600183684196b069d8556a3ea72e7d2b6fa34bd47b`。重启前后两个完整回执分别相等 |
+| 在 PostgreSQL 中模拟并发领取、修订后的迟到结果、其他项目身份、开发会话冒充 Test Agent、伪造覆盖摘要及重复上报 | 只接收当前版本、正确身份和匹配计划的结果；重试不得重复派发 | `TestCandidatePlanRolesAndRevisions` 通过。生成及覆盖审查期间批准均返回冲突。覆盖通过后恢复批准入口 |

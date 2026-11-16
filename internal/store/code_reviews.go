@@ -168,7 +168,8 @@ func canApproveReview(ctx context.Context, tx *sql.Tx, task, execution int64) er
 	var allowed bool
 	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.execution_id IS NULL THEN NOT p.requires_code_review
 		ELSE (`+codeReviewState+`)='clear'
-		END FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN code_reviews r ON r.task_id=t.id AND r.execution_id=$2
+		END AND COALESCE((SELECT state='covered' FROM candidate_test_plan_receipts WHERE execution_id=$2 ORDER BY revision DESC LIMIT 1),true)
+		FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN code_reviews r ON r.task_id=t.id AND r.execution_id=$2
 		WHERE t.id=$1 FOR SHARE OF p`, task, execution).Scan(&allowed)
 	if err != nil {
 		return err

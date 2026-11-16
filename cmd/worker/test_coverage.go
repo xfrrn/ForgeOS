@@ -33,13 +33,18 @@ func reviewTestCoverage(ctx context.Context, req coverageRequest) (acceptance.Co
 	if err != nil {
 		return report, err
 	}
-	if err = req.Plan.Verify(src.Basis, src.Library); err != nil {
+	return coverageFromSource(ctx, src, req.Plan)
+}
+
+func coverageFromSource(ctx context.Context, src acceptance.Source, plan acceptance.Plan) (acceptance.Coverage, error) {
+	var report acceptance.Coverage
+	if err := plan.Verify(src.Basis, src.Library); err != nil {
 		return report, err
 	}
 	input := struct {
-		Source testPlanSource  `json:"source"`
-		Plan   acceptance.Plan `json:"plan"`
-	}{src, req.Plan}
+		Source acceptance.Source `json:"source"`
+		Plan   acceptance.Plan   `json:"plan"`
+	}{src, plan}
 	var response struct {
 		Items []acceptance.CoverageItem `json:"items"`
 	}
@@ -48,7 +53,7 @@ func reviewTestCoverage(ctx context.Context, req coverageRequest) (acceptance.Co
 	if err != nil {
 		return report, err
 	}
-	return req.Plan.Coverage(session, response.Items)
+	return plan.Coverage(session, response.Items)
 }
 
 func runTestCoverage(ctx context.Context, in io.Reader, out io.Writer) error {

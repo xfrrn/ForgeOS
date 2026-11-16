@@ -4,6 +4,7 @@ package acceptance
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -29,7 +30,7 @@ func NewBasis(d validation.Decision, lib schemas.PlaybookLibrary, criteria []str
 		return b, errors.New("at most 128 requirement criteria are supported")
 	}
 	for i, s := range criteria {
-		if strings.TrimSpace(s) == "" || len(s) > 16<<10 {
+		if strings.TrimSpace(s) == "" || len(s) > 260<<10 {
 			return b, errors.New("invalid requirement criterion")
 		}
 		b.Criteria = append(b.Criteria, Criterion{fmt.Sprintf("requirement/%d", i+1), s, ""})
@@ -83,10 +84,12 @@ type Plan struct {
 	Draft
 }
 
+var sessionID = regexp.MustCompile("^[A-Za-z0-9_-]{1,128}$")
+
 func (b Basis) Bind(session string, lib schemas.PlaybookLibrary, draft Draft) (Plan, error) {
 	p := Plan{b, session, draft}
 	p.Cases = slices.Clone(draft.Cases)
-	if session == "" || b.LibrarySHA != lib.SHA256 || draft.Cases == nil || draft.Questions == nil || len(draft.Cases) > 512 || len(draft.Questions) > 256 {
+	if !sessionID.MatchString(session) || b.LibrarySHA != lib.SHA256 || draft.Cases == nil || draft.Questions == nil || len(draft.Cases) > 512 || len(draft.Questions) > 256 {
 		return p, errors.New("incomplete or oversized test plan")
 	}
 	criteria := make(map[string]Criterion, len(b.Criteria))

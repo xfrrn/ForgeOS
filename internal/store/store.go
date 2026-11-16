@@ -90,6 +90,9 @@ var codeReviewSchema string
 //go:embed 022_commit_status.sql
 var commitStatusSchema string
 
+//go:embed 023_test_plans.sql
+var testPlanTables string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -121,6 +124,8 @@ type Task struct {
 }
 
 type Execution struct {
+	TestPlanState       string        `json:"test_plan_state,omitempty"`
+	TestPlanRevision    int           `json:"test_plan_revision,omitempty"`
 	CommitStatus        *CommitStatus `json:"commit_status,omitempty"`
 	CodeReviewState     string        `json:"code_review_state,omitempty"`
 	UsesCheckpoints     bool          `json:"uses_checkpoints,omitempty"`
@@ -189,7 +194,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -242,8 +247,9 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'abandoned_at', e.abandoned_at,
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
-		        'result', e.result,'commit_status',e.commit_status, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
+		        'result', e.result,'commit_status',e.commit_status, 'test_plan_state',tp.state,'test_plan_revision',tp.revision, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
 		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id
+		     LEFT JOIN LATERAL (SELECT state,revision FROM candidate_test_plan_receipts WHERE execution_id=e.id ORDER BY revision DESC LIMIT 1) tp ON true
 		     LEFT JOIN code_reviews r ON r.execution_id=e.id WHERE e.task_id = t.id), '[]'),
 		    (SELECT jsonb_agg(jsonb_build_object(
 		        'id', v.id, 'execution_id', v.execution_id, 'type', v.type, 'at', v.at) ORDER BY v.id)

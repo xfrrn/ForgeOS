@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
 import './detail.css'
+import { CandidateTestPlans } from './CandidateTestPlans'
 
 type CheckRun = { id: string; runner: string; level: string; profile?: string; config_blob?: string; image?: string
   decision?: { rules_blob?: string; changed_paths: number; reasons: { source: string; level: string; evidence: string }[] }
@@ -10,6 +11,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  test_plan_revision?: number; test_plan_state?: string
   commit_status?: { id: number; state: string; context: string; commit: string }
   code_review_state?: 'pending' | 'failed' | 'needs_check' | 'clear'
   id: number; status: string; worker: string; workspace: string; lease_until: string
@@ -269,6 +271,9 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {validation.run && <DeclaredChecks run={validation.run} />}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
+    {result?.commit && validation?.exit_code === 0 && (attempt.test_plan_revision || (latest && task.status === 'WAITING_ACCEPTANCE')) ?
+      <CandidateTestPlans task={task.id} execution={attempt.id} commit={result.commit} latest={attempt.test_plan_revision ?? 0}
+        state={attempt.test_plan_state ?? ''} current={latest && task.status === 'WAITING_ACCEPTANCE'} request={request} refresh={refresh} /> : null}
     {task.kind === 'codex_issue' && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&
       <CandidateReview task={task} attempt={attempt} request={request} refresh={refresh} current={latest && task.status === 'WAITING_ACCEPTANCE'} />}
     </div>
@@ -468,7 +473,8 @@ function Detail({ id, request, onChanged }: Props) {
       <aside className="detail-column">
         {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
         {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)}
-          reviewPending={Boolean(task.requires_code_review || last.code_review_state) && last.code_review_state !== 'clear'} />}
+          reviewPending={(Boolean(task.requires_code_review || last.code_review_state) && last.code_review_state !== 'clear') ||
+            Boolean(last.test_plan_state && last.test_plan_state !== 'covered')} />}
         {task.spec && <section className="panel detail-card"><h2><Icon name="GitPullRequest" size={18} />GitHub 交付</h2>
           {delivery ? <><div className="detail-delivery-state"><span className={'detail-state-dot ' + (delivery.state === 'DONE' ? 'complete' : '')} />{deliveryStates[delivery.state] || delivery.state}</div>
             <dl className="detail-facts">{delivery.pr_number && <Fact label="Pull request"><OutLink href={delivery.pr_url}>PR #{delivery.pr_number}</OutLink></Fact>}

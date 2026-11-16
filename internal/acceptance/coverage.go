@@ -48,7 +48,7 @@ type Coverage struct {
 
 func (p Plan) Coverage(session string, items []CoverageItem) (Coverage, error) {
 	var r Coverage
-	if session == "" || session == p.Session || len(items) != len(p.Basis.Criteria) {
+	if !sessionID.MatchString(session) || session == p.Session || len(items) != len(p.Basis.Criteria) {
 		return r, errors.New("coverage requires an independent session and a decision for every criterion")
 	}
 	state := "covered"
