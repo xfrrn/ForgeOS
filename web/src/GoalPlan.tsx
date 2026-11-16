@@ -4,9 +4,9 @@ import { ApiError, Fact, Status, type ApiRequest } from './shared'
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
 export type Plan = { revision: number; git_commit?: string; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 export type GoalChild = { id: number; key: string; status: string; plan_revision?: number }
-type Props = { taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest }
+type Props = { taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
 
-export default function GoalPlan({taskID, selected, latest, active, items, request}: Props) {
+export default function GoalPlan({taskID, selected, latest, active, items, request, activate, disabled}: Props) {
   const [archived, setArchived] = useState<Plan>()
   const [error, setError] = useState('')
   const historical = selected !== undefined && selected !== latest?.revision
@@ -54,6 +54,8 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
             {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}</dl>
         </li>)}</ul>
       </div>)}
+      {activate && plan.revision === latest?.revision && plan.revision !== active &&
+        <button className="button primary" disabled={disabled} onClick={() => void activate(plan.revision)}>批准并激活修订 {plan.revision}</button>}
     </>}
   </section>
 }

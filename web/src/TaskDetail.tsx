@@ -466,6 +466,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
 
   useEffect(() => {
     const epoch = ++generation.current
+    setLoading(true)
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     async function read() {
@@ -486,7 +487,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
     }
     void read()
     return () => { controller.abort(); clearTimeout(timer) }
-  }, [id, request, revision])
+  }, [id, planRevision, request, revision])
 
   function refresh(message = '') {
     generation.current++
@@ -498,6 +499,21 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
     setTask(updated)
     refresh(updated.reviews?.at(-1)?.decision === 'reject' ? '候选已退回，任务已重新排队。' : '已记录对该候选 SHA 的批准。')
     onChanged()
+  }
+  async function activatePlan(plan: number) {
+    setSendingCommand(true)
+    try {
+      const updated = await request<Task>(`/tasks/${id}/plans/${plan}/activate`, { method: 'POST' })
+      setTask(updated)
+      refresh(`已批准并激活修订 ${plan}。`)
+      onChanged()
+    } catch (cause) {
+      refresh(cause instanceof ApiError && cause.status === 409
+        ? `修订 ${plan} 无法激活，请核对最新计划与任务状态。`
+        : '未收到批准结果，请根据重新读取的生效版本核对。')
+    } finally {
+      setSendingCommand(false)
+    }
   }
   async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci') {
     setSendingCommand(true)
@@ -554,7 +570,8 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
       <div className="detail-column">
         {task.kind === 'git_head' && task.status === 'DONE' && <RepositoryInventory task={task.id} request={request}/>}
         {(task.plan || planRevision) && <GoalPlan key={planRevision ?? 'latest'} taskID={task.id}
-          selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}/>}
+          selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}
+          activate={task.status === 'PLANNING' ? activatePlan : undefined} disabled={loading || sendingCommand || Boolean(error)}/>}
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
           {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={`#/tasks/${f.task_id}/previews/${f.preview}/feedback`}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}

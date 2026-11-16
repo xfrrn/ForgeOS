@@ -192,6 +192,8 @@ Owner 向 `POST /tasks/{id}/plans` 提交以下结构。首次提交传 `previou
 
 Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/activate`。同一修订重复激活复用已有工作项。目标进入 ACTIVE，无前置依赖的子项进入 READY，其他子项进入 BLOCKED。任务树提供实际工作项链接，子项详情可回到父 Goal。每个子项使用计划中的范围、上下文引用和验收条件，沿用原项目的验证方式。每个子 PR 回写候选和合并 SHA，父 Issue 保持开放。
 
+在隔离测试库准备一个已有未激活草案的 Goal，并设置 `FORGEOS_OWNER_TOKEN`。运行 `python scripts/probe_plan_activation.py http://127.0.0.1:8080 <目标任务号>`。探针会发布内容相同的下一版草案，验证旧版批准被拒绝，再从 Chrome 批准新版，模拟批准响应丢失并核对子项。
+
 交付器在前置子项全部完成 GitHub 回写后检查目标分支。它获取分支提交到项目对象库，核对原始基础及每个前置 Merge SHA 都在该提交的历史中，再把后续子项的基础版本固定并转为 READY。可以从子项的 `spec.base_commit` 和 `dependencies_delivered` 事件复核派发依据。
 
 待所有里程碑已有详细工作项、每个子任务和交付记录均为 DONE 后，交付器核对原仓库和父 Issue 身份，回写一次 Goal 摘要并关闭 Issue。远端确认后才把父 Goal 标为 DONE。待细化的空里程碑会保留父 Issue。
