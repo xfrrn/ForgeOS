@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"forgeos/internal/validation"
 )
 
 type ManagementJob struct {
@@ -20,12 +22,13 @@ type ManagementJob struct {
 }
 
 type ManagementReview struct {
-	Level          string `json:"level"`
-	Verdict        string `json:"verdict"`
-	Rationale      string `json:"rationale"`
-	Evidence       string `json:"evidence"`
-	SessionID      string `json:"session_id"`
-	EffectiveLevel string `json:"effective_level,omitempty"`
+	Level             string `json:"level"`
+	Verdict           string `json:"verdict"`
+	Rationale         string `json:"rationale"`
+	Evidence          string `json:"evidence"`
+	SessionID         string `json:"session_id"`
+	EffectiveLevel    string `json:"effective_level,omitempty"`
+	ValidationMinimum string `json:"validation_minimum,omitempty"`
 }
 
 func decisionLevel(level string) bool {
@@ -79,7 +82,8 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64) (*Manageme
 }
 
 func (review ManagementReview) validate() error {
-	if !decisionLevel(review.Level) || (review.Verdict != "approve" && review.Verdict != "revise" && review.Verdict != "needs_owner") ||
+	if !decisionLevel(review.Level) || (review.ValidationMinimum != "" && !validation.ValidLevel(review.ValidationMinimum)) ||
+		(review.Verdict != "approve" && review.Verdict != "revise" && review.Verdict != "needs_owner") ||
 		strings.TrimSpace(review.Rationale) == "" || len(review.Rationale) > 4096 || strings.TrimSpace(review.Evidence) == "" || len(review.Evidence) > 4096 ||
 		review.SessionID == "" || len(review.SessionID) > 128 || strings.Trim(review.SessionID, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" || review.EffectiveLevel != "" {
 		return ErrConflict
@@ -118,6 +122,9 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	}
 	if validation != "docs" {
 		floor = max(floor, "D2")
+	}
+	if review.ValidationMinimum != "" && validation != "auto" {
+		return ErrConflict
 	}
 	review.EffectiveLevel = max(floor, review.Level)
 	if stored != nil {

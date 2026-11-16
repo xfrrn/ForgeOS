@@ -48,6 +48,8 @@ Owner 通过 `GET /projects/{id}/validation-plan?commit=<完整 SHA>&level=V3` �
 
 内置路径规则将文档置于 V1、常规代码置于 V2，integration、e2e、.github、deploy 路径片段置于 V3，auth、authentication、authorization、payment、payments、secrets、migrations 片段和根目录的验证或验收配置置于 V4。组件规则与项目整体最低等级可以进一步提高要求。任务类型 documentation、change、integration、security 分别对应 V1 至 V4；目标 local、pull_request、staging 分别最低 V1、V2、V3。
 
+原生 Management Worker 审核自动分级任务的计划时可在计划修订回执中提交 `validation_minimum`，并写明理由和依据。Owner 可在任务详情查看建议。批准并激活该修订时，控制面在同一事务内将下限应用到 Goal 和尚未执行的子项。后续修订只能提高已生效的下限。已领取或已有执行记录的子项保留原先的策略和回执。D1–D3 决策审批等级与 V1–V4 验证下限分别保存。
+
 ## 4. Review Engine
 
 - 独立 Session；

@@ -82,6 +82,9 @@ func (s *Store) ClaimShareReview(ctx context.Context, project int64) (*Managemen
 }
 
 func (s *Store) ReviewShare(ctx context.Context, project, id int64, lease string, review ManagementReview) error {
+	if review.ValidationMinimum != "" {
+		return ErrConflict
+	}
 	if err := review.validate(); err != nil {
 		return err
 	}

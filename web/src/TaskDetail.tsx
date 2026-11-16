@@ -21,7 +21,7 @@ type Delivery = { execution_id: number; commit: string; state: string; detail?: 
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
-type Plan = { revision: number; review?: { level: string; effective_level: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
+type Plan = { revision: number; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
   requires_code_review?: boolean
   id: number; project_id: number; status: string; kind: string
@@ -440,6 +440,7 @@ function Detail({ id, request, onChanged }: Props) {
           {task.plan.review && <div><h3>Management 审核 · {task.plan.review.effective_level}</h3>
             <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[task.plan.review.verdict] ?? task.plan.review.verdict}</Fact>
               <Fact label="理由">{task.plan.review.rationale}</Fact><Fact label="依据">{task.plan.review.evidence}</Fact>
+              {task.plan.review.validation_minimum && <Fact label="建议最低验证等级">{task.plan.review.validation_minimum}</Fact>}
               <Fact label="审核会话" code>{task.plan.review.session_id}</Fact></dl>
           </div>}
           {task.plan.plan.milestones.map((milestone, index) => <div key={index}>

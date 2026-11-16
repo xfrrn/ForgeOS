@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"forgeos/internal/validation"
 )
 
 func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
@@ -105,5 +107,65 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	}
 	if _, err = s.SavePlanWithPolicy(ctx, code.ID, 0, plan, "D1"); !errors.Is(err, ErrConflict) {
 		t.Fatal("code allowed D1", err)
+	}
+}
+
+func TestManagementValidationMinimumAppliesOnActivation(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(s.Migrate(ctx))
+	project, err := s.CreateProject(ctx, "queue")
+	must(err)
+	task, err := s.ImportIssue(ctx, project.ID, IssueSpec{Issue: Issue{ID: 1, Number: 1, RepositoryID: 9}, BaseCommit: strings.Repeat("a", 40), Validation: "auto", Policy: &validation.Policy{Target: "pull_request"}})
+	must(err)
+	item := PlanItem{Key: "release", Objective: "Verify queue", Scope: "queue", Deliverables: "report", Acceptance: "Capacity boundary holds"}
+	second := item
+	second.Key = "handoff"
+	plan := Plan{Objective: "Release", Milestones: []Milestone{{Name: "Gate", Items: []PlanItem{item, second}}}}
+	for i, floor := range []string{"V3", "V4", "V1"} {
+		rev, err := s.SavePlan(ctx, task.ID, i, plan)
+		must(err)
+		job, err := s.ClaimManagement(ctx, project.ID)
+		must(err)
+		if job == nil {
+			t.Fatal("no review job")
+		}
+		review := ManagementReview{Verdict: "approve", Level: "D2", Rationale: "release gate", Evidence: "queue test plan", SessionID: "manager", ValidationMinimum: floor}
+		must(s.CompleteManagement(ctx, project.ID, task.ID, rev.Revision, job.Lease, review))
+		draft, err := s.Task(ctx, task.ID)
+		must(err)
+		if draft.Status != "PLANNING" || draft.Spec.Policy.Management == floor || draft.Plan.Review.ValidationMinimum != floor {
+			t.Fatal("review rewrote the active policy before activation")
+		}
+		active, err := s.ActivatePlan(ctx, task.ID, rev.Revision)
+		must(err)
+		want := []string{"V3", "V4", "V4"}[i]
+		if active.Spec.Policy.Management != want {
+			t.Fatal("incorrect goal minimum", active.Spec.Policy)
+		}
+		for _, row := range active.Children {
+			child, err := s.Task(ctx, row.ID)
+			must(err)
+			expected := want
+			if child.Status == "RUNNING" {
+				expected = "V3"
+			}
+			if child.Spec.Policy.Management != expected {
+				t.Fatalf("revision %d child %d (%s) expected %s", rev.Revision, row.ID, child.Status, expected)
+			}
+		}
+		if i == 0 {
+			job, err := s.Claim(ctx, "dev", t.TempDir(), true, true, false, true, true, true, true)
+			must(err)
+			if job == nil || job.Spec.Policy.Management != "V3" {
+				t.Fatal("missing initial attempt")
+			}
+		}
 	}
 }

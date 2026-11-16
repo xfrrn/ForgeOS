@@ -36,6 +36,7 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 	var status string
 	var specJSON, planJSON []byte
 	var latest, active int
+	var managementMinimum string
 	err := tx.QueryRowContext(ctx, `SELECT t.project_id,t.status,t.spec,COALESCE(t.active_revision,0) FROM work_items t WHERE t.id=$1 FOR UPDATE`, id).Scan(&projectID, &status, &specJSON, &active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -43,7 +44,7 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 	if err != nil {
 		return err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT revision,plan FROM plan_revisions WHERE task_id=$1 ORDER BY revision DESC LIMIT 1`, id).Scan(&latest, &planJSON)
+	err = tx.QueryRowContext(ctx, `SELECT revision,plan,COALESCE(review->>'validation_minimum','') FROM plan_revisions WHERE task_id=$1 ORDER BY revision DESC LIMIT 1`, id).Scan(&latest, &planJSON, &managementMinimum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
@@ -73,6 +74,17 @@ func activatePlan(ctx context.Context, tx *sql.Tx, id int64, revision int) error
 	existing, err := rollingChanges(ctx, tx, id, active, plan)
 	if err != nil {
 		return err
+	}
+	if spec.Policy != nil && managementMinimum > spec.Policy.Management {
+		spec.Policy.Management = managementMinimum
+		// Preserve historical attempts when a later revision raises the floor.
+		_, err = tx.ExecContext(ctx, `UPDATE work_items t SET spec=jsonb_set(spec,'{policy,management_minimum}',to_jsonb($2::text))
+			WHERE COALESCE(t.spec->'policy'->>'management_minimum','')<$2 AND
+			(t.id=$1 OR (t.goal_id=$1 AND t.status IN ('READY','BLOCKED') AND NOT EXISTS
+			(SELECT 1 FROM executions e WHERE e.task_id=t.id)))`, id, managementMinimum)
+		if err != nil {
+			return err
+		}
 	}
 	for _, child := range existing {
 		if !child.changed {

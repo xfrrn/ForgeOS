@@ -14,7 +14,18 @@ import (
 	"forgeos/internal/store"
 )
 
-const reviewSchema = `{"type":"object","additionalProperties":false,"required":["level","verdict","rationale","evidence"],"properties":{"level":{"type":"string","enum":["D1","D2","D3"]},"verdict":{"type":"string","enum":["approve","revise","needs_owner"]},"rationale":{"type":"string"},"evidence":{"type":"string"}}}`
+const reviewSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["level", "verdict", "rationale", "evidence", "validation_minimum"],
+  "properties": {
+    "level": {"type": "string", "enum": ["D1", "D2", "D3"]},
+    "verdict": {"type": "string", "enum": ["approve", "revise", "needs_owner"]},
+    "rationale": {"type": "string"},
+    "evidence": {"type": "string"},
+    "validation_minimum": {"type": "string", "enum": ["", "V1", "V2", "V3", "V4"]}
+  }
+}`
 
 func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) (store.ManagementReview, error) {
 	var review store.ManagementReview
@@ -48,6 +59,11 @@ func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) 
 	doc, err := json.Marshal(source)
 	if err != nil {
 		return review, err
+	}
+	if job.Spec.Policy != nil && job.Share == nil {
+		prompt += "Choose a validation_minimum for future work items if the evidence calls for stronger checks: V2 unit/build, V3 integration, V4 security and critical regression. Cite the reason; otherwise leave it empty. Decision level D1-D3 is separate.\n"
+	} else {
+		prompt += "Leave validation_minimum empty for this review.\n"
 	}
 	prompt += string(doc)
 	options := []string{"--skip-git-repo-check", "--output-schema", schema, "--output-last-message", output}
