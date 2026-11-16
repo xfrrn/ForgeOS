@@ -331,3 +331,16 @@ OpenBao 部署及恢复对应 `ab013b603c4bb3368e1daf777dcae7b6f3599b02`。
 | V2 中让一个必需检查超时、另一个构建退出 3；另请求缺少 Profile 的 V4 | 区分超时、构建失败、配置缺项；未执行不能生成通过记录 | `ci-run-1095856787` 同时记录 TIMEOUT（退出码 null）和 BUILD_FAILURE（退出码 3）。V4 运行 `ci-run-907231703` 为 CONFIG_FAILURE，检查记录为空。命令完成后按容器名查询无残留 |
 
 PostgreSQL 和 Docker 全套 Go 回归为 82 项通过、零跳过。额外覆盖命令退出 0 但未生成承诺的报告，结果为 TEST_ENV_FAILURE。
+
+离线容器 Runner 对应 ForgeOS 提交 `ee695b39ca1d61ec7d3d8bfd0ebaefe1681cfaf6`。
+
+## 专题 10、12 · 从真实 Issue 发起仓库检查并交付
+
+在 beta 私有验收仓库通过 PR #7 引入 Go 包及验证配置，合并后的基础为 `9d0213cfa67f8fded11bda56d7c4a6fc86713981`。随后通过 Owner 接口按编号导入 Issue #8，选 V2。[配置 PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/7) · [需求](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/8)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 让旧 Worker 和支持仓库检查的 Worker 先后领取 | 旧 Worker 无任务；新 Worker 执行固定格式、单元和构建检查 | 旧领取返回 204。任务 29、执行 25 的三项退出码均为 0。首次候选有 953 个变更文件，页面差异截断。核查发现带入编译缓存，因此通过 Owner 入口退回 |
+| 修订后重新检查并核对 SHA、文件与报告 | 新候选有新运行记录，实际交付只含需求范围内的实现和测试 | 执行 26、运行 `ci-run-418587960`，候选 `84997d86d4d4a1cfd32a36cf14c090c66e3e2721`。仅有 queue.go 和 queue_test.go 两个变更文件，覆盖等于、超过上限和负数输入。两次执行均绑定配置 blob `24c99f7c289bd37b2fd5a6f3d1a981ee001d3828`；第二次三个检查全通过，归档报告复算 SHA-256 与 API 一致 |
+| 在 Chrome 展开执行 26 的“逐项检查”，查看运行编号与代码差异，批准并等待远端交付 | 本地检查有独立证据，GitHub 的必需检查仍约束合并。重启可读原回执 | PR #9 的首次远端检查失败，同一 head 重跑成功。合并 SHA `bc83d9a1399a0ab8eb78f2cb0f0f6464e19a8ebf`，任务 DONE、Issue CLOSED。重启前后完整验证回执相等。[PR #9](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/9) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43847029410) |
+| 用测试仓库提交其他 Runner、错执行号、错误配置 blob、遗漏检查和将必需检查改为可选的回执 | 控制面逐一拒绝；候选若修改验证配置，即使通过仍需独立审查 | `TestDeclaredChecksRequiredForIssue` 通过，配置变动的候选处于 WAITING_ACCEPTANCE，直接批准返回 409。Go 回归 83 项通过、零跳过；前端生产构建通过 |

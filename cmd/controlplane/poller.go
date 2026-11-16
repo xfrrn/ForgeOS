@@ -35,8 +35,8 @@ func pollConfig(id, validation string) (*issuePoller, error) {
 		return nil, nil
 	}
 	projectID, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || projectID <= 0 || (validation != "docs" && validation != "go-test") {
-		return nil, errors.New("set both a positive FORGEOS_POLL_PROJECT_ID and a FORGEOS_POLL_VALIDATION of docs or go-test")
+	if err != nil || projectID <= 0 || !store.ValidValidation(validation) {
+		return nil, errors.New("set a positive FORGEOS_POLL_PROJECT_ID and select docs, go-test or V1 through V4")
 	}
 	return &issuePoller{projectID, validation}, nil
 }

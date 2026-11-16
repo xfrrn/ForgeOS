@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"forgeos/internal/validation"
 )
 
 type Issue struct {
@@ -29,10 +31,15 @@ type IssueSpec struct {
 }
 
 type ValidationResult struct {
-	Profile  string `json:"profile"`
-	Commit   string `json:"commit"`
-	ExitCode int    `json:"exit_code"`
-	Output   string `json:"output"`
+	Profile  string          `json:"profile"`
+	Commit   string          `json:"commit"`
+	ExitCode int             `json:"exit_code"`
+	Output   string          `json:"output"`
+	Run      *validation.Run `json:"run,omitempty"`
+}
+
+func ValidValidation(profile string) bool {
+	return profile == "docs" || profile == "go-test" || validation.ValidLevel(profile)
 }
 
 func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
@@ -48,7 +55,7 @@ func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec) (Task, error) {
 	issue := spec.Issue
 	if spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
-		(spec.Validation != "docs" && spec.Validation != "go-test") || (spec.Mode != "" && spec.Mode != "plan") {
+		!ValidValidation(spec.Validation) || (spec.Mode != "" && spec.Mode != "plan") {
 		return Task{}, ErrConflict
 	}
 	snapshot, err := json.Marshal(spec)
@@ -187,8 +194,17 @@ func (spec IssueSpec) accepts(r Result) bool {
 	if v != nil && (r.Commit == "" || v.Commit != r.Commit || v.Profile != spec.Validation) {
 		return false
 	}
+	if v != nil && v.Run != nil && (!validation.ValidLevel(spec.Validation) || !v.Run.Valid() ||
+		v.Run.Base != spec.BaseCommit || v.Run.Commit != r.Commit || v.Run.Level != spec.Validation || (v.Run.Failure == "") != (v.ExitCode == 0)) {
+		return false
+	}
 	if r.ExitCode != 0 {
 		return strings.TrimSpace(r.Error) != ""
+	}
+	if v != nil && validation.ValidLevel(spec.Validation) {
+		if v.Run == nil {
+			return false
+		}
 	}
 	validTurn := strings.TrimSpace(r.SessionID) != ""
 	if spec.VerifyCommit != "" {

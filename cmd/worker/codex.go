@@ -234,7 +234,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		if _, err := checkedWorktree(ctx, repo, workspace, spec.VerifyCommit); err != nil {
 			return failed("could not check out refreshed candidate", err)
 		}
-		report, err := validateCandidate(ctx, workspace, spec.BaseCommit, spec.VerifyCommit, spec.Validation)
+		report, err := w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, spec.BaseCommit, spec.VerifyCommit, spec.Validation)
 		result.Validation = &report
 		if err != nil {
 			result.ExitCode = 1
@@ -242,7 +242,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		}
 		return result
 	}
-	if w.codex == "" || spec == nil || (spec.Validation != "docs" && spec.Validation != "go-test") {
+	if w.codex == "" || spec == nil || !store.ValidValidation(spec.Validation) {
 		return failed("missing Codex capability or unsupported issue specification", nil)
 	}
 	result := store.Result{BaseCommit: spec.BaseCommit}
@@ -293,7 +293,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 	}
 	if err == nil {
 		var report store.ValidationResult
-		report, err = validateCandidate(ctx, workspace, spec.BaseCommit, result.Commit, spec.Validation)
+		report, err = w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, spec.BaseCommit, result.Commit, spec.Validation)
 		result.Validation = &report
 		if err == nil && report.ExitCode != 0 {
 			err = errors.New("local validation failed")

@@ -4,6 +4,7 @@ import "time"
 
 // Run identifies the immutable inputs and the outputs retained by the runner.
 type Run struct {
+	ExecutionID   int64         `json:"execution_id,omitempty"`
 	ID            string        `json:"id"`
 	Runner        string        `json:"runner"`
 	Base          string        `json:"base_commit"`

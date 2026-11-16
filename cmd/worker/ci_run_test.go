@@ -38,7 +38,7 @@ profiles:
 	out := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	run, err := runLocalCI(ctx, ciRequest{repo, base, candidate, "V1"}, filepath.Dir(repo), out, "test-runner")
+	run, err := runLocalCI(ctx, ciRequest{Repo: repo, Base: base, Commit: candidate, Level: "V1"}, filepath.Dir(repo), out, "test-runner")
 	if err != nil || run.Failure != "" || len(run.Checks) != 2 || len(run.Checks[0].Outputs) != 1 || run.Checks[1].Failure != "CODE_FAILURE" || *run.Checks[1].ExitCode != 9 {
 		t.Fatalf("CI: %+v %v", run, err)
 	}
@@ -53,7 +53,7 @@ profiles:
 	}
 	badConfig := validationCommit(t, repo, "validation.yaml", strings.Replace(cfg, "reports: [receipt]", "reports: [absent]", 1))
 	next := validationCommit(t, repo, "README.md", "next candidate\n")
-	run, err = runLocalCI(ctx, ciRequest{repo, badConfig, next, "V1"}, filepath.Dir(repo), out, "test-runner")
+	run, err = runLocalCI(ctx, ciRequest{Repo: repo, Base: badConfig, Commit: next, Level: "V1"}, filepath.Dir(repo), out, "test-runner")
 	if err != nil || run.Failure != "TEST_ENV_FAILURE" || run.Checks[0].ExitCode == nil || *run.Checks[0].ExitCode != 0 {
 		t.Fatalf("missing promised report: %+v %v", run, err)
 	}

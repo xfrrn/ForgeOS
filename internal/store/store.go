@@ -342,16 +342,18 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	canPlan := len(capabilities) > 2 && capabilities[2]
 	canCheckpoint := len(capabilities) > 3 && capabilities[3]
 	canVerify := len(capabilities) > 4 && capabilities[4]
+	canRunChecks := len(capabilities) > 5 && capabilities[5]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1 OR ($5 AND candidate.spec ? 'verify_commit'))
 		  AND ($5 OR NOT COALESCE(candidate.spec ? 'verify_commit',false))
+		  AND ($7 OR COALESCE(candidate.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		  AND ($4 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects)).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects), canRunChecks).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -366,12 +368,13 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND (w.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=w.goal_id AND g.status='ACTIVE'))
 		            AND (w.kind = 'git_head' OR $2 OR ($6 AND w.spec ? 'verify_commit'))
 		            AND ($6 OR NOT COALESCE(w.spec ? 'verify_commit',false))
+		            AND ($7 OR COALESCE(w.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		            AND ($5 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, canRunChecks).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -420,6 +423,12 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 }
 
 func (s *Store) Complete(ctx context.Context, id int64, token string, result Result) error {
+	return s.CompleteWithChecks(ctx, id, token, result, nil)
+}
+
+type CheckVerifier func(context.Context, string, IssueSpec, Result) (bool, error)
+
+func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, result Result, verify CheckVerifier) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -428,10 +437,11 @@ func (s *Store) Complete(ctx context.Context, id int64, token string, result Res
 	var taskID int64
 	var abandoned, usesCheckpoints bool
 	var expectedHash, stored, spec []byte
+	var repo, worker string
 	err = tx.QueryRowContext(ctx, `
-		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints
-		FROM executions e JOIN work_items t ON t.id = e.task_id
-		WHERE e.id = $1 FOR UPDATE OF e`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints)
+		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker
+		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
+		WHERE e.id = $1 FOR UPDATE OF e`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -460,7 +470,27 @@ func (s *Store) Complete(ctx context.Context, id int64, token string, result Res
 		if !issue.accepts(result) {
 			return ErrConflict
 		}
+		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker ||
+			v.Run.Base != issue.BaseCommit || v.Run.Commit != result.Commit || v.Run.Level != issue.Validation) {
+			return ErrConflict
+		}
 		if result.succeeded() {
+			if v := result.Validation; v != nil && v.Run != nil {
+				if verify == nil {
+					return ErrConflict
+				}
+				changed, err := verify(ctx, repo, issue, result)
+				if err != nil {
+					return err
+				}
+				if changed {
+					_, err = tx.ExecContext(ctx, `INSERT INTO code_reviews(execution_id,task_id,base_commit,commit_sha,requirement)
+						VALUES($1,$2,$3,$4,$5)`, id, taskID, issue.BaseCommit, result.Commit, issue.Issue.Title+"\n"+issue.Issue.Body)
+					if err != nil {
+						return err
+					}
+				}
+			}
 			if usesCheckpoints {
 				var confirmed bool
 				err = tx.QueryRowContext(ctx, `SELECT EXISTS(

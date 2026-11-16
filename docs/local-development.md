@@ -64,6 +64,7 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 | --- | --- |
 | `docs` | 针对两个提交运行 `git diff --check`，确认有实际变更且只涉及普通、不可执行的 `.md`、`.rst`、`.txt`、`.adoc` 文件。需求是否满足仍由维护者对照 Issue 和差异核对。 |
 | `go-test` | 在候选提交的全新只读检出上运行 `go test -buildvcs=false -count=1 ./...`。需本机 Docker Linux 引擎和预备好的 Go 镜像，默认 `golang:1.25-alpine`，可用 `FORGEOS_GO_IMAGE` 指向本地镜像。容器以普通用户离线运行，项目需自包含或已 vendor 依赖。测试日志位于执行目录同级的 `execution-<id>.go-test.log`。 |
+| `V1`、`V2`、`V3`、`V4` | 按所选等级运行基础提交中 `validation.yaml` 声明的检查。Worker 使用 `FORGEOS_CI_IMAGE` 指定的本机镜像。任务详情的“逐项检查”提供执行编号、运行目录、日志及报告引用。操作与配置见[验证与本地 CI](10-validation-and-local-ci.md)。 |
 
 按标签自动接入时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，`FORGEOS_POLL_VALIDATION` 为上述一种验证方式。Owner 在 GitHub 仓库中为 Agent 任务模板配置 `forgeos-agent` 标签，Poller 只派发带该标签的开放 Issue，逐页读取并与手动导入共用去重逻辑。普通讨论可由 Owner 通过编号显式转为任务。默认采用按编号派单。
 
@@ -144,7 +145,7 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 | `POST /projects` | Owner | 请求体 `{"path":"example"}`。路径可相对于授权根目录，同一实际仓库重复登记返回相同 ID。 |
 | `POST /tasks` | Owner | 请求体 `{"project_id":1,"kind":"git_head"}`。返回新工作项，初始状态为 `READY`。 |
 | `GET /tasks` | Owner | 按 ID 倒序返回任务摘要和各状态总数。可选 `q`、`status`、`limit`（默认 30，最多 100）及 `before`。下一页使用响应的 `next_before`。 |
-| `POST /projects/{id}/issues/{number}` | Owner | 请求体 `{"validation":"docs"}` 或 `{"validation":"go-test"}`。读取该仓库的开放 Issue 并派单。 |
+| `POST /projects/{id}/issues/{number}` | Owner | 请求体例如 `{"validation":"V2"}`，支持 docs、go-test 或 V1–V4。读取该仓库的开放 Issue 并派单。 |
 | `GET /tasks/{id}` | Owner | 查询任务状态、执行历史、结果和事件。连通性任务成功为 `DONE`，Issue 通过本地验证为 `WAITING_ACCEPTANCE`，执行失败为 `FAILED`。 |
 | `GET /tasks/{id}/diff` | Owner | 提供 `execution_id` 和完整候选 `commit`，读取该次执行相对冻结基础提交的 Git 差异。展示上限 256 KiB，超出时标记 `truncated`。 |
 | `POST /tasks/{id}/acceptance` | Owner | 提交 `execution_id`、完整 `commit`、`decision` 和可选的 `note`。退回必须附说明，批准时按该项目配置决定是否交付 GitHub。 |

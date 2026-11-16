@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
 import './detail.css'
 
-type Validation = { profile: string; commit: string; exit_code: number; output: string }
+type CheckRun = { id: string; runner: string; level: string; profile?: string; config_blob?: string; image?: string
+  started_at: string; finished_at: string; failure?: string
+  checks: { name: string; required: boolean; status: string; failure?: string; exit_code: number | null; log: string
+    started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
+type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   code_review_state?: 'pending' | 'failed' | 'needs_check' | 'clear'
@@ -56,6 +60,22 @@ function OutLink({ href, children }: { href?: string; children: ReactNode }) {
 
 function Fact({ label, children, code = false }: { label: string; children: ReactNode; code?: boolean }) {
   return <div className="detail-fact"><dt>{label}</dt><dd className={code ? 'mono' : undefined}>{children}</dd></div>
+}
+
+function DeclaredChecks({ run }: { run: CheckRun }) {
+  return <details><summary>逐项检查</summary>
+    <dl className="detail-facts"><Fact label="运行编号" code>{run.id}</Fact><Fact label="Runner" code>{run.runner}</Fact>
+      {run.profile && <Fact label="验证方案">{run.level} · {run.profile}</Fact>}
+      {run.config_blob && <Fact label="配置 blob" code>{run.config_blob}</Fact>}
+      {run.image && <Fact label="容器镜像" code>{run.image}</Fact>}
+      <Fact label="运行时间">{formatTime(run.started_at)} — {formatTime(run.finished_at)}</Fact></dl>
+    <ol>{run.checks.map(c => <li key={c.name}><strong>{c.name}</strong> · {c.required ? '必需' : '可选'} · {c.status === 'PASSED' ? '通过' : c.failure || '失败'}
+      <dl className="detail-facts"><Fact label="退出码" code>{c.exit_code ?? '无退出码'}</Fact>
+        <Fact label="检查时间">{formatTime(c.started_at)} — {formatTime(c.finished_at)}</Fact><Fact label="本地日志" code>{c.log}</Fact></dl>
+      {c.outputs?.map(o => <dl key={o.file} className="detail-facts"><Fact label={o.kind === 'report' ? '报告' : '产物'}>{o.source} · {o.bytes} 字节</Fact>
+        <Fact label="归档文件" code>{o.file}</Fact><Fact label="SHA-256" code>{o.sha256}</Fact></dl>)}
+    </li>)}</ol>
+  </details>
 }
 
 function CandidateDiff({ taskID, attempt, request }: { taskID: number; attempt: Attempt; request: ApiRequest }) {
@@ -240,6 +260,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       </div>
       <dl className="detail-facts"><Fact label="验证 SHA" code>{validation.commit}</Fact><Fact label="验证退出码" code>{validation.exit_code}</Fact></dl>
       {validation.output && <pre>{validation.output}</pre>}
+      {validation.run && <DeclaredChecks run={validation.run} />}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
     {task.kind === 'codex_issue' && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&

@@ -19,20 +19,42 @@ import (
 	"time"
 
 	"forgeos/internal/localrepo"
+	"forgeos/internal/store"
 	"forgeos/internal/validation"
 )
 
 type ciRequest struct {
-	Repo   string `json:"repo"`
-	Base   string `json:"base_commit"`
-	Commit string `json:"commit"`
-	Level  string `json:"level"`
+	ExecutionID int64  `json:"-"`
+	Repo        string `json:"repo"`
+	Base        string `json:"base_commit"`
+	Commit      string `json:"commit"`
+	Level       string `json:"level"`
 }
 
 var imageID = regexp.MustCompile("^sha256:[a-f0-9]{64}$")
 
+func (w *worker) validateIssueCandidate(ctx context.Context, execID int64, repo, workspace, base, candidate, profile string) (store.ValidationResult, error) {
+	if !validation.ValidLevel(profile) {
+		return validateCandidate(ctx, workspace, base, candidate, profile)
+	}
+	report := store.ValidationResult{Profile: profile, Commit: candidate, ExitCode: 1}
+	run, err := runLocalCI(ctx, ciRequest{ExecutionID: execID, Repo: repo, Base: base, Commit: candidate, Level: profile}, w.repoRoot, w.workspaceRoot, w.id)
+	if err != nil {
+		report.Output = err.Error()
+		return report, err
+	}
+	report.Run = &run
+	if run.Failure != "" {
+		report.Output = run.Failure + ": " + run.Detail
+		return report, errors.New(report.Output)
+	}
+	report.ExitCode = 0
+	report.Output = fmt.Sprintf("%d declared checks completed; all required checks passed", len(run.Checks))
+	return report, nil
+}
+
 func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (validation.Run, error) {
-	run := validation.Run{Base: req.Base, Commit: req.Commit, Level: req.Level, Runner: runner, Started: time.Now().UTC(), Checks: []validation.CheckResult{}}
+	run := validation.Run{ExecutionID: req.ExecutionID, Base: req.Base, Commit: req.Commit, Level: req.Level, Runner: runner, Started: time.Now().UTC(), Checks: []validation.CheckResult{}}
 	if os.Geteuid() == 0 || runner == "" || !filepath.IsAbs(work) {
 		return run, errors.New("configure a non-root runner with an absolute workspace root and identity")
 	}

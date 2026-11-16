@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$ProjectPath,
     [ValidateRange(1, 2147483647)][int]$IssueNumber,
-    [ValidateSet('docs', 'go-test')][string]$Validation
+    [ValidateSet('docs', 'go-test', 'V1', 'V2', 'V3', 'V4')][string]$Validation
 )
 
 $ErrorActionPreference = 'Stop'

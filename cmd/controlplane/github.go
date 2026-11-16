@@ -109,8 +109,8 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 		if !decode(w, r, &input) {
 			return
 		}
-		if input.Validation != "docs" && input.Validation != "go-test" {
-			problem(w, http.StatusBadRequest, "select a validation profile: docs or go-test")
+		if !store.ValidValidation(input.Validation) {
+			problem(w, http.StatusBadRequest, "select docs, go-test or a validation level V1 through V4")
 			return
 		}
 		if input.Mode != "" && input.Mode != "plan" {

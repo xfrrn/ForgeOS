@@ -1,0 +1,93 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"forgeos/internal/localrepo"
+	"forgeos/internal/store"
+	"forgeos/internal/testdb"
+	"forgeos/internal/validation"
+)
+
+func TestDeclaredChecksRequiredForIssue(t *testing.T) {
+	ctx := context.Background()
+	data := store.New(testdb.Open(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(data.Migrate(ctx))
+	root, repo, _ := issueTestRepo(t)
+	update := func(body string) string {
+		t.Helper()
+		must(os.WriteFile(filepath.Join(repo, "validation.yaml"), []byte(body), 0600))
+		_, err := localrepo.Git(ctx, repo, "add", "validation.yaml")
+		must(err)
+		_, err = localrepo.Git(ctx, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "validation contract")
+		must(err)
+		head, err := localrepo.Git(ctx, repo, "rev-parse", "HEAD")
+		must(err)
+		return strings.TrimSpace(string(head))
+	}
+	cfg := "version: 1\nchecks:\n  format: {type: static, command: [gofmt, -l, .], timeout_seconds: 30}\nprofiles:\n  fast: {checks: [format]}\n"
+	base := update(cfg)
+	candidate := update(strings.Replace(cfg, "gofmt, -l, .", "false", 1))
+	project, err := data.CreateProject(ctx, repo)
+	must(err)
+	task, err := data.ImportIssue(ctx, project.ID, store.IssueSpec{Issue: store.Issue{ID: 1, Number: 1, RepositoryID: 2}, BaseCommit: base, Validation: "V1"})
+	must(err)
+	old, err := data.Claim(ctx, "old", t.TempDir(), true, true, true, true, true)
+	must(err)
+	if old != nil {
+		t.Fatal("legacy node claimed declared checks")
+	}
+	job, err := data.Claim(ctx, "runner", t.TempDir(), true, true, true, false, true, true)
+	must(err)
+	if job == nil {
+		t.Fatal("missing issue job")
+	}
+	plan, err := validation.ReadPlan(ctx, repo, base, "V1")
+	must(err)
+	now := time.Now().UTC()
+	code := 0
+	run := validation.Run{ID: "ci-run-42", Runner: "runner", ExecutionID: job.ExecutionID, Base: base, Commit: candidate, ConfigBlob: plan.ConfigBlob, ConfigVersion: 1, Level: "V1", Profile: "fast", Image: "sha256:" + strings.Repeat("a", 64), Started: now, Finished: now}
+	result := store.Result{Commit: candidate, BaseCommit: base, SessionID: "dev", Validation: &store.ValidationResult{Profile: "V1", Commit: candidate, Run: &run}}
+	verify := verifyDeclaredChecks(root)
+	complete := func() error { return data.CompleteWithChecks(ctx, job.ExecutionID, job.LeaseToken, result, verify) }
+	conflict := func(err error) {
+		t.Helper()
+		if !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("expected conflict; got %v", err)
+		}
+	}
+	conflict(complete())
+	run.Checks = []validation.CheckResult{{Name: "format", Log: "format.log", Started: now, Finished: now, Status: "PASSED", ExitCode: &code}}
+	conflict(complete())
+	run.Checks[0].Required = true
+	run.Runner = "other"
+	conflict(complete())
+	run.Runner = "runner"
+	run.ExecutionID++
+	conflict(complete())
+	run.ExecutionID--
+	run.ConfigBlob = candidate
+	conflict(complete())
+	run.ConfigBlob = plan.ConfigBlob
+	must(complete())
+	must(complete())
+	tk, err := data.Task(ctx, task.ID)
+	must(err)
+	if tk.Status != "WAITING_ACCEPTANCE" || tk.Execution.CodeReviewState != "pending" {
+		t.Fatalf("edited validation configuration accepted without review: %+v", tk)
+	}
+	_, err = data.Review(ctx, tk.ID, job.ExecutionID, candidate, "approve", "", false, "")
+	conflict(err)
+}

@@ -17,6 +17,7 @@ import (
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
+	"forgeos/internal/validation"
 )
 
 func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryPolicy) *http.ServeMux {
@@ -128,13 +129,14 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 
 	mux.HandleFunc("POST /internal/claim", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		var input struct {
-			Worker              string `json:"worker"`
-			WorkspaceRoot       string `json:"workspace_root"`
-			SupportsValidation  bool   `json:"supports_validation"`
-			SupportsCheckpoints bool   `json:"supports_checkpoints"`
-			SupportsCodex       bool   `json:"supports_codex"`
-			SupportsRework      bool   `json:"supports_rework"`
-			SupportsPlanner     bool   `json:"supports_planner"`
+			Worker                 string `json:"worker"`
+			WorkspaceRoot          string `json:"workspace_root"`
+			SupportsValidation     bool   `json:"supports_validation"`
+			SupportsDeclaredChecks bool   `json:"supports_declared_checks"`
+			SupportsCheckpoints    bool   `json:"supports_checkpoints"`
+			SupportsCodex          bool   `json:"supports_codex"`
+			SupportsRework         bool   `json:"supports_rework"`
+			SupportsPlanner        bool   `json:"supports_planner"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -147,7 +149,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			problem(w, http.StatusForbidden, "claim does not match the authenticated Worker")
 			return
 		}
-		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation)
+		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation, input.SupportsDeclaredChecks)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -169,13 +171,14 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			BaseCommit string      `json:"base_commit"`
 			SessionID  string      `json:"session_id"`
 			Validation *struct {
-				Profile  string `json:"profile"`
-				Commit   string `json:"commit"`
-				ExitCode *int   `json:"exit_code"`
-				Output   string `json:"output"`
+				Profile  string          `json:"profile"`
+				Commit   string          `json:"commit"`
+				ExitCode *int            `json:"exit_code"`
+				Output   string          `json:"output"`
+				Run      *validation.Run `json:"run"`
 			} `json:"validation"`
 		}
-		if !decode(w, r, &input) {
+		if !decodeLimited(w, r, &input, 4<<20) {
 			return
 		}
 		if input.LeaseToken == "" || input.ExitCode == nil || *input.ExitCode < -1 || *input.ExitCode > 2147483647 || len(input.Error) > 1024 {
@@ -200,9 +203,9 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 				problem(w, http.StatusBadRequest, "validation requires an explicit exit code")
 				return
 			}
-			result.Validation = &store.ValidationResult{Profile: v.Profile, Commit: v.Commit, ExitCode: *v.ExitCode, Output: v.Output}
+			result.Validation = &store.ValidationResult{Profile: v.Profile, Commit: v.Commit, ExitCode: *v.ExitCode, Output: v.Output, Run: v.Run}
 		}
-		err = data.Complete(r.Context(), id, input.LeaseToken, result)
+		err = data.CompleteWithChecks(r.Context(), id, input.LeaseToken, result, verifyDeclaredChecks(root))
 		respond(w, http.StatusNoContent, nil, err)
 	}))
 	return mux

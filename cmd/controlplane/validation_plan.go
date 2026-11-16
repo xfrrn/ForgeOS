@@ -1,12 +1,34 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"net/http"
+	"strings"
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
 )
+
+func verifyDeclaredChecks(root string) store.CheckVerifier {
+	return func(ctx context.Context, project string, spec store.IssueSpec, result store.Result) (bool, error) {
+		repo, err := localrepo.ResolveRepo(ctx, root, project)
+		if err != nil {
+			return false, errors.New("validation repository unavailable")
+		}
+		plan, err := validation.ReadPlan(ctx, repo, spec.BaseCommit, spec.Validation)
+		if err != nil || !plan.Accepts(result.Validation.Run) {
+			return false, store.ErrConflict
+		}
+		out, err := localrepo.Git(ctx, repo, "rev-list", "-1", "--parents", result.Commit, "--")
+		if err != nil || strings.TrimSpace(string(out)) != result.Commit+" "+spec.BaseCommit {
+			return false, store.ErrConflict
+		}
+		changes, err := localrepo.Git(ctx, repo, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", spec.BaseCommit, result.Commit, "--", "validation.yaml")
+		return len(changes) > 0, err
+	}
+}
 
 func registerValidationPlan(mux *http.ServeMux, data *store.Store, root, owner string, workers workerAccess) {
 	registerProjectRead(mux, "validation-plan", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {

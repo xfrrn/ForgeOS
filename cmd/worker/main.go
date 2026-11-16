@@ -146,7 +146,7 @@ func temporary(status int) bool {
 }
 
 func (w *worker) run(ctx context.Context) error {
-	claim := map[string]any{"worker": w.id, "workspace_root": w.workspaceRoot, "supports_validation": true}
+	claim := map[string]any{"worker": w.id, "workspace_root": w.workspaceRoot, "supports_validation": true, "supports_declared_checks": true}
 	if w.codex != "" {
 		claim["supports_codex"] = true
 		claim["supports_checkpoints"] = true
