@@ -48,6 +48,8 @@ Ruby 项目可分别展开 `Gemfile` 与 `Gemfile.lock`，也支持 Bundler 的 
 
 Gradle 的 `*.versions.toml` 在清单中作为版本目录列出。展开文件可查看库别名、模块坐标，以及 bundle 的成员顺序；工作台和 Management 都保留各自来源的 Git blob。目录里可有尚未被构建引用的库，模块是否实际使用还要对照构建脚本。未定义的 bundle 成员会使此目录标为无效。[Gradle 版本目录](https://docs.gradle.org/8.14.3/userguide/version_catalogs.html)
 
+展开 `build.gradle` 或 `build.gradle.kts` 可以按配置核对顶层 dependencies 块中的直接声明。常见配置及显式 add 调用支持字面量模块坐标、Groovy map 或 Kotlin 命名参数、项目引用和 platform 包装。版本目录引用按源码保留，例如 libs.core.api 或 libs.bundles.core.kit；可对照同一提交中实际使用的目录查看模块。变量、条件、其他项目作用域等无法确定的来源保留未解析计数。遇到无法可靠识别的字符串语法时，整份脚本标记为未解析。初始化过程不运行构建脚本。
+
 Owner 用 `POST /tasks/{id}/repository-inventory` 生成或复用清单，`GET` 读取归档。首次扫描需要本机克隆仍有对应提交，归档随项目数据库保存。无效或过大的清单会在对应条目标明原因。整棵树的 Git 列表上限为 16 MiB，最多归档 2000 个匹配文件；解析单个包清单最多读取 256 KiB，每次累计 8 MiB。符号链接、子模块、vendor 和 node_modules 目录不作为初始化输入。依赖声明与脚本名称仅作发现依据，启动及测试结果另有实际执行回执。
 
 需要声明项目密钥时，将环境、名称和预期风险写入根配置的 `secret_requirements`。扫描结果附在该文件的条目中。实际元数据登记与执行授权见[密钥需求和授权](09-security-and-secrets.md#项目声明的需求)。

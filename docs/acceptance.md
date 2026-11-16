@@ -1409,3 +1409,15 @@ PostgreSQL 18 测试 schema 为 `ruby_0a2dc902`。原生对照在隔离 Docker �
 | 移开克隆并重启控制面，从两个任务回读清单和初始化报告 | 两版均从数据库还原 | Chrome 和归档分别显示 example.core:api 与 example.core:next，原报告未随新版本变化 |
 
 本项开发期间，启用 PostgreSQL 18 和 Docker 的全量 Go 回归 161 项通过，零跳过。最终版本对别名中的横杠、下划线和点作同样的正规化，并以 Gradle 的实际版本引用及完整 localrepo 包测试复验。Go vet、TypeScript 检查和 Web 生产构建通过。
+
+### 专题 01 · Gradle Groovy 与 Kotlin 构建脚本
+
+使用 Gradle 8.14.3、Java 21 和离线构建的多项目样例。根项目使用 Groovy，子项目使用 Kotlin。自建模型任务 probeScripts 读取两者实际 configuration.dependencies，测试库 schema 为 `gradlescript_d7dcac48`。扫描由正式 ForgeOS 入口从 Git 对象完成。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 Chrome 登记并检查提交 `becd38184e9c271472f8292efdd46440cc4e2813`，展开两份构建脚本，将直接坐标与原生模型比对 | 两种 DSL 保留配置归属；版本目录引用可在同一提交中核对 | Groovy 的 compileOnly 为 example.tools:compile，testImplementation 为 example.test:fixture，implementation 引用 libs.bundles.core.kit。展开后的坐标集与原生模型一致。Kotlin 识别 BOM、project(:support)、库别名和带 isTransitive=false 配置块的直接声明 |
+| 对照 Kotlin 的计算值和演示字符串，读取 Management 输入 | 无法从源代码确认的值不写入直接声明，字符串中的伪声明不产生依赖 | Kotlin 的 runtimeOnly 在原生模型为 example.dynamic:runtime；ForgeOS 记录一个未解析来源，未写入值或演示字符串内容。Management 从对应 blob 读到按配置的声明和未解析状态 |
+| 修改 Kotlin 的 compileOnly 与目录指向；重新检查，归档两份报告，然后移开克隆、重启控制面 | 新旧快照都可从工作台独立回读 | 提交 `ce90667c482b2f1107bba59ddca961cc62695182` 中，compileOnly 改为 example.direct:updated，库别名对应 example.core:next。Chrome 和归档 JSON 分别恢复初版及新版结果 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 163 项通过，零跳过。Go vet、TypeScript 检查与 Web 生产构建通过。

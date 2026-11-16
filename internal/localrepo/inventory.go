@@ -18,6 +18,7 @@ import (
 )
 
 type InventoryFile struct {
+	GradleConfigurations  map[string][]string                 `json:"gradle_configurations,omitempty"`
 	CatalogLibraries      map[string]string                   `json:"catalog_libraries,omitempty"`
 	CatalogBundles        map[string][]string                 `json:"catalog_bundles,omitempty"`
 	ManagedDependencies   []string                            `json:"managed_dependencies,omitempty"`
@@ -68,7 +69,7 @@ func inventoryKind(file string) string {
 	case "gemfile.lock", "gems.locked":
 		return "ruby-lock"
 	case "build.gradle", "build.gradle.kts":
-		return "manifest"
+		return "gradle"
 	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "composer.lock":
 		return "lock"
 	case "makefile", "dockerfile", "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml":
@@ -124,7 +125,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" || kind == "ruby" || kind == "ruby-lock" || kind == "gradle-catalog" {
+		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" || kind == "ruby" || kind == "ruby-lock" || kind == "gradle-catalog" || kind == "gradle" {
 			if kind == "cargo" {
 				cargo[file] = nil
 			}
@@ -186,6 +187,10 @@ func (f *InventoryFile) readProject(ctx context.Context, repo string) error {
 
 func (f *InventoryFile) readManifest(data []byte) {
 	deps := map[string]bool{}
+	if f.Kind == "gradle" {
+		f.readGradleScript(data)
+		return
+	}
 	if f.Kind == "gradle-catalog" {
 		if !f.readGradleCatalog(data) {
 			f.Problem = "invalid_manifest"

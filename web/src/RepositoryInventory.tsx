@@ -4,6 +4,7 @@ import { RepositoryAnalysis } from './RepositoryAnalysis'
 import { InitializationReports } from './InitializationReports'
 
 type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string; unresolved_inputs?: number; dynamic_fields?: string[]
+  gradle_configurations?: Record<string,string[]>
   catalog_libraries?: Record<string,string>; catalog_bundles?: Record<string,string[]>
   workspace_dependencies?: string[]; workspace_source?: {path: string; blob: string}
   managed_dependencies?: string[]; bom_imports?: string[]; parent_sources?: {path:string;blob:string}[]
@@ -12,8 +13,8 @@ type Source = { path: string; blob: string; kind: string; dependencies?: string[
   secret_requirements?: { environment: string; name: string; risk: string }[] }
 type Report = { execution_id: number; commit_sha: string; github_origin: string; repository_id?: number; scanned_at: string; files: Source[] }
 type StartupCheck = { id: number; environment: string; status: string }
-const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', cargo: 'Rust Cargo', maven: 'Maven POM', 'gradle-catalog': 'Gradle 版本目录', ruby: 'Ruby Bundler', 'ruby-lock': 'Bundler 锁定文件', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
-const problems: Record<string,string> = { dynamic_ruby: '包含需要 Bundler 求值的 Ruby 代码，声明依赖未解析', size_limit: '清单超过读取上限', analysis_budget: '清单继承或依赖展开达到本次扫描上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
+const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', cargo: 'Rust Cargo', maven: 'Maven POM', gradle: 'Gradle 构建脚本', 'gradle-catalog': 'Gradle 版本目录', ruby: 'Ruby Bundler', 'ruby-lock': 'Bundler 锁定文件', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
+const problems: Record<string,string> = { dynamic_gradle: '构建脚本含无法静态识别的语法，依赖未解析', dynamic_ruby: '包含需要 Bundler 求值的 Ruby 代码，声明依赖未解析', size_limit: '清单超过读取上限', analysis_budget: '清单继承或依赖展开达到本次扫描上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
 
 export function RepositoryInventory({ task, request }: { task: number; request: ApiRequest }) {
   const [report, setReport] = useState<Report>()
@@ -80,6 +81,7 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       <summary><code>{f.path}</code> · {kinds[f.kind]}</summary>
       <p>Git blob · <code>{f.blob}</code></p>
       {Boolean(f.dependencies?.length) && <p>{f.kind === 'ruby-lock' ? '锁文件中的直接依赖' : '声明依赖'} · {f.dependencies?.join('、')}</p>}
+      {f.gradle_configurations && Object.entries(f.gradle_configurations).map(([scope,deps]) => <p key={scope}>配置 {scope} · {deps.join('、')}</p>)}
       {f.catalog_libraries && <dl>{Object.entries(f.catalog_libraries).map(([alias,module]) => <div key={alias}><dt>库别名 · {alias}</dt><dd><code>{module}</code></dd></div>)}</dl>}
       {f.catalog_bundles && Object.entries(f.catalog_bundles).map(([alias,members]) => <p key={alias}>组合 · {alias} · {members.join('、')}</p>)}
       {f.workspace_dependencies?.length ? <p>工作区共享依赖 · {f.workspace_dependencies.join('、')}</p> : null}
