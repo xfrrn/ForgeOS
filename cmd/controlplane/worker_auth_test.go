@@ -87,6 +87,13 @@ func TestWorkerProjectGrants(t *testing.T) {
 		return w.Body.Bytes()
 	}
 	req := map[string]any{"worker": "B", "workspace_root": t.TempDir()}
+	h := store.WorkerHeartbeat{Worker: "B", OS: "linux", Arch: "amd64", CPUs: 2, Slots: 1}
+	post("alpha", "/internal/workers/heartbeat", h, 403)
+	h.Worker = "A"
+	post("owner", "/internal/workers/heartbeat", h, 401)
+	post("alpha", "/internal/workers/heartbeat", h, 204)
+	h.CPUs = 0
+	post("alpha", "/internal/workers/heartbeat", h, 400)
 	post("alpha", "/internal/claim", req, 403)
 	req["worker"] = "A"
 	post("manager", "/internal/claim", req, 401)
@@ -95,6 +102,15 @@ func TestWorkerProjectGrants(t *testing.T) {
 		t.Fatal(err, job.TaskID)
 	}
 	path := fmt.Sprintf("/internal/executions/%d/result", job.ExecutionID)
+	report, err := s.WorkerNodes(ctx)
+	var nodes []struct {
+		Worker   string
+		Online   bool
+		Reserved int
+	}
+	if err != nil || json.Unmarshal(report, &nodes) != nil || len(nodes) != 1 || nodes[0].Worker != "A" || !nodes[0].Online || nodes[0].Reserved != 1 {
+		t.Fatal("unexpected node reservation", string(report), err)
+	}
 	result := map[string]any{"lease_token": job.LeaseToken, "exit_code": 1, "error": "controlled"}
 	post("beta", path, result, 403)
 	post("alpha", path, result, 204)

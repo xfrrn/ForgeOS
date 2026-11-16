@@ -49,7 +49,7 @@ export class ApiError extends Error {
 
 export function requestWith(token: string, onUnauthorized: () => void): ApiRequest {
   return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
-    if (!/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects\/[1-9]\d*\/issues\/[1-9]\d*$/.test(path)) throw new Error('无效的任务接口')
+    if (path !== '/workers' && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects\/[1-9]\d*\/issues\/[1-9]\d*$/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + token)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')

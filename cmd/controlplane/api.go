@@ -22,6 +22,25 @@ import (
 
 func routes(data *store.Store, root, owner string, workers workerAccess, delivery deliveryPolicy) *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /workers", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		nodes, err := data.WorkerNodes(r.Context())
+		respond(w, http.StatusOK, nodes, err)
+	}))
+	mux.HandleFunc("POST /internal/workers/heartbeat", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+		var input store.WorkerHeartbeat
+		if !decode(w, r, &input) {
+			return
+		}
+		if !input.Valid() {
+			problem(w, 400, "invalid Worker identity, platform or capacity")
+			return
+		}
+		if grant.id != "" && input.Worker != grant.id {
+			problem(w, 403, "heartbeat does not match the authenticated Worker")
+			return
+		}
+		respond(w, http.StatusNoContent, nil, data.RecordHeartbeat(r.Context(), input))
+	}))
 	registerCheckpoints(mux, data, owner, workers)
 	registerHistory(mux, data, owner, workers)
 	registerValidationPlan(mux, data, root, owner, workers)
@@ -131,16 +150,9 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 
 	mux.HandleFunc("POST /internal/claim", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		var input struct {
-			Worker                 string `json:"worker"`
-			WorkspaceRoot          string `json:"workspace_root"`
-			SupportsValidation     bool   `json:"supports_validation"`
-			SupportsDeclaredChecks bool   `json:"supports_declared_checks"`
-			SupportsRiskPolicy     bool   `json:"supports_risk_policy"`
-			SupportsCheckpoints    bool   `json:"supports_checkpoints"`
-			SupportsCodex          bool   `json:"supports_codex"`
-			SupportsClaude         bool   `json:"supports_claude"`
-			SupportsRework         bool   `json:"supports_rework"`
-			SupportsPlanner        bool   `json:"supports_planner"`
+			Worker        string `json:"worker"`
+			WorkspaceRoot string `json:"workspace_root"`
+			store.WorkerCapabilities
 		}
 		if !decode(w, r, &input) {
 			return

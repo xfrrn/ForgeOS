@@ -103,6 +103,8 @@ func TestRetryReportWithoutExecutingTwice(t *testing.T) {
 			return
 		}
 		switch r.URL.Path {
+		case "/internal/workers/heartbeat":
+			rw.WriteHeader(204)
 		case "/internal/claim":
 			claims++
 			if claims == 1 {

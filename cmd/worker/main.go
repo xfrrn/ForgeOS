@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -154,20 +155,56 @@ func temporary(status int) bool {
 }
 
 func (w *worker) run(ctx context.Context) error {
-	claim := map[string]any{"worker": w.id, "workspace_root": w.workspaceRoot, "supports_validation": true, "supports_declared_checks": true, "supports_risk_policy": true}
-	if w.codex != "" {
-		claim["supports_codex"] = true
-		if w.planner {
-			claim["supports_planner"] = true
+	writer := w.codex != "" || w.claude.bin != ""
+	caps := store.WorkerCapabilities{SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
+		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
+	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(), Slots: 1, Capabilities: caps}
+	beat := func(ctx context.Context) error {
+		for ctx.Err() == nil {
+			status, err := w.post(ctx, "/internal/workers/heartbeat", h, nil)
+			if err == nil && status == http.StatusNoContent {
+				return nil
+			}
+			if !temporary(status) {
+				return fmt.Errorf("Worker heartbeat rejected (HTTP %d)", status)
+			}
+			wait(ctx)
 		}
+		return nil
 	}
-	if w.claude.bin != "" {
-		claim["supports_claude"] = true
+	if err := beat(ctx); err != nil {
+		return err
 	}
-	if w.codex != "" || w.claude.bin != "" {
-		claim["supports_checkpoints"] = true
-		claim["supports_rework"] = true
-	}
+	child, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		t := time.NewTicker(15 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-child.Done():
+				done <- nil
+				return
+			case <-t.C:
+				if err := beat(child); err != nil {
+					stop()
+					done <- err
+					return
+				}
+			}
+		}
+	}()
+	err := w.runQueue(child, caps)
+	stop()
+	return errors.Join(err, <-done)
+}
+
+func (w *worker) runQueue(ctx context.Context, caps store.WorkerCapabilities) error {
+	claim := struct {
+		Worker        string `json:"worker"`
+		WorkspaceRoot string `json:"workspace_root"`
+		store.WorkerCapabilities
+	}{w.id, w.workspaceRoot, caps}
 	for ctx.Err() == nil {
 		var job store.Job
 		status, err := w.post(ctx, "/internal/claim", claim, &job)
