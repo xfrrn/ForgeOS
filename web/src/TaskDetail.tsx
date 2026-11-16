@@ -9,6 +9,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type Result = { commit?: string; base_commit?: string; session_id?: string; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  commit_status?: { id: number; state: string; context: string; commit: string }
   code_review_state?: 'pending' | 'failed' | 'needs_check' | 'clear'
   id: number; status: string; worker: string; workspace: string; lease_until: string
   uses_checkpoints?: boolean; requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
@@ -248,6 +249,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {result?.session_id && <Fact label="Codex Session" code>{result.session_id}</Fact>}
       {result?.base_commit && <Fact label="基础 SHA" code>{result.base_commit}</Fact>}
       {result?.commit && <Fact label={task.spec ? '候选 SHA' : '提交 SHA'} code>{result.commit}</Fact>}
+      {attempt.commit_status && <Fact label="GitHub 状态" code>{attempt.commit_status.context} · {attempt.commit_status.state} · #{attempt.commit_status.id}</Fact>}
       {result && <Fact label="执行退出码" code>{result.exit_code}</Fact>}
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}

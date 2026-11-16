@@ -52,7 +52,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session、真实失联租约、评论检查点；Ubuntu 非 root systemd 服务实测见下文 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f` | App Server、Claude Code 原生恢复、Linux Harness 登录复用、多节点恢复 |
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与隔离恢复、Go 控制面只查元数据 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`，状态接口证据见下文 | Secret Broker、按执行受控使用与业务审计 |
-| 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、Actions 门禁、候选变化后重新验证、只读审查和页面验收。已从固定 Git blob 读取正式仓库验证 Schema 对应的检查配置 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`，配置见专题 10、16 记录 | 风险自动选级、逐项执行和检查报告、GitHub 状态回传 |
+| 10 审查与验证 | 真实 docs、Docker Go 测试、Actions 门禁、重新验证、独立审查和页面验收。按固定配置逐项执行，已实测 V1 和 V2、归档报告及 GitHub Status | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`，远端状态见下文 | 自动风险选级、运行管理和归档保留策略 |
 | 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付 | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5` | Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
@@ -344,3 +344,15 @@ PostgreSQL 和 Docker 全套 Go 回归为 82 项通过、零跳过。额外覆�
 | 修订后重新检查并核对 SHA、文件与报告 | 新候选有新运行记录，实际交付只含需求范围内的实现和测试 | 执行 26、运行 `ci-run-418587960`，候选 `84997d86d4d4a1cfd32a36cf14c090c66e3e2721`。仅有 queue.go 和 queue_test.go 两个变更文件，覆盖等于、超过上限和负数输入。两次执行均绑定配置 blob `24c99f7c289bd37b2fd5a6f3d1a981ee001d3828`；第二次三个检查全通过，归档报告复算 SHA-256 与 API 一致 |
 | 在 Chrome 展开执行 26 的“逐项检查”，查看运行编号与代码差异，批准并等待远端交付 | 本地检查有独立证据，GitHub 的必需检查仍约束合并。重启可读原回执 | PR #9 的首次远端检查失败，同一 head 重跑成功。合并 SHA `bc83d9a1399a0ab8eb78f2cb0f0f6464e19a8ebf`，任务 DONE、Issue CLOSED。重启前后完整验证回执相等。[PR #9](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/9) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43847029410) |
 | 用测试仓库提交其他 Runner、错执行号、错误配置 blob、遗漏检查和将必需检查改为可选的回执 | 控制面逐一拒绝；候选若修改验证配置，即使通过仍需独立审查 | `TestDeclaredChecksRequiredForIssue` 通过，配置变动的候选处于 WAITING_ACCEPTANCE，直接批准返回 409。Go 回归 83 项通过、零跳过；前端生产构建通过 |
+
+Issue 仓库检查和交付对应 ForgeOS 提交 `80836d649574426c6e6984c66aaff5feab0e2da3`。
+
+## 专题 10、12、16 · 本地 CI 的 GitHub Commit Status
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 对已交付的 beta 任务 29、执行 26 并发补写，重启后再次请求；尝试错 SHA 和其他项目 | 同一回执，远端仅一条；不允许错目标 | 两个请求均返回 status ID `59014274755`。重启后不变，远端计数 1。错 SHA、跨项目和仅在本地的候选都返回 409 |
+| 在 beta 严格分支保护中保留 acceptance-check 并临时加入 forgeos/local-ci，再交付 Issue #10 | 两项均成功后才允许合并，状态与验收 SHA 一致 | 任务 32、执行 27，候选 `a54213eddb57ea1cc89539581037c1d2bc0e560d`，本地状态 `59014432428` 自动写回，Chrome 执行详情可见。Actions 初次失败，同一 head 重跑通过。PR #11 合并为 `42a7f8dfcaf18e91aec089169335de96e158d69d`，Issue CLOSED。实测结束后恢复原必需检查及 strict=true。[PR #11](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/11) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43848242665) |
+| 将一个故意失败的测试提交预置到专用远端分支，以隔离测试 schema 派发该 SHA 的真实 V2 验证。模拟 GitHub 已接收但本地未记录确认 | Worker 得到非零退出码，回传 failure；恢复沿用原 status ID | 提交 `b784f0f8fa9f57d4d2c6312ba88f406496e1037d` 的单元检查失败，任务 FAILED，状态 `59014437445` 为 failure。移除测试 schema 中该回执后，经 API 恢复相同 ID，远端计数保持 1。此分支未创建 PR。[验收提交](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/commit/b784f0f8fa9f57d4d2c6312ba88f406496e1037d) |
+
+含 PostgreSQL 和 Docker 的 84 项 Go 测试全部通过，零跳过。原生测试还覆盖超时映射为 error、未知远端 SHA 和远端写入后丢失响应。前端生产构建与 `go vet ./...` 通过。

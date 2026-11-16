@@ -87,6 +87,9 @@ var secretGrantsSchema string
 //go:embed 021_code_reviews.sql
 var codeReviewSchema string
 
+//go:embed 022_commit_status.sql
+var commitStatusSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -118,19 +121,20 @@ type Task struct {
 }
 
 type Execution struct {
-	CodeReviewState     string     `json:"code_review_state,omitempty"`
-	UsesCheckpoints     bool       `json:"uses_checkpoints,omitempty"`
-	RequirementID       int64      `json:"requirement_id,omitempty"`
-	RequirementRevision int        `json:"requirement_revision,omitempty"`
-	ID                  int64      `json:"id"`
-	Status              string     `json:"status"`
-	Worker              string     `json:"worker"`
-	Workspace           string     `json:"workspace"`
-	LeaseUntil          time.Time  `json:"lease_until"`
-	LeaseExpired        bool       `json:"lease_expired"`
-	AbandonedAt         *time.Time `json:"abandoned_at,omitempty"`
-	EndReason           string     `json:"end_reason,omitempty"`
-	Result              *Result    `json:"result"`
+	CommitStatus        *CommitStatus `json:"commit_status,omitempty"`
+	CodeReviewState     string        `json:"code_review_state,omitempty"`
+	UsesCheckpoints     bool          `json:"uses_checkpoints,omitempty"`
+	RequirementID       int64         `json:"requirement_id,omitempty"`
+	RequirementRevision int           `json:"requirement_revision,omitempty"`
+	ID                  int64         `json:"id"`
+	Status              string        `json:"status"`
+	Worker              string        `json:"worker"`
+	Workspace           string        `json:"workspace"`
+	LeaseUntil          time.Time     `json:"lease_until"`
+	LeaseExpired        bool          `json:"lease_expired"`
+	AbandonedAt         *time.Time    `json:"abandoned_at,omitempty"`
+	EndReason           string        `json:"end_reason,omitempty"`
+	Result              *Result       `json:"result"`
 }
 
 type Event struct {
@@ -185,7 +189,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -238,7 +242,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'abandoned_at', e.abandoned_at,
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
-		        'result', e.result, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
+		        'result', e.result,'commit_status',e.commit_status, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
 		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id
 		     LEFT JOIN code_reviews r ON r.execution_id=e.id WHERE e.task_id = t.id), '[]'),
 		    (SELECT jsonb_agg(jsonb_build_object(

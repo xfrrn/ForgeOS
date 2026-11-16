@@ -116,7 +116,15 @@ func (p deliveryPolicy) start(parent context.Context, data *store.Store, root st
 		for ctx.Err() == nil {
 			// The remote call finishes before the database claim expires.
 			stepCtx, stop := context.WithTimeout(ctx, 75*time.Second)
-			claimed, err := p.step(stepCtx, data, root, advanceGitHub)
+			claimed, err := p.step(stepCtx, data, root, func(ctx context.Context, repo string, task store.Task, d store.Delivery) (store.Delivery, error) {
+				if d.PRNumber != 0 && task.Execution.CommitStatus == nil {
+					_, err := data.PublishCommitStatus(ctx, p.projectID, task.ID, d.ExecutionID, d.Commit, publishValidation(root, task.ID, d.ExecutionID, deliveryRequest))
+					if err != nil {
+						return d, err
+					}
+				}
+				return advanceGitHub(ctx, repo, task, d)
+			})
 			if err == nil && !claimed {
 				claimed, err = p.closeGoal(stepCtx, data, root)
 			}

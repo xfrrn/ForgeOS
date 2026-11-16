@@ -58,6 +58,12 @@
 
 不能绕过仓库保护规则。若仓库要求额外人工 Review，则等待人工完成。
 
+### 本地 CI 回传
+
+配置了 GitHub 交付的项目在记录 PR 后，将固定候选的本地验证结果写入 Commit Status，context 为 `forgeos/local-ci`。仓库维护者可以把它加入目标分支的必需检查。现有远端 CI、人工 Review 和保护规则继续各自判定。成功验收显示 success；已在远端的失败候选可以显式同步，代码或构建失败显示 failure，超时、环境或基础设施失败显示 error。[GitHub Commit Status 接口](https://docs.github.com/en/rest/commits/statuses)
+
+Owner 可向 `POST /tasks/{id}/validation-status` 提交 `execution_id` 和完整 `commit`，用于补写旧执行或已在远端的失败候选。控制面核对本地登记的 origin、GitHub 仓库 ID 和远端提交对象，同一仓库同一 SHA 的写入串行。缺少远端提交时返回 409。状态说明只包含任务号、执行号、验证方案和检查数量。执行记录保存 GitHub status ID，重试先核对已有状态。
+
 ## 5. 合并策略
 
 默认 Squash Merge。项目可配置其他策略，但第一版建议统一 Squash。

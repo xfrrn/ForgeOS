@@ -34,6 +34,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	registerWebRoutes(mux, data, root, owner)
 	mux.HandleFunc("POST /tasks/{id}/delivery/refresh", authorized(owner, delivery.refresh(data, root)))
 	mux.HandleFunc("POST /tasks/{id}/acceptance", authorized(owner, delivery.review(data)))
+	mux.HandleFunc("POST /tasks/{id}/validation-status", authorized(owner, delivery.validationStatus(data, root)))
 	mux.HandleFunc("GET /tasks", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		filter := store.TaskListFilter{Status: q.Get("status"), Query: strings.TrimSpace(q.Get("q"))}
