@@ -11,7 +11,7 @@
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
 | 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。 | 已验收 Owner 发起和回答的验收检查点。角色分级、运行中 Harness 请求与恢复、需求修订和事件合并待实现与验收。 |
-| 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经 Issue 风险分级、控制面复算、页面验收和远端交付。Goal 34 的 Management 审核将文档子项提升到 V4，六项容器检查均有回执。 | Playbook 库、测试计划、相应的覆盖审查待补齐与验收。 |
+| 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经 Issue 风险分级、控制面复算、页面验收和远端交付。Goal 34 的 Management 审核将文档子项提升到 V4。项目规则可以引用全局验收方法。 | 测试计划、相应的覆盖审查与执行证据待补齐与验收。 |
 | 三 · 预览、批注与知识 | 现有反馈可绑定执行和候选 SHA。 | Tailscale/Caddy、浏览器元素/截图/录屏、知识来源与决策索引待实现与验收。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
 | 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。 | 另一种 Harness 或节点、资源调度、能力注册、备份、压力与节点失联验收待完成。 |
@@ -53,7 +53,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与隔离恢复、Go 控制面只查元数据 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`，状态接口证据见下文 | Secret Broker、按执行受控使用与业务审计 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`，Management 提级见下文 | 运行管理和归档保留策略 |
-| 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
+| 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题；固定组件规则及全局验收方法可通过作用域接口读取 | `1a17822`、`70781ba`、`fdc4192`，方法库见下文 | 测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付 | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5` | Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
 | 14 部署与运维 | Windows 主机、Docker Linux 引擎、Ubuntu systemd 服务重启和再次派发、PostgreSQL 恢复至空实例并逐项比对 | `1a17822`、`32c0fa0`、`bd1c734`，数据库证据见下文 | 私网访问、资源预算、OpenBao、工件和工作区备份恢复 |
@@ -393,3 +393,14 @@ Issue 强制风险分级对应 ForgeOS 提交 `48a32f2110a4e1818fe42dbab7f62f89b
 | 用开发 Worker 完成子项，核对清单内的边界示例与测试名称，批准该 SHA 并等待 Goal 关闭 | 文档 V1、PR V2、Management V4；必须实际跑完六项。子项交付后才关闭父 Issue | 执行 29、`ci-run-3288283744`、候选 `bb383121eea44590f4db686735466844fc8ad865`。仅修改 docs/release-checklist.md，format、unit、build、http、vet、boundary 均退出 0。GitHub Status `59017049649` 写回 V4 和六项检查。PR #16 合并为 `f4972a88317187fda5d169d788287c8d7a7ffe4e`，子项与 Goal 均 DONE，父 Issue CLOSED。重启后原计划审核仍可读取。[PR #16](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/16) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43853419062) |
 
 本次 PostgreSQL 与 Docker 全套 Go 回归 88 项通过，零跳过。`go vet ./...` 和前端生产构建通过。
+
+Management 提高计划验证下限对应 ForgeOS 提交 `0420f455c76949ddb9d5240e1632b53f594bcd40`。
+
+## 专题 11 · 全局验收方法库
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 Owner 和获项目 9 授权的 Worker 入口读取库，与源码数据逐项比较并独立复算摘要 | 两种入口返回文档列出的十二类方法及项目示例引用的 security，所有方法可按 ID 查阅 | 两份响应一致，包含 13 项。版本为 1，SHA-256 为 `c3aee4047dc85cebf29caca6f145c9b548019b0d4810a8087e4372d7f8f06942`。重启后结果一致 |
+| 从固定候选的组件匹配结果读取方法 ID，再查全库；用其他项目节点读取项目 9，或用 Owner 查询不存在的项目 | 匹配的 ID 对应具体步骤与取证要求，越权和不存在的项目返回不同错误 | ledger 的 api-backend、payment 均能取到三步操作和两类证据。跨项目请求返回 403，未登记项目返回 404。此次核对方法内容与访问入口，各方法的业务实测由对应项目的验收计划记录 |
+
+方法库 Schema、专题范围和示例引用测试通过，`go vet ./...` 通过。本轮并行回归中，容器集成测试的第二个候选在第一个候选共用的一分钟上下文超时后启动，未取得 Git 工作树；该测试单独复核。

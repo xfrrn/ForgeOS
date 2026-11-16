@@ -10,6 +10,7 @@ import (
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
+	"forgeos/schemas"
 )
 
 func verifyDeclaredChecks(root string) store.CheckVerifier {
@@ -43,6 +44,14 @@ func verifyDeclaredChecks(root string) store.CheckVerifier {
 }
 
 func registerValidationPlan(mux *http.ServeMux, data *store.Store, root, owner string, workers workerAccess) {
+	registerProjectRead(mux, "acceptance-playbooks", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+		if _, err := data.Project(r.Context(), id); err != nil {
+			respond(w, 0, nil, err)
+			return
+		}
+		library, err := schemas.GlobalPlaybooks()
+		respond(w, http.StatusOK, library, err)
+	})
 	registerProjectRead(mux, "validation-assessment", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		project, err := data.Project(r.Context(), id)
 		if err != nil {
