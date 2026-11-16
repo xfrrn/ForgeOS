@@ -98,17 +98,17 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		registered, commit, dir, err := data.PreviewSource(ctx, match[1], port)
+		source, err := data.PreviewSource(ctx, match[1], port)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		repo, err := localrepo.ResolveRepo(ctx, root, registered)
+		repo, err := localrepo.ResolveRepo(ctx, root, source.Repo)
 		if err != nil {
 			http.Error(w, "preview repository unavailable", 503)
 			return
 		}
-		body, err := previewBlob(ctx, repo, commit, dir+"/"+name)
+		body, err := previewBlob(ctx, repo, source.Commit, source.Directory+"/"+name)
 		if errors.Is(err, store.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -122,7 +122,9 @@ func previewAssets(data *store.Store, root string, port int) http.HandlerFunc {
 			contentType = "application/octet-stream"
 		}
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("X-ForgeOS-Commit", commit)
+		w.Header().Set("X-ForgeOS-Commit", source.Commit)
+		w.Header().Set("X-ForgeOS-Task", strconv.FormatInt(source.Task, 10))
+		w.Header().Set("X-ForgeOS-Execution", strconv.FormatInt(source.Execution, 10))
 		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(body))
 	}
 }

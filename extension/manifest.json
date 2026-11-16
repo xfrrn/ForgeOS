@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "ForgeOS 预览反馈",
+  "version": "1.0.0",
+  "description": "在固定候选上选择页面元素，到已连接的 ForgeOS 工作台提交反馈。",
+  "permissions": ["activeTab", "scripting"],
+  "action": { "default_popup": "popup.html", "default_title": "ForgeOS 预览反馈" },
+  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+F" } } }
+}

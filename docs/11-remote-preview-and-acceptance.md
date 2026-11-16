@@ -134,6 +134,16 @@ Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 
 
 采用最小浏览器权限。不得收集 Cookie、密码、Token 或未授权表单敏感内容。截图应支持敏感区域遮挡。
 
+### 安装与选择页面元素
+
+在 Chromium 扩展管理页开启开发者模式，选择“加载已解压的扩展程序”，打开仓库内的 [extension 目录](../extension/manifest.json)。在已登录的工作台打开“ForgeOS 预览反馈”，点击“连接此工作台”。扩展自身只保存工作台的来源地址。工具栏按钮也可用 Alt+Shift+F 打开。
+
+1. 在候选预览标签页打开扩展。点击“选择页面元素”，再点需要反馈的元素。Esc 可取消。反馈整页时直接选“反馈整个页面”。
+2. 扩展用首页响应头核对任务、执行和提交，打开已连接工作台的反馈表单。新标签页若尚未连接，按工作台提示登录。核对路径、所选元素、浏览器主版本和视口，再填写观察并提交。页面版本与归档不符时，工作台要求重新选择。
+3. 从原预览的“预览反馈”回看该记录。元素定位使用标签与同类型序号，不读取文本、属性值、输入值、Cookie 或页面存储。页面路径不含查询参数和片段。采集仅在用户调用扩展后进行，扩展清单声明 activeTab 和 scripting 两项权限。[Chrome activeTab 权限说明](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab)
+
+安装 Python Playwright 后，可以用 `python scripts/probe_preview_extension.py --browser <Chrome-for-Testing可执行文件>` 重跑工具栏、取消、选择和隐私回归。探针启动一次性浏览器配置与两个本机页面，不需要项目凭据。验收工作台与数据库的完整场景见[验收记录](acceptance.md)。
+
 ## 7. 反馈流转
 
 反馈先进入 Feedback Manager，由 Management Agent 分类：

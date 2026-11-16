@@ -53,7 +53,7 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const queue = route === '/review'
-  const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback)?$/.exec(route)
+  const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?)?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
   const valid = Boolean(id || queue || route === '/tasks')
   const preview = idMatch?.[2]
@@ -99,7 +99,7 @@ function App() {
       <div className="connected"><i/>本地控制面</div>
     </header>
     <main id="content" tabIndex={-1} className="content">
-      {id && preview ? <PreviewFeedback key={preview} task={id} preview={preview} request={request}/> :
+      {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} request={request} onChanged={refreshCounts}/> :
         valid ? <TaskList key={queue ? 'review' : 'all'} queue={queue} request={request} onCounts={setCounts}/> :
         <div className="panel table-message"><h1>页面不存在</h1><a className="button" href="#/tasks">返回任务列表</a></div>}

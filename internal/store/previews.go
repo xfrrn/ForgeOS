@@ -60,10 +60,16 @@ func (s *Store) StopPreview(ctx context.Context, task int64, id string) error {
 	return err
 }
 
-func (s *Store) PreviewSource(ctx context.Context, id string, port int) (repo, commit, dir string, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT project.path,e.result->>'commit',p.directory FROM static_previews p JOIN executions e ON e.id=p.execution_id JOIN work_items t ON t.id=e.task_id JOIN projects project ON project.id=t.project_id WHERE p.id=$1 AND p.port=$2 AND p.stopped_at IS NULL AND p.expires_at>now()`, id, port).Scan(&repo, &commit, &dir)
+type PreviewSource struct {
+	Repo, Commit, Directory string
+	Task, Execution         int64
+}
+
+func (s *Store) PreviewSource(ctx context.Context, id string, port int) (PreviewSource, error) {
+	var source PreviewSource
+	err := s.db.QueryRowContext(ctx, `SELECT project.path,e.result->>'commit',p.directory,e.task_id,e.id FROM static_previews p JOIN executions e ON e.id=p.execution_id JOIN work_items t ON t.id=e.task_id JOIN projects project ON project.id=t.project_id WHERE p.id=$1 AND p.port=$2 AND p.stopped_at IS NULL AND p.expires_at>now()`, id, port).Scan(&source.Repo, &source.Commit, &source.Directory, &source.Task, &source.Execution)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
-	return
+	return source, err
 }
