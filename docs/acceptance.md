@@ -10,7 +10,7 @@
 | 二 · 验证、页面验收与退回 | alpha 任务 3 重复导入不变。在 Chrome 打开候选差异，退回 `93a7c42e`，真实 Codex 在新工作区补写示例，生成 `785df9cf`。两个候选各有对应 SHA 的 docs 验证。旧批准返回 409，新批准在页面返回 ACCEPTED。 | 通过。两次按 Owner 身份的页面操作均由 Playwright 执行。 |
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 的工作项 1 升级为 Goal 草案，依次提交两版含依赖的计划。相同重报返回原版本，过时改写返回 409，Worker 领取返回 204。重启控制面后可读取两个版本，在 Chrome 任务详情见修订 2、两个子项及依赖。数据库回归验证保留失败执行并拒绝循环、未知依赖和运行中改写。 | Git 快照已验收（详见表后）。Planner/Management 审核、子项激活与交付、父 Issue 关闭条件待实现与验收。 |
-| 三 · 决策、事件与恢复 | 现有执行记录原生 Session 和验收反馈。 | 角色权限、问题队列、需求修订、安全检查点、事件合并、会话恢复待实现与验收。 |
+| 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。 | 已验收 Owner 发起和回答的验收检查点。角色分级、运行中 Harness 请求与恢复、需求修订和事件合并待实现与验收。 |
 | 三 · 审查、验证规则与验收方法 | 已有 docs 和 go-test 两项预设验证。 | 只读 Review、V1–V4 风险判定、仓库规则、Playbook、测试计划待实现与验收。 |
 | 三 · 预览、批注与知识 | 现有反馈可绑定执行和候选 SHA。 | Tailscale/Caddy、浏览器元素/截图/录屏、知识来源与决策索引待实现与验收。 |
 | 四 · 多项目授权与密钥 | 项目有独立任务记录，目前共用 Owner 和 Worker 身份。 | 项目/环境授权、OpenBao、按执行分发、脱敏共享、审计和恢复演练待实现与验收。 |

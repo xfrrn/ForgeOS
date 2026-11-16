@@ -23,6 +23,7 @@ func routes(data *store.Store, root, owner, worker string, delivery deliveryPoli
 	mux := http.NewServeMux()
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)
+	registerQuestionRoutes(mux, data, owner)
 	registerWebRoutes(mux, data, root, owner)
 	mux.HandleFunc("POST /tasks/{id}/acceptance", authorized(owner, delivery.review(data)))
 	mux.HandleFunc("GET /tasks", authorized(owner, func(w http.ResponseWriter, r *http.Request) {

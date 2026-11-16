@@ -12,6 +12,7 @@ type Issue = { title: string; number: number; body: string; url: string; reposit
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string }
 type Delivery = { state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
+type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
 type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
 type Plan = { revision: number; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 type Task = {
@@ -21,6 +22,7 @@ type Task = {
   plan?: Plan
   goal_id?: number; plan_revision?: number
   children?: { id: number; key: string; status: string }[]
+  questions?: Question[]
 }
 type Props = { id: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
@@ -29,6 +31,7 @@ const events: Record<string, string> = {
   plan_revised: '已保存计划版本',
   plan_activated: '计划已生效', goal_item_created: '从计划创建工作项',
   dependencies_delivered: '前置交付已确认',
+  decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答',
   task_created: '创建任务', issue_imported: '导入 GitHub Issue', execution_claimed: 'Worker 领取任务',
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
@@ -154,6 +157,30 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked }: {
   </section>
 }
 
+function Decision({ taskID, q, request, onAnswer }: { taskID: number; q: Question; request: ApiRequest; onAnswer: () => void }) {
+  const [answer, setAnswer] = useState('')
+  const [status, setStatus] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit() {
+    setBusy(true)
+    try {
+      await request(`/tasks/${taskID}/questions/${q.id}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer }) })
+      onAnswer()
+    } catch (error) { setStatus(error instanceof Error ? error.message : '提交失败，请重试。') }
+    finally { setBusy(false) }
+  }
+  return <section className="panel detail-card detail-accept">
+    <h2>业务决定 #{q.id}</h2><p>{q.question}</p>
+    <dl><Fact label="依据">{q.evidence}</Fact><Fact label={`执行 #${q.execution_id}`} code>{q.commit_sha}</Fact></dl>
+    {q.answer ? <p>Owner 答复 · {q.answer}</p> : <form onSubmit={e => { e.preventDefault(); void submit() }}>
+      <label htmlFor={`answer-${q.id}`}>业务答复</label>
+      <textarea id={`answer-${q.id}`} required value={answer} onChange={e => setAnswer(e.target.value)}/>
+      <button className="button primary" disabled={busy || !answer.trim()}>提交答复</button>
+      {status && <p role="alert">{status}</p>}
+    </form>}
+  </section>
+}
+
 function Detail({ id, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
@@ -172,7 +199,7 @@ function Detail({ id, request, onChanged }: Props) {
         if (controller.signal.aborted || epoch !== generation.current) return
         setTask(fresh)
         setError('')
-        if (['ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'WAITING_ACCEPTANCE'].includes(fresh.status) || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
+        if (['ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'WAITING_INPUT', 'WAITING_ACCEPTANCE'].includes(fresh.status) || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
           timer = setTimeout(read, 8000)
         }
       } catch (cause) {
@@ -244,6 +271,7 @@ function Detail({ id, request, onChanged }: Props) {
             : <p className="detail-empty-text">{task.plan ? '尚无执行记录。' : '等待 Worker 领取任务。'}</p>}</section>
       </div>
       <aside className="detail-column">
+        {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
         {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)} />}
         {task.spec && <section className="panel detail-card"><h2><Icon name="GitPullRequest" size={18} />GitHub 交付</h2>
           {delivery ? <><div className="detail-delivery-state"><span className={'detail-state-dot ' + (delivery.state === 'DONE' ? 'complete' : '')} />{deliveryStates[delivery.state] || delivery.state}</div>

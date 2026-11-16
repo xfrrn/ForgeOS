@@ -43,6 +43,9 @@ var planArchiveSchema string
 //go:embed 007_goal_items.sql
 var goalItemsSchema string
 
+//go:embed 008_questions.sql
+var questionSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -50,21 +53,22 @@ type Project struct {
 }
 
 type Task struct {
-	GoalID       int64         `json:"goal_id,omitempty"`
-	PlanRevision int           `json:"plan_revision,omitempty"`
-	PlanKey      string        `json:"plan_key,omitempty"`
-	Children     []GoalChild   `json:"children,omitempty"`
-	ID           int64         `json:"id"`
-	ProjectID    int64         `json:"project_id"`
-	Kind         string        `json:"kind"`
-	Spec         *IssueSpec    `json:"spec,omitempty"`
-	Status       string        `json:"status"`
-	Execution    *Execution    `json:"execution"`
-	Attempts     []Execution   `json:"attempts"`
-	Events       []Event       `json:"events"`
-	Reviews      []Review      `json:"reviews,omitempty"`
-	Delivery     *Delivery     `json:"delivery,omitempty"`
-	Plan         *PlanRevision `json:"plan,omitempty"`
+	Questions    []DecisionQuestion `json:"questions,omitempty"`
+	GoalID       int64              `json:"goal_id,omitempty"`
+	PlanRevision int                `json:"plan_revision,omitempty"`
+	PlanKey      string             `json:"plan_key,omitempty"`
+	Children     []GoalChild        `json:"children,omitempty"`
+	ID           int64              `json:"id"`
+	ProjectID    int64              `json:"project_id"`
+	Kind         string             `json:"kind"`
+	Spec         *IssueSpec         `json:"spec,omitempty"`
+	Status       string             `json:"status"`
+	Execution    *Execution         `json:"execution"`
+	Attempts     []Execution        `json:"attempts"`
+	Events       []Event            `json:"events"`
+	Reviews      []Review           `json:"reviews,omitempty"`
+	Delivery     *Delivery          `json:"delivery,omitempty"`
+	Plan         *PlanRevision      `json:"plan,omitempty"`
 }
 
 type Execution struct {
@@ -129,7 +133,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -173,7 +177,7 @@ func (s *Store) CreateTask(ctx context.Context, projectID int64) (Task, error) {
 
 func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	var t Task
-	var spec, attempts, events, reviews, delivery, plan, children []byte
+	var spec, attempts, events, reviews, delivery, plan, children, questions []byte
 	// A single snapshot keeps the status, execution history and event list consistent.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, t.status, t.kind, t.spec,
@@ -193,9 +197,10 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    (SELECT to_jsonb(r) FROM plan_revisions r WHERE r.task_id=t.id ORDER BY revision DESC LIMIT 1),
 		    COALESCE(t.goal_id,0), COALESCE(t.plan_revision,0), COALESCE(t.plan_key,''),
 		    (SELECT jsonb_agg(jsonb_build_object('id',c.id,'key',c.plan_key,'status',c.status) ORDER BY c.id)
-		       FROM work_items c WHERE c.goal_id=t.id)
+		       FROM work_items c WHERE c.goal_id=t.id),
+		    (SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM decision_questions q WHERE q.task_id=t.id)
 		FROM work_items t WHERE t.id = $1`, id).Scan(&t.ID, &t.ProjectID, &t.Status, &t.Kind, &spec, &attempts,
-		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children)
+		&events, &reviews, &delivery, &plan, &t.GoalID, &t.PlanRevision, &t.PlanKey, &children, &questions)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -214,6 +219,11 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	}
 	if children != nil {
 		if err = json.Unmarshal(children, &t.Children); err != nil {
+			return Task{}, err
+		}
+	}
+	if questions != nil {
+		if err = json.Unmarshal(questions, &t.Questions); err != nil {
 			return Task{}, err
 		}
 	}

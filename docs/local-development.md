@@ -121,6 +121,10 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 
 交付器在前置子项全部完成 GitHub 回写后检查目标分支。它获取分支提交到项目对象库，核对原始基础及每个前置 Merge SHA 都在该提交的历史中，再把后续子项的基础版本固定并转为 READY。可以从子项的 `spec.base_commit` 和 `dependencies_delivered` 事件复核派发依据。
 
+## 验收检查点的业务问题
+
+在候选完成验证、需要业务澄清时，Owner 可向 `POST /tasks/{id}/questions` 提交 `execution_id`、`commit_sha`、`request_key`、`question` 和 `evidence`。控制面将任务置为 WAITING_INPUT，暂停对此 SHA 的验收。按「等待回答」筛选任务可定位问题。维护者在详情页回答，或向 `POST /tasks/{id}/questions/{question}/answer` 提交 `{"answer":"业务答复"}`。任务回到同一执行、会话及候选的验收检查点，历史问题和答复保存在 `questions` 中。
+
 ## GitHub 交付
 
 默认情况下，通过人工验收只将任务记为 `ACCEPTED`。要让某个项目自动发布，在**批准该候选前**配置控制面的 `FORGEOS_DELIVERY_PROJECT_ID`，使用有权向此仓库推送、管理 PR 和更新 Issue 的 GitHub 身份，再重启控制面。可选 `FORGEOS_DELIVERY_TARGET_BRANCH` 指定目标分支，留空时采用 GitHub 仓库默认分支。使用普通受保护分支权限的凭据。审批发生时会同时保存交付任务，之后更改配置不会把之前的本地验收追溯发布。

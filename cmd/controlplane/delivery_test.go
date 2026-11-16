@@ -92,6 +92,26 @@ func TestAcceptanceToDelivery(t *testing.T) {
 	body := map[string]any{"execution_id": job.ExecutionID, "commit": base, "decision": "approve"}
 	post(path, "owner", body, 409)
 	body["commit"] = candidate
+	questions := "/tasks/" + strconv.FormatInt(task.ID, 10) + "/questions"
+	request := store.QuestionRequest{ExecutionID: job.ExecutionID, Commit: candidate, Key: "example", Question: "Which wording?", Evidence: "README diff"}
+	post(questions, "owner", request, 200)
+	post(questions, "owner", request, 200)
+	held, err := data.Task(ctx, task.ID)
+	if err != nil || held.Status != "WAITING_INPUT" || len(held.Questions) != 1 {
+		t.Fatalf("checkpoint: %+v %v", held, err)
+	}
+	post(path, "owner", body, 409)
+	answerPath := questions + "/" + strconv.FormatInt(held.Questions[0].ID, 10) + "/answer"
+	answer := map[string]string{"answer": "Keep the tested example"}
+	post(answerPath, "worker", answer, 401)
+	post(answerPath, "owner", answer, 200)
+	post(answerPath, "owner", answer, 200)
+	post(answerPath, "owner", map[string]string{"answer": "different"}, 409)
+	resumed, err := data.Task(ctx, task.ID)
+	if err != nil || resumed.Status != "WAITING_ACCEPTANCE" || resumed.Execution.ID != job.ExecutionID ||
+		resumed.Execution.Result.Commit != candidate || resumed.Questions[0].AnsweredBy != "owner" || len(resumed.Events) != len(held.Events)+1 {
+		t.Fatalf("resumed checkpoint: %+v %v", resumed, err)
+	}
 	post(path, "worker", body, 401)
 	post(path, "owner", body, 200)
 	post(path, "owner", body, 200)
