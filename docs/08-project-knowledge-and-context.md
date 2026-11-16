@@ -61,6 +61,10 @@ Agent 在执行时自主读取当前任务所需文档，不由中台预先复�
 
 重要决策包含 source、decided_by、validity、supersedes、evidence_refs。
 
+在工作台的“项目接入”打开目标项目的“项目决策”。默认展示当前有效的已确认决定。Owner 可提出带来源、适用条件和证据的决定，确认或拒绝提案，对已确认决定提议替代或标记失效。“证据与历史”展示原始引用、操作人及时间。可按五种状态或全部状态浏览，加载后续页。页面中已加载的有效决定到截止时间会重新读取服务端状态。
+
+可用 `python scripts/probe_project_decisions.py <控制面地址> <测试项目ID>` 从两个 Chrome 会话复验提案回执丢失、竞争替代、拒绝及失效。探针使用 `FORGEOS_OWNER_TOKEN`，保留决策历史。
+
 Owner 向 `POST /projects/{id}/decisions` 提交提案。必填字段为 `request_key`、`statement`、`source`、`validity` 和非空的 `evidence_refs` 数组。可选的 `valid_until` 为带时区的 RFC 3339 时间，`supersedes` 为本项目已有决策的 ID。相同 key 和内容重报返回同一提案；同一 key 改写内容返回 409。
 
 通过 `POST /projects/{id}/decisions/{decision}/status` 提交 `{"status":"CONFIRMED"}` 或 `REJECTED`。确认替代提案时，旧决定必须仍然有效，旧记录变为 SUPERSEDED 与新确认在同一事务完成。Owner 可将有效决定置为 EXPIRED。有截止时间的待确认或已确认记录到期自动显示 EXPIRED。每条记录保留有关操作的身份、状态、时间和原始依据。截止时间自然到期可由 `valid_until` 核对。
