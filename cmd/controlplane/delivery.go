@@ -112,10 +112,14 @@ func (p deliveryPolicy) start(parent context.Context, data *store.Store, root st
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		var lastDependent int64
 		for ctx.Err() == nil {
 			// The remote call finishes before the database claim expires.
 			stepCtx, stop := context.WithTimeout(ctx, 75*time.Second)
 			claimed, err := p.step(stepCtx, data, root, advanceGitHub)
+			if err == nil && !claimed {
+				claimed, err = p.releaseDependent(stepCtx, data, root, &lastDependent)
+			}
 			stop()
 			if err != nil && ctx.Err() == nil {
 				log.Printf("delivery for project %d: %v", p.projectID, err)

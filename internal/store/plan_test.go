@@ -84,4 +84,34 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if err != nil || detail.GoalID != task.ID || detail.PlanRevision != 2 || detail.PlanKey != "a" {
 		t.Fatalf("missing lineage: %+v %v", detail, err)
 	}
+	if next, err := s.NextDependent(ctx, p.ID, 0); next != nil || err != nil {
+		t.Fatalf("released before merge: %+v %v", next, err)
+	}
+	candidate, merged := strings.Repeat("b", 40), strings.Repeat("c", 40)
+	if err := s.Complete(ctx, child.ExecutionID, child.LeaseToken, Result{Commit: candidate, BaseCommit: child.Spec.BaseCommit,
+		SessionID: "first-child", Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Review(ctx, child.TaskID, child.ExecutionID, candidate, "approve", "reviewed", true, "main"); err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.ClaimDelivery(ctx, p.ID)
+	if err != nil || d == nil {
+		t.Fatal(d, err)
+	}
+	d.PRNumber, d.PRURL, d.MergeSHA, d.State = 5, "https://github.com/example/repo/pull/5", merged, "DONE"
+	if err := s.SaveDelivery(ctx, *d); err != nil {
+		t.Fatal(err)
+	}
+	next, err := s.NextDependent(ctx, p.ID, 0)
+	if err != nil || next == nil || len(next.Merges) != 1 || next.Merges[0] != merged || next.Target != "main" {
+		t.Fatalf("release evidence: %+v %v", next, err)
+	}
+	if err := s.ReleaseDependent(ctx, next.TaskID, merged); err != nil {
+		t.Fatal(err)
+	}
+	secondJob, err := s.Claim(ctx, "worker", root, true)
+	if err != nil || secondJob == nil || secondJob.TaskID != next.TaskID || secondJob.Spec.BaseCommit != merged {
+		t.Fatalf("did not freeze delivered base: %+v %v", secondJob, err)
+	}
 }
