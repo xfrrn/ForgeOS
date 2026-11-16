@@ -1,0 +1,23 @@
+[Unit]
+Description=ForgeOS control plane
+After=network-online.target
+
+[Service]
+User=forgeos-control
+Group=forgeos-control
+SupplementaryGroups=forgeos-repos
+StateDirectory=forgeos-control
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/forgeos-control
+Environment=HOME=/var/lib/forgeos-control
+Environment=PATH=/var/lib/forgeos-control/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NO_PROXY=localhost,127.0.0.1,::1
+EnvironmentFile=/etc/forgeos/controlplane.env
+ExecStart=/usr/local/libexec/forgeos/controlplane
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=ForgeOS Worker
+After=network-online.target forgeos-controlplane.service
+
+[Service]
+User=forgeos-worker
+Group=forgeos-worker
+SupplementaryGroups=forgeos-repos
+StateDirectory=forgeos-worker
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/forgeos-worker
+Environment=HOME=/var/lib/forgeos-worker
+Environment=PATH=/var/lib/forgeos-worker/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NO_PROXY=localhost,127.0.0.1,::1
+EnvironmentFile=/etc/forgeos/worker.env
+ExecStart=/usr/local/libexec/forgeos/worker
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

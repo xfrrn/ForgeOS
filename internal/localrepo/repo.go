@@ -18,6 +18,13 @@ func Git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 // GitCommand applies the same repository settings for callers that stream bounded output.
 func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	options := []string{"--no-replace-objects", "-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "protocol.allow=never", "-C", dir}
+	// Administrators may share specific clones between the service accounts.
+	for _, path := range filepath.SplitList(os.Getenv("FORGEOS_SHARED_REPOS")) {
+		if path == dir && filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.Contains(path, "*") {
+			options = append(options, "-c", "safe.directory="+filepath.ToSlash(path))
+			break
+		}
+	}
 	cmd := exec.CommandContext(ctx, "git", append(options, args...)...)
 	for _, item := range os.Environ() {
 		name, _, _ := strings.Cut(item, "=")

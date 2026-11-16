@@ -4,9 +4,21 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestGitTrustsOnlyNamedSharedRepository(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGEOS_SHARED_REPOS", strings.Join([]string{"*", filepath.Join(dir, "*"), dir}, string(os.PathListSeparator)))
+	for _, path := range []string{dir, filepath.Join(dir, "other"), filepath.Join(dir, "*"), "*"} {
+		args := GitCommand(context.Background(), path, "status").Args
+		if got := slices.Contains(args, "safe.directory="+filepath.ToSlash(path)); got != (path == dir) {
+			t.Errorf("safe.directory for %q = %t", path, got)
+		}
+	}
+}
 
 func TestGitReadsOriginalObjectAfterReplacement(t *testing.T) {
 	dir := t.TempDir()

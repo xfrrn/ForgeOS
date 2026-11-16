@@ -27,6 +27,35 @@ Worker Daemon 使用已登录 Codex/Claude 的专用非 root Linux 用户运行�
 
 systemd 必须显式配置 HOME、PATH、工作目录、代理环境和必要变量，不假设继承交互式 Shell 环境。
 
+### 安装 systemd 服务
+
+在项目根目录构建 Linux 二进制。以下安装命令使用 root，部署前准备可连接的 PostgreSQL。控制面和 Worker 分别使用独立账号，只有项目克隆使用共同的 `forgeos-repos` 组。
+
+```sh
+install -d /usr/local/libexec/forgeos /etc/forgeos
+go build -o /usr/local/libexec/forgeos/controlplane ./cmd/controlplane
+go build -o /usr/local/libexec/forgeos/worker ./cmd/worker
+groupadd --system forgeos-repos
+for account in forgeos-control forgeos-worker; do
+  useradd --system --user-group --groups forgeos-repos --no-create-home \
+    --home-dir "/var/lib/$account" --shell /usr/sbin/nologin "$account"
+done
+install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
+```
+
+为每个批准访问的项目准备由控制面账号持有、`forgeos-repos` 组可读写的克隆。可在设置了组继承权限（`2770`）的目录中使用 `git init --shared=group` 后抓取项目。Worker 账号的环境文件中，`FORGEOS_SHARED_REPOS` 填入共享克隆的实际绝对路径，在 Linux 上用冒号分隔。只列出信任其 Git 管理目录的项目。仓库仍须位于 `FORGEOS_REPO_ROOT` 内。
+
+分别创建 root 持有、权限为 `0600` 的环境文件。每行写入一项 `名称=值`，systemd 在切换到服务账号前读取文件。
+
+| 文件 | 必填设置 |
+| --- | --- |
+| `/etc/forgeos/controlplane.env` | `FORGEOS_LISTEN_ADDR=127.0.0.1:8080`、`FORGEOS_DATABASE_URL`、`FORGEOS_OWNER_TOKEN`、`FORGEOS_WORKERS_FILE`、`FORGEOS_REPO_ROOT` |
+| `/etc/forgeos/worker.env` | `FORGEOS_API_URL=http://127.0.0.1:8080`、节点的 `FORGEOS_WORKER_ID` 和 `FORGEOS_WORKER_TOKEN`、`FORGEOS_REPO_ROOT`、`FORGEOS_SHARED_REPOS`、`FORGEOS_WORKSPACE_ROOT=/var/lib/forgeos-worker/work` |
+
+节点授权文件采用[本地运行说明](local-development.md)中的 JSON 格式，由控制面用户独占读取。需要外网代理时，在使用代理的服务环境文件中显式配置 `HTTP_PROXY`、`HTTPS_PROXY`。两个 unit 均设置 `NO_PROXY=localhost,127.0.0.1,::1`。服务首次启动时由 systemd 创建权限为 `0700` 的独立 HOME。模型登录须在 Worker 自己的 HOME 下完成。
+
+执行 `systemctl daemon-reload` 和 `systemctl enable --now forgeos-controlplane forgeos-worker`。用 `systemctl status` 检查两项服务，随后通过 Owner API 登记仓库并创建 `git_head` 任务。任务应返回该仓库 HEAD。重启两个服务并再次查询，原执行的工作区、退出码和提交应与重启前一致。
+
 ## 3. 私有网络
 
 第一版建议 Tailscale：
