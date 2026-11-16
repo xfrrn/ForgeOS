@@ -18,6 +18,19 @@ type WorkerCapabilities struct {
 	SupportsRiskPolicy     bool `json:"supports_risk_policy"`
 }
 
+func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilities {
+	return WorkerCapabilities{
+		SupportsCodex:          c.SupportsCodex && node.SupportsCodex,
+		SupportsClaude:         c.SupportsClaude && node.SupportsClaude,
+		SupportsRework:         c.SupportsRework && node.SupportsRework,
+		SupportsPlanner:        c.SupportsPlanner && node.SupportsPlanner,
+		SupportsCheckpoints:    c.SupportsCheckpoints && node.SupportsCheckpoints,
+		SupportsValidation:     c.SupportsValidation && node.SupportsValidation,
+		SupportsDeclaredChecks: c.SupportsDeclaredChecks && node.SupportsDeclaredChecks,
+		SupportsRiskPolicy:     c.SupportsRiskPolicy && node.SupportsRiskPolicy,
+	}
+}
+
 type WorkerHeartbeat struct {
 	Worker       string             `json:"worker"`
 	OS           string             `json:"os"`

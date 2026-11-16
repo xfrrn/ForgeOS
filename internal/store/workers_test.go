@@ -4,7 +4,52 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"forgeos/internal/validation"
 )
+
+func TestRegisteredHarnessRequiredForClaim(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{
+		Issue: Issue{RepositoryID: 1, ID: 1, Number: 1}, BaseCommit: strings.Repeat("a", 40),
+		Validation: "auto", Policy: &validation.Policy{}, Harness: "claude",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := WorkerHeartbeat{Worker: "node", OS: "linux", Arch: "amd64", CPUs: 1, Slots: 1}
+	request := WorkerCapabilities{SupportsClaude: true, SupportsRiskPolicy: true, SupportsDeclaredChecks: true}
+	h.Capabilities = request
+	h.Capabilities.SupportsClaude = false
+	root := t.TempDir()
+	check := func(want bool) {
+		t.Helper()
+		if err := s.RecordHeartbeat(ctx, h); err != nil {
+			t.Fatal(err)
+		}
+		j, err := s.ClaimForProjects(ctx, h.Worker, root, []int64{p.ID}, request)
+		if err != nil || (j != nil) != want || j != nil && j.TaskID != task.ID {
+			t.Fatalf("want claim %v, got %v, error %v", want, j, err)
+		}
+	}
+	check(false)
+	h.Capabilities.SupportsClaude = true
+	h.Capabilities.SupportsDeclaredChecks = false
+	check(false)
+	h.Capabilities.SupportsDeclaredChecks = true
+	request.SupportsRiskPolicy = false
+	check(false)
+	request.SupportsRiskPolicy = true
+	check(true)
+}
 
 func TestConcurrentNodeReservations(t *testing.T) {
 	ctx := context.Background()

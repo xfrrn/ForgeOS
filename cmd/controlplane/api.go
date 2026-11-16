@@ -165,7 +165,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 			problem(w, http.StatusForbidden, "claim does not match the authenticated Worker")
 			return
 		}
-		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.SupportsCodex, input.SupportsRework, input.SupportsPlanner, input.SupportsCheckpoints, input.SupportsValidation, input.SupportsDeclaredChecks, input.SupportsRiskPolicy, input.SupportsClaude)
+		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.WorkerCapabilities)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return

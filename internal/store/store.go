@@ -374,7 +374,11 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 }
 
 func (s *Store) Claim(ctx context.Context, worker, workspaceRoot string, capabilities ...bool) (*Job, error) {
-	return s.ClaimForProjects(ctx, worker, workspaceRoot, nil, capabilities...)
+	enabled := func(i int) bool { return i < len(capabilities) && capabilities[i] }
+	return s.ClaimForProjects(ctx, worker, workspaceRoot, nil, WorkerCapabilities{
+		SupportsCodex: enabled(0), SupportsRework: enabled(1), SupportsPlanner: enabled(2), SupportsCheckpoints: enabled(3),
+		SupportsValidation: enabled(4), SupportsDeclaredChecks: enabled(5), SupportsRiskPolicy: enabled(6), SupportsClaude: enabled(7),
+	})
 }
 
 func (s *Store) WorkerOwnsExecution(ctx context.Context, id int64, worker string, projects []int64) (bool, error) {
@@ -384,7 +388,7 @@ func (s *Store) WorkerOwnsExecution(ctx context.Context, id int64, worker string
 	return allowed, err
 }
 
-func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot string, projects []int64, capabilities ...bool) (*Job, error) {
+func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot string, projects []int64, caps WorkerCapabilities) (*Job, error) {
 	if !filepath.IsAbs(workspaceRoot) || worker == "" {
 		return nil, errors.New("worker and absolute workspace root required")
 	}
@@ -395,26 +399,27 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	defer tx.Rollback()
 	var j Job
 	var projectID int64
-	canRunIssue := len(capabilities) > 0 && capabilities[0]
-	canRework := len(capabilities) > 1 && capabilities[1]
-	canPlan := len(capabilities) > 2 && capabilities[2]
-	canCheckpoint := len(capabilities) > 3 && capabilities[3]
-	canVerify := len(capabilities) > 4 && capabilities[4]
-	canRunChecks := len(capabilities) > 5 && capabilities[5]
-	canAssess := canRunChecks && len(capabilities) > 6 && capabilities[6]
-	canClaude := len(capabilities) > 7 && capabilities[7]
 	// Serialize reservations across projects, including simultaneous claims by the same node.
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('forgeos.worker_capacity'),hashtext($1))`, worker); err != nil {
 		return nil, err
 	}
 	var available bool
-	err = tx.QueryRowContext(ctx, `SELECT
-		(SELECT count(*) FROM executions WHERE worker=$1 AND result IS NULL AND abandoned_at IS NULL)
-		< COALESCE((SELECT CASE WHEN last_seen > now() - interval '45 seconds' THEN slots ELSE 0 END
-		            FROM worker_nodes WHERE worker=$1 FOR UPDATE),1)`, worker).Scan(&available)
+	var registered []byte
+	err = tx.QueryRowContext(ctx, `SELECT used < COALESCE(node.slots,1), node.capabilities
+		FROM (SELECT count(*) AS used FROM executions WHERE worker=$1 AND result IS NULL AND abandoned_at IS NULL) active
+		LEFT JOIN (SELECT capabilities, CASE WHEN last_seen > now() - interval '45 seconds' THEN slots ELSE 0 END AS slots
+		           FROM worker_nodes WHERE worker=$1 FOR UPDATE) node ON true`, worker).Scan(&available, &registered)
 	if err != nil || !available {
 		return nil, err
 	}
+	if registered != nil {
+		var node WorkerCapabilities
+		if err := json.Unmarshal(registered, &node); err != nil {
+			return nil, err
+		}
+		caps = caps.intersect(node)
+	}
+	canAssess := caps.SupportsDeclaredChecks && caps.SupportsRiskPolicy
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE'))
@@ -427,7 +432,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects), canRunChecks, canAssess, canClaude).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -449,7 +454,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, canRunChecks, canAssess, canClaude).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -460,7 +465,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
 			return nil, err
 		}
-		j.SupportsCheckpoints = canCheckpoint && j.Spec.VerifyCommit == ""
+		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
