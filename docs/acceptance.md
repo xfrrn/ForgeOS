@@ -37,3 +37,24 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 父 Issue 关闭实现对应 `544744520aeb6ea13724c7aaf4166ebf0a5c09b0`。检查规划和派发的并发边界时，用真实 PostgreSQL 锁住 READY → PLANNING 的状态更新，让 Worker 请求在写入时等待。旧实现会在锁释放后把父任务误领走。修复后连续五次数据库回归通过；独立控制面的 `POST /internal/claim` 在锁释放后返回 204，任务保留 PLANNING，执行次数为零。
 
 派发竞态修复为 `b4e7c54b06726fd8949b20faa052f75a0aeb8d1a`。alpha #4 通过按编号导入入口选择规划模式，旧 Worker 的领取请求返回 204。真实 Codex CLI 0.169.0-alpha.11.1 在只读沙箱中完成任务 16，Session 为 `01a1e322-fda7-7751-903d-93519a6cae56`。修订 1 包含两项工作、README 和 CI 上下文、依赖及验收条件。基础 SHA 与导入时一致，Git 工作区干净，草案未自动派发子任务；重启控制面后任务 JSON 相同。[规划输入](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/4)
+
+## 专题覆盖与实现提交
+
+下列短 SHA 属于本地 ForgeOS 仓库。PR 内的 SHA 属于验收项目。当前回归版本为 `cc2011fc18e85937c031086d119659731a721056`。在专用 PostgreSQL 18 实例中启用数据库和 Docker 测试，`go test -count=1 -json ./...` 得到 51 项通过、零跳过；`go vet ./...` 与前端生产构建通过。
+
+| 专题 | 已验证的入口和证据 | 实现 SHA | 仍待补齐或实测 |
+| --- | --- | --- | --- |
+| 00–01 产品与端到端流程 | 两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭 | `1a17822`、`32c0fa0`、`5447445` | 远程外部设备、知识归档、完整项目初始化 |
+| 02–03 系统与模块 | 独立控制面和 Worker、PostgreSQL、同源 React 页面、只读规划和交付器均从实际入口运行 | `1a17822`、`cc2011f` | 分类与管理角色、通知、节点资源管理、知识与预览服务 |
+| 04 领域模型 | 同一任务关联历史执行、计划修订、候选、验收、子 PR 和 Merge SHA | `5d30bcf`、`94b6b08`、`70781ba` | 独立 Requirement Revision、Validation Run 和 Artifact 标识，以及完整 Session/Process 模型 |
+| 05 角色与决策 | 任务 15 的候选在等待业务答复期间拒绝批准；Owner 回答与重报有留痕 | `70781ba` | Management 审核与 D0–D3 策略、ACP 路由、批量答复 |
+| 06 规划与编排 | 任务 16 自动生成草案，Goal 13 显式激活；后继项从实际合并版本执行 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07` | 已激活计划滚动修订、管理角色审核、运行时事件批处理和安全中断 |
+| 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session ID、工作区和真实失联租约验证 | `1a17822`、`cc2011f`、`b4e7c54` | App Server、Claude Code 原生恢复、Linux 专用用户和 systemd、多节点恢复 |
+| 08 项目知识 | Planner 在固定版本引用 README 和 CI 工程事实 | `cc2011f` | 私有知识存储、检索 API、决策权威性、脱敏审批和共享副本 |
+| 09 权限与密钥 | Owner/Worker 分权，Worker 回答业务问题或读取 Owner 收件箱返回 401 | `1a17822`、`319aa65`、`70781ba` | 项目及环境授权、OpenBao、Secret Broker、短期凭据与恢复 |
+| 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、失败的 Actions 门禁、候选变化后重新验证 | `1a17822`、`32c0fa0` | 只读审查、V1–V4、仓库验证 Schema、检查报告与 GitHub 状态回传 |
+| 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
+| 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 不提前关闭父 Issue | `319aa65`、`32c0fa0`、`94b6b08`、`5447445` | Issue 修改/评论进入事件队列、Webhook、细粒度凭据和第二人审查实测 |
+| 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
+| 14 部署与运维 | Windows 主机、独立 PostgreSQL、Docker Linux 引擎和控制面重启实测 | `1a17822`、`32c0fa0` | Linux 常驻服务、私网访问、资源预算、数据库/OpenBao/工件备份恢复演练 |
+| 15–16 路线与开放项 | 基座、单项目闭环、两子项 Goal 场景、第二个项目交付有以上记录 | 本表所列提交 | [开放事项 A–C](16-open-decisions.md)中其余真实环境与协议要求，以及全路线最终回归 |
