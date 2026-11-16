@@ -18,16 +18,18 @@ import (
 )
 
 type InventoryFile struct {
-	UnresolvedInputs   int                                 `json:"unresolved_inputs,omitempty"`
-	DynamicFields      []string                            `json:"dynamic_fields,omitempty"`
-	Path               string                              `json:"path"`
-	Blob               string                              `json:"blob"`
-	Kind               string                              `json:"kind"`
-	Dependencies       []string                            `json:"dependencies,omitempty"`
-	Scripts            []string                            `json:"scripts,omitempty"`
-	SecretRequirements *[]schemas.SecretRequirement        `json:"secret_requirements,omitempty"`
-	LocalEnvironments  map[string]schemas.LocalEnvironment `json:"local_environments,omitempty"`
-	Problem            string                              `json:"problem,omitempty"`
+	WorkspaceDependencies []string                            `json:"workspace_dependencies,omitempty"`
+	WorkspaceSource       *ManifestSource                     `json:"workspace_source,omitempty"`
+	UnresolvedInputs      int                                 `json:"unresolved_inputs,omitempty"`
+	DynamicFields         []string                            `json:"dynamic_fields,omitempty"`
+	Path                  string                              `json:"path"`
+	Blob                  string                              `json:"blob"`
+	Kind                  string                              `json:"kind"`
+	Dependencies          []string                            `json:"dependencies,omitempty"`
+	Scripts               []string                            `json:"scripts,omitempty"`
+	SecretRequirements    *[]schemas.SecretRequirement        `json:"secret_requirements,omitempty"`
+	LocalEnvironments     map[string]schemas.LocalEnvironment `json:"local_environments,omitempty"`
+	Problem               string                              `json:"problem,omitempty"`
 }
 
 var objectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -47,7 +49,9 @@ func inventoryKind(file string) string {
 		return "composer"
 	case "pyproject.toml", "requirements.txt":
 		return "python"
-	case "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "gemfile":
+	case "cargo.toml":
+		return "cargo"
+	case "pom.xml", "build.gradle", "build.gradle.kts", "gemfile":
 		return "manifest"
 	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "gemfile.lock", "composer.lock":
 		return "lock"
@@ -73,6 +77,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 		return nil, errors.New("cannot read complete repository tree within 16 MiB")
 	}
 	files := []InventoryFile{}
+	cargo := map[string]*cargoManifest{}
 	readBudget := 8 << 20
 	for _, entry := range bytes.Split(raw, []byte{0}) {
 		if len(entry) == 0 {
@@ -102,7 +107,10 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" {
+		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" {
+			if kind == "cargo" {
+				cargo[file] = nil
+			}
 			if readBudget <= 0 {
 				c.Problem = "read_budget"
 			} else {
@@ -113,6 +121,11 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 				readBudget -= len(data)
 				if large {
 					c.Problem = "size_limit"
+				} else if kind == "cargo" {
+					cargo[file] = readCargo(data)
+					if cargo[file] == nil {
+						c.Problem = "invalid_manifest"
+					}
 				} else {
 					c.readManifest(data)
 				}
@@ -120,6 +133,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 		}
 		files = append(files, c)
 	}
+	resolveCargo(files, cargo)
 	return files, nil
 }
 

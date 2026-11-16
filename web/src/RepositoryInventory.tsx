@@ -4,11 +4,12 @@ import { RepositoryAnalysis } from './RepositoryAnalysis'
 import { InitializationReports } from './InitializationReports'
 
 type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string; unresolved_inputs?: number; dynamic_fields?: string[]
+  workspace_dependencies?: string[]; workspace_source?: {path: string; blob: string}
   local_environments?: Record<string, {start_script: string; port: number; health_path: string; timeout_seconds: number}>
   secret_requirements?: { environment: string; name: string; risk: string }[] }
 type Report = { execution_id: number; commit_sha: string; github_origin: string; repository_id?: number; scanned_at: string; files: Source[] }
 type StartupCheck = { id: number; environment: string; status: string }
-const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
+const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', cargo: 'Rust Cargo', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
 const problems: Record<string,string> = { size_limit: '清单超过读取上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
 
 export function RepositoryInventory({ task, request }: { task: number; request: ApiRequest }) {
@@ -76,6 +77,8 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       <summary><code>{f.path}</code> · {kinds[f.kind]}</summary>
       <p>Git blob · <code>{f.blob}</code></p>
       {Boolean(f.dependencies?.length) && <p>声明依赖 · {f.dependencies?.join('、')}</p>}
+      {f.workspace_dependencies?.length ? <p>工作区共享依赖 · {f.workspace_dependencies.join('、')}</p> : null}
+      {f.workspace_source && <p>继承来源 · {f.workspace_source.path} · <code>{f.workspace_source.blob}</code></p>}
       {f.scripts?.map(name => <p key={name}><code>{f.kind === 'composer' ? 'composer run-script ' : f.kind === 'node' ? 'npm run ' : ''}{name}</code></p>)}
       {f.unresolved_inputs ? <p>未解析为包名的来源 · {f.unresolved_inputs} 项</p> : null}
       {f.dynamic_fields?.length ? <p>由构建后端动态提供 · {f.dynamic_fields.join('、')}</p> : null}

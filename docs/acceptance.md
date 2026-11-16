@@ -1160,3 +1160,18 @@ PHP Composer 清单对应 ForgeOS 提交 `a0b90a45b69f054b8537ccc11ef950b838cff1
 | 更新清单，从项目页重新检查，再重启控制面 | 两次回执保留对应版本 | T-2 固定 `d1466a28a293aaf410d0dee951ab65b768f8ed31`，仅有 ruff 与 station-check，清单 blob 为 `3da111b613112a1be544786e5e194a0b9abd4297`。两版重启后回读均与首次相同 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 147 项通过，零测试跳过。Go 静态检查、模块校验、TypeScript 检查和 Web 生产构建通过。
+
+Python 包清单对应 ForgeOS 提交 `c5608ae0ab3068485c40649a115a5bfc8c4c267d`。
+
+## 专题 01 · Rust Cargo 工作区与固定版本的继承来源
+
+在独立 PostgreSQL schema `cargo_d35e64dc` 中使用正式 Worker、控制面和 Chrome。将同一个验收克隆只读挂载到禁网容器，使用 Cargo 1.85.1 的 `cargo metadata --format-version=1 --offline --no-deps` 独立核对成员的直接依赖。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 对虚拟工作区、子 crate、重命名的共享依赖、开发依赖和条件构建依赖执行 HEAD 检查，再从 Chrome 展开成员清单 | 工作台与原生 Cargo 的直接包名集合相同，根清单另外显示共享声明 | T-1 固定 `27a292d88035429c718b6a1890c253e0290e0040`。两者均为 fixture-kit、rain-first、win-helper。unused-shared 仅出现在根清单的共享声明中 |
+| 读取被工作区排除的子目录以及包含坏 TOML 的独立文件 | 无法继承的包保留未解析状态，其他条目可继续读取 | 原生 Cargo 在排除目录退出 101，提示找不到工作区根。ForgeOS 的该条目显示一项未解析、无继承包名；坏 TOML 标记 invalid_manifest |
+| 只修改根清单的别名目标，再从项目页检查 HEAD | 成员文件未变，第二次检查显示新包名与新的根清单 blob | T-2 固定 `2ef9e6750295af87200aa1e66d56bc536c268d80`。成员 blob 均为 `f5998b86185ef975d4ffe7f9197dd78707f82422`，根 blob 从 `d31f256fc45d1aeb47925604db3c1af2cdfd15b0` 变为 `b6cc5c41ef9d256a9f51cad160c0ca411e68112b`，两端均读到 rain-next |
+| 在两次任务各归档初始化报告、领取一次 Agent 输入并重启控制面 | 报告保留同一清单，Agent 收到声明名，历史版本可回读 | 两份报告中的清单逐字段相同于对应任务；成员与根清单的文本摘要不含声明中的私有路径标记。控制面重启后两版清单逐字段一致 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 148 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
