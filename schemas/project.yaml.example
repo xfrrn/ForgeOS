@@ -1,0 +1,26 @@
+version: 1
+
+project:
+  id: example-project
+  name: Example Project
+  repository:
+    provider: github
+    owner: example-org
+    name: example-repo
+    default_branch: main
+  local:
+    path: /projects/example-project
+
+execution:
+  default_harness: codex
+  default_write_concurrency: 1
+
+delivery:
+  pull_request:
+    enabled: true
+    target_branch: main
+    merge_strategy: squash
+    auto_merge_after_acceptance: true
+  production_deployment:
+    enabled: false
+    responsibility: human

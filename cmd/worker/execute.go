@@ -1,0 +1,70 @@
+package main
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"forgeos/internal/localrepo"
+	"forgeos/internal/store"
+)
+
+func failed(message string, cause error) store.Result {
+	code := 1
+	var exit *exec.ExitError
+	if errors.As(cause, &exit) && exit.ExitCode() > 0 {
+		code = exit.ExitCode()
+	}
+	return store.Result{ExitCode: code, Error: message}
+}
+
+func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
+	timeout := time.Minute
+	if job.Kind == "codex_issue" {
+		timeout = 20 * time.Minute
+	} else if job.Kind != "" && job.Kind != "git_head" {
+		return failed("unsupported task kind", nil)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	repo, err := localrepo.ResolveRepo(ctx, w.repoRoot, job.RepoPath)
+	if err != nil {
+		return failed("repository validation failed: "+err.Error(), err)
+	}
+	root, err := filepath.EvalSymlinks(w.workspaceRoot)
+	if err != nil || root != w.workspaceRoot {
+		return failed("workspace root changed or is unavailable", err)
+	}
+	if rel, err := filepath.Rel(repo, root); err == nil && (rel == "." || filepath.IsLocal(rel)) {
+		return failed("workspace root must be outside the project working tree", nil)
+	}
+	expected := filepath.Join(root, fmt.Sprintf("execution-%d", job.ExecutionID))
+	if rel, err := filepath.Rel(expected, job.Workspace); err != nil || rel != "." || job.ExecutionID <= 0 {
+		return failed("unexpected execution workspace", err)
+	}
+	if _, err := os.Lstat(expected); !errors.Is(err, os.ErrNotExist) {
+		return failed("execution workspace already exists or is inaccessible", err)
+	}
+	if job.Kind == "codex_issue" {
+		return w.executeIssue(ctx, repo, expected, job)
+	}
+	// git_head needs only the commit. Skipping checkout also avoids running project filters.
+	if _, err := localrepo.Git(ctx, repo, "worktree", "add", "--detach", "--no-checkout", expected, "HEAD"); err != nil {
+		return failed("git worktree add failed", err)
+	}
+	out, err := localrepo.Git(ctx, expected, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return failed("git rev-parse HEAD failed", err)
+	}
+	commit := strings.TrimSpace(string(out))
+	if _, err := hex.DecodeString(commit); err != nil || (len(commit) != 40 && len(commit) != 64) {
+		return failed("git returned an invalid commit hash", err)
+	}
+	return store.Result{Commit: commit}
+}

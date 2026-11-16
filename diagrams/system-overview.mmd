@@ -1,0 +1,33 @@
+flowchart TD
+    U["Owner / GitHub Issue"] --> UI["React Management UI"]
+    U --> GH["GitHub Integration"]
+    UI --> CP["Go Control Plane"]
+    GH --> CP
+
+    CP --> TASK["Task / Goal / Planning"]
+    CP --> MGMT["Management Agent"]
+    CP --> KNOW["Knowledge Service"]
+    CP --> POLICY["Policy Engine"]
+    TASK --> ORCH["Orchestrator"]
+    MGMT --> ORCH
+    POLICY --> ORCH
+
+    ORCH <--> WD["Local Worker Daemon"]
+    WD --> WS["Git Worktree Manager"]
+    WD --> HA["Harness Adapters"]
+    HA --> CX["Codex"]
+    HA --> CL["Claude Code"]
+    WD --> CI["Local CI Runner"]
+    WD --> PV["Preview Manager"]
+
+    CP --> PG[("PostgreSQL")]
+    CP --> OB["OpenBao"]
+    CP --> FS["Artifact Storage"]
+
+    PV --> TS["Tailscale Private Network"]
+    TS --> REMOTE["Remote Browser"]
+    REMOTE --> FB["Feedback Extension"]
+    FB --> CP
+
+    CP --> PR["GitHub PR / Squash Merge"]
+    PR --> ARCH["Archive & Knowledge Curation"]

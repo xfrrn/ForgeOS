@@ -1,0 +1,23 @@
+version: 1
+
+components:
+  payment:
+    paths:
+      - internal/payment/**
+    playbooks:
+      - api-backend
+      - payment
+      - security
+    minimum_validation: V4
+    manual_acceptance:
+      required: true
+      environment: staging
+
+  frontend:
+    paths:
+      - web/**
+    playbooks:
+      - frontend-ui
+    minimum_validation: V2
+    manual_acceptance:
+      required: conditional

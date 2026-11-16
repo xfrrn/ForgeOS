@@ -1,0 +1,43 @@
+version: 1
+
+checks:
+  format:
+    type: static
+    command: ["pnpm", "format:check"]
+    timeout_seconds: 300
+
+  lint:
+    type: static
+    command: ["pnpm", "lint"]
+    timeout_seconds: 600
+
+  typecheck:
+    type: static
+    command: ["pnpm", "typecheck"]
+    timeout_seconds: 600
+
+  unit:
+    type: unit
+    command: ["pnpm", "test"]
+    timeout_seconds: 1200
+
+  integration:
+    type: integration
+    command: ["pnpm", "test:integration"]
+    environment: ci
+    timeout_seconds: 1800
+
+  build:
+    type: build
+    command: ["pnpm", "build"]
+    timeout_seconds: 1800
+
+profiles:
+  fast:
+    checks: [format, lint, typecheck]
+
+  standard:
+    checks: [format, lint, typecheck, unit, build]
+
+  integration:
+    checks: [format, lint, typecheck, unit, integration, build]

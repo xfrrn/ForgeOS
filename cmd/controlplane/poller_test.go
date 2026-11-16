@@ -1,0 +1,114 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"testing"
+	"time"
+
+	"forgeos/internal/store"
+)
+
+type pollFixture struct {
+	importFixture
+	received map[int64]int
+}
+
+func (f *pollFixture) ImportIssue(_ context.Context, _ int64, s store.IssueSpec) (store.Task, error) {
+	f.received[s.Issue.Number]++
+	f.spec = &s
+	return store.Task{}, nil
+}
+
+func TestPollConfig(t *testing.T) {
+	if p, err := pollConfig("", ""); err != nil || p != nil {
+		t.Fatal("poller must be disabled by default")
+	}
+	for _, args := range [][2]string{{"0", "docs"}, {"1", ""}, {"", "go-test"}, {"1", "shell"}} {
+		if _, err := pollConfig(args[0], args[1]); err == nil {
+			t.Errorf("accepted invalid config %v", args)
+		}
+	}
+}
+
+func TestPollSelectedIssuesAcrossPages(t *testing.T) {
+	root, path, base := issueTestRepo(t)
+	data := &pollFixture{importFixture{path: path}, make(map[int64]int)}
+	p, err := pollConfig("3", "docs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reads int
+	endpoint := "repositories/88/issues?state=open&labels=forgeos-agent&sort=created&direction=asc&per_page=" + strconv.Itoa(pageSize) + "&page="
+	get := func(_ context.Context, path string, dst any) error {
+		reads++
+		if path == "repos/my-org/project" {
+			return json.Unmarshal([]byte(`{"id":88,"full_name":"my-org/project"}`), dst)
+		}
+		start, end := 1, pageSize
+		switch path {
+		case endpoint + "1", endpoint + "2":
+		case endpoint + "3":
+			// A changing GitHub list may repeat the last issue on the next page.
+			start, end = pageSize, pageSize+1
+		default:
+			t.Fatalf("unnecessary GitHub request: %s", path)
+		}
+		page := make([]githubIssue, 0, end-start+1)
+		for n := start; n <= end; n++ {
+			i := githubIssue{ID: int64(100 + n), Number: int64(n), RepoURL: "https://api.github.com/repos/my-org/project", State: "open",
+				HTMLURL: fmt.Sprintf("https://github.com/my-org/project/issues/%d", n), Title: "sample", UpdatedAt: "2026-01-05T16:00:00Z"}
+			if n <= 5 || n >= pageSize {
+				i.Labels = []struct{ Name string }{{agentLabel}}
+			}
+			switch n {
+			case 1:
+				i.PullRequest = json.RawMessage(`{}`)
+			case 2:
+				i.State = "closed"
+			case 3:
+				i.RepoURL = "https://api.github.com/repos/another/project"
+			case 4:
+				i.HTMLURL = "https://github.com/another/project/issues/4"
+			}
+			page = append(page, i)
+		}
+		*dst.(*[]githubIssue) = page
+		return nil
+	}
+	for range 2 {
+		if err := p.scan(context.Background(), data, root, get); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reads != 8 || len(data.received) != 3 || data.received[5] != 2 || data.received[int64(pageSize+1)] != 2 ||
+		data.spec.BaseCommit != base || data.spec.Validation != "docs" || data.spec.Issue.RepositoryID != 88 {
+		t.Fatalf("reads=%d received=%v spec=%+v", reads, data.received, data.spec)
+	}
+}
+
+func TestPollingStopsDuringRequest(t *testing.T) {
+	root, path, _ := issueTestRepo(t)
+	p := &issuePoller{3, "go-test"}
+	data := &importFixture{path: path}
+	started := make(chan struct{})
+	get := func(ctx context.Context, _ string, _ any) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	stop := p.start(context.Background(), data, root, get)
+	select {
+	case <-started:
+	case <-time.After(4 * time.Second):
+		stop()
+		t.Fatal("poller did not start")
+	}
+	stop()
+	if err := p.scan(context.Background(), data, root, func(context.Context, string, any) error { return errGHLimit }); !errors.Is(err, errGHLimit) {
+		t.Fatalf("expected GitHub rate limit, got %v", err)
+	}
+}

@@ -1,0 +1,168 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"strings"
+)
+
+type Issue struct {
+	RepositoryID int64  `json:"repository_id"`
+	Repository   string `json:"repository"`
+	ID           int64  `json:"id"`
+	Number       int64  `json:"number"`
+	URL          string `json:"url"`
+	Title        string `json:"title"`
+	Body         string `json:"body"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
+type IssueSpec struct {
+	Issue      Issue  `json:"issue"`
+	BaseCommit string `json:"base_commit"`
+	Validation string `json:"validation"`
+}
+
+type ValidationResult struct {
+	Profile  string `json:"profile"`
+	Commit   string `json:"commit"`
+	ExitCode int    `json:"exit_code"`
+	Output   string `json:"output"`
+}
+
+func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
+	var p Project
+	err := s.db.QueryRowContext(ctx, `SELECT id, path, COALESCE(github_repository_id, 0)
+		FROM projects WHERE id = $1`, id).Scan(&p.ID, &p.Path, &p.RepositoryID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, ErrNotFound
+	}
+	return p, err
+}
+
+func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec) (Task, error) {
+	issue := spec.Issue
+	if issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
+		(spec.Validation != "docs" && spec.Validation != "go-test") {
+		return Task{}, ErrConflict
+	}
+	snapshot, err := json.Marshal(spec)
+	if err != nil {
+		return Task{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+	var bound sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT github_repository_id FROM projects WHERE id = $1 FOR UPDATE`, projectID).Scan(&bound)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrNotFound
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	if bound.Valid && bound.Int64 != issue.RepositoryID {
+		return Task{}, ErrConflict
+	}
+	if !bound.Valid {
+		if _, err = tx.ExecContext(ctx, `UPDATE projects SET github_repository_id = $2 WHERE id = $1`, projectID, issue.RepositoryID); err != nil {
+			return Task{}, err
+		}
+	}
+	var id int64
+	err = tx.QueryRowContext(ctx, `
+		WITH created AS (
+		    INSERT INTO work_items(project_id, kind, status, github_issue_id, spec)
+		    VALUES ($1, 'codex_issue', 'READY', $2, $3)
+		    ON CONFLICT (project_id, github_issue_id) DO NOTHING RETURNING id
+		)
+		INSERT INTO task_events(task_id, type) SELECT id, 'issue_imported' FROM created
+		RETURNING task_id`, projectID, issue.ID, string(snapshot)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = tx.QueryRowContext(ctx, `SELECT id FROM work_items WHERE project_id = $1 AND github_issue_id = $2`,
+			projectID, issue.ID).Scan(&id)
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Task{}, err
+	}
+	return s.Task(ctx, id)
+}
+
+func (s *Store) RetryIssueExecution(ctx context.Context, executionID int64) (Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+	var taskID int64
+	err = tx.QueryRowContext(ctx, `SELECT task_id FROM executions WHERE id = $1 FOR UPDATE`, executionID).Scan(&taskID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrNotFound
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	// Replaying the original request must never schedule another attempt, even if its successor failed.
+	var alreadyRetried bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS (
+	    SELECT 1 FROM task_events WHERE task_id = $1 AND execution_id = $2 AND type = 'execution_retry_requested'
+	)`, taskID, executionID).Scan(&alreadyRetried)
+	if err != nil {
+		return Task{}, err
+	}
+	if !alreadyRetried {
+		var eventID int64
+		err = tx.QueryRowContext(ctx, `
+			WITH queued AS (
+			    UPDATE work_items SET status = 'READY'
+			    WHERE id = $1 AND kind = 'codex_issue' AND status = 'FAILED'
+			      AND $2 = (SELECT id FROM executions WHERE task_id = $1 ORDER BY id DESC LIMIT 1)
+			    RETURNING id
+			)
+			INSERT INTO task_events(task_id, execution_id, type)
+			SELECT id, $2, 'execution_retry_requested' FROM queued RETURNING id`, taskID, executionID).Scan(&eventID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Task{}, ErrConflict
+		}
+		if err != nil {
+			return Task{}, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return Task{}, err
+	}
+	return s.Task(ctx, taskID)
+}
+
+func validCommit(sha string) bool {
+	if len(sha) != 40 && len(sha) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(sha)
+	return err == nil && strings.ToLower(sha) == sha
+}
+
+func (spec IssueSpec) accepts(r Result) bool {
+	if r.BaseCommit != "" && r.BaseCommit != spec.BaseCommit {
+		return false
+	}
+	if r.Commit != "" && (!validCommit(r.Commit) || len(r.Commit) != len(spec.BaseCommit) || r.Commit == spec.BaseCommit) {
+		return false
+	}
+	v := r.Validation
+	if v != nil && (r.Commit == "" || v.Commit != r.Commit || v.Profile != spec.Validation) {
+		return false
+	}
+	if r.ExitCode != 0 {
+		return strings.TrimSpace(r.Error) != ""
+	}
+	return r.Error == "" && r.BaseCommit == spec.BaseCommit && strings.TrimSpace(r.SessionID) != "" && v != nil && v.ExitCode == 0
+}
