@@ -37,6 +37,7 @@ export function CandidatePreviews({ task, execution, commit, request }: { task: 
         <button className="button" disabled={busy || !directory.trim()} onClick={() => void change()}>启动预览</button></>
         : listing && <p>控制面尚未配置本机预览端口。</p>}
       {listing?.previews.map(p => <div key={p.id}><strong>{p.directory}</strong> · {p.state === 'active' ? '运行中' : p.state === 'stopped' ? '已停止' : '已到期'} · 到期时间 {formatTime(p.expires_at)}
+        {' '}<a href={`#/tasks/${task}/previews/${p.id}/feedback`}>预览反馈</a>
         {p.state === 'active' && <> <a href={p.url} target="_blank" rel="noreferrer">打开预览</a>
           {listing.gateway && <> · <a href={`https://p-${p.id}.${listing.gateway}/`} target="_blank" rel="noreferrer">打开私网预览</a></>}
           {' '}<button className="button" disabled={busy} onClick={() => void change(p.id)}>停止预览</button></>}

@@ -1,0 +1,53 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import { formatTime, type ApiRequest } from './shared'
+
+type Note = { id: number; created_at: string; body: { path: string; note: string; element?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+type Page = { preview: { execution_id: number; commit: string; directory: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
+
+export function PreviewFeedback({ task, preview, request }: { task: number; preview: string; request: ApiRequest }) {
+  const [page, setPage] = useState<Page | null>(null)
+  const [path, setPath] = useState('/')
+  const [note, setNote] = useState('')
+  const [caseID, setCaseID] = useState('')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [version, setVersion] = useState(0)
+  const [key, setKey] = useState(() => crypto.randomUUID())
+  const api = `/tasks/${task}/previews/${preview}/feedback`
+  useEffect(() => {
+    const controller = new AbortController()
+    request<Page>(api, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) setPage(result) })
+      .catch(e => { if (!controller.signal.aborted) setError(e.message) })
+    return () => controller.abort()
+  }, [api, request, version])
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!page || busy) return
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await request<{ id: number }>(api, { method: 'POST', body: JSON.stringify({ request_id: key,
+        execution_id: page.preview.execution_id, commit: page.preview.commit, path: path.trim(), note: note.trim(),
+        case_id: caseID, plan_revision: caseID ? page.plan?.revision : 0 }) })
+      setMessage(`反馈 #${result.id} 已登记。`); setNote(''); setKey(crypto.randomUUID()); setVersion(n => n + 1)
+    } catch (e) { setError(e instanceof Error ? e.message : '反馈提交失败。') }
+    finally { setBusy(false) }
+  }
+  return <section className="panel"><a href={`#/tasks/${task}`}>返回任务 T-{task}</a><h1>预览反馈</h1>
+    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+    {page && <><p>执行 {page.preview.execution_id} · {page.preview.directory} · <code>{page.preview.commit}</code></p>
+      <form onSubmit={submit}><fieldset><legend>记录观察</legend>
+        <label>页面路径（省略查询参数和片段）<input required maxLength={2048} value={path} onChange={e => setPath(e.target.value)} /></label>
+        <label>关联测试用例<select value={caseID} onChange={e => setCaseID(e.target.value)}><option value="">无关联用例</option>
+          {page.plan?.cases.map(c => <option key={c.id} value={c.id}>{c.id} · {c.objective}</option>)}</select></label>
+        <label>观察结果或修改意见<textarea required maxLength={8192} value={note} onChange={e => setNote(e.target.value)} /></label>
+        <button className="button" disabled={busy || !note.trim()}>提交反馈</button>
+      </fieldset></form><h2>该预览的反馈</h2>
+      {!page.feedback.length && <p>尚无反馈。</p>}
+      {page.feedback.map(f => <article key={f.id}><h3>反馈 #{f.id}</h3><p>待 Management 分类 · {formatTime(f.created_at)} · <code>{f.body.path}</code>
+        {f.body.case_id && ` · 计划 v${f.body.plan_revision} · ${f.body.case_id}`}</p><p>{f.body.note}</p>
+        {f.body.element && <p>元素 <code>{f.body.element}</code></p>}
+        {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}</article>)}
+    </>}
+  </section>
+}

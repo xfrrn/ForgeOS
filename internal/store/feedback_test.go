@@ -1,0 +1,96 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+)
+
+func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
+	db := isolatedDatabase(t)
+	s := New(db)
+	ctx := context.Background()
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.Repeat("b", 40)
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{ID: 17, Number: 17, RepositoryID: 1}, BaseCommit: strings.Repeat("a", 40), Validation: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var execution int64
+	err = db.QueryRowContext(ctx, `INSERT INTO executions(task_id,worker,workspace,lease_hash,lease_until,result) VALUES($1,'test','work','hash',now(),
+		jsonb_build_object('commit',$2::text,'exit_code',0,'validation',jsonb_build_object('commit',$2::text,'exit_code',0))) RETURNING id`, task.ID, sha).Scan(&execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := s.OpenPreview(ctx, task.ID, execution, sha, "public", 8091, 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview struct{ ID string }
+	if err = json.Unmarshal(out, &preview); err != nil {
+		t.Fatal(err)
+	}
+	f := PreviewFeedback{Request: "b52facfe-ad63-43c9-bcfe-f436a5728d8b", Execution: execution, Commit: sha, Path: "/", Note: "Observed the count."}
+	type response struct {
+		id  int64
+		err error
+	}
+	results := make(chan response, 4)
+	for range cap(results) {
+		go func() { id, err := s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, f); results <- response{id, err} }()
+	}
+	var first int64
+	for range cap(results) {
+		r := <-results
+		if r.err != nil || r.id <= 0 || (first != 0 && first != r.id) {
+			t.Fatalf("feedback result %v", r)
+		}
+		first = r.id
+	}
+	var count int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM task_events WHERE task_id=$1 AND type='preview_feedback_received'`, task.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("events=%d error=%v", count, err)
+	}
+	if _, err = s.SubmitPreviewFeedback(ctx, task.ID+1, preview.ID, f); !errors.Is(err, ErrConflict) {
+		t.Fatalf("cross-task replay: %v", err)
+	}
+	f.Note = "different observation"
+	if _, err = s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, f); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed replay: %v", err)
+	}
+}
+
+func TestFeedbackContextValidation(t *testing.T) {
+	f := PreviewFeedback{Request: "1be99db3-344d-48a5-865f-9b5886ca91d7", Execution: 10, Commit: strings.Repeat("c", 40),
+		Path: "/public/queue%20demo/", Browser: "Chrome/143", Width: 1280, Height: 900, Element: "main:nth-of-type(1) > output:nth-of-type(2)",
+		Note: "The count needs an accessible name.", Revision: 2, Case: "TC-002"}
+	if !f.Valid() {
+		t.Fatal("rejected valid feedback")
+	}
+	for _, p := range []string{"/?session=x", "/page%23secret", "//other.example/path", "/../other", "/%2e", "/a%5cb", "not/a/path"} {
+		bad := f
+		bad.Path = p
+		if bad.Valid() {
+			t.Errorf("accepted %q", p)
+		}
+	}
+	for _, bad := range []func(*PreviewFeedback){
+		func(f *PreviewFeedback) { f.Request = "no-key" }, func(f *PreviewFeedback) { f.Height = 0 },
+		func(f *PreviewFeedback) { f.Element = "input[value=private]" }, func(f *PreviewFeedback) { f.Revision = 0 },
+		func(f *PreviewFeedback) { f.Browser = "raw user agent string" },
+	} {
+		test := f
+		bad(&test)
+		if test.Valid() {
+			t.Fatal("accepted invalid feedback context")
+		}
+	}
+}

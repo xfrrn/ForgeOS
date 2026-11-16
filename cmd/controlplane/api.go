@@ -32,6 +32,7 @@ func routes(data *store.Store, root, owner string, workers workerAccess, deliver
 	registerPlanRoutes(mux, data, root, owner)
 	registerQuestionRoutes(mux, data, owner)
 	registerWebRoutes(mux, data, root, owner)
+	registerPreviewFeedback(mux, data, owner)
 	mux.HandleFunc("POST /tasks/{id}/delivery/refresh", authorized(owner, delivery.refresh(data, root)))
 	mux.HandleFunc("POST /tasks/{id}/acceptance", authorized(owner, delivery.review(data)))
 	mux.HandleFunc("POST /tasks/{id}/validation-status", authorized(owner, delivery.validationStatus(data, root)))
