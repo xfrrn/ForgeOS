@@ -94,6 +94,11 @@ func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, d
 	if !result.succeeded() || result.Commit != commit || !issue.accepts(result) {
 		return Task{}, ErrConflict
 	}
+	if decision == "approve" {
+		if err = canApproveReview(ctx, tx, taskID, executionID); err != nil {
+			return Task{}, err
+		}
+	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO acceptance_reviews(task_id,execution_id,"commit",decision,note)
 		VALUES ($1,$2,$3,$4,$5)`, taskID, executionID, commit, decision, note); err != nil {
 		return Task{}, err

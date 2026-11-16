@@ -53,6 +53,19 @@ Worker 从授权仓库的 Git 对象读取变更文件的前后内容和模式�
 
 当前文本审查入口支持最多 128 个变更路径、前后文本合计 192 KiB。二进制、非普通文件或超限输入会明确报错，保留人工审查。命令输出可独立留档。
 
+### 让审查报告参与候选验收
+
+控制面设置 `FORGEOS_REVIEWER_PROJECT_ID` 和专用 `FORGEOS_REVIEWER_TOKEN`。审查节点设置相同的 Reviewer 令牌、控制面回环地址、仓库根目录和 Claude 可执行文件，运行 `worker reviewer`。开发 Worker、Owner、Management 与 Reviewer 的 API 凭据各自独立。审查节点和控制面均需能读取所登记仓库内的候选提交。
+
+| 操作 | Owner 接口与结果 |
+| --- | --- |
+| 为项目启用必需审查 | `PUT /projects/{id}/review-policy`，请求 `{"required":true}`。最新候选通过本地验证后进入审查。已有项目默认沿用其原验收方式。 |
+| 单独请求或重试失败的审查 | `POST /tasks/{id}/code-review`，提交 `execution_id`、`commit`。相同候选复用请求，失败作业可以重新领取。重复请求保留已完成的报告。 |
+| 查看执行对应的回执 | `GET /tasks/{id}/code-review?execution_id=…`。回执包含基础和候选 SHA、请求和完成时间、报告或失败时间。Worker 中断后租约六分钟到期，其他 Reviewer 可重新领取。 |
+| 核对发现 | 控制面重新读取固定 Git 对象并逐项校对引用。若仍有阻塞发现或引用未核实，Owner 可退回候选，或在核对后向 `POST /tasks/{id}/code-review/check` 提交 `execution_id`、`commit`、`note`，记录判断依据。随后按原验收入口提交决定。 |
+
+项目已启用审查或 Owner 单独发起审查时，缺少报告、审查失败或发现尚待核对，批准请求返回 409。退回后产生的新执行需要自己的审查。Reviewer 无权批准或交付候选。
+
 ## 5. Local CI Runner
 
 接口建议：

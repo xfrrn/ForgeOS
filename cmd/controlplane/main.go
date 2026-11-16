@@ -91,6 +91,9 @@ func run(ctx context.Context) error {
 		}
 	}
 	registerSecretBroker(mux, data, owner, workers, vault, broker)
+	if err := registerCodeReviews(mux, data, root, owner, manager, workers); err != nil {
+		return err
+	}
 	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), manager, owner, workers); err != nil {
 		return err
 	}

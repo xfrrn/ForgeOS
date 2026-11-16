@@ -28,7 +28,7 @@ type worker struct {
 	client                                  *http.Client
 }
 
-func fromEnv(management bool) (*worker, error) {
+func fromEnv(role string) (*worker, error) {
 	if os.Geteuid() == 0 {
 		return nil, errors.New("worker requires a non-root user")
 	}
@@ -50,7 +50,15 @@ func fromEnv(management bool) (*worker, error) {
 		return nil, errors.New("FORGEOS_API_URL must be a loopback HTTP(S) origin")
 	}
 	w.api = strings.TrimRight(w.api, "/")
-	if management {
+	if role == "reviewer" {
+		w.token = os.Getenv("FORGEOS_REVIEWER_TOKEN")
+		info, err := os.Stat(w.repoRoot)
+		if strings.TrimSpace(w.token) == "" || !filepath.IsAbs(w.repoRoot) || err != nil || !info.IsDir() {
+			return nil, errors.New("set FORGEOS_REVIEWER_TOKEN and an existing absolute FORGEOS_REPO_ROOT")
+		}
+		return w, nil
+	}
+	if role == "management" {
 		w.token = os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
 		if strings.TrimSpace(w.token) == "" {
 			return nil, errors.New("set FORGEOS_MANAGEMENT_TOKEN")
@@ -196,15 +204,20 @@ func main() {
 		}
 		return
 	}
-	management := len(os.Args) == 2 && os.Args[1] == "management"
-	if len(os.Args) > 1 && !management {
-		log.Fatal("usage: worker [management|review-candidate]")
+	var role string
+	if len(os.Args) == 2 {
+		role = os.Args[1]
 	}
-	w, err := fromEnv(management)
+	if len(os.Args) > 1 && role != "management" && role != "reviewer" {
+		log.Fatal("usage: worker [management|reviewer|review-candidate]")
+	}
+	w, err := fromEnv(role)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if management {
+	if role == "reviewer" {
+		err = w.runReviewer(ctx)
+	} else if role == "management" {
 		err = w.runManagement(ctx)
 	} else {
 		err = w.run(ctx)

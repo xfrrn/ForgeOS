@@ -11,7 +11,7 @@
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
 | 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。 | 已验收 Owner 发起和回答的验收检查点。角色分级、运行中 Harness 请求与恢复、需求修订和事件合并待实现与验收。 |
-| 三 · 审查、验证规则与验收方法 | 已有 docs 和 go-test 两项预设验证。 | 只读 Review、V1–V4 风险判定、仓库规则、Playbook、测试计划待实现与验收。 |
+| 三 · 审查、验证规则与验收方法 | docs、go-test 和绑定候选的独立只读审查已实测。alpha #10 经独立审查、Owner 验收和 GitHub 必需 CI 后合并，见下文。 | V1–V4 风险判定、仓库规则、Playbook、测试计划待补齐与验收。 |
 | 三 · 预览、批注与知识 | 现有反馈可绑定执行和候选 SHA。 | Tailscale/Caddy、浏览器元素/截图/录屏、知识来源与决策索引待实现与验收。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
 | 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。 | 另一种 Harness 或节点、资源调度、能力注册、备份、压力与节点失联验收待完成。 |
@@ -52,7 +52,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session、真实失联租约、评论检查点；Ubuntu 非 root systemd 服务实测见下文 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f` | App Server、Claude Code 原生恢复、Linux Harness 登录复用、多节点恢复 |
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与隔离恢复、Go 控制面只查元数据 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`，状态接口证据见下文 | Secret Broker、按执行受控使用与业务审计 |
-| 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、失败的 Actions 门禁、候选变化后重新验证 | `1a17822`、`32c0fa0` | 只读审查、V1–V4、仓库验证 Schema、检查报告与 GitHub 状态回传 |
+| 10 审查与验证 | 真实 docs 验证、离线 Docker Go 测试、Actions 门禁、候选变化后重新验证、只读审查及验收门禁 | `1a17822`、`32c0fa0`、`85cd1cb`，门禁见 alpha #10 记录 | V1–V4、仓库验证 Schema、逐项检查报告与 GitHub 状态回传 |
 | 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付 | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5` | Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
@@ -282,3 +282,14 @@ OpenBao 部署及恢复对应 `ab013b603c4bb3368e1daf777dcae7b6f3599b02`。
 | 用 `worker review-candidate` 审查队列配额代码。工作树已位于修复版，传入有边界错误的历史候选 | 审查读到固定候选，报告具体行号和可核对证据 | Claude Code Session `bfda2a07-502c-4ae6-8012-64ce4798e0e5` 在 `63d21b5ef9fb07acdd9c7e8107c5094e7252638f` 报告 High、blocking，指出 quota.py 第 3 行的 `<=`。Git 对象核对 evidence_verified=true |
 | 改传修复候选，再审查此前通过真实 CI 的 alpha PR #9 候选 | 每次产生独立会话，报告绑定各自候选，保留原工作树 | `b1a07b8e4619487ba9842e78859da8157c24c937` 的会话 `1d1d8a72-2923-46fe-aadc-4fa44fbd4192` 无发现。alpha 的 `deb856d2e1e1b0c1e0102869998450c396899a5c` 由 `c6d8dbf4-1407-4c3b-8a3b-f5c27f8467ba` 完成，亦无发现。前后工作树 HEAD 及含未跟踪文件的状态一致 |
 | 回归错误引用、删除行、重复 Finding ID 和二进制输入 | 错行或工作区独有内容不能伪造 Git 证据，无法完整处理的输入明确失败 | Git 对象测试通过，原页面 diff 的截断和外部 diff 禁用测试通过 |
+
+只读候选审查对应 ForgeOS 提交 `85cd1cb0b3763e160f24bff722531c99cfce0469`。
+
+## 专题 07、10、12 · 独立审查参与真实 GitHub 交付
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 启用项目 2 的审查门禁，按编号导入 alpha #10，并让开发 Worker 完成 | 得到可追溯的候选及本地验证。缺报告或请求审查其他 SHA 时拒绝 | 任务 28、执行 24、候选 `eeee49d87d1d503c97f2397bac6d2063646cbb5a`。报告尚未完成时批准返回 409，旧 SHA 请求审查返回 409。开发身份领取审查、审查身份提交批准都返回 401 |
+| 按固定执行请求审查，在独立进程启动 `worker reviewer` | Claude 与开发会话分离，控制面核对固定对象并保存独立回执 | 会话 `39ae331b-2e6e-4512-9b7d-f05d8e2bc3a1` 完成，未报告发现。回执与开发结果的基础和候选 SHA 逐字段一致。Owner 批准成功，控制面重启后回执完全相同 |
+| 让交付器创建 PR，等待必需检查，在相同 head 重跑首次失败的检查 | 检查通过才允许合并，Issue 回写并关闭 | PR #11 的 `acceptance-check` 成功，合并 SHA 为 `e20d92779c846102f3e58d1fd33169bbabb59d8b`。任务 DONE，Issue CLOSED。[Issue #10](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/10) · [PR #11](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/11) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43841822142) |
+| 用 PostgreSQL 测试失败、重试、错租约、开发会话复用、报告重放和引用未核实 | 无有效报告或缺核对说明时不能批准，重试使用新租约 | `TestCodeReviewGate` 通过。启用 PostgreSQL 和 Docker 的全套 Go 测试共 70 项通过、零跳过，`go vet ./...` 通过 |
