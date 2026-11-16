@@ -18,6 +18,10 @@ import (
 )
 
 type InventoryFile struct {
+	ManagedDependencies   []string                            `json:"managed_dependencies,omitempty"`
+	BOMImports            []string                            `json:"bom_imports,omitempty"`
+	ParentSources         []ManifestSource                    `json:"parent_sources,omitempty"`
+	ProfileDependencies   map[string]MavenDeclarations        `json:"profile_dependencies,omitempty"`
 	WorkspaceDependencies []string                            `json:"workspace_dependencies,omitempty"`
 	WorkspaceSource       *ManifestSource                     `json:"workspace_source,omitempty"`
 	UnresolvedInputs      int                                 `json:"unresolved_inputs,omitempty"`
@@ -51,7 +55,9 @@ func inventoryKind(file string) string {
 		return "python"
 	case "cargo.toml":
 		return "cargo"
-	case "pom.xml", "build.gradle", "build.gradle.kts", "gemfile":
+	case "pom.xml":
+		return "maven"
+	case "build.gradle", "build.gradle.kts", "gemfile":
 		return "manifest"
 	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "gemfile.lock", "composer.lock":
 		return "lock"
@@ -78,6 +84,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 	}
 	files := []InventoryFile{}
 	cargo := map[string]*cargoManifest{}
+	poms := map[string]*mavenPOM{}
 	readBudget := 8 << 20
 	for _, entry := range bytes.Split(raw, []byte{0}) {
 		if len(entry) == 0 {
@@ -107,7 +114,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" {
+		} else if kind == "node" || kind == "go" || kind == "composer" || kind == "python" || kind == "cargo" || kind == "maven" {
 			if kind == "cargo" {
 				cargo[file] = nil
 			}
@@ -126,6 +133,11 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 					if cargo[file] == nil {
 						c.Problem = "invalid_manifest"
 					}
+				} else if kind == "maven" {
+					poms[file] = readMaven(data, c.Blob)
+					if poms[file] == nil {
+						c.Problem = "invalid_manifest"
+					}
 				} else {
 					c.readManifest(data)
 				}
@@ -134,6 +146,12 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 		files = append(files, c)
 	}
 	resolveCargo(files, cargo)
+	mavenBudget := 8 << 20
+	for i := range files {
+		if pom := poms[files[i].Path]; pom != nil {
+			files[i].resolveMaven(pom, poms, &mavenBudget)
+		}
+	}
 	return files, nil
 }
 

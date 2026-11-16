@@ -5,12 +5,14 @@ import { InitializationReports } from './InitializationReports'
 
 type Source = { path: string; blob: string; kind: string; dependencies?: string[]; scripts?: string[]; problem?: string; unresolved_inputs?: number; dynamic_fields?: string[]
   workspace_dependencies?: string[]; workspace_source?: {path: string; blob: string}
+  managed_dependencies?: string[]; bom_imports?: string[]; parent_sources?: {path:string;blob:string}[]
+  profile_dependencies?: Record<string,{dependencies?:string[];managed_dependencies?:string[];bom_imports?:string[]}>
   local_environments?: Record<string, {start_script: string; port: number; health_path: string; timeout_seconds: number}>
   secret_requirements?: { environment: string; name: string; risk: string }[] }
 type Report = { execution_id: number; commit_sha: string; github_origin: string; repository_id?: number; scanned_at: string; files: Source[] }
 type StartupCheck = { id: number; environment: string; status: string }
-const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', cargo: 'Rust Cargo', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
-const problems: Record<string,string> = { size_limit: '清单超过读取上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
+const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', cargo: 'Rust Cargo', maven: 'Maven POM', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
+const problems: Record<string,string> = { size_limit: '清单超过读取上限', analysis_budget: '清单继承或依赖展开达到本次扫描上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
 
 export function RepositoryInventory({ task, request }: { task: number; request: ApiRequest }) {
   const [report, setReport] = useState<Report>()
@@ -79,6 +81,15 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       {Boolean(f.dependencies?.length) && <p>声明依赖 · {f.dependencies?.join('、')}</p>}
       {f.workspace_dependencies?.length ? <p>工作区共享依赖 · {f.workspace_dependencies.join('、')}</p> : null}
       {f.workspace_source && <p>继承来源 · {f.workspace_source.path} · <code>{f.workspace_source.blob}</code></p>}
+      {f.parent_sources?.map(p=><p key={p.path}>父 POM · {p.path} · <code>{p.blob}</code></p>)}
+      {f.managed_dependencies?.length ? <p>受管依赖 · {f.managed_dependencies.join('、')}</p> : null}
+      {f.bom_imports?.length ? <p>导入 BOM · {f.bom_imports.join('、')}</p> : null}
+      {f.profile_dependencies && Object.entries(f.profile_dependencies).map(([name,d])=><details key={name}>
+        <summary>条件配置 · {name}</summary>
+        {d.dependencies?.length ? <p>声明依赖 · {d.dependencies.join('、')}</p> : null}
+        {d.managed_dependencies?.length ? <p>受管依赖 · {d.managed_dependencies.join('、')}</p> : null}
+        {d.bom_imports?.length ? <p>导入 BOM · {d.bom_imports.join('、')}</p> : null}
+      </details>)}
       {f.scripts?.map(name => <p key={name}><code>{f.kind === 'composer' ? 'composer run-script ' : f.kind === 'node' ? 'npm run ' : ''}{name}</code></p>)}
       {f.unresolved_inputs ? <p>未解析为包名的来源 · {f.unresolved_inputs} 项</p> : null}
       {f.dynamic_fields?.length ? <p>由构建后端动态提供 · {f.dynamic_fields.join('、')}</p> : null}

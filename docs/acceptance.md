@@ -1175,3 +1175,18 @@ Python 包清单对应 ForgeOS 提交 `c5608ae0ab3068485c40649a115a5bfc8c4c267d`
 | 在两次任务各归档初始化报告、领取一次 Agent 输入并重启控制面 | 报告保留同一清单，Agent 收到声明名，历史版本可回读 | 两份报告中的清单逐字段相同于对应任务；成员与根清单的文本摘要不含声明中的私有路径标记。控制面重启后两版清单逐字段一致 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 148 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+Cargo 工作区清单对应 ForgeOS 提交 `9e9e55269894dcb65e904c1906e07d539b739eee`。
+
+## 专题 01 · Maven 父 POM 与条件依赖
+
+使用 PostgreSQL 18 schema `maven_60738cc1`、正式 Worker、控制面和 Chrome。将同一提交只读挂载到禁网容器，用 Maven 3.9.16 Model Builder 分别构造默认模型和启用 qa 的模型。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在项目页执行 HEAD 检查，打开 app/pom.xml，展开 qa | 普通、受管和条件依赖的坐标与原生模型一致 | 提交 `2f5d5f1195a586a994fc2ccf5ddaf507da67b856`。两端均读到 org.first:core、org.fixture:helper、org.parent:base。受管的 org.managed:only 和 qa 的 org.qa:integration 分别展示 |
+| 仅修改父 POM 的属性，再次检查并归档 | 子 POM blob 不变，新报告使用新的父属性 | 提交 `36063349f0a4fecd07e53972d6234b134fd0e31f`。子 blob 均为 `f1b0ce4f2e44914539cdaf2aa12a4f4bccd97a89`，父 blob 从 `25d55cb1c9990f73b4ca38b1dfe217d6156a2297` 变为 `e6b4e2b22e222d8caf12c9864e204ae0d6601406`。两端均读到 org.next:core |
+| 同时扫描坏 XML、仅远端可取的父 POM 和环境变量 | 各文件独立记录读取结果，工作台可以继续归档 | 坏 XML 标为 invalid_manifest；远端父和环境属性共两项未解析 |
+| 归档两版报告、领取 Management 输入，重启控制面回读 | 每版包含当时的依赖和来源，Agent 输入保留声明种类 | 两份报告与当次清单逐字段一致。Management 输入含直接及受管坐标，未包含验收用的私有标记。重启后两版清单均与重启前相同 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 149 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。

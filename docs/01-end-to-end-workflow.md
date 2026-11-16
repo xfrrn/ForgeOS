@@ -42,6 +42,8 @@ Owner 在工作台选择“项目接入”，登记控制面机器上的 Git 仓
 
 Rust Cargo 清单列出普通、开发、构建及平台条件下声明的直接包名。重命名依赖使用实际包名。对 `workspace = true` 的条目，扫描在同一提交内查找工作区声明，记录根清单路径和 blob。虚拟工作区展示可供成员继承的共享依赖。无法从归档确认的引用计入未解析来源。此清单汇总各平台声明，具体构建选用的依赖另由 Cargo 确定。[Cargo 工作区](https://doc.rust-lang.org/cargo/reference/workspaces.html) · [Cargo 依赖声明](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html)
 
+Maven 清单从固定提交的 `pom.xml` 读取依赖坐标。若子项目的相对路径和父项目坐标均匹配，工作台显示父 POM 的路径及 blob，并使用这条继承链上的属性。直接依赖、dependencyManagement 声明、导入的 BOM 和各 profile 的条件声明分开列出。远端父 POM、环境变量及 settings 引用计入未解析来源。扫描不下载 BOM 或运行插件，profile 的实际激活由 Maven 决定。[Maven POM](https://maven.apache.org/pom.html) · [Maven Model Builder](https://maven.apache.org/ref/3.9.11/maven-model-builder/)
+
 Owner 用 `POST /tasks/{id}/repository-inventory` 生成或复用清单，`GET` 读取归档。首次扫描需要本机克隆仍有对应提交，归档随项目数据库保存。无效或过大的清单会在对应条目标明原因。整棵树的 Git 列表上限为 16 MiB，最多归档 2000 个匹配文件；解析单个包清单最多读取 256 KiB，每次累计 8 MiB。符号链接、子模块、vendor 和 node_modules 目录不作为初始化输入。依赖声明与脚本名称仅作发现依据，启动及测试结果另有实际执行回执。
 
 需要声明项目密钥时，将环境、名称和预期风险写入根配置的 `secret_requirements`。扫描结果附在该文件的条目中。实际元数据登记与执行授权见[密钥需求和授权](09-security-and-secrets.md#项目声明的需求)。
