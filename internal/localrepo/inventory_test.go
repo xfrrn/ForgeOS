@@ -53,3 +53,19 @@ func TestInventoryPinsCommitAndIgnoresPrivateAndVendoredFiles(t *testing.T) {
 		t.Fatal("accepted a blob as the checked revision")
 	}
 }
+
+func TestComposerInventoryUsesOnlyDeclaredPackageAndScriptNames(t *testing.T) {
+	file := InventoryFile{Kind: inventoryKind("app/composer.json")}
+	file.readManifest([]byte(`{"require":{"php":"^8","composer-runtime-api":"^2","example/project--name":"dev-main","invalid/url/extra":"1"},
+		"require-dev":{"ext-pdo":"*","example/project--name":"dev-main"},"suggest":{"vendor/optional":"suggestion"},"scripts":{"test":["handler","command"],"start":"command","unknown":[null],"--option":"command"}}`))
+	if file.Kind != "composer" || file.Problem != "" || !reflect.DeepEqual(file.Dependencies, []string{"composer-runtime-api", "example/project--name", "ext-pdo", "php"}) || !reflect.DeepEqual(file.Scripts, []string{"start", "test"}) {
+		t.Fatal(file)
+	}
+	for _, bad := range []string{"null", `{"require":[]}`, `{"scripts":"run"}`} {
+		file = InventoryFile{Kind: "composer"}
+		file.readManifest([]byte(bad))
+		if file.Problem != "invalid_manifest" || len(file.Dependencies)+len(file.Scripts) != 0 {
+			t.Fatal(file)
+		}
+	}
+}

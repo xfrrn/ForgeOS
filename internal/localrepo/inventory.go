@@ -30,6 +30,7 @@ type InventoryFile struct {
 
 var objectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 var npmName = regexp.MustCompile(`^(?:@[a-zA-Z0-9][a-zA-Z0-9._-]*/)?[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+var composerName = regexp.MustCompile(`^(?:[a-z0-9]+(?:[_.-][a-z0-9]+)*/[a-z0-9]+(?:(?:[_.]|-{1,2})[a-z0-9]+)*|(?i:hhvm|php(?:-(?:64bit|ipv6|zts|debug))?|(?:ext|lib)-[a-z0-9]+(?:[_.-][a-z0-9]+)*|composer(?:-(?:plugin|runtime)-api)?))$`)
 var scriptName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$`)
 
 func inventoryKind(file string) string {
@@ -40,7 +41,9 @@ func inventoryKind(file string) string {
 		return "go"
 	case "package.json":
 		return "node"
-	case "pyproject.toml", "requirements.txt", "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "gemfile", "composer.json":
+	case "composer.json":
+		return "composer"
+	case "pyproject.toml", "requirements.txt", "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "gemfile":
 		return "manifest"
 	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "uv.lock", "cargo.lock", "poetry.lock", "gemfile.lock", "composer.lock":
 		return "lock"
@@ -95,7 +98,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err
 			}
-		} else if kind == "node" || kind == "go" {
+		} else if kind == "node" || kind == "go" || kind == "composer" {
 			if readBudget <= 0 {
 				c.Problem = "read_budget"
 			} else {
@@ -148,6 +151,28 @@ func (f *InventoryFile) readManifest(data []byte) {
 				deps[d.Mod.Path] = true
 			}
 		}
+	} else if f.Kind == "composer" {
+		var m struct {
+			Require map[string]string
+			Dev     map[string]string `json:"require-dev"`
+			Scripts map[string]json.RawMessage
+		}
+		if err := json.Unmarshal(data, &m); err != nil || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+			f.Problem = "invalid_manifest"
+			return
+		}
+		for _, group := range []map[string]string{m.Require, m.Dev} {
+			for name, constraint := range group {
+				if composerName.MatchString(name) && constraint != "" {
+					deps[name] = true
+				}
+			}
+		}
+		for name, body := range m.Scripts {
+			if scriptName.MatchString(name) && composerScript(body) {
+				f.Scripts = append(f.Scripts, name)
+			}
+		}
 	} else {
 		var m struct{ Scripts, Dependencies, DevDependencies, PeerDependencies, OptionalDependencies map[string]json.RawMessage }
 		if err := json.Unmarshal(data, &m); err != nil || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
@@ -159,7 +184,6 @@ func (f *InventoryFile) readManifest(data []byte) {
 				f.Scripts = append(f.Scripts, name)
 			}
 		}
-		sort.Strings(f.Scripts)
 		for _, group := range []map[string]json.RawMessage{m.Dependencies, m.DevDependencies, m.PeerDependencies, m.OptionalDependencies} {
 			for name := range group {
 				if len(name) <= 214 && npmName.MatchString(name) {
@@ -172,4 +196,21 @@ func (f *InventoryFile) readManifest(data []byte) {
 		f.Dependencies = append(f.Dependencies, name)
 	}
 	sort.Strings(f.Dependencies)
+	sort.Strings(f.Scripts)
+}
+
+func composerScript(body json.RawMessage) bool {
+	if len(body) > 0 && body[0] == '"' {
+		return true
+	}
+	var steps []json.RawMessage
+	if json.Unmarshal(body, &steps) != nil || len(steps) == 0 {
+		return false
+	}
+	for _, step := range steps {
+		if len(step) == 0 || step[0] != '"' {
+			return false
+		}
+	}
+	return true
 }

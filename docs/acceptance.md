@@ -1101,3 +1101,17 @@ PostgreSQL 18 和 Docker 全量回归 142 项通过，零测试跳过。Go 静�
 | 用无凭据请求读列表、用 Worker 凭据尝试派发，再验证不匹配的节点、资源和回执 | Owner 管理入口限制访问，调度和回执绑定来源 | 两项真实 HTTP 请求均返回 401。数据库回归覆盖并发派发、跨项目授权、旧节点、错配集成项目、模型配额和不完整或篡改的成功回执 |
 
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 143 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
+
+工作台派发与启动回执归档对应 ForgeOS 提交 `42dee55abb05f6627a2acd0086a747cb5b4f25fe`。
+
+## 专题 01 · PHP Composer 依赖和脚本清单
+
+在独立 PostgreSQL schema `composer_7a54b0ad` 运行正式控制面和 Worker，从 Chrome 打开两次 HEAD 检查的归档。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 对同时包含 PHP 和 Node.js 的仓库执行 HEAD 检查，在 Chrome 展开两个包清单 | 各自显示正确的依赖和脚本入口 | T-1 对应 `90a66dc71c930fa8c7c1ec28ec904dcf1d8ab2e5`。PHP 条目包含 ext-pdo、monolog/monolog、php、phpunit/phpunit，脚本为 composer run-script start 和 test。Node.js 条目显示 npm run test |
+| 同时提供损坏的清单、vendor 子目录、建议安装的包以及含合成标记的脚本和仓库 URL | 错误定位到文件；归档只含声明名称；扫描不执行脚本 | 损坏的条目在 Chrome 显示“清单格式无效”，vendor 下的清单与建议包未进入结果。标准回执中没有合成标记和脚本正文，测试脚本没有创建文件 |
+| 更新 PHP 清单，从项目页再次检查 HEAD，重启控制面后回读两次结果 | 新旧清单独立归档 | T-2 对应 `e6007d00ce03e8babf5fe020c6a48d513692c808`，只显示 php 和 composer run-script verify。两次配置 blob 分别为 `bd018c27b8770c89506a7283c71910ba912050e8`、`eda3693ea975adcda0fd43013e96674df04a67a3`，重启后回执逐字段相同 |
+
+启用 PostgreSQL 18 和 Docker 的全量 Go 回归 144 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
