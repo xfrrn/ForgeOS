@@ -11,7 +11,7 @@
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
 | 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。 | 已验收 Owner 发起和回答的验收检查点。角色分级、运行中 Harness 请求与恢复、需求修订和事件合并待实现与验收。 |
-| 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查、Owner 验收和 GitHub 必需 CI 后合并。固定候选风险评估、组件规则匹配和 V1–V4 容器检查已实测。 | Issue 执行时强制风险等级、Playbook 库、测试计划待补齐与验收。 |
+| 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查、Owner 验收和 GitHub 必需 CI 后合并。固定候选风险评估、组件规则匹配和 V1–V4 容器检查已实测。beta #12 经 Issue 风险分级、控制面复算、页面验收和远端交付。 | Management 提高验证等级、Playbook 库、测试计划待补齐与验收。 |
 | 三 · 预览、批注与知识 | 现有反馈可绑定执行和候选 SHA。 | Tailscale/Caddy、浏览器元素/截图/录屏、知识来源与决策索引待实现与验收。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
 | 四 · 多 Worker、多 Harness 与运维 | 两个真实项目各交付了一个工作项，beta 在控制面停止后重启，复用既有 PR 完成回写。 | 另一种 Harness 或节点、资源调度、能力注册、备份、压力与节点失联验收待完成。 |
@@ -52,7 +52,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 07 Worker 与 Harness | Windows 原生 Codex 读写、只读规划、Session、真实失联租约、评论检查点；Ubuntu 非 root systemd 服务实测见下文 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f` | App Server、Claude Code 原生恢复、Linux Harness 登录复用、多节点恢复 |
 | 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`，共享证据见下文 | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与隔离恢复、Go 控制面只查元数据 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`，状态接口证据见下文 | Secret Broker、按执行受控使用与业务审计 |
-| 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。已从固定候选差异和仓库规则计算风险等级 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`，分级证据见下文 | Issue 运行时强制选级、运行管理和归档保留策略 |
+| 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 已强制应用风险等级 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`，Issue 强制选级见下文 | Management 提级、运行管理和归档保留策略 |
 | 11 预览与人工验收 | Chrome 读取差异、按候选 SHA 退回或批准、回答问题 | `1a17822`、`70781ba` | Playbook、测试计划、Tailscale/Caddy、页面批注/截图/录屏；外部设备待验收 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付 | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5` | Webhook、细粒度凭据和第二人审查实测 |
 | 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照和交付证据链 | `1a17822`、`83ea262`、`5447445` | 完整审计载荷、工件元数据/保留策略、Worker 离线缓冲 |
@@ -368,3 +368,14 @@ GitHub Commit Status 对应 ForgeOS 提交 `749351cf484cb665f275355fc25e67912651
 | 将只修改文档的候选按 staging 目标评估，请求最低 V1，再执行选出的等级 | 目标提高到 V3，运行格式、单元、构建与 HTTP 集成 | 候选 `91a226260d7c3c1962720f1531132cf6b7586976`，运行 `ci-run-3762549469`。四项均退出 0，HTTP 检查在独立 Linux 容器内启动服务并实际发送请求 |
 | 将 accounting 下的文档移出组件目录，管理建议 V1 | 基础版本中的旧路径命中 ledger 规则，保持 V4，追加安全与关键回归 | 候选 `a4a9f6373d89115f2aacebfda5585e0aa16a097e` 的三条差异路径中命中 `accounting/guide.md`。运行 `ci-run-527488150` 的六项检查全部退出 0，含 go vet 和队列边界回归 |
 | 从 Owner 与项目 Worker 入口读取匹配详情，尝试跨项目；在候选中降低验收规则 | 两种身份可读取授权项目的相同规则和人工验收要求；候选不能改写本次选级 | Worker 在其他项目被拒绝。ledger 返回 api-backend、payment、staging 人工验收及容量边界预期。降低规则的候选仍按基础规则评估 |
+
+固定候选风险评估对应 ForgeOS 提交 `fdc4192e440223fefd375fbb64e8ec979583d516`。启用 PostgreSQL 和 Docker 时 86 项 Go 测试通过，零跳过。
+
+## 专题 10、12 · 自动分级贯穿 Issue、容器检查和交付
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 通过 Owner 接口将 beta #12 以 docs、documentation、local 导入，再以仅有旧检查能力的 Worker 请求领取 | 策略冻结。GitHub 工作项最低为 PR 目标；旧节点不能领取 | 任务 33 保存自动分级、Owner 最低 V1 和 PR 目标。旧节点收到 204。新 Worker 领取执行 28，原生开发会话只修改了 docs/queue-inputs.md |
+| 在 Chrome 查看选级依据、检查和差异并批准，等待真实 GitHub 回执 | 文档差异为 V1，PR 提高到 V2，三项检查和远端必需检查通过才能交付 | 候选 `0a6de37033a90b6df3b270bf1e8dd3bf55a6f9ee`，运行 `ci-run-3420652059` 的 format、unit、build 均退出 0。状态 ID `59016109988` 标注 V2。远端必需检查首次失败，同 head 重跑成功；合并 SHA `fdef7f0867f55743acffd6c0b564736e3b6ff7a4`。任务 DONE、Issue CLOSED；重启后回执一致。[Issue #12](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/12) · [PR #13](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/13) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43851591297) |
+| 用真实 Git 对象构造一个有完整 V1 通过回执、但变更策略文件的候选，伪报自动等级为 V1 | 控制面从固定输入独立复算出 V4 并拒绝低等级回执 | `TestDeclaredChecksRequiredForIssue` 得到冲突；原固定 V1 历史任务仍可提交真实 V1 回执。87 项 Go 回归通过，零跳过；go vet 和前端生产构建通过 |
+| 独立 Runner 使用 auto、V1 最低要求与 PR 目标重新检查 ledger 文档移出目录的候选 | 本地 Runner 自行匹配原路径，强制运行 V4 | `ci-run-3800396296` 在候选 `a4a9f6373d89115f2aacebfda5585e0aa16a097e` 运行六项检查，全部通过。run.json 中保存 ledger 组件、基础规则及升级理由 |

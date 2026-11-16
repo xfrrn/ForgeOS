@@ -347,17 +347,19 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	canCheckpoint := len(capabilities) > 3 && capabilities[3]
 	canVerify := len(capabilities) > 4 && capabilities[4]
 	canRunChecks := len(capabilities) > 5 && capabilities[5]
+	canAssess := canRunChecks && len(capabilities) > 6 && capabilities[6]
 	err = tx.QueryRowContext(ctx, `
 		SELECT p.id, p.path FROM work_items candidate JOIN projects p ON p.id = candidate.project_id
 		WHERE ($6::bigint[] IS NULL OR p.id=ANY($6::bigint[])) AND candidate.status = 'READY' AND (candidate.goal_id IS NULL OR EXISTS (SELECT 1 FROM work_items g WHERE g.id=candidate.goal_id AND g.status='ACTIVE')) AND (candidate.kind = 'git_head' OR $1 OR ($5 AND candidate.spec ? 'verify_commit'))
 		  AND ($5 OR NOT COALESCE(candidate.spec ? 'verify_commit',false))
 		  AND ($7 OR COALESCE(candidate.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
+		  AND ($8 OR candidate.spec->>'validation' IS DISTINCT FROM 'auto')
 		  AND ($4 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects), canRunChecks).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, pq.Array(projects), canRunChecks, canAssess).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -373,12 +375,13 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND (w.kind = 'git_head' OR $2 OR ($6 AND w.spec ? 'verify_commit'))
 		            AND ($6 OR NOT COALESCE(w.spec ? 'verify_commit',false))
 		            AND ($7 OR COALESCE(w.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
+		            AND ($8 OR w.spec->>'validation' IS DISTINCT FROM 'auto')
 		            AND ($5 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, canRunChecks).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, canRunIssue, canRework, canPlan, canCheckpoint, canVerify, canRunChecks, canAssess).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -474,8 +477,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if !issue.accepts(result) {
 			return ErrConflict
 		}
-		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker ||
-			v.Run.Base != issue.BaseCommit || v.Run.Commit != result.Commit || v.Run.Level != issue.Validation) {
+		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker) {
 			return ErrConflict
 		}
 		if result.succeeded() {

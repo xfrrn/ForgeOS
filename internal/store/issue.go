@@ -23,11 +23,12 @@ type Issue struct {
 }
 
 type IssueSpec struct {
-	VerifyCommit string `json:"verify_commit,omitempty"`
-	Mode         string `json:"mode,omitempty"`
-	Issue        Issue  `json:"issue"`
-	BaseCommit   string `json:"base_commit"`
-	Validation   string `json:"validation"`
+	VerifyCommit string             `json:"verify_commit,omitempty"`
+	Mode         string             `json:"mode,omitempty"`
+	Issue        Issue              `json:"issue"`
+	BaseCommit   string             `json:"base_commit"`
+	Validation   string             `json:"validation"`
+	Policy       *validation.Policy `json:"policy,omitempty"`
 }
 
 type ValidationResult struct {
@@ -39,7 +40,7 @@ type ValidationResult struct {
 }
 
 func ValidValidation(profile string) bool {
-	return profile == "docs" || profile == "go-test" || validation.ValidLevel(profile)
+	return profile == "auto" || profile == "docs" || profile == "go-test" || validation.ValidLevel(profile)
 }
 
 func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
@@ -55,7 +56,8 @@ func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec) (Task, error) {
 	issue := spec.Issue
 	if spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
-		!ValidValidation(spec.Validation) || (spec.Mode != "" && spec.Mode != "plan") {
+		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
+		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") {
 		return Task{}, ErrConflict
 	}
 	snapshot, err := json.Marshal(spec)
@@ -194,17 +196,28 @@ func (spec IssueSpec) accepts(r Result) bool {
 	if v != nil && (r.Commit == "" || v.Commit != r.Commit || v.Profile != spec.Validation) {
 		return false
 	}
-	if v != nil && v.Run != nil && (!validation.ValidLevel(spec.Validation) || !v.Run.Valid() ||
-		v.Run.Base != spec.BaseCommit || v.Run.Commit != r.Commit || v.Run.Level != spec.Validation || (v.Run.Failure == "") != (v.ExitCode == 0)) {
-		return false
+	if v != nil && v.Run != nil {
+		run := v.Run
+		if !run.Valid() || run.Base != spec.BaseCommit || run.Commit != r.Commit || (run.Failure == "") != (v.ExitCode == 0) {
+			return false
+		}
+		if spec.Validation == "auto" {
+			if run.Decision == nil {
+				if run.Level != "auto" || run.Failure != "CONFIG_FAILURE" || len(run.Checks) != 0 {
+					return false
+				}
+			} else if spec.Policy == nil || run.Decision.Policy != *spec.Policy || run.Decision.Level != run.Level || !validation.ValidLevel(run.Level) {
+				return false
+			}
+		} else if !validation.ValidLevel(spec.Validation) || run.Level != spec.Validation || run.Decision != nil {
+			return false
+		}
 	}
 	if r.ExitCode != 0 {
 		return strings.TrimSpace(r.Error) != ""
 	}
-	if v != nil && validation.ValidLevel(spec.Validation) {
-		if v.Run == nil {
-			return false
-		}
+	if v != nil && (validation.ValidLevel(spec.Validation) || spec.Validation == "auto") && v.Run == nil {
+		return false
 	}
 	validTurn := strings.TrimSpace(r.SessionID) != ""
 	if spec.VerifyCommit != "" {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"forgeos/internal/localrepo"
@@ -17,7 +18,18 @@ func verifyDeclaredChecks(root string) store.CheckVerifier {
 		if err != nil {
 			return false, errors.New("validation repository unavailable")
 		}
-		plan, err := validation.ReadPlan(ctx, repo, spec.BaseCommit, spec.Validation)
+		level := spec.Validation
+		if level == "auto" {
+			if spec.Policy == nil || result.Validation == nil || result.Validation.Run == nil {
+				return false, store.ErrConflict
+			}
+			decision, err := validation.Assess(ctx, repo, spec.BaseCommit, result.Commit, *spec.Policy)
+			if err != nil || !reflect.DeepEqual(&decision, result.Validation.Run.Decision) {
+				return false, store.ErrConflict
+			}
+			level = decision.Level
+		}
+		plan, err := validation.ReadPlan(ctx, repo, spec.BaseCommit, level)
 		if err != nil || !plan.Accepts(result.Validation.Run) {
 			return false, store.ErrConflict
 		}
@@ -25,7 +37,7 @@ func verifyDeclaredChecks(root string) store.CheckVerifier {
 		if err != nil || strings.TrimSpace(string(out)) != result.Commit+" "+spec.BaseCommit {
 			return false, store.ErrConflict
 		}
-		changes, err := localrepo.Git(ctx, repo, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", spec.BaseCommit, result.Commit, "--", "validation.yaml")
+		changes, err := localrepo.Git(ctx, repo, "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", spec.BaseCommit, result.Commit, "--", "validation.yaml", "acceptance.yaml")
 		return len(changes) > 0, err
 	}
 }

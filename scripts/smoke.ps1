@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$ProjectPath,
     [ValidateRange(1, 2147483647)][int]$IssueNumber,
-    [ValidateSet('docs', 'go-test', 'V1', 'V2', 'V3', 'V4')][string]$Validation
+    [ValidateSet('auto', 'docs', 'go-test', 'V1', 'V2', 'V3', 'V4')][string]$Validation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,8 +37,13 @@ if ($IssueNumber) {
     $waitSeconds = 45
 }
 $task = Invoke-RestMethod @request -Method Post -Uri $endpoint -ContentType 'application/json' -Body ($body | ConvertTo-Json)
-if ($IssueNumber -and $task.spec.validation -ne $Validation) {
-    throw "Issue was already imported with frozen profile '$($task.spec.validation)'; requested '$Validation'."
+if ($IssueNumber) {
+    if ($task.spec.validation -eq 'auto') {
+        $expectedFloor = switch ($Validation) { 'auto' { '' } 'docs' { 'V1' } 'go-test' { 'V2' } default { $Validation } }
+        if ([string]$task.spec.policy.minimum -ne $expectedFloor) { throw 'Issue was imported with another validation minimum.' }
+    } elseif ($task.spec.validation -ne $Validation) {
+        throw "Issue was already imported with frozen profile '$($task.spec.validation)'; requested '$Validation'."
+    }
 }
 
 $url = "$api/tasks/$($task.id)"

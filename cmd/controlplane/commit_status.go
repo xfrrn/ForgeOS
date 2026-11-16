@@ -25,7 +25,11 @@ func publishValidation(root string, task, execution int64, api deliveryAPI) stor
 				}
 			}
 		}
-		want := store.CommitStatus{Commit: v.Commit, Context: ciStatusContext, State: state, Description: fmt.Sprintf("Task %d / execution %d / %s", task, execution, v.Profile)}
+		profile := v.Profile
+		if profile == "auto" && v.Run != nil {
+			profile = v.Run.Level
+		}
+		want := store.CommitStatus{Commit: v.Commit, Context: ciStatusContext, State: state, Description: fmt.Sprintf("Task %d / execution %d / %s", task, execution, profile)}
 		if v.Run != nil {
 			want.Description += fmt.Sprintf(" / %d checks", len(v.Run.Checks))
 		}

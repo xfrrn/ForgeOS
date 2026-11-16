@@ -24,21 +24,23 @@ import (
 )
 
 type ciRequest struct {
-	ExecutionID int64  `json:"-"`
-	Repo        string `json:"repo"`
-	Base        string `json:"base_commit"`
-	Commit      string `json:"commit"`
-	Level       string `json:"level"`
+	ExecutionID int64              `json:"-"`
+	Repo        string             `json:"repo"`
+	Base        string             `json:"base_commit"`
+	Commit      string             `json:"commit"`
+	Level       string             `json:"level"`
+	Policy      *validation.Policy `json:"policy,omitempty"`
 }
 
 var imageID = regexp.MustCompile("^sha256:[a-f0-9]{64}$")
 
-func (w *worker) validateIssueCandidate(ctx context.Context, execID int64, repo, workspace, base, candidate, profile string) (store.ValidationResult, error) {
-	if !validation.ValidLevel(profile) {
+func (w *worker) validateIssueCandidate(ctx context.Context, execID int64, repo, workspace, candidate string, spec *store.IssueSpec) (store.ValidationResult, error) {
+	base, profile := spec.BaseCommit, spec.Validation
+	if profile != "auto" && !validation.ValidLevel(profile) {
 		return validateCandidate(ctx, workspace, base, candidate, profile)
 	}
 	report := store.ValidationResult{Profile: profile, Commit: candidate, ExitCode: 1}
-	run, err := runLocalCI(ctx, ciRequest{ExecutionID: execID, Repo: repo, Base: base, Commit: candidate, Level: profile}, w.repoRoot, w.workspaceRoot, w.id)
+	run, err := runLocalCI(ctx, ciRequest{ExecutionID: execID, Repo: repo, Base: base, Commit: candidate, Level: profile, Policy: spec.Policy}, w.repoRoot, w.workspaceRoot, w.id)
 	if err != nil {
 		report.Output = err.Error()
 		return report, err
@@ -62,7 +64,7 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 	if err != nil {
 		return run, err
 	}
-	if !validation.ValidLevel(req.Level) || !validation.FullCommit(req.Base) || !validation.FullCommit(req.Commit) || req.Base == req.Commit {
+	if (req.Level != "auto" && !validation.ValidLevel(req.Level)) || (req.Policy != nil && req.Level != "auto") || !validation.FullCommit(req.Base) || !validation.FullCommit(req.Commit) || req.Base == req.Commit {
 		return run, errors.New("provide a level and two distinct full commit hashes")
 	}
 	if out, err := localrepo.Git(ctx, repo, "cat-file", "-t", req.Commit); err != nil || string(out) != "commit\n" {
@@ -96,7 +98,18 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 		}
 		return run, err
 	}
-	plan, err := validation.ReadPlan(ctx, repo, req.Base, req.Level)
+	if req.Level == "auto" {
+		var policy validation.Policy
+		if req.Policy != nil {
+			policy = *req.Policy
+		}
+		decision, err := validation.Assess(ctx, repo, req.Base, req.Commit, policy)
+		if err != nil {
+			return finish("CONFIG_FAILURE", "cannot assess candidate using the pinned acceptance rules")
+		}
+		run.Decision, run.Level = &decision, decision.Level
+	}
+	plan, err := validation.ReadPlan(ctx, repo, req.Base, run.Level)
 	if err != nil {
 		return finish("CONFIG_FAILURE", "cannot load validation.yaml at the pinned base")
 	}

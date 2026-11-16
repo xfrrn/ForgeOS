@@ -12,6 +12,7 @@ type Run struct {
 	ConfigBlob    string        `json:"config_blob,omitempty"`
 	ConfigVersion int           `json:"config_version,omitempty"`
 	Level         string        `json:"level"`
+	Decision      *Decision     `json:"decision,omitempty"`
 	Profile       string        `json:"profile,omitempty"`
 	Image         string        `json:"image,omitempty"`
 	Started       time.Time     `json:"started_at"`

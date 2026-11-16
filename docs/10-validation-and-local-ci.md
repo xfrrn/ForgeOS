@@ -97,9 +97,11 @@ Runner 读取基础提交的配置，在候选文件的隔离副本中运行。�
 
 命令输出 JSON，必需检查未通过时返回非零。工作区根下的 `ci-run-*/run.json` 保存运行身份、配置版本及 blob、候选 SHA、等级、镜像、时间、各检查退出码、状态和文件引用。超时检查的退出码为 null。每项日志最多保留 1 MiB，每个输出文件上限 8 MiB，每次运行最多收集 64 MiB。输出记录包含来源、大小和 SHA-256。缺少承诺的报告或产物会令该检查失败。每次重跑使用新的运行目录。
 
-从正常 Issue 入口指定 `{"validation":"V2"}` 即可使用仓库检查。支持等级 V1–V4，手动导入、按标签轮询、退回修订和重新验证均沿用冻结的任务配置。仅声明 `supports_declared_checks` 的 Worker 可领取。每个检查有独立超时，整个 Issue 执行仍受 Worker 的 20 分钟预算约束。
+从正常 Issue 入口指定 `{"validation":"auto","task_type":"documentation","target":"pull_request"}` 可按候选变化选级。项目基础提交包含 validation.yaml 或 acceptance.yaml 时，显式指定 V1–V4、docs 或 go-test 也会启用风险评估。指定等级作为最低要求，docs 和 go-test 分别对应 V1 和 V2。GitHub Issue 以 PR 为最低交付目标，可指定 staging 提高要求。没有仓库配置且按原方式请求 docs 或 go-test 的任务继续使用原检查。手动导入与按标签轮询采用相同规则，Goal 子项继承策略，修订或重新验证会针对新的 SHA 重新计算。
 
-控制面在有效执行租约内核对 Runner、执行、基础和候选 SHA，从仓库重新读取必需检查清单，并对照每项状态、输出引用、大小和摘要格式。持久化成功后，重复上报核对已保存回执。候选改动 `validation.yaml` 时会同时排队独立代码审查，即使项目没有启用全项目审查门禁。Owner 在页面的“逐项检查”展开运行记录并查看候选差异，再批准或退回。
+自动分级任务要求 Worker 同时声明 `supports_declared_checks` 和 `supports_risk_policy`。回执保存选级依据、命中组件、配置 blob 和所执行的等级。独立 Runner 也接受 `"level":"auto"` 及可选的 `policy` 对象。每个检查有独立超时，整个 Issue 执行仍受 Worker 的 20 分钟预算约束。
+
+控制面在有效执行租约内核对 Runner、执行、基础和候选 SHA，按任务的冻结策略独立复算完整风险判定，重新读取必需检查清单，并对照每项状态、输出引用、大小和摘要格式。持久化成功后，重复上报核对已保存回执。候选改动 `validation.yaml` 或 `acceptance.yaml` 时会同时排队独立代码审查，即使项目没有启用全项目审查门禁。Owner 在页面的“逐项检查”展开选级依据及运行记录，查看候选差异，再批准或退回。
 
 接口建议：
 - create_run；

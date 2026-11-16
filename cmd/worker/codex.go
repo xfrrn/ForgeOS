@@ -234,7 +234,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 		if _, err := checkedWorktree(ctx, repo, workspace, spec.VerifyCommit); err != nil {
 			return failed("could not check out refreshed candidate", err)
 		}
-		report, err := w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, spec.BaseCommit, spec.VerifyCommit, spec.Validation)
+		report, err := w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, spec.VerifyCommit, spec)
 		result.Validation = &report
 		if err != nil {
 			result.ExitCode = 1
@@ -293,7 +293,7 @@ func (w *worker) executeIssue(ctx context.Context, repo, workspace string, job s
 	}
 	if err == nil {
 		var report store.ValidationResult
-		report, err = w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, spec.BaseCommit, result.Commit, spec.Validation)
+		report, err = w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, result.Commit, spec)
 		result.Validation = &report
 		if err == nil && report.ExitCode != 0 {
 			err = errors.New("local validation failed")

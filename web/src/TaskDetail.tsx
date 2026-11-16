@@ -3,6 +3,7 @@ import { ApiError, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } fr
 import './detail.css'
 
 type CheckRun = { id: string; runner: string; level: string; profile?: string; config_blob?: string; image?: string
+  decision?: { rules_blob?: string; changed_paths: number; reasons: { source: string; level: string; evidence: string }[] }
   started_at: string; finished_at: string; failure?: string
   checks: { name: string; required: boolean; status: string; failure?: string; exit_code: number | null; log: string
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
@@ -70,6 +71,9 @@ function DeclaredChecks({ run }: { run: CheckRun }) {
       {run.config_blob && <Fact label="配置 blob" code>{run.config_blob}</Fact>}
       {run.image && <Fact label="容器镜像" code>{run.image}</Fact>}
       <Fact label="运行时间">{formatTime(run.started_at)} — {formatTime(run.finished_at)}</Fact></dl>
+    {run.decision && <><h4>风险选级依据</h4><p>变更路径 {run.decision.changed_paths} 条</p>
+      {run.decision.rules_blob && <p>验收规则 <code>{run.decision.rules_blob}</code></p>}
+      <ul>{run.decision.reasons.map(r => <li key={r.source + ':' + r.evidence}>{r.level} · {r.source} · {r.evidence}</li>)}</ul></>}
     <ol>{run.checks.map(c => <li key={c.name}><strong>{c.name}</strong> · {c.required ? '必需' : '可选'} · {c.status === 'PASSED' ? '通过' : c.failure || '失败'}
       <dl className="detail-facts"><Fact label="退出码" code>{c.exit_code ?? '无退出码'}</Fact>
         <Fact label="检查时间">{formatTime(c.started_at)} — {formatTime(c.finished_at)}</Fact><Fact label="本地日志" code>{c.log}</Fact></dl>

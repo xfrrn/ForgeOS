@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"forgeos/internal/store"
+	"forgeos/internal/validation"
 )
 
 const (
@@ -36,7 +37,7 @@ func pollConfig(id, validation string) (*issuePoller, error) {
 	}
 	projectID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil || projectID <= 0 || !store.ValidValidation(validation) {
-		return nil, errors.New("set a positive FORGEOS_POLL_PROJECT_ID and select docs, go-test or V1 through V4")
+		return nil, errors.New("set a positive FORGEOS_POLL_PROJECT_ID and select auto, docs, go-test or V1 through V4")
 	}
 	return &issuePoller{projectID, validation}, nil
 }
@@ -117,7 +118,7 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 				discussions = append(discussions, store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL})
 			} else if err == nil {
 				var task store.Task
-				task, err = data.ImportIssue(ctx, p.projectID, store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: p.validation})
+				task, err = data.ImportIssue(ctx, p.projectID, repo.spec(issue, p.validation, "", validation.Policy{}))
 				taskID = task.ID
 			}
 			if err == nil && taskID > 0 && raw.Comments > 0 {

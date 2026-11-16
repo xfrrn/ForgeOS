@@ -81,6 +81,17 @@ func TestDeclaredChecksRequiredForIssue(t *testing.T) {
 	run.ConfigBlob = candidate
 	conflict(complete())
 	run.ConfigBlob = plan.ConfigBlob
+	policy := validation.Policy{Minimum: "V1", Target: "pull_request"}
+	forged, err := validation.Assess(ctx, repo, base, candidate, policy)
+	must(err)
+	if forged.Level != "V4" {
+		t.Fatal("policy file did not trigger critical checks")
+	}
+	forged.Level = "V1"
+	run.Decision = &forged
+	_, err = verify(ctx, repo, store.IssueSpec{Validation: "auto", BaseCommit: base, Policy: &policy}, result)
+	conflict(err)
+	run.Decision = nil
 	must(complete())
 	must(complete())
 	tk, err := data.Task(ctx, task.ID)
@@ -90,4 +101,39 @@ func TestDeclaredChecksRequiredForIssue(t *testing.T) {
 	}
 	_, err = data.Review(ctx, tk.ID, job.ExecutionID, candidate, "approve", "", false, "")
 	conflict(err)
+}
+
+func TestIssueRiskCannotBeLoweredByReceipt(t *testing.T) {
+	ctx := context.Background()
+	root, repo, base := issueTestRepo(t)
+	// Introducing the project policy changes a protected file, even for a docs request.
+	if err := os.WriteFile(filepath.Join(repo, "acceptance.yaml"), []byte("version: 1\ncomponents: {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "acceptance.yaml"}, {"-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "declare acceptance policy"}} {
+		if _, err := localrepo.Git(ctx, repo, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := localrepo.Git(ctx, repo, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := strings.TrimSpace(string(out))
+	spec := (githubProject{Base: base, Declared: true}).spec(store.Issue{}, "docs", "", validation.Policy{Target: "local"})
+	if spec.Validation != "auto" || spec.Policy.Minimum != "V1" || spec.Policy.Target != "pull_request" {
+		t.Fatal(spec)
+	}
+	actual, err := validation.Assess(ctx, repo, base, candidate, *spec.Policy)
+	if err != nil || actual.Level != "V4" {
+		t.Fatal(actual, err)
+	}
+	result := store.Result{Commit: candidate, Validation: &store.ValidationResult{Profile: "auto", Run: &validation.Run{Decision: &actual, Level: "V1"}}}
+	verify := verifyDeclaredChecks(root)
+	for _, level := range []string{"V1", "V4"} {
+		actual.Level, result.Validation.Run.Level = level, level
+		if _, err := verify(ctx, repo, spec, result); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("accepted %s without its complete fixed plan: %v", level, err)
+		}
+	}
 }

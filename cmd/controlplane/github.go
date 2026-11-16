@@ -15,6 +15,7 @@ import (
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
+	"forgeos/internal/validation"
 )
 
 var (
@@ -105,12 +106,15 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 		var input struct {
 			Validation string `json:"validation"`
 			Mode       string `json:"mode"`
+			TaskType   string `json:"task_type"`
+			Target     string `json:"target"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		if !store.ValidValidation(input.Validation) {
-			problem(w, http.StatusBadRequest, "select docs, go-test or a validation level V1 through V4")
+		policy := validation.Policy{TaskType: input.TaskType, Target: input.Target}
+		if !store.ValidValidation(input.Validation) || !policy.Valid() {
+			problem(w, http.StatusBadRequest, "select auto, docs, go-test or V1 through V4 and a supported task type and delivery target")
 			return
 		}
 		if input.Mode != "" && input.Mode != "plan" {
@@ -147,7 +151,7 @@ func importIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
 			problem(w, status, err.Error())
 			return
 		}
-		task, err := data.ImportIssue(ctx, id, store.IssueSpec{Issue: issue, BaseCommit: source.Base, Validation: input.Validation, Mode: input.Mode})
+		task, err := data.ImportIssue(ctx, id, source.spec(issue, input.Validation, input.Mode, policy))
 		if errors.Is(err, store.ErrConflict) {
 			problem(w, http.StatusConflict, "GitHub issue or repository conflicts with the stored project mapping")
 			return
@@ -197,6 +201,28 @@ type githubProject struct {
 	ID       int64  `json:"id"`
 	FullName string `json:"full_name"`
 	Base     string `json:"-"`
+	Declared bool   `json:"-"`
+}
+
+func (repo githubProject) spec(issue store.Issue, profile, mode string, policy validation.Policy) store.IssueSpec {
+	spec := store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: profile, Mode: mode}
+	if repo.Declared || profile == "auto" || policy != (validation.Policy{}) {
+		switch profile {
+		case "docs":
+			policy.Minimum = "V1"
+		case "go-test":
+			policy.Minimum = "V2"
+		default:
+			if validation.ValidLevel(profile) {
+				policy.Minimum = profile
+			}
+		}
+		if policy.Target == "" || policy.Target == "local" {
+			policy.Target = "pull_request"
+		}
+		spec.Validation, spec.Policy = "auto", &policy
+	}
+	return spec
 }
 
 func githubSource(ctx context.Context, root string, project store.Project, get githubGET) (githubProject, error) {
@@ -218,6 +244,11 @@ func githubSource(ctx context.Context, root string, project store.Project, get g
 	if err := get(ctx, "repos/"+slug, &repo); err != nil {
 		return repo, err
 	}
+	config, err := localrepo.Git(ctx, path, "ls-tree", "--name-only", repo.Base, "--", "acceptance.yaml", "validation.yaml")
+	if err != nil {
+		return repo, errBase
+	}
+	repo.Declared = len(config) != 0
 	if repo.ID <= 0 || !strings.EqualFold(repo.FullName, slug) || (project.RepositoryID != 0 && repo.ID != project.RepositoryID) {
 		return repo, errIdentity
 	}
