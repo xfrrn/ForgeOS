@@ -110,6 +110,14 @@ Preview 必须绑定：
 
 Local Preview 与 Staging 分离。第三方回调等场景需要独立 Staging 回调入口，不应为方便验收公开整个私有网络。
 
+### 本机静态预览
+
+在控制面设置 `FORGEOS_PREVIEW_ADDR=127.0.0.1:8091`，重启后在通过验证的执行详情展开“本机静态预览”。填写项目中可公开的静态目录，例如 public。目录应在该候选提交中包含 index.html。点击“启动预览”“打开预览”。新标签页使用独立的随机 localhost 子域名，能读取该目录内已提交的普通文件。支持绝对站内路径、相对资源和目录首页；隐藏文件、符号链接、目录清单与工作区未提交内容不可读取。单个资源上限 8 MiB。
+
+预览回执绑定项目、任务、执行、工作树、SHA、公开目录、local 环境、URL、访问策略和期限。持有完整预览地址的本机浏览器可访问；地址应按访问凭据保管。控制面 Owner 负责启动、查询和停止。每次读取页面或资源都会检查期限及停止状态，响应头 `X-ForgeOS-Commit` 可用于复核。保持相同预览端口重启控制面后，尚未到期的地址继续有效。
+
+通过 `POST /tasks/{id}/previews` 发送 `execution_id`、`commit`、`directory` 和可选 `ttl_seconds`（默认一小时，最长一天）。同一执行、目录和端口已有活动实例时返回原回执。`GET /tasks/{id}/previews?execution_id=…` 查询历次预览，`DELETE /tasks/{id}/previews/{preview}` 停止对应实例。
+
 ## 6. 浏览器反馈扩展
 
 功能：

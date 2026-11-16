@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
 import './detail.css'
 import { CandidateTestPlans } from './CandidateTestPlans'
+import { CandidatePreviews } from './CandidatePreviews'
 
 type CheckRun = { id: string; runner: string; level: string; profile?: string; config_blob?: string; image?: string
   decision?: { rules_blob?: string; changed_paths: number; reasons: { source: string; level: string; evidence: string }[] }
@@ -271,6 +272,8 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {validation.run && <DeclaredChecks run={validation.run} />}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
+    {task.spec && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&
+      <CandidatePreviews task={task.id} execution={attempt.id} commit={result.commit} request={request} />}
     {result?.commit && validation?.exit_code === 0 && (attempt.test_plan_revision || (latest && task.status === 'WAITING_ACCEPTANCE')) ?
       <CandidateTestPlans task={task.id} execution={attempt.id} commit={result.commit} latest={attempt.test_plan_revision ?? 0}
         state={attempt.test_plan_state ?? ''} attempts={attempt.test_case_attempts ?? 0} required={Boolean(attempt.requires_test_plan)}

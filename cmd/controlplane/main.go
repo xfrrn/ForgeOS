@@ -75,6 +75,11 @@ func run(ctx context.Context) error {
 	}
 
 	mux := routes(data, root, owner, workers, delivery)
+	stopPreviews, err := startPreviews(mux, data, root, owner, os.Getenv("FORGEOS_PREVIEW_ADDR"))
+	if err != nil {
+		return err
+	}
+	defer stopPreviews()
 	vault, err := bao.New(os.Getenv("FORGEOS_BAO_ADDR"), os.Getenv("FORGEOS_BAO_METADATA_TOKEN_FILE"), os.Getenv("FORGEOS_BAO_CA_FILE"))
 	if err != nil {
 		return err
