@@ -1,3 +1,4 @@
+import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import { useEffect, useState } from 'react'
 import type { ApiRequest } from './shared'
@@ -6,6 +7,7 @@ import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Case = { id: string; criterion_id: string; playbook_id: string; objective: string; environment: string; tester: string; preconditions: string; steps: string[]; expected_result: string; evidence: string[] }
 type Receipt = {
+  test_processes?: ReviewProcess[]; management_processes?: ReviewProcess[]
   test_profile?: StructuredProfile; management_profile?: StructuredProfile
   candidate_context?: CandidateContext
   execution_state: string; case_results: CaseAttempt[]
@@ -32,10 +34,17 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
     const controller = new AbortController()
     setReceipt(null)
     setError('')
-    request<Receipt>(`${path}?execution_id=${execution}&revision=${selected}`, { signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setReceipt(data) })
-      .catch(() => { if (!controller.signal.aborted) setError('无法读取测试计划。') })
-    return () => controller.abort()
+    let timer: ReturnType<typeof setTimeout>
+    async function read() {
+      try {
+        const data = await request<Receipt>(`${path}?execution_id=${execution}&revision=${selected}`, { signal: controller.signal })
+        if (controller.signal.aborted) return
+        setReceipt(data); setError('')
+        if (data.state === 'awaiting_plan' || data.state === 'awaiting_review') timer = setTimeout(read, 8000)
+      } catch { if (!controller.signal.aborted) setError('无法读取测试计划。') }
+    }
+    void read()
+    return () => { controller.abort(); clearTimeout(timer) }
   }, [open, selected, path, execution, state, attempts, request])
   async function submit() {
     setBusy(true)
@@ -58,6 +67,8 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
       {latest > 1 && <div className="detail-actions"><button className="button" disabled={selected <= 1} onClick={() => setRevision(selected - 1)}>上一版测试计划</button>
         <span>修订 {selected}</span><button className="button" disabled={selected >= latest} onClick={() => setRevision(selected + 1)}>下一版测试计划</button></div>}
       {receipt && <>
+        <ManagementProcesses processes={receipt.test_processes} title="Test Agent 计划进程"/>
+        <ManagementProcesses processes={receipt.management_processes} title="Management 覆盖审核进程"/>
         {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="测试计划使用的候选依据" digest={receipt.basis.candidate_context_sha256}/>}
         <dl>{receipt.basis.criteria.map(c => <div key={c.id}><dt>{c.id}</dt><dd>{c.text || '业务预期待澄清'}</dd></div>)}</dl>
         {receipt.plan && <><p>Test Agent 会话 <code>{receipt.plan.session_id}</code></p>

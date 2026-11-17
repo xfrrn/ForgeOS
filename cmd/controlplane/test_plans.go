@@ -92,11 +92,24 @@ func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manag
 	}
 	mux.HandleFunc("POST /internal/test-agent/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		job, err := data.ClaimTestPlan(r.Context(), project, "test", r.URL.Query().Get("supports_candidate_context") == "1", r.URL.Query().Get("supports_budget_deadline") == "1")
+		if job != nil {
+			job.CaptureProcess = r.URL.Query().Get("supports_process") == "1"
+		}
 		if job == nil && err == nil {
 			w.WriteHeader(204)
 			return
 		}
 		respond(w, 200, job, err)
+	}))
+	mux.HandleFunc("POST /internal/test-agent/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var report store.ManagementProcessReport
+		if decodeLimited(w, r, &report, 64<<10) {
+			if report.TestPlanID <= 0 || report.TestPlanRole != "test" {
+				problem(w, 403, "Test Agent identity only reports candidate test planning processes")
+				return
+			}
+			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), project, report))
+		}
 	}))
 	registerTestPlanResult(mux, "/internal/test-agent/result", data, token, project, "test")
 	return nil

@@ -272,6 +272,12 @@ func TestMain(m *testing.M) {
 						output = `{"facts":[{"kind":"start","value":"invented","path":"README.md","quote":"invented"}]}`
 					}
 				}
+				if strings.Contains(string(body), "SIMULATED_TEST_PLAN_PROCESS") {
+					output = `{"cases":[],"clarifications":[{"criterion_id":"requirement/1","question":"Which observation is required?"}]}`
+					if strings.Contains(string(body), "Act as the independent Management Agent auditing test-plan coverage") {
+						output = `{"items":[{"criterion_id":"requirement/1","case_ids":[],"state":"needs_clarification","rationale":"The required observation is unspecified."}]}`
+					}
+				}
 				if strings.Contains(string(body), "SIMULATED_CURATOR_REVIEW") {
 					output = `{"level":"D1","verdict":"approve","rationale":"Recorded observation.","evidence":"resumed at 918","validation_minimum":""}`
 				}
@@ -283,7 +289,7 @@ func TestMain(m *testing.M) {
 				} else {
 					fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
 				}
-				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") || strings.Contains(string(body), "SIMULATED_FEEDBACK_PROCESS") || strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") {
+				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") || strings.Contains(string(body), "SIMULATED_FEEDBACK_PROCESS") || strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") || strings.Contains(string(body), "SIMULATED_TEST_PLAN_PROCESS") {
 					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
 					time.Sleep(500 * time.Millisecond)
 					if strings.Contains(string(body), "FAIL_PROCESS") {

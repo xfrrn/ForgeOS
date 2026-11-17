@@ -3096,3 +3096,26 @@ PostgreSQL 18／真实 Docker 全包 339 项测试及子测试通过，零失败
 PostgreSQL 18／真实 Docker 全包 346 项测试及子测试通过，零失败、零跳过，报告 curation-process-regression.jsonl。另覆盖角色路由、项目／来源／租约绑定、先退出后结果、提取与审核隔离、失败及过期重领历史、结果重放和旧组件兼容。Go 静态检查、TypeScript 和生产构建通过。证据目录 curation_process_current、curation_process_oldcontrol、curation_process_oldworker；迁移证据 feedback_process_current/curation-migration-proof.json。
 
 本项保存有界公开消息及各次原生进程。失败修订 3 保持待提取；独立 Daemon 崩溃补报、原会话恢复、完整归档、其余独立角色和全路线最终验收继续待完成，已列外部条件保持待验收。
+
+上述知识提取与审核进程实现和验收对应 ForgeOS 提交 48177987e22586eb3f6feed3828d18791f0640d2。
+
+### 专题 07、10、13、16 C.3 · 候选 Test Agent 与 Management 覆盖审核进程
+
+2026-11-18 在隔离 PostgreSQL 18 库还原 beta #163 的真实候选 d689d8e011d2c9e1e49e93cfa632d31b132c2228，从 Chrome 请求测试计划。未再次写入 GitHub 或交付候选。原生 Codex 0.169.0-alpha.11.1，两个独立角色共用一个模型名额及相同节点名，使用各自 API 凭据和独立 SQLite。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 修订 1 的 Test Agent 运行中，从 Chrome 请求修订 2 | 旧回合继续计入名额，实际退出保留，但不发布过时计划 | PID 34156、Thread 01a1ebe2-73ec-70c3-90cf-2f1778587d2f、退出码 0；替代前后 reserved 均为 1；修订 1 的 plan 仍为空，后续修订才取得生成结果。 |
+| 完成修订 2 的生成和覆盖审核，审核中重启控制面 | 独立原生身份、固定候选和计划摘要不变 | Test Agent：PID 27116、Thread 01a1ebe2-bde9-7841-a1bb-52ad0c966fdf、退出码 0；Management：PID 41904、Thread 01a1ebe3-0b40-7b01-be64-5bd9eb7092c7、退出码 0。运行中 Chrome 自动显示进程，原生参数为 read-only／never；覆盖结果 covered，两角色公开消息与各自 SQLite 一致。 |
+| 从 Chrome 请求修订 3，Test Agent 运行中重启控制面后终止已确认的子进程 | 保存实际失败，不生成计划或覆盖结论，归还名额 | PID 43324、Thread 01a1ebe3-46ca-7453-a162-2e0f04f73540、退出码 15；状态 plan_failed，plan／coverage 均为空，reserved 为 0。 |
+| 请求修订 4，生成完成后终止 Management 原生子进程 | 保留成功计划，覆盖审核失败可追溯 | Test Agent：PID 13248、Thread 01a1ebe3-6eb2-7072-abd2-f929b8885ce7、退出码 0；Management：PID 47920、Thread 01a1ebe3-bc5c-7071-9a4f-d6e6fef9dbbb、退出码 15；状态 review_failed，无 coverage，reserved 为 0。 |
+| 重启后从 Chrome 回读四个修订 | 成功、被替代及两角色失败历史分别保留 | 六条原生进程的 API 记录完全相同，页面可展开会话及存在的公开消息。 |
+| 角色令牌互访进程端点、伪装另一角色、读取 Owner 历史 | 角色与历史权限隔离 | 跨端点 401，本角色伪装另一角色 403，两个角色读取 Owner 测试计划历史均 401。 |
+| 旧控制面／新 Worker 与新控制面／旧 Worker | 原有计划、覆盖结果和历史仍可用，不补造进程 | 两组均生成 covered 结果，重启后可从 Chrome 回读；进程数组为空。 |
+| 知识提取库从迁移 103 升至 104 | 新增候选来源不破坏旧角色历史 | 四条既有提取／审核记录的 ID、节点及完整 JSON 不变，Chrome 回读成功、空提取和失败三版来源。 |
+
+旧控制面组合的 Test Agent／Management 会话为 01a1ebe2-aca9-7c13-a9fe-e3ce85d322aa / 01a1ebe3-036b-7201-b030-3e32176b7db7；旧 Worker 组合为 01a1ebe2-acbe-7210-b489-23db7cd258ba / 01a1ebe3-0505-7021-95fc-1764208a32b6。
+
+PostgreSQL 18／真实 Docker 全包 355 项测试及子测试通过，零失败、零跳过，报告 test-process-regression.jsonl。新增专项覆盖运行中失败回报不得释放名额、旧修订实际退出、项目／角色／租约／目标互斥、结果会话匹配、幂等回报、独立角色进程退出先于结果以及旧协议；Go 静态检查、TypeScript 和生产构建通过。证据目录 test_process_current、test_process_oldcontrol、test_process_oldworker；升级证据 curation_process_current/test-process-migration-proof.json。
+
+本项验收进程观察及结果绑定；还原候选保持 WAITING_ACCEPTANCE，生成用例未执行，case_results 为空，不将 covered 当作候选通过。失败修订保留失败状态，被替代修订不补造计划。Reviewer 实时进程、独立 Daemon 崩溃补报和原会话恢复、完整归档及全路线最终验收仍待完成；已列外部条件保持待验收。

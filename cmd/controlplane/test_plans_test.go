@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"forgeos/internal/acceptance"
 	"forgeos/internal/localrepo"
@@ -17,12 +18,13 @@ import (
 )
 
 func TestCandidatePlanRolesAndRevisions(t *testing.T) {
-	t.Run("refreshed without rules", func(t *testing.T) { testCandidatePlanRoles(t, false, true) })
-	t.Run("legacy", func(t *testing.T) { testCandidatePlanRoles(t, false, false) })
-	t.Run("published rules", func(t *testing.T) { testCandidatePlanRoles(t, true, false) })
+	t.Run("refreshed without rules", func(t *testing.T) { testCandidatePlanRoles(t, false, true, false) })
+	t.Run("legacy", func(t *testing.T) { testCandidatePlanRoles(t, false, false, false) })
+	t.Run("role processes", func(t *testing.T) { testCandidatePlanRoles(t, true, false, true) })
+	t.Run("published rules", func(t *testing.T) { testCandidatePlanRoles(t, true, false, false) })
 }
 
-func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
+func testCandidatePlanRoles(t *testing.T, published, refresh, capture bool) {
 	ctx := context.Background()
 	root, repo, base := issueTestRepo(t)
 	data := store.New(testdb.Open(t))
@@ -144,7 +146,25 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 		}
 		return j
 	}
+	process := func(job *store.TestPlanJob, role, session string) store.ManagementProcessReport {
+		return store.ManagementProcessReport{TestPlanID: job.ID, TestPlanRole: role, Lease: job.Lease, Node: "test-node", Process: store.HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.2.3", Session: session, Started: time.Now().UTC().Truncate(time.Second)}}
+	}
+	observe := func(p store.ManagementProcessReport) {
+		t.Helper()
+		must(data.ObserveManagementProcess(ctx, project.ID, p))
+	}
+	exit := func(p *store.ManagementProcessReport, code int) {
+		t.Helper()
+		end := p.Process.Started.Add(time.Second)
+		p.Process.Exited = &end
+		p.Process.ExitCode = &code
+		observe(*p)
+	}
 	old := claim("test")
+	oldProcess := process(old, "test", "old-tester")
+	if capture {
+		observe(oldProcess)
+	}
 	if published {
 		must(data.SetModelBudgets(ctx, []store.ModelBudget{pool}))
 		conflict(data.SetModelBudgets(ctx, []store.ModelBudget{pool, {Name: "other", Harness: "codex", Slots: 1, TestPlanRoles: pool.TestPlanRoles}}))
@@ -162,6 +182,15 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 			t.Fatal("new revision started before the superseded turn released its slot")
 		}
 	}
+	if capture {
+		conflict(data.FinishTestPlan(ctx, project.ID, "test", store.TestPlanOutcome{ID: old.ID, Lease: old.Lease, Failed: true}))
+		waiting, e := data.ClaimTestPlan(ctx, project.ID, "test", true, true)
+		must(e)
+		if waiting != nil {
+			t.Fatal("running old process released slot")
+		}
+		exit(&oldProcess, 15)
+	}
 	conflict(data.FinishTestPlan(ctx, project.ID, "test", store.TestPlanOutcome{ID: old.ID, Lease: old.Lease, Failed: true}))
 	j = claim("test")
 	if published && j.LeaseUntil == nil {
@@ -171,6 +200,28 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	plan, err := j.Source.Basis.Bind("tester", j.Source.Library, d)
 	must(err)
 	r := store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Plan: &plan}
+	testProcess := process(j, "test", "tester")
+	if capture {
+		for _, change := range []func(*store.ManagementProcessReport){
+			func(p *store.ManagementProcessReport) { p.TaskID = task.ID; p.Revision = 1 },
+			func(p *store.ManagementProcessReport) { p.TestPlanRole = "management" },
+			func(p *store.ManagementProcessReport) { p.TestPlanID = -1 },
+			func(p *store.ManagementProcessReport) { p.CurationRole = "curator" },
+			func(p *store.ManagementProcessReport) { p.Lease = "00000000-0000-0000-0000-000000000000" },
+		} {
+			bad := testProcess
+			change(&bad)
+			conflict(data.ObserveManagementProcess(ctx, project.ID, bad))
+		}
+		conflict(data.ObserveManagementProcess(ctx, project.ID+1, testProcess))
+		observe(testProcess)
+		conflict(data.FinishTestPlan(ctx, project.ID, "test", r))
+		conflict(data.FinishTestPlan(ctx, project.ID, "test", store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Failed: true}))
+		exit(&testProcess, 0)
+		plan.Session = "wrong-tester"
+		conflict(data.FinishTestPlan(ctx, project.ID, "test", r))
+		plan.Session = "tester"
+	}
 	profile := store.StructuredCodexProfile()
 	if !j.CaptureProfile {
 		t.Fatal("missing profile negotiation")
@@ -214,6 +265,15 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	coverage, err := j.Plan.Coverage("manager", []acceptance.CoverageItem{{Criterion: "requirement/1", Cases: []string{"TC-001"}, State: "covered", Rationale: "File lines can be verified."}})
 	must(err)
 	v := store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Coverage: &coverage}
+	reviewProcess := process(j, "management", "manager")
+	if capture {
+		observe(reviewProcess)
+		conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
+		exit(&reviewProcess, 0)
+		coverage.Session = "wrong-manager"
+		conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
+		coverage.Session = "manager"
+	}
 	if !j.CaptureProfile {
 		t.Fatal("missing coverage profile negotiation")
 	}
@@ -239,6 +299,24 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
 	receipt, err := data.TestPlanReceipt(ctx, task.ID, execution, 2)
 	must(err)
+	if capture {
+		conflict(data.ObserveManagementProcess(ctx, project.ID, testProcess))
+		conflict(data.ObserveManagementProcess(ctx, project.ID, reviewProcess))
+		var histories struct {
+			Test       []store.ManagementProcess `json:"test_processes"`
+			Management []store.ManagementProcess `json:"management_processes"`
+		}
+		must(json.Unmarshal(receipt, &histories))
+		if len(histories.Test) != 1 || len(histories.Management) != 1 || histories.Test[0].Session != "tester" || histories.Management[0].Session != "manager" {
+			t.Fatal("role process histories", string(receipt))
+		}
+		oldReceipt, e := data.TestPlanReceipt(ctx, task.ID, execution, 1)
+		must(e)
+		must(json.Unmarshal(oldReceipt, &histories))
+		if len(histories.Test) != 1 || *histories.Test[0].ExitCode != 15 || histories.Test[0].Session != "old-tester" {
+			t.Fatal("lost superseded process")
+		}
+	}
 	var fields map[string]json.RawMessage
 	must(json.Unmarshal(receipt, &fields))
 	for _, key := range []string{"test_profile", "management_profile"} {

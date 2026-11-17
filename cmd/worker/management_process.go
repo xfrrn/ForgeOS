@@ -40,6 +40,9 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 	if target.CurationRole == "curator" {
 		role = "curator"
 	}
+	if target.TestPlanRole == "test" {
+		role = "test-agent"
+	}
 	recorder.id = role + "-" + node
 	db, err := recorder.openJournal(ctx)
 	if err != nil {
@@ -63,7 +66,7 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 			return err
 		}
 		if status != 204 {
-			return fmt.Errorf("management process report failed (HTTP %d)", status)
+			return fmt.Errorf("role process report failed (HTTP %d)", status)
 		}
 		return nil
 	}

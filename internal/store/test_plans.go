@@ -15,6 +15,7 @@ import (
 )
 
 type TestPlanJob struct {
+	CaptureProcess bool              `json:"capture_process,omitempty"`
 	ID             int64             `json:"id"`
 	Execution      int64             `json:"execution_id"`
 	Lease          string            `json:"lease"`
@@ -121,7 +122,10 @@ func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revi
 	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r)||COALESCE((
 		SELECT jsonb_object_agg(CASE role WHEN 'test' THEN 'test_profile' ELSE 'management_profile' END,profile)
 		FROM candidate_test_plan_jobs WHERE plan_id=r.id AND profile IS NOT NULL),'{}'::jsonb)||CASE WHEN p.source ? 'candidate_context'
-		THEN jsonb_build_object('candidate_context',p.source->'candidate_context') ELSE '{}'::jsonb END||jsonb_build_object('case_results',COALESCE(
+		THEN jsonb_build_object('candidate_context',p.source->'candidate_context') ELSE '{}'::jsonb END||jsonb_build_object(
+ 'test_processes',COALESCE((SELECT jsonb_agg(mp.process || jsonb_build_object('node',mp.node,'attempt',mp.id,'observed_at',mp.observed_at) ORDER BY mp.id) FROM management_processes mp WHERE mp.test_plan_id=r.id AND mp.test_plan_role='test'),'[]'::jsonb),
+ 'management_processes',COALESCE((SELECT jsonb_agg(mp.process || jsonb_build_object('node',mp.node,'attempt',mp.id,'observed_at',mp.observed_at) ORDER BY mp.id) FROM management_processes mp WHERE mp.test_plan_id=r.id AND mp.test_plan_role='management'),'[]'::jsonb),
+ 'case_results',COALESCE(
 		(SELECT jsonb_agg(to_jsonb(c) ORDER BY c.case_id,c.attempt) FROM candidate_test_case_results c WHERE c.plan_id=r.id),'[]'))
 		FROM candidate_test_plan_status r JOIN candidate_test_plans p USING(id) WHERE r.task_id=$1 AND r.execution_id=$2 AND ($3=0 OR r.revision=$3) ORDER BY r.revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -210,6 +214,16 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		return ErrConflict
 	}
 	if err != nil {
+		return err
+	}
+	session := ""
+	if out.Plan != nil {
+		session = out.Plan.Session
+	}
+	if out.Coverage != nil {
+		session = out.Coverage.Session
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{TestPlanID: out.ID, TestPlanRole: role, Lease: out.Lease}, session); err != nil {
 		return err
 	}
 	if !complete && !active {

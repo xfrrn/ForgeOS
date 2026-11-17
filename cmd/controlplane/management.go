@@ -47,6 +47,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			var plan *store.TestPlanJob
 			plan, err = data.ClaimTestPlan(r.Context(), id, "management", r.URL.Query().Get("supports_candidate_context") == "1", r.URL.Query().Get("supports_budget_deadline") == "1")
 			if plan != nil {
+				plan.CaptureProcess = r.URL.Query().Get("supports_test_plan_process") == "1"
 				job = &store.ManagementJob{TestPlan: plan}
 			}
 		}
@@ -106,8 +107,8 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 	mux.HandleFunc("POST /internal/management/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var report store.ManagementProcessReport
 		if decodeLimited(w, r, &report, 64<<10) {
-			if report.CurationRole == "curator" {
-				problem(w, 403, "Curator process requires Curator identity")
+			if report.CurationRole == "curator" || report.TestPlanRole == "test" {
+				problem(w, 403, "Process requires its own role identity")
 				return
 			}
 			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
