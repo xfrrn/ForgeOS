@@ -137,7 +137,7 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 			return
 		}
 		page, err := data.WorkerCheckpoint(r.Context(), id, input, r.URL.Query().Get("queue_next") == "1")
-		if input.Session != "" {
+		if input.Session != "" || input.Interrupted != nil {
 			respond(w, http.StatusNoContent, nil, err)
 			return
 		}

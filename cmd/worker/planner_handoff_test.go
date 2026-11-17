@@ -97,7 +97,7 @@ func TestWriterHandoffRechecksPausedDraftAfterFailedResume(t *testing.T) {
 	job.WriterHandoff = true
 	const original = "e0749d55-e617-45ee-a6ef-8bd7fadb1c31"
 	adapter := &unavailablePlanner{err: errSessionMissing}
-	session, err := w.runJobTurn(ctx, adapter, job, "Finish the draft", original, base, dir, nil, "", &writerCheckpoint{trees: trees})
+	session, err := w.runJobTurn(ctx, adapter, job, "Finish the draft", original, base, dir, nil, "", &writerCheckpoint{trees: &trees})
 	if session != original || adapter.calls != 1 || err == nil || errors.Is(err, errSessionMissing) {
 		t.Fatal("expected to preserve the changed workspace", session, adapter.calls, err)
 	}

@@ -27,9 +27,10 @@ func verifyWriterHandoff(ctx context.Context, tx *sql.Tx, execution int64, p Har
 	var allowed bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM writer_handoff_sources h
 		WHERE h.execution_id=$1 AND h.source_session=$2 AND h.source_instance<$3 AND ($4::bigint=0 OR h.source_instance=$4)
+		AND (h.missing_instance IS NULL OR h.missing_instance<$3)
 		AND (h.question_id IS NULL OR $6)
 		AND ((h.handoff_session=$5 AND h.handoff_instance=$3)
-		 OR (h.handoff_session IS NULL AND (h.question_id IS NULL OR EXISTS(
+		 OR (h.handoff_session IS NULL AND ((h.question_id IS NULL AND h.missing_instance IS NULL) OR EXISTS(
 		    SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence=h.sequence AND c.session_id IS NULL))
 		    AND NOT EXISTS(SELECT 1 FROM writer_handoff_sources used WHERE used.execution_id=$1 AND used.handoff_session IS NOT NULL
 		        AND (used.source_session=$2 OR used.handoff_session=$5 OR used.handoff_instance=$3)))))`,

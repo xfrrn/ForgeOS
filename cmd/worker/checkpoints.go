@@ -32,6 +32,34 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 	return w.readCheckpoint(ctx, job, seq, session, false)
 }
 
+func (w *worker) recordInterruptedWriter(ctx context.Context, job store.Job, seq int, session string, trees store.WorktreeTrees) ([]byte, error) {
+	key := sha256.Sum256([]byte(job.LeaseToken))
+	history, err := w.processHistory(ctx, key[:])
+	if err != nil {
+		return nil, err
+	}
+	if history == nil || len(*history) < 2 {
+		return nil, errors.New("missing interrupted writer receipts")
+	}
+	pair := (*history)[len(*history)-2:]
+	if pair[0].Session != session {
+		return nil, errors.New("interrupted writer session does not match its receipt")
+	}
+	proof := store.InterruptedWriterTurn{Source: pair[0], Missing: pair[1], Trees: trees}
+	input := store.CheckpointRequest{Lease: job.LeaseToken, Sequence: &seq, Interrupted: &proof}
+	for ctx.Err() == nil {
+		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/checkpoints", job.ExecutionID), input, nil)
+		if status == http.StatusNoContent && err == nil {
+			return json.Marshal(proof.Source)
+		}
+		if !temporary(status) {
+			return nil, fmt.Errorf("interrupted writer checkpoint rejected (HTTP %d)", status)
+		}
+		wait(ctx)
+	}
+	return nil, ctx.Err()
+}
+
 func (w *worker) readCheckpoint(ctx context.Context, job store.Job, seq int, session string, history bool) (store.CheckpointPage, error) {
 	var batch store.CheckpointPage
 	if !job.SupportsCheckpoints {

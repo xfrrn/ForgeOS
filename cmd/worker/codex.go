@@ -491,12 +491,14 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			}
 			var checkpoint *writerCheckpoint
 			if resumed != nil {
-				checkpoint = &writerCheckpoint{sequence: seq, trees: *resumed}
+				checkpoint = &writerCheckpoint{sequence: seq, trees: resumed}
 			} else if job.QuestionHandoff && answeredTrees != nil {
 				if err := w.verifyQuestionWorkspace(turn, job, start, dir, seq-1, answeredTrees); err != nil {
 					return previous, err
 				}
-				checkpoint = &writerCheckpoint{sequence: seq, trees: *answeredTrees}
+				checkpoint = &writerCheckpoint{sequence: seq, trees: answeredTrees}
+			} else if job.InterruptedHandoff {
+				checkpoint = &writerCheckpoint{sequence: seq}
 			}
 			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
 		})

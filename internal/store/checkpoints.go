@@ -114,12 +114,13 @@ type SessionHandoff struct {
 }
 
 type CheckpointRequest struct {
-	Lease    string           `json:"lease_token"`
-	Sequence *int             `json:"sequence"`
-	After    int64            `json:"after"`
-	Session  string           `json:"session_id"`
-	History  bool             `json:"history,omitempty"`
-	Handoffs []SessionHandoff `json:"handoffs,omitempty"`
+	Interrupted *InterruptedWriterTurn `json:"interrupted,omitempty"`
+	Lease       string                 `json:"lease_token"`
+	Sequence    *int                   `json:"sequence"`
+	After       int64                  `json:"after"`
+	Session     string                 `json:"session_id"`
+	History     bool                   `json:"history,omitempty"`
+	Handoffs    []SessionHandoff       `json:"handoffs,omitempty"`
 }
 
 func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq int, after int64, session string, supportsQueue bool) (CheckpointPage, error) {
@@ -154,6 +155,15 @@ func (s *Store) WorkerCheckpoint(ctx context.Context, id int64, request Checkpoi
 	hash := sha256.Sum256([]byte(lease))
 	if subtle.ConstantTimeCompare(hash[:], digest) != 1 {
 		return page, ErrConflict
+	}
+	if proof := request.Interrupted; proof != nil {
+		if after != 0 || session != "" || request.History {
+			return page, ErrConflict
+		}
+		if err := recordInterruptedWriter(ctx, tx, id, seq, *proof); err != nil {
+			return page, err
+		}
+		return page, tx.Commit()
 	}
 	var instructions []byte
 	err = tx.QueryRowContext(ctx, `SELECT NULLIF(next_instructions,'[]') FROM execution_checkpoints WHERE execution_id=$1 AND sequence=$2::integer-1`, id, seq).Scan(&instructions)
@@ -254,16 +264,17 @@ func recordCheckpointHandoff(ctx context.Context, tx *sql.Tx, id int64, seq int,
 		return ErrConflict
 	}
 	var replay bool
-	var question sql.NullInt64
-	err := tx.QueryRowContext(ctx, `SELECT h.handoff_session IS NOT NULL,h.question_id FROM writer_handoff_sources h
+	var question, missing sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT h.handoff_session IS NOT NULL,h.question_id,h.missing_instance FROM writer_handoff_sources h
 		JOIN executions e ON e.id=h.execution_id JOIN work_items t ON t.id=e.task_id
 		WHERE h.execution_id=$1 AND h.source_instance=$2 AND h.source_session=$3 AND COALESCE(t.spec->>'mode','')<>'plan'
+		AND (h.missing_instance IS NULL OR h.missing_instance<$5)
 		AND ((h.handoff_session=$4 AND h.handoff_instance=$5 AND h.sequence<=$6)
 		 OR (h.handoff_session IS NULL AND h.sequence=$6 AND NOT checkpoint_session_continues($1,$6,$4,$3)
 		    AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence=$6 AND c.session_id IS NULL)
 		    AND NOT EXISTS(SELECT 1 FROM writer_handoff_sources used WHERE used.execution_id=$1 AND used.handoff_session IS NOT NULL
 		        AND (used.source_session=$3 OR used.handoff_session=$4 OR used.handoff_instance=$5))))
-		ORDER BY h.handoff_session IS NOT NULL DESC LIMIT 1`, id, link.SourceInstance, link.From, link.Session, link.Instance, seq).Scan(&replay, &question)
+		ORDER BY h.handoff_session IS NOT NULL DESC LIMIT 1`, id, link.SourceInstance, link.From, link.Session, link.Instance, seq).Scan(&replay, &question, &missing)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
@@ -272,6 +283,8 @@ func recordCheckpointHandoff(ctx context.Context, tx *sql.Tx, id int64, seq int,
 	}
 	if question.Valid {
 		_, err = tx.ExecContext(ctx, `UPDATE checkpoint_resumes SET handoff_session=$2,handoff_instance=$3 WHERE question_id=$1`, question.Int64, link.Session, link.Instance)
+	} else if missing.Valid {
+		_, err = tx.ExecContext(ctx, `UPDATE interrupted_writer_turns SET handoff_session=$3,handoff_instance=$4 WHERE execution_id=$1 AND source_instance=$2`, id, link.SourceInstance, link.Session, link.Instance)
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE model_pauses SET handoff_session=$3,handoff_instance=$4,handoff_sequence=$5
 			WHERE execution_id=$1 AND instance=$2`, id, link.SourceInstance, link.Session, link.Instance, seq)
