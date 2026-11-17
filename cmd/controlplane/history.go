@@ -14,7 +14,7 @@ func registerHistory(mux *http.ServeMux, data *store.Store, owner string, worker
 	search := func(w http.ResponseWriter, r *http.Request, project int64) {
 		q := r.URL.Query()
 		source, text := q.Get("source"), strings.TrimSpace(q.Get("q"))
-		if (source != "" && source != "requirement" && source != "comment") || !utf8.ValidString(text) || strings.IndexByte(text, 0) >= 0 || len(text) > 512 {
+		if !slices.Contains([]string{"", "requirement", "comment", "merge", "goal"}, source) || !utf8.ValidString(text) || strings.IndexByte(text, 0) >= 0 || len(text) > 512 {
 			problem(w, http.StatusBadRequest, "invalid history source or query")
 			return
 		}

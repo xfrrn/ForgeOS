@@ -249,12 +249,20 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if _, err = s.SavePlan(ctx, task.ID, 4, rolling); !errors.Is(err, ErrConflict) {
 		t.Fatal("reopened a goal with closure in flight", err)
 	}
+	if hits, err := s.SearchHistory(ctx, p.ID, task.ID, "goal", ""); err != nil || len(hits) != 0 {
+		t.Fatalf("unfinished Goal entered completed history: %v %v", hits, err)
+	}
 	if err := s.CompleteGoal(ctx, *c); err != nil {
 		t.Fatal(err)
 	}
 	parent, err := s.Task(ctx, task.ID)
 	if err != nil || parent.Status != "DONE" || parent.Events[len(parent.Events)-1].Type != "goal_delivered" {
 		t.Fatalf("parent completion: %v %v", parent, err)
+	}
+	if hits, err := s.SearchHistory(ctx, p.ID, task.ID, "goal", rolling.Objective); err != nil || len(hits) != 1 ||
+		hits[0].SourceID != task.ID || hits[0].Version != int64(parent.ActiveRevision) ||
+		!hits[0].At.Equal(parent.Events[len(parent.Events)-1].At) {
+		t.Fatalf("missing completed Goal revision: %v %v", hits, err)
 	}
 	raw, err := s.TaskContext(ctx, p.ID, secondJob.TaskID)
 	var contextView struct {

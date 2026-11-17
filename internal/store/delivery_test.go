@@ -252,6 +252,9 @@ func TestMigrateAndResumeDelivery(t *testing.T) {
 	if err := s.SaveDelivery(ctx, gate); err != nil {
 		t.Fatal(err)
 	}
+	if hits, err := s.SearchHistory(ctx, 1, first.TaskID, "merge", ""); err != nil || len(hits) != 0 {
+		t.Fatalf("waiting PR entered merged project history: %v %v", hits, err)
+	}
 	if d, err := s.ClaimDelivery(ctx, 1); err != nil || d != nil {
 		t.Fatalf("waiting check had no backoff: %v %v", d != nil, err)
 	}
@@ -277,6 +280,13 @@ func TestMigrateAndResumeDelivery(t *testing.T) {
 	if err := s.SaveDelivery(ctx, persisted); err != nil {
 		t.Fatal(err)
 	}
+	hits, err := s.SearchHistory(ctx, 1, first.TaskID, "merge", persisted.MergeSHA)
+	var receipt Delivery
+	if err != nil || len(hits) != 1 || json.Unmarshal(hits[0].Delivery, &receipt) != nil ||
+		hits[0].URL != persisted.PRURL || hits[0].SourceID != persisted.PRNumber || receipt.ExecutionID != first.ExecutionID ||
+		receipt.Commit != sha || receipt.MergeSHA != persisted.MergeSHA {
+		t.Fatalf("missing recorded PR merge: %v %v", hits, err)
+	}
 	merged := claim()
 	bad := merged
 	bad.MergeSHA = sha
@@ -289,6 +299,9 @@ func TestMigrateAndResumeDelivery(t *testing.T) {
 	}
 	if err := s.SaveDelivery(ctx, merged); !errors.Is(err, ErrConflict) {
 		t.Fatalf("consumed lease accepted: %v", err)
+	}
+	if after, err := s.SearchHistory(ctx, 1, first.TaskID, "merge", sha); err != nil || !reflect.DeepEqual(hits, after) {
+		t.Fatalf("final delivery or replay changed the merge receipt: %v %v", after, err)
 	}
 	final, err := New(db).Task(ctx, first.TaskID)
 	if err != nil || final.Status != "DONE" || final.Delivery.LeaseToken != "" || final.Delivery.MergeSHA != merged.MergeSHA ||
