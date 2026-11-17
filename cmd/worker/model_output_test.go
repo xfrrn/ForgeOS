@@ -51,6 +51,45 @@ func TestAdaptersJournalPublicModelMessages(t *testing.T) {
 	}
 }
 
+func TestAdaptersJournalToolOutput(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"cli", "app-server", "claude"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			root := t.TempDir()
+			w := worker{repoRoot: root, workspaceRoot: root, token: "node-value"}
+			w.journal, err = w.openJournal(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.journal.Close()
+			var adapter harnessAdapter = codexCLI{bin: bin, sandbox: "read-only", appServer: mode == "app-server"}
+			name := "codex"
+			if mode == "claude" {
+				adapter = claudeCLI{bin: bin}
+				name = "claude"
+			}
+			job := store.Job{RecordToolActivity: true, RecordToolOutput: true, LeaseToken: strings.Repeat("a", 64)}
+			session, err := adapter.runTurn(context.Background(), w.processLog(context.Background(), job, name, "1.2.3"), root, "SIMULATED_PUBLIC_OUTPUT", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := sha256.Sum256([]byte(job.LeaseToken))
+			history, err := w.processHistory(context.Background(), key[:])
+			if err != nil || history == nil || len(*history) != 1 {
+				t.Fatal(history, err)
+			}
+			p := (*history)[0]
+			if !p.Valid() || p.Session != session || p.ToolOutput == nil || p.ToolOutput.Seq != 2 || p.ToolOutput.Call != 1 || p.ToolOutput.Text != "Tool output sample.\n[redacted]\n" {
+				t.Fatal(p)
+			}
+		})
+	}
+}
+
 func TestModelOutputPersistsOnlyPublicRedactedWindow(t *testing.T) {
 	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv("MODEL_API_KEY", "private-environment-value")
@@ -70,13 +109,16 @@ func TestModelOutputPersistsOnlyPublicRedactedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range []string{
+	for i, raw := range []string{
 		`{"message":{"content":[{"type":"thinking","text":"private-thought"},{"type":"tool_use","text":"private-input"},{"type":"text","text":"Reading docs.\nprivate-environment-value\nprivate-worker-value\nprivate-lease-value"}]}}`,
 		`{"message":{"content":[{"type":"text","text":"-----BEGIN PRIVATE KEY-----\nprivate-first-key-part"}]}}`,
 		`{"message":{"content":[{"type":"text","text":"private-second-key-part\n-----END PRIVATE KEY-----\nFinished reading."}]}}`,
 	} {
 		if err = p.claudeActivity("assistant", []byte(raw)); err != nil {
 			t.Fatal(err)
+		}
+		if i == 1 {
+			p.output.privateKey, p.output.loaded = false, false
 		}
 	}
 	if err = p.claudeActivity("user", []byte(`{"message":{"content":[{"type":"text","text":"private-user"}]}}`)); err != nil {

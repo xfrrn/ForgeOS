@@ -92,6 +92,8 @@ func testAppServerProcess() int {
 			}
 			message := `{"forgeos_question":"Which heading?","evidence":"No heading selected."}`
 			if prompt == "SIMULATED_PUBLIC_OUTPUT" {
+				notify("item/started", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{"id": "tool-1", "type": "commandExecution", "command": "private-input"}})
+				notify("item/completed", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{"id": "tool-1", "type": "commandExecution", "status": "completed", "aggregatedOutput": "Tool output sample.\npassword=private-value"}})
 				notify("item/completed", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{"id": "thought", "type": "reasoning", "text": "private-thought"}})
 				message = "Reading the guide.\npassword=private-value"
 			}

@@ -28,6 +28,8 @@ func testClaudeProcess() int {
 	}
 	fmt.Printf(`{"type":"system","subtype":"init","session_id":"%s"}`+"\n", testClaudeID)
 	if string(body) == "SIMULATED_PUBLIC_OUTPUT" {
+		fmt.Printf(`{"type":"assistant","session_id":"%s","message":{"content":[{"type":"tool_use","id":"tool-1","name":"Read","input":{"file_path":"private-input"}}]}}`+"\n", testClaudeID)
+		fmt.Printf(`{"type":"user","session_id":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","content":[{"type":"text","text":"Tool output sample.\npassword=private-value"},{"type":"image","text":"private-image"}]}]}}`+"\n", testClaudeID)
 		fmt.Printf(`{"type":"assistant","session_id":"%s","message":{"content":[{"type":"thinking","thinking":"private-thought"},{"type":"text","text":"Reading the guide.\npassword=private-value"}]}}`+"\n", testClaudeID)
 		fmt.Printf(`{"type":"result","subtype":"success","session_id":"%s"}`+"\n", testClaudeID)
 		return 0

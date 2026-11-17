@@ -12,6 +12,13 @@ type ModelOutput struct {
 	Text     string `json:"text"`
 }
 
+type ToolOutput struct {
+	Seq  int64  `json:"seq"`
+	Call int64  `json:"call"`
+	Tool string `json:"tool"`
+	Text string `json:"text"`
+}
+
 type HarnessProcess struct {
 	Instance    int64        `json:"instance"`
 	PID         int          `json:"pid"`
@@ -24,9 +31,13 @@ type HarnessProcess struct {
 	ExitCode    *int         `json:"exit_code"`
 	Tools       []ToolEvent  `json:"tools,omitempty"`
 	Output      *ModelOutput `json:"output,omitempty"`
+	ToolOutput  *ToolOutput  `json:"tool_output,omitempty"`
 }
 
 func (p HarnessProcess) Valid() bool {
+	if !p.validToolOutput() {
+		return false
+	}
 	if p.Output != nil && (p.Session == "" || p.Output.Sequence <= 0 || p.Output.Text == "" || len(p.Output.Text) > validation.LiveLogWindow ||
 		validation.DisplayLogTail([]byte(p.Output.Text), nil) != p.Output.Text) {
 		return false
@@ -38,6 +49,40 @@ func (p HarnessProcess) Valid() bool {
 	return p.validTools() && p.Instance > 0 && p.PID > 0 && ValidHarnessVersion(p.Harness, p.Version) && !p.Started.IsZero() &&
 		(p.Exited == nil && p.ExitCode == nil || p.Exited != nil && !p.Exited.Before(p.Started) && p.ExitCode != nil && *p.ExitCode >= -1) &&
 		len(p.Session) <= 128 && strings.Trim(p.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
+}
+
+func (p HarnessProcess) validToolOutput() bool {
+	o := p.ToolOutput
+	if o == nil {
+		return true
+	}
+	if p.Session == "" || o.Call < 1 || o.Seq < o.Call || !KnownTool(p.Harness, o.Tool) || o.Text == "" ||
+		len(o.Text) > validation.LiveLogWindow || validation.DisplayLogTail([]byte(o.Text), nil) != o.Text ||
+		len(p.Tools) == 0 || o.Seq > p.Tools[len(p.Tools)-1].Seq {
+		return false
+	}
+	for _, e := range p.Tools {
+		if e.Seq == o.Seq {
+			return e.Call == o.Call && e.Tool == o.Tool && e.Phase != "started"
+		}
+	}
+	return o.Seq < p.Tools[0].Seq
+}
+
+func (p HarnessProcess) outputExcludes(lease string) bool {
+	var texts []string
+	if p.Output != nil {
+		texts = append(texts, p.Output.Text)
+	}
+	if p.ToolOutput != nil {
+		texts = append(texts, p.ToolOutput.Text)
+	}
+	for _, text := range texts {
+		if validation.DisplayLogTail([]byte(text), []string{lease}) != text {
+			return false
+		}
+	}
+	return true
 }
 
 type ProcessHistory []HarnessProcess

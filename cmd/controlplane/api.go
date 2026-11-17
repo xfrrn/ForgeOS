@@ -320,7 +320,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	workers.handle(mux, "POST /internal/executions/{id}/process", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var report store.ProcessReport
-		if !ok || !decode(w, r, &report) {
+		if !ok || !decodeLimited(w, r, &report, 128<<10) {
 			return
 		}
 		if len(report.LeaseToken) != 64 || !report.Process.Valid() {

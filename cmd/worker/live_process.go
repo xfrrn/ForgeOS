@@ -17,7 +17,8 @@ var readHarnessProcess = fmt.Sprintf(`SELECT instance,pid,harness,version,coales
  coalesce((SELECT previous_session FROM harness_session_handoffs h WHERE h.instance=p.instance AND p.session_id IS NOT NULL),''),
  (SELECT json_group_array(json_object('seq',seq,'call',call,'tool',tool,'phase',phase,'at',at) ORDER BY seq)
   FROM (SELECT * FROM harness_tool_events e WHERE e.instance=p.instance ORDER BY seq DESC LIMIT %d)),
- (SELECT json_object('sequence',sequence,'text',text) FROM harness_model_output o WHERE o.instance=p.instance)
+ (SELECT json_object('sequence',sequence,'text',text) FROM harness_model_output o WHERE o.instance=p.instance),
+ (SELECT json_object('seq',seq,'call',call,'tool',tool,'text',text) FROM harness_tool_output o WHERE o.instance=p.instance)
  FROM harness_processes p`, store.ToolWindow)
 
 func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProcess, error) {
@@ -26,7 +27,8 @@ func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProce
 	var exited sql.NullString
 	var raw []byte
 	var output []byte
-	err := row.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &started, &exited, &p.ExitCode, &p.HandoffFrom, &raw, &output)
+	var toolOutput []byte
+	err := row.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &started, &exited, &p.ExitCode, &p.HandoffFrom, &raw, &output, &toolOutput)
 	if err != nil {
 		return p, err
 	}
@@ -43,6 +45,11 @@ func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProce
 	}
 	if len(output) != 0 {
 		if err = json.Unmarshal(output, &p.Output); err != nil {
+			return p, err
+		}
+	}
+	if len(toolOutput) != 0 {
+		if err = json.Unmarshal(toolOutput, &p.ToolOutput); err != nil {
 			return p, err
 		}
 	}

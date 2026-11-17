@@ -23,7 +23,7 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	job, err := s.Claim(ctx, "node", t.TempDir(), true)
-	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput {
+	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput || !job.RecordToolOutput {
 		t.Fatalf("expected live reporting job: %v", err)
 	}
 	now := time.Now().UTC()
@@ -66,7 +66,16 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		post(modified, job.LeaseToken, false)
 	}
 	p.Tools = append(p.Tools, ToolEvent{Seq: 2, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "completed"})
+	p.ToolOutput = &ToolOutput{Seq: 2, Call: 1, Tool: "command_execution", Text: "Command finished.\n"}
 	post(p, job.LeaseToken, true)
+	for _, output := range []*ToolOutput{nil, {Seq: 2, Call: 1, Tool: "command_execution", Text: "rewritten\n"},
+		{Seq: 1, Call: 1, Tool: "command_execution", Text: "early\n"}, {Seq: 3, Call: 1, Tool: "command_execution", Text: "future\n"},
+		{Seq: 2, Call: 2, Tool: "command_execution", Text: "wrong call\n"}, {Seq: 2, Call: 1, Tool: "Read", Text: "wrong tool\n"},
+		{Seq: 2, Call: 1, Tool: "command_execution", Text: job.LeaseToken + "\n"}} {
+		bad := p
+		bad.ToolOutput = output
+		post(bad, job.LeaseToken, false)
+	}
 	stale := p
 	stale.Tools = p.Tools[:1]
 	post(stale, job.LeaseToken, false)
@@ -88,6 +97,9 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 	post(closed, job.LeaseToken, true)
 	changed = closed
 	changed.Output = &ModelOutput{Sequence: 3, Text: "Changed after exit.\n"}
+	post(changed, job.LeaseToken, false)
+	changed = closed
+	changed.ToolOutput = &ToolOutput{Seq: 2, Call: 1, Tool: "command_execution", Text: "Changed after exit.\n"}
 	post(changed, job.LeaseToken, false)
 	post(p, job.LeaseToken, false)
 	p.Instance++
@@ -137,6 +149,12 @@ func TestFinalProcessOutputRejectsLeaseAndPreservesHistory(t *testing.T) {
 		t.Fatal("accepted lease in final output", err)
 	}
 	h[0].Output = &ModelOutput{Sequence: 1, Text: "[redacted]\nFinished the guide.\n"}
+	h[0].Tools = []ToolEvent{{Seq: 1, Call: 1, Tool: "command_execution", Phase: "completed", At: at.Unix()}}
+	h[0].ToolOutput = &ToolOutput{Seq: 1, Call: 1, Tool: "command_execution", Text: j.LeaseToken + "\n"}
+	if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, r); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted lease in tool output", err)
+	}
+	h[0].ToolOutput.Text = "Command finished.\n"
 	observed := h[0]
 	observed.Exited, observed.ExitCode = nil, nil
 	if err = s.ObserveProcess(ctx, j.ExecutionID, ProcessReport{LeaseToken: j.LeaseToken, Process: observed}); err != nil {
@@ -151,6 +169,15 @@ func TestFinalProcessOutputRejectsLeaseAndPreservesHistory(t *testing.T) {
 			t.Fatal("rewrote observed output in final result", err)
 		}
 	}
+	for _, output := range []*ToolOutput{nil, {Seq: 1, Call: 1, Tool: "command_execution", Text: "Rewritten final tool output.\n"}} {
+		bad := r
+		processes := append(ProcessHistory(nil), h...)
+		processes[0].ToolOutput = output
+		bad.Processes = &processes
+		if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, bad); !errors.Is(err, ErrConflict) {
+			t.Fatal("rewrote final tool output", err)
+		}
+	}
 	for range 2 {
 		if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, r); err != nil {
 			t.Fatal(err)
@@ -159,5 +186,8 @@ func TestFinalProcessOutputRejectsLeaseAndPreservesHistory(t *testing.T) {
 	got, err := s.Task(ctx, task.ID)
 	if err != nil || got.Execution.Result.Processes == nil || (*got.Execution.Result.Processes)[0].Output == nil || *(*got.Execution.Result.Processes)[0].Output != *h[0].Output {
 		t.Fatal(got, err)
+	}
+	if (*got.Execution.Result.Processes)[0].ToolOutput == nil || *(*got.Execution.Result.Processes)[0].ToolOutput != *h[0].ToolOutput {
+		t.Fatal("tool history lost")
 	}
 }

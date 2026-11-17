@@ -96,6 +96,13 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 	CREATE TABLE IF NOT EXISTS harness_model_output (
 		instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance), sequence INTEGER NOT NULL, text TEXT NOT NULL
 	);
+	CREATE TABLE IF NOT EXISTS harness_tool_output (
+		instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance), seq INTEGER NOT NULL, call INTEGER NOT NULL,
+		tool TEXT NOT NULL, text TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS harness_output_redaction (
+		lease_hash BLOB NOT NULL, stream TEXT NOT NULL, private_key INTEGER NOT NULL, PRIMARY KEY(lease_hash,stream)
+	);
 	CREATE TABLE IF NOT EXISTS ci_uploads (
 		lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), run_id TEXT NOT NULL,
 		file TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, retry_at INTEGER NOT NULL DEFAULT 0,

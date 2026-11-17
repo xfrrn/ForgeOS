@@ -293,7 +293,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				ThreadID string `json:"threadId"`
 				TurnID   string `json:"turnId"`
 				Turn     struct{ ID, Status string }
-				Item     struct{ ID, Type, Status, Text string }
+				Item     struct{ ID, Type, Status, Text, AggregatedOutput string }
 			}
 			isTurn := strings.HasPrefix(m.Method, "turn/")
 			if json.Unmarshal(m.Params, &event) != nil || event.ThreadID != session ||
@@ -344,7 +344,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 						phase = "failed"
 					}
 				}
-				if err = process.recordTool(event.Item.ID, name, phase); err != nil {
+				if err = process.recordTool(event.Item.ID, name, phase, event.Item.AggregatedOutput); err != nil {
 					return session, err
 				}
 			}

@@ -412,6 +412,7 @@ type Job struct {
 	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
 	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
 	RecordModelOutput   bool            `json:"record_model_output,omitempty"`
+	RecordToolOutput    bool            `json:"record_tool_output,omitempty"`
 	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
 	ReportLiveCILog     bool            `json:"report_live_ci_log,omitempty"`
 	ReportCICandidate   bool            `json:"report_ci_candidate,omitempty"`
@@ -792,6 +793,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.ReportLiveProcess = j.RecordProcesses
 		j.RecordToolActivity = j.RecordProcesses
 		j.RecordModelOutput = j.RecordProcesses
+		j.RecordToolOutput = j.RecordProcesses
 		j.ManageResources = registered != nil && caps.SupportsResources
 		j.ModelPause = j.SupportsCheckpoints && j.ManageResources && caps.SupportsModelPause && (j.Spec.Mode != "plan" || caps.SupportsPlannerPause)
 		j.RecoverPlannerPause = j.ModelPause && j.Spec.Mode == "plan"
@@ -900,7 +902,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	}
 	if result.Processes != nil {
 		for _, p := range *result.Processes {
-			if p.Output != nil && validation.DisplayLogTail([]byte(p.Output.Text), []string{token}) != p.Output.Text {
+			if !p.outputExcludes(token) {
 				return ErrConflict
 			}
 		}
@@ -910,7 +912,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if err = json.Unmarshal(observed, &last); err != nil {
 			return err
 		}
-		if last.Output != nil {
+		if last.Output != nil || last.ToolOutput != nil {
 			matched := false
 			if result.Processes != nil {
 				for _, p := range *result.Processes {

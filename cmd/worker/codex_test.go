@@ -153,6 +153,8 @@ func TestMain(m *testing.M) {
 	args := strings.Join(os.Args[1:], " ")
 	if string(body) == "SIMULATED_PUBLIC_OUTPUT" {
 		fmt.Println(`{"type":"thread.started","thread_id":"public-output-thread"}`)
+		fmt.Println(`{"type":"item.started","item":{"id":"tool-1","type":"command_execution","command":"private-input"}}`)
+		fmt.Println(`{"type":"item.completed","item":{"id":"tool-1","type":"command_execution","status":"completed","aggregated_output":"Tool output sample.\npassword=private-value"}}`)
 		fmt.Println(`{"type":"item.completed","item":{"type":"reasoning","text":"private-thought"}}`)
 		fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reading the guide.\npassword=private-value"}}`)
 		fmt.Println(`{"type":"turn.completed"}`)

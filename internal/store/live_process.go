@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	"forgeos/internal/validation"
 )
 
 type ObservedProcess struct {
@@ -51,6 +49,13 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 		(p.Output.Sequence == last.Output.Sequence && *p.Output != *last.Output)) {
 		return false
 	}
+	if last.ToolOutput != nil && (p.ToolOutput == nil || p.ToolOutput.Seq < last.ToolOutput.Seq ||
+		(p.ToolOutput.Seq == last.ToolOutput.Seq && *p.ToolOutput != *last.ToolOutput)) {
+		return false
+	}
+	if last.Exited != nil && ((p.ToolOutput == nil) != (last.ToolOutput == nil) || (p.ToolOutput != nil && *p.ToolOutput != *last.ToolOutput)) {
+		return false
+	}
 	if last.Exited != nil && ((p.Output == nil) != (last.Output == nil) || (p.Output != nil && *p.Output != *last.Output)) {
 		return false
 	}
@@ -65,7 +70,7 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 	if !p.Valid() || len(report.LeaseToken) != 64 {
 		return ErrConflict
 	}
-	if p.Output != nil && validation.DisplayLogTail([]byte(p.Output.Text), []string{report.LeaseToken}) != p.Output.Text {
+	if !p.outputExcludes(report.LeaseToken) {
 		return ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

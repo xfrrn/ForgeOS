@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"slices"
 	"strings"
@@ -15,6 +17,7 @@ type modelOutput struct {
 	secrets    []string
 	credential func() (string, error)
 	privateKey bool
+	loaded     bool
 }
 
 func outputSecrets(lease string) []string {
@@ -33,14 +36,57 @@ func (p *processLog) modelMessage(text string) error {
 		return nil
 	}
 	o := p.output
-	token, err := o.credential()
+	safe, err := p.redactOutput(o, "model", text)
 	if err != nil {
 		return err
+	}
+	o.Text = validation.DisplayLogTail([]byte(o.Text+safe), o.secrets)
+	o.Sequence++
+	tx, err := p.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`INSERT INTO harness_model_output(instance,sequence,text) VALUES(?,?,?)
+	 ON CONFLICT(instance) DO UPDATE SET sequence=excluded.sequence,text=excluded.text`, p.id, o.Sequence, o.Text)
+	if err == nil {
+		err = p.saveOutputState(tx, "model", o.privateKey)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err == nil {
+		p.notify()
+	}
+	return err
+}
+
+func (p *processLog) redactOutput(o *modelOutput, stream, text string) (string, error) {
+	if !o.loaded {
+		err := p.db.QueryRow("SELECT private_key FROM harness_output_redaction WHERE lease_hash=? AND stream=?", p.lease[:], stream).Scan(&o.privateKey)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		o.loaded = true
+	}
+	return o.redact(text)
+}
+
+func (p *processLog) saveOutputState(tx *sql.Tx, stream string, open bool) error {
+	_, err := tx.Exec(`INSERT INTO harness_output_redaction(lease_hash,stream,private_key) VALUES(?,?,?)
+	 ON CONFLICT(lease_hash,stream) DO UPDATE SET private_key=excluded.private_key`, p.lease[:], stream, open)
+	return err
+}
+
+func (o *modelOutput) redact(text string) (string, error) {
+	token, err := o.credential()
+	if err != nil {
+		return "", err
 	}
 	if token != "" && !slices.Contains(o.secrets, token) {
 		o.secrets = append(o.secrets, token)
 	}
-	// Preserve private-key redaction across separate public messages; never journal the raw text.
+	// Preserve private-key redaction across output records; never journal the raw text.
 	if o.privateKey {
 		text = "-----BEGIN PRIVATE KEY-----\n" + text
 	}
@@ -52,15 +98,7 @@ func (p *processLog) modelMessage(text string) error {
 			o.privateKey = false
 		}
 	}
-	safe := validation.DisplayLogTail([]byte(text+"\n"), o.secrets)
-	o.Text = validation.DisplayLogTail([]byte(o.Text+safe), o.secrets)
-	o.Sequence++
-	_, err = p.db.Exec(`INSERT INTO harness_model_output(instance,sequence,text) VALUES(?,?,?)
-	 ON CONFLICT(instance) DO UPDATE SET sequence=excluded.sequence,text=excluded.text`, p.id, o.Sequence, o.Text)
-	if err == nil {
-		p.notify()
-	}
-	return err
+	return validation.DisplayLogTail([]byte(text+"\n"), o.secrets), nil
 }
 
 func (p *processLog) claudeActivity(kind string, raw []byte) error {

@@ -2868,3 +2868,26 @@ PostgreSQL 18 与 Docker 全包回归 298 项测试及子测试通过，零失�
 新增真实 Docker 回归让一个包输出合成凭据失败诊断、另一个包继续运行，断言完整检查结束前收到脱敏消息，最终失败结果不变。PostgreSQL 回归对声明式与内置配置同时验证候选、租约、检查顺序、重放、过期及终态清除。301 项测试及子测试通过，零失败、零跳过；Go 静态检查和 git diff --check 通过。没有修改 Web，使用上一提交已验证的任务页面构建。
 
 工具正文、启动阶段以及独立角色的实时输出仍待补齐；内置验证原始日志仍在节点本地。本项不替代全路线最终回归，外部设备、受限身份和独立审查者仍保持待验收。
+
+上述内置 Go 验证实时输出对应 ForgeOS 提交 a4ebc74863e359520a038f7d2ac65bd86dee2c00。
+
+### 专题 07、13、16 C.3 · 完成工具的输出窗口
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| beta #192 由 Codex CLI 先读取 README，再写入并读取一个合成脱敏夹具 | 运行中能看到实际工具结果，绑定调用和原生会话；重启可回读 | PID 2740、Session 01a1eb51-fd48-75e2-afa3-ca0cede3d2a4 的活动工具结果已从 Chrome 核对并重启回读。最终输出为 command_execution 调用 #5、事件 #6；原生结果含合成凭据行，SQLite 和最终窗口均显示 [redacted]，二者逐字段相符。 |
+| 核对单文件候选，在页面验收并等待受保护交付 | 精确候选通过检查、合并、关闭 Issue；重启后可回读 | 候选 ff213ed342df405bdde43169d534741e34fffc23 经 [PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/193) 合并为 882223248bed1d6f80c9c81266a350ec91a9e6eb。Actions 44175896450 的预设失败步骤在同一 SHA 重跑通过，acceptance-check 和 forgeos/local-ci 均 SUCCESS；任务 DONE、Issue CLOSED，Chrome 历史窗口保留。 |
+| beta #194 由 Codex App Server 先读取 README，再写入并读取一个合成脱敏夹具 | 运行中能看到实际工具结果，绑定调用和原生会话；重启可回读 | PID 40240、Session 01a1eb54-e5be-7ce3-ba04-15e282caa19a 的活动工具结果已从 Chrome 核对并重启回读。最终输出为 command_execution 调用 #7、事件 #8；原生结果含合成凭据行，SQLite 和最终窗口均显示 [redacted]，二者逐字段相符。 |
+| 核对单文件候选，在页面验收并等待受保护交付 | 精确候选通过检查、合并、关闭 Issue；重启后可回读 | 候选 f7b4006c4de57e5b3d8571c51684554217aa299d 经 [PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/195) 合并为 74177aadbe86fa8c3991135d7cf9c385b0177d21。Actions 44176490839 的预设失败步骤在同一 SHA 重跑通过，acceptance-check 和 forgeos/local-ci 均 SUCCESS；任务 DONE、Issue CLOSED，Chrome 历史窗口保留。 |
+| beta #196 由 Claude Code 先读取 README，再写入并读取一个合成脱敏夹具 | 运行中能看到实际工具结果，绑定调用和原生会话；重启可回读 | PID 38944、Session 35cc78fd-4a4e-4b64-9978-90eb2f791ebe 的活动工具结果已从 Chrome 核对并重启回读。最终输出为 Read 调用 #5、事件 #6；原生结果含合成凭据行，SQLite 和最终窗口均显示 [redacted]，二者逐字段相符。 |
+| 核对单文件候选，在页面验收并等待受保护交付 | 精确候选通过检查、合并、关闭 Issue；重启后可回读 | 候选 759108368389bbb91a52756c10c05db35b722a11 经 [PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/197) 合并为 34c0f5eedb90c9f96d488552cf29c9fa2bebda1a。Actions 44176964519 的预设失败步骤在同一 SHA 重跑通过，acceptance-check 和 forgeos/local-ci 均 SUCCESS；任务 DONE、Issue CLOSED，Chrome 历史窗口保留。 |
+| beta #198 由 Claude 分段私钥夹具 先读取 README，再写入并读取一个合成脱敏夹具 | 运行中能看到实际工具结果，绑定调用和原生会话；重启可回读 | PID 33476、Session eaa6bd50-bdab-42bb-8bcc-67055c5bcad2 的活动工具结果已从 Chrome 核对并重启回读。最终输出为 Read 调用 #11、事件 #12；原生结果含合成凭据行，SQLite 和最终窗口均显示 [redacted]，二者逐字段相符。 |
+| 核对单文件候选，在页面验收并等待受保护交付 | 精确候选通过检查、合并、关闭 Issue；重启后可回读 | 候选 fa45483beab53b1e0552c8dbbeb9bcdbe888fded 经 [PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/199) 合并为 be4987c02c047e2b2c8b2dc1fd4a589edbd8caef。Actions 44177961738 的预设失败步骤在同一 SHA 重跑通过，acceptance-check 和 forgeos/local-ci 均 SUCCESS；任务 DONE、Issue CLOSED，Chrome 历史窗口保留。 |
+| 旧控制面／新 Worker 对 beta #2 进行只读规划，再重启工作台 | 保留实际协议收集的字段和原生计划 | 会话 01a1eb53-da47-7500-bf6e-43738b11997a 产出计划修订 1；没有声明或采集工具正文时保持缺省，浏览器不补造记录。 |
+| 新控制面／旧 Worker 对 beta #2 进行只读规划，再重启工作台 | 保留实际协议收集的字段和原生计划 | 会话 01a1eb55-069d-7aa3-82d8-78c3ff48ea85 产出计划修订 1；没有声明或采集工具正文时保持缺省，浏览器不补造记录。 |
+| 新控制面／新 Worker 对 beta #2 进行只读规划，再重启工作台 | 保留实际协议收集的字段和原生计划 | 会话 01a1eb56-3403-7542-b2ac-372c8e38d837 产出计划修订 1；保留脱敏工具窗口，节点 SQLite 与浏览器历史已核对。 |
+| 使用最终持久化实现重新执行只读规划并重启回读 | 新的状态表不影响原生工具记录和计划 | 会话 01a1eb60-4d36-7f43-82c5-d7d2623eff92 生成计划修订 1，工具窗口和浏览器历史一致。 |
+
+回归验证三适配器工具正文、排除参数和图片、失败调用输出、敏感环境值、节点凭据轮换、跨工具调用的分段私钥、UTF-8 窗口、事件滚动及 SQLite 重开。控制面测试覆盖工具和调用身份、序号回退、同序号修改、执行租约泄露及最终回执删除／覆盖拒绝。原 16 KiB HTTP 上限不能容纳合法窗口的 JSON 转义结果；新增真实路由测试用两个 8 KiB HTML 字符窗口验证成功上报、幂等重放、改写拒绝和超限拒绝。
+
+PostgreSQL 18 与 Docker 全包 307 项测试及子测试通过，零失败、零跳过；复查发现最初实现会在新调用时清除私钥状态，新增分段读取回归先失败；移除该重置后复测和全包回归通过。beta #198 又从真实 Claude 的两次 Read 分段返回核对：第一段有开始标记且无结束标记，第二段含结束标记；节点与最终输出均遮蔽第二段合成密钥。Go 静态检查、TypeScript 和生产构建通过。仅最近完成且有正文的工具结果进入本窗口；工具执行中的增量输出、Codex MCP 等结构化工具结果、完整工具归档、启动阶段及其他独立角色输出仍待补齐。SQLite 重开及替换脱敏器后的跨段遮蔽已回归；原生进程在两段读取之间重启的完整场景仍待验收。全路线最终验收和已列外部条件继续待验收。
