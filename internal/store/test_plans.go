@@ -179,9 +179,9 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		return err
 	}
 	err = tx.QueryRowContext(ctx, `SELECT p.source,(SELECT outcome FROM candidate_test_plan_jobs WHERE plan_id=p.id AND role='test'),
-		COALESCE(e.result->>'session_id',''),j.outcome,j.completed_at IS NOT NULL,j.failed,(j.lease_until>now() AND `+currentTestPlan+`)
+		COALESCE(e.session_id,''),j.outcome,j.completed_at IS NOT NULL,j.failed,(j.lease_until>now() AND `+currentTestPlan+`)
 		FROM candidate_test_plan_jobs j JOIN candidate_test_plans p ON j.plan_id=p.id JOIN work_items t ON t.id=p.task_id
-		LEFT JOIN executions e ON e.id=candidate_implementation_execution(p.execution_id) WHERE p.id=$1 AND t.id=$2 AND j.role=$3 AND j.lease::text=$4 FOR UPDATE OF j`, out.ID, taskID, role, out.Lease).Scan(&srcJSON, &planJSON, &dev, &stored, &complete, &failed, &active)
+		LEFT JOIN execution_candidate_identity e ON e.id=candidate_implementation_execution(p.execution_id) WHERE p.id=$1 AND t.id=$2 AND j.role=$3 AND j.lease::text=$4 FOR UPDATE OF j`, out.ID, taskID, role, out.Lease).Scan(&srcJSON, &planJSON, &dev, &stored, &complete, &failed, &active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}

@@ -9,6 +9,11 @@ import (
 )
 
 func TestCIPausePinsResumedExecution(t *testing.T) {
+	t.Run("reported", func(t *testing.T) { testCIPausePinsResumedExecution(t, false) })
+	t.Run("lost after checkpoint", func(t *testing.T) { testCIPausePinsResumedExecution(t, true) })
+}
+
+func testCIPausePinsResumedExecution(t *testing.T, lost bool) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
 	if err := s.Migrate(ctx); err != nil {
@@ -25,7 +30,11 @@ func TestCIPausePinsResumedExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	caps := WorkerCapabilities{SupportsCodex: true, SupportsValidation: true}
+	_, err = s.PublishGlobalRules(ctx, 0, "Original CI instructions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps := WorkerCapabilities{SupportsCodex: true, SupportsValidation: true, SupportsGlobalRules: true}
 	claim := func() *Job {
 		t.Helper()
 		j, err := s.ClaimForProjects(ctx, "worker", root, nil, caps)
@@ -53,11 +62,21 @@ func TestCIPausePinsResumedExecution(t *testing.T) {
 	reject(s.RecordCICandidate(ctx, first.ExecutionID, "wrong", sha, "s1"))
 	reject(s.RecordCICandidate(ctx, first.ExecutionID, first.LeaseToken, spec.BaseCommit, "s1"))
 	ok(s.RecordCICandidate(ctx, first.ExecutionID, first.LeaseToken, sha, "s1"))
+	ok(s.RecordCICandidate(ctx, first.ExecutionID, first.LeaseToken, sha, "s1"))
+	reject(s.RecordCICandidate(ctx, first.ExecutionID, first.LeaseToken, sha, "s2"))
 	reject(s.RecordCICandidate(ctx, first.ExecutionID, first.LeaseToken, other, "s1"))
 	ok(s.ControlCI(ctx, first.ExecutionID, false))
 	reject(s.ControlCI(ctx, first.ExecutionID, true))
 	reject(s.Complete(ctx, first.ExecutionID, first.LeaseToken, Result{Commit: other, ExitCode: 1, Error: "stopped"}))
-	ok(s.Complete(ctx, first.ExecutionID, first.LeaseToken, Result{Commit: sha, ExitCode: 1, Error: "stopped"}))
+	if lost {
+		_, err = s.db.ExecContext(ctx, "UPDATE executions SET lease_until=now() WHERE id=$1", first.ExecutionID)
+		ok(err)
+		ok(s.Abandon(ctx, first.ExecutionID))
+	} else {
+		ok(s.Complete(ctx, first.ExecutionID, first.LeaseToken, Result{Commit: sha, ExitCode: 1, Error: "stopped"}))
+	}
+	_, err = s.PublishGlobalRules(ctx, 1, "Future CI instructions")
+	ok(err)
 	for range 2 {
 		ok(s.ControlCI(ctx, first.ExecutionID, true))
 	}
@@ -67,6 +86,14 @@ func TestCIPausePinsResumedExecution(t *testing.T) {
 	}
 	reject(s.RecordCICandidate(ctx, second.ExecutionID, second.LeaseToken, other, ""))
 	ok(s.RecordCICandidate(ctx, second.ExecutionID, second.LeaseToken, sha, ""))
+	var origin int64
+	var session, originalRule, originalCommit string
+	ok(s.db.QueryRowContext(ctx, `SELECT e.id,e.session_id,r->'global_rules'->>'content',r->>'implementation_commit'
+  FROM execution_candidate_identity e, review_rules_for_execution($1) r
+  WHERE e.id=candidate_implementation_execution($1)`, second.ExecutionID).Scan(&origin, &session, &originalRule, &originalCommit))
+	if origin != first.ExecutionID || session != "s1" || originalRule != "Original CI instructions" || originalCommit != sha {
+		t.Fatal("resumed wrong implementation", origin, session, originalRule, originalCommit)
+	}
 	ok(s.ControlCI(ctx, second.ExecutionID, false))
 	ok(s.Complete(ctx, second.ExecutionID, second.LeaseToken, Result{Commit: sha, ExitCode: 1, Error: "stopped"}))
 	ok(s.ControlCI(ctx, first.ExecutionID, true)) // delayed duplicate must not resume the second pause

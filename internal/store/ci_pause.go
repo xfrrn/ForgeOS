@@ -13,11 +13,11 @@ func (s *Store) RecordCICandidate(ctx context.Context, id int64, lease, sha, ses
 		return ErrConflict
 	}
 	hash := sha256.Sum256([]byte(lease))
-	res, err := s.db.ExecContext(ctx, `UPDATE executions e SET ci_candidate=$3
+	res, err := s.db.ExecContext(ctx, `UPDATE executions e SET ci_candidate=$3,ci_candidate_session=$4
 		FROM work_items t WHERE e.id=$1 AND e.task_id=t.id AND e.lease_hash=$2 AND t.kind='codex_issue'
 		AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.owner_cancel_requested_at IS NULL
 		AND e.lease_until>clock_timestamp() AND e.abandoned_at IS NULL AND e.result IS NULL
-		AND (e.ci_candidate IS NULL OR e.ci_candidate=$3)
+		AND (e.ci_candidate IS NULL OR e.ci_candidate=$3) AND (e.ci_candidate_session IS NULL OR e.ci_candidate_session=$4)
 		AND COALESCE(t.spec->>'mode','')<>'plan' AND length(t.spec->>'base_commit')=length($3) AND t.spec->>'base_commit'<>$3
 		AND (CASE WHEN t.spec ? 'verify_commit' THEN t.spec->>'verify_commit'=$3 AND $4=''
 		     ELSE $4<>'' END)
