@@ -50,7 +50,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		if err == nil && job == nil && capabilities.RepositoryAnalysis {
 			var analysis *store.AnalysisJob
-			analysis, err = data.ClaimAnalysis(r.Context(), id)
+			analysis, err = data.ClaimAnalysis(r.Context(), id, r.URL.Query().Get("supports_analysis_deadline") == "1")
 			if analysis != nil {
 				job = &store.ManagementJob{RepositoryAnalysis: analysis}
 			}

@@ -7,15 +7,17 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"forgeos/internal/localrepo"
 	"github.com/lib/pq"
 )
 
 type AnalysisJob struct {
-	Task  int64                   `json:"task_id"`
-	Lease string                  `json:"lease"`
-	Input localrepo.AnalysisInput `json:"input"`
+	LeaseUntil *time.Time              `json:"lease_until,omitempty"`
+	Task       int64                   `json:"task_id"`
+	Lease      string                  `json:"lease"`
+	Input      localrepo.AnalysisInput `json:"input"`
 }
 
 type AnalysisFact struct {
@@ -80,21 +82,33 @@ func (s *Store) RetryAnalysis(ctx context.Context, id int64, attempt int) error 
 	return err
 }
 
-func (s *Store) ClaimAnalysis(ctx context.Context, project int64) (*AnalysisJob, error) {
+func (s *Store) ClaimAnalysis(ctx context.Context, project int64, supportsDeadline bool) (*AnalysisJob, error) {
 	var j AnalysisJob
 	var raw []byte
-	err := s.db.QueryRowContext(ctx, `WITH next AS (SELECT a.task_id FROM repository_analyses a JOIN repository_inventories i USING(task_id)
-		WHERE i.project_id=$1 AND a.result IS NULL AND a.failure IS NULL AND (a.lease_until IS NULL OR a.lease_until<=now())
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	pool, available, err := modelSlot(ctx, tx, "codex", "", "repository_analysis", project)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		return nil, err
+	}
+	err = tx.QueryRowContext(ctx, `WITH next AS (SELECT a.task_id FROM repository_analyses a JOIN repository_inventories i USING(task_id)
+		WHERE i.project_id=$1 AND a.result IS NULL AND a.failure IS NULL AND (a.lease_until IS NULL OR a.lease_until<=clock_timestamp())
 		ORDER BY a.task_id LIMIT 1 FOR UPDATE OF a SKIP LOCKED)
-		UPDATE repository_analyses a SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes',attempt=attempt+1 FROM next
-		WHERE a.task_id=next.task_id RETURNING a.task_id,a.lease,a.source`, project).Scan(&j.Task, &j.Lease, &raw)
+		UPDATE repository_analyses a SET lease=gen_random_uuid(),lease_until=clock_timestamp()+interval '6 minutes',attempt=attempt+1,model_budget=$2 FROM next
+		WHERE a.task_id=next.task_id RETURNING a.task_id,a.lease,a.source,CASE WHEN $3 THEN a.lease_until END`, project, pool, supportsDeadline).Scan(&j.Task, &j.Lease, &raw, &j.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &j, json.Unmarshal(raw, &j.Input)
+	if err = json.Unmarshal(raw, &j.Input); err != nil {
+		return nil, err
+	}
+	return &j, tx.Commit()
 }
 
 func (s *Store) FinishAnalysis(ctx context.Context, project int64, r AnalysisResult) error {

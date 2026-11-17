@@ -94,10 +94,18 @@ func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 	return session, nil
 }
 
+func managementTurn(ctx context.Context, until *time.Time) (context.Context, context.CancelFunc) {
+	deadline := time.Now().Add(5 * time.Minute)
+	if until != nil && until.Before(deadline) {
+		deadline = *until
+	}
+	return context.WithDeadline(ctx, deadline)
+}
+
 func (w *worker) runManagement(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ManagementJob
-		status, err := w.post(ctx, "/internal/management/claim?supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
+		status, err := w.post(ctx, "/internal/management/claim?supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
 		if err != nil && !temporary(status) {
 			return err
 		}
@@ -150,11 +158,7 @@ func (w *worker) runManagement(ctx context.Context) error {
 			log.Printf("management question %d (HTTP %d)", job.Question.ID, status)
 			continue
 		}
-		deadline := time.Now().Add(5 * time.Minute)
-		if job.LeaseUntil != nil && job.LeaseUntil.Before(deadline) {
-			deadline = *job.LeaseUntil
-		}
-		turn, cancel := context.WithDeadline(ctx, deadline)
+		turn, cancel := managementTurn(ctx, job.LeaseUntil)
 		review, err := w.reviewManagement(turn, job)
 		cancel()
 		if err != nil {
