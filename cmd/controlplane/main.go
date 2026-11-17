@@ -170,6 +170,7 @@ func run(ctx context.Context) error {
 	sweepCtx, stopSweep := context.WithCancel(ctx)
 	defer stopSweep()
 	go sweepArtifacts(sweepCtx, data)
+	go watchDocuments(sweepCtx, data, root)
 	log.Printf("ForgeOS control plane listening on %s", listener.Addr())
 	select {
 	case err := <-done:

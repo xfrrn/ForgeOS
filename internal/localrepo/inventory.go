@@ -80,8 +80,9 @@ func inventoryKind(file string) string {
 	return ""
 }
 
-// Inventory reads committed Git objects only. It never checks out files or evaluates package scripts.
-func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error) {
+type trackedBlob struct{ Path, Blob string }
+
+func trackedBlobs(ctx context.Context, repo, commit string, include func(string) bool) ([]trackedBlob, error) {
 	if !objectID.MatchString(commit) {
 		return nil, errors.New("invalid commit")
 	}
@@ -93,10 +94,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 	if err != nil || large {
 		return nil, errors.New("cannot read complete repository tree within 16 MiB")
 	}
-	files := []InventoryFile{}
-	cargo := map[string]*cargoManifest{}
-	poms := map[string]*mavenPOM{}
-	readBudget := 8 << 20
+	var blobs []trackedBlob
 	for _, entry := range bytes.Split(raw, []byte{0}) {
 		if len(entry) == 0 {
 			continue
@@ -106,8 +104,7 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 		if !ok || len(fields) != 3 || !objectID.MatchString(fields[2]) {
 			return nil, errors.New("invalid repository tree entry")
 		}
-		kind := inventoryKind(file)
-		if kind == "" || !(fields[0] == "100644" || fields[0] == "100755") || fields[1] != "blob" {
+		if !(fields[0] == "100644" || fields[0] == "100755") || fields[1] != "blob" {
 			continue
 		}
 		if !utf8.ValidString(file) || strings.IndexFunc(file, unicode.IsControl) >= 0 {
@@ -117,10 +114,30 @@ func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error
 		if strings.Contains(dirs, "/node_modules/") || strings.Contains(dirs, "/vendor/") {
 			continue
 		}
+		if include(file) {
+			blobs = append(blobs, trackedBlob{Path: file, Blob: fields[2]})
+		}
+	}
+	return blobs, nil
+}
+
+// Inventory reads committed Git objects only. It never checks out files or evaluates package scripts.
+func Inventory(ctx context.Context, repo, commit string) ([]InventoryFile, error) {
+	blobs, err := trackedBlobs(ctx, repo, commit, func(file string) bool { return inventoryKind(file) != "" })
+	if err != nil {
+		return nil, err
+	}
+	files := []InventoryFile{}
+	cargo := map[string]*cargoManifest{}
+	poms := map[string]*mavenPOM{}
+	readBudget := 8 << 20
+	for _, b := range blobs {
+		file := b.Path
+		kind := inventoryKind(file)
+		c := InventoryFile{Path: file, Blob: b.Blob, Kind: kind}
 		if len(files) >= 2000 {
 			return nil, errors.New("repository exceeds 2000 inventory files")
 		}
-		c := InventoryFile{Path: file, Blob: fields[2], Kind: kind}
 		if file == "project.yaml" {
 			if err := c.readProject(ctx, repo); err != nil {
 				return nil, err

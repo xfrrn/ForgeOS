@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { KnowledgeCuration } from './KnowledgeCuration'
+import { RepositoryDocumentChanges } from './RepositoryDocumentChanges'
 import { ShareDraft } from './ProjectShares'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 
@@ -110,6 +111,7 @@ export function ProjectMaterials({ project, request }: { project: number; reques
   return <div className="project-setup">
     <a href="#/projects">返回项目接入</a>
     <div className="page-heading"><h1>项目 #{project} · 项目资料</h1></div>
+    <RepositoryDocumentChanges key={project} project={project} request={request}/>
     <section className="panel detail-card">
       <form className="project-input" onSubmit={e => { e.preventDefault(); setFilter({ q: query.trim(), kind, after: '' }) }}>
         <input aria-label="检索资料" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或正文"/>
