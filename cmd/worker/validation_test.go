@@ -38,19 +38,19 @@ func TestDocsValidationUsesCommittedContent(t *testing.T) {
 	git(t, job.RepoPath, "config", "core.autocrlf", "false")
 	candidate := validationCommit(t, job.RepoPath, "README.md", "A note.\r\n")
 	ctx := context.Background()
-	result, err := validateCandidate(ctx, job.RepoPath, base, candidate, "docs")
+	result, err := validateCandidate(ctx, job.RepoPath, base, candidate, "docs", nil)
 	if err != nil || result.ExitCode != 0 || result.Commit != candidate {
 		t.Fatalf("unexpected docs result: %+v, %v", result, err)
 	}
 	other := validationCommit(t, job.RepoPath, "main.go", "package main\n")
-	if _, err := validateCandidate(ctx, job.RepoPath, base, other, "docs"); err == nil {
+	if _, err := validateCandidate(ctx, job.RepoPath, base, other, "docs", nil); err == nil {
 		t.Fatal("code change passed the docs profile")
 	}
-	if _, err := validateCandidate(ctx, job.RepoPath, base, candidate, "docs"); err == nil {
+	if _, err := validateCandidate(ctx, job.RepoPath, base, candidate, "docs", nil); err == nil {
 		t.Fatal("stale candidate passed")
 	}
 	bad := validationCommit(t, job.RepoPath, "guide.md", "trailing space \r\n")
-	if _, err := validateCandidate(ctx, job.RepoPath, other, bad, "docs"); err == nil {
+	if _, err := validateCandidate(ctx, job.RepoPath, other, bad, "docs", nil); err == nil {
 		t.Fatal("whitespace error passed")
 	}
 }
@@ -65,7 +65,7 @@ func TestGoValidationInLocalContainer(t *testing.T) {
 	good := validationCommit(t, repo, "main_test.go", "package example\nimport \"testing\"\nfunc TestWorks(t *testing.T) {}\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	result, err := validateCandidate(ctx, repo, base, good, "go-test")
+	result, err := validateCandidate(ctx, repo, base, good, "go-test", nil)
 	if err != nil || result.ExitCode != 0 || result.Commit != good {
 		t.Fatalf("Go validation: %+v, %v", result, err)
 	}
@@ -73,7 +73,7 @@ func TestGoValidationInLocalContainer(t *testing.T) {
 	bad := validationCommit(t, repo, "main_test.go", "package example\nimport \"testing\"\nfunc TestWorks(t *testing.T) {t.Fatal(\"regression\")}\n")
 	worktree := filepath.Join(t.TempDir(), "failed-run")
 	git(t, repo, "worktree", "add", "--detach", worktree, bad)
-	result, err = validateCandidate(ctx, worktree, good, bad, "go-test")
+	result, err = validateCandidate(ctx, worktree, good, bad, "go-test", nil)
 	if err == nil || result.ExitCode == 0 || result.Commit != bad {
 		t.Fatalf("failing Go test was not recorded: %+v, %v", result, err)
 	}

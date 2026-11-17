@@ -777,7 +777,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			}
 		}
 		j.ReportCICandidate = j.Spec.Mode != "plan"
-		j.ReportLiveCILog = j.ReportCICandidate && (j.Spec.Validation == "auto" || validation.ValidLevel(j.Spec.Validation))
+		j.ReportLiveCILog = j.ReportCICandidate && (j.Spec.Validation == "go-test" || j.Spec.Validation == "auto" || validation.ValidLevel(j.Spec.Validation))
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		j.RuntimeQuestions = j.SupportsCheckpoints && j.Spec.Mode != "plan"
 		j.CheckpointWorktrees = j.RuntimeQuestions

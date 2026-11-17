@@ -37,16 +37,24 @@ var imageID = regexp.MustCompile("^sha256:[a-f0-9]{64}$")
 
 func (w *worker) validateIssueCandidate(ctx context.Context, job store.Job, repo, workspace, candidate string, spec *store.IssueSpec) (store.ValidationResult, error) {
 	base, profile := spec.BaseCommit, spec.Validation
+	var observe func(ciLogFile)
+	if job.ReportLiveCILog {
+		var stop func()
+		observe, stop = w.watchCILog(ctx, job, candidate)
+		defer stop()
+	}
 	if profile != "auto" && !validation.ValidLevel(profile) {
-		return validateCandidate(ctx, workspace, base, candidate, profile)
+		var logOpened func(string)
+		if observe != nil {
+			logOpened = func(name string) {
+				observe(ciLogFile{dir: filepath.Dir(name), file: filepath.Base(name), run: fmt.Sprintf("ci-run-%d", job.ExecutionID), check: profile})
+			}
+		}
+		return validateCandidate(ctx, workspace, base, candidate, profile, logOpened)
 	}
 	report := store.ValidationResult{Profile: profile, Commit: candidate, ExitCode: 1}
 	req := ciRequest{ExecutionID: job.ExecutionID, Repo: repo, Base: base, Commit: candidate, Level: profile, Policy: spec.Policy}
-	if job.ReportLiveCILog {
-		var stop func()
-		req.observe, stop = w.watchCILog(ctx, job, candidate)
-		defer stop()
-	}
+	req.observe = observe
 	run, err := runLocalCI(ctx, req, w.repoRoot, w.workspaceRoot, w.id)
 	if err != nil {
 		report.Output = err.Error()

@@ -8,6 +8,12 @@ import (
 )
 
 func TestLiveCIOutputBindsCandidateLeaseAndCheck(t *testing.T) {
+	for _, profile := range []string{"V1", "go-test"} {
+		t.Run(profile, func(t *testing.T) { testLiveCIOutputBindsCandidateLeaseAndCheck(t, profile) })
+	}
+}
+
+func testLiveCIOutputBindsCandidateLeaseAndCheck(t *testing.T, profile string) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
 	must := func(err error) {
@@ -22,7 +28,7 @@ func TestLiveCIOutputBindsCandidateLeaseAndCheck(t *testing.T) {
 	must(err)
 	base := strings.Repeat("a", 40)
 	sha := strings.Repeat("b", 40)
-	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 1, Number: 1}, BaseCommit: base, Validation: "V1"})
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 1, Number: 1}, BaseCommit: base, Validation: profile})
 	must(err)
 	j, err := s.ClaimForProjects(ctx, "node", root, []int64{p.ID}, WorkerCapabilities{SupportsCodex: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true})
 	must(err)

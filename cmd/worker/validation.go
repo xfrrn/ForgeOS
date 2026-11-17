@@ -21,7 +21,7 @@ import (
 )
 
 // Validate the committed Git objects. A file left outside the commit cannot make a check pass.
-func validateCandidate(ctx context.Context, workspace, base, candidate, profile string) (store.ValidationResult, error) {
+func validateCandidate(ctx context.Context, workspace, base, candidate, profile string, logOpened func(string)) (store.ValidationResult, error) {
 	result := store.ValidationResult{Profile: profile, Commit: candidate, ExitCode: 1}
 	head, err := localrepo.Git(ctx, workspace, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil || strings.TrimSpace(string(head)) != candidate || candidate == base {
@@ -37,7 +37,7 @@ func validateCandidate(ctx context.Context, workspace, base, candidate, profile 
 		err = checkDocs(ctx, workspace, base, candidate)
 		result.Output = "git diff --check passed; every changed path is a regular documentation file"
 	case "go-test":
-		err = checkGo(ctx, workspace, candidate)
+		err = checkGo(ctx, workspace, candidate, logOpened)
 		result.Output = "git diff --check and go test -count=1 ./... passed"
 	default:
 		err = errors.New("unsupported validation profile")
@@ -144,7 +144,7 @@ func sandboxContainerOptions(snapshot, network string) ([]string, string, error)
 		"--env=GOPATH=/tmp/go", "--env=GOPROXY=off", "--env=GOTOOLCHAIN=local", "--env=GOSUMDB=off"}, name, nil
 }
 
-func checkGo(ctx context.Context, repo, candidate string) error {
+func checkGo(ctx context.Context, repo, candidate string, logOpened func(string)) error {
 	docker, err := openDocker(ctx)
 	if err != nil {
 		return err
@@ -173,6 +173,9 @@ func checkGo(ctx context.Context, repo, candidate string) error {
 		return errors.New("cannot create local CI log")
 	}
 	defer logFile.Close()
+	if logOpened != nil {
+		logOpened(logFile.Name())
+	}
 	log := &cappedLog{dest: logFile, remaining: validation.LogLimit}
 	cmd.Stdout, cmd.Stderr = log, log
 	err = cmd.Run()

@@ -15,6 +15,7 @@ import (
 
 type ciLogFile struct {
 	dir, run, check string
+	file            string
 	index           int
 }
 
@@ -43,6 +44,9 @@ func (w *worker) watchCILog(parent context.Context, job store.Job, commit string
 				continue
 			}
 			name := file.check + ".log"
+			if file.file != "" {
+				name = file.file
+			}
 			info, err := os.Lstat(filepath.Join(file.dir, name))
 			if err != nil || (file == sent && info.Size() == int64(size)) {
 				continue
