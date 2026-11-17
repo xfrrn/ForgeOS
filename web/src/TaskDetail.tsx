@@ -32,10 +32,12 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
   </section>
 }
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
+type ModelPause = { instance: number; session_id: string; requested_at: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
 type Attempt = {
   queue_sequence?: number
   pausable_instance?: number
-  model_pause?: { instance: number; session_id: string; requested_at?: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
+  model_pause?: ModelPause
+  model_pauses?: ModelPause[]
   global_rules?: GlobalRulesRevision
   owner_clarifications?: CandidateContext['owner_clarifications']
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
@@ -90,6 +92,7 @@ const events: Record<string, string> = {
   execution_completed: '执行完成', execution_failed: '执行失败', execution_abandoned: '结束失联执行',
   source_cancel_requested: '来源 Issue 已关闭，等待执行结算', source_issue_cancelled: '来源 Issue 已关闭，任务已取消',
   ci_pause_requested: 'Owner 请求暂停 CI', ci_paused: 'CI 已暂停', ci_resumed: '已对原候选重新派发 CI',
+  model_pause_requested: 'Owner 请求暂停模型回合', model_paused: 'Worker 已保存模型暂停检查点', model_resumed: 'Owner 已请求恢复模型回合',
   owner_cancel_requested: 'Owner 请求取消，等待执行结算', owner_cancelled: '已按 Owner 请求取消任务',
   execution_retry_requested: '请求重新执行', acceptance_approved: '候选版本通过验收',
   acceptance_rejected: '候选版本已退回', pr_created: '已创建 PR', pr_merged: 'PR 已合并', delivery_completed: '交付完成',
@@ -404,6 +407,16 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       </dl><ToolActivity events={p.tools}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
+    {!!attempt.model_pauses?.length && <details><summary>模型暂停记录（{attempt.model_pauses.length}）</summary>
+      {attempt.model_pauses.map(p => <dl className="detail-facts" key={p.instance}>
+        <Fact label="进程实例" code>{p.instance}</Fact><Fact label="原生会话" code>{p.session_id}</Fact>
+        <Fact label="请求暂停">{formatTime(p.requested_at)}</Fact>
+        {p.parked_at && <Fact label="已保存工作区">{formatTime(p.parked_at)}</Fact>}
+        {p.resumed_at && <Fact label="请求恢复">{formatTime(p.resumed_at)}</Fact>}
+        {p.index_tree && <Fact label="索引树" code>{p.index_tree}</Fact>}
+        {p.worktree_tree && <Fact label="工作区树" code>{p.worktree_tree}</Fact>}
+      </dl>)}
+    </details>}
     {result?.error && <p className="detail-problem" role="status">{result.error}</p>}
     {validation ? <section className={'detail-validation ' + (validation.exit_code === 0 ? 'passed' : 'failed')}>
       <div><Icon name={validation.exit_code === 0 ? 'CheckCircle2' : 'AlertCircle'} size={16} />

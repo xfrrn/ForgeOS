@@ -131,4 +131,15 @@ func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 	if tx.Status != "RUNNING" || tx.Execution.PausableInstance != 0 {
 		t.Fatal("stale process is pausable")
 	}
+	proc.Instance++
+	proc.PID++
+	must(s.ObserveProcess(ctx, id, ProcessReport{LeaseToken: j.LeaseToken, Process: proc}))
+	must(s.ControlModel(ctx, id, proc.Instance, false))
+	tx, err = s.Task(ctx, task.ID)
+	must(err)
+	history := tx.Execution.ModelPauses
+	if len(history) != 2 || history[0].Instance != 4 || history[0].Resumed == nil || history[0].Worktree != trees.Worktree ||
+		history[1].Instance != proc.Instance || history[1].Parked != nil || tx.Execution.ModelPause.Instance != proc.Instance {
+		t.Fatalf("unexpected pause history: %+v", history)
+	}
 }

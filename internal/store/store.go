@@ -320,6 +320,7 @@ type Task struct {
 }
 
 type Execution struct {
+	ModelPauses            []ModelPause     `json:"model_pauses,omitempty"`
 	ModelPause             *ModelPause      `json:"model_pause,omitempty"`
 	PausableInstance       int64            `json:"pausable_instance,omitempty"`
 	OwnerClarifications    json.RawMessage  `json:"owner_clarifications,omitempty"`
@@ -488,7 +489,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		        'id', e.id,'queue_sequence',(SELECT sequence FROM open_instruction_queues WHERE execution_id=e.id),'uses_checkpoints',e.uses_checkpoints,'owner_clarifications',inherited_owner_answers(e.id), 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'live_ci_log',CASE WHEN e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>clock_timestamp() THEN e.live_ci_log END,
-		        'model_pause',(SELECT to_jsonb(mp) FROM model_pauses mp WHERE mp.execution_id=e.id ORDER BY mp.resource_step DESC LIMIT 1),
+		        'model_pauses',(SELECT jsonb_agg(mp ORDER BY mp.resource_step) FROM model_pauses mp WHERE mp.execution_id=e.id),
                 'pausable_instance',CASE WHEN e.supports_model_pause AND e.resource_kind='model' AND e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>clock_timestamp() AND e.observed_process->>'exited_at' IS NULL AND length(e.observed_process->>'session_id')>0 AND (e.observed_process->>'resource_step')::bigint=e.resource_step THEN (e.observed_process->>'instance')::bigint END,
                 'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
 		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,'global_rules',to_jsonb(gr),
@@ -573,6 +574,9 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	}
 	for i := range t.Attempts {
 		e := &t.Attempts[i]
+		if n := len(e.ModelPauses); n > 0 {
+			e.ModelPause = &e.ModelPauses[n-1]
+		}
 		e.RequiresTestPlan = e.Result.manualPlanRequired()
 		switch {
 		case e.AbandonedAt != nil:
