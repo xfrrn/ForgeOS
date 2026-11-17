@@ -206,6 +206,9 @@ var documentPartsSchema string
 //go:embed 061_global_rules.sql
 var globalRulesSchema string
 
+//go:embed 062_execution_global_rules.sql
+var executionGlobalRulesSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -240,6 +243,7 @@ type Task struct {
 }
 
 type Execution struct {
+	GlobalRules            *json.RawMessage `json:"global_rules,omitempty"`
 	DecisionContext        *json.RawMessage `json:"decision_context,omitempty"`
 	ObservedProcess        *ObservedProcess `json:"observed_process,omitempty"`
 	CICandidate            string           `json:"ci_candidate,omitempty"`
@@ -276,6 +280,7 @@ type Event struct {
 }
 
 type Job struct {
+	GlobalRules         json.RawMessage `json:"global_rules,omitempty"`
 	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
 	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
 	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
@@ -333,7 +338,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -391,13 +396,13 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
-		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,
+		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,'global_rules',to_jsonb(gr),
 		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
 		            FROM candidate_review_feedback f WHERE f.execution_id=e.id AND t.status='WAITING_ACCEPTANCE'
 		            AND e.id=(SELECT max(id) FROM executions WHERE task_id=t.id)),
 		        'end_reason', CASE WHEN e.abandoned_at IS NOT NULL THEN 'owner_abandoned_expired_lease' END,
 		        'result', e.result,'commit_status',e.commit_status, 'test_plan_state',tp.state,'test_plan_revision',tp.revision,'test_case_state',tp.execution_state,'test_case_attempts',tp.attempt_count, 'code_review_state',`+codeReviewState+`) ORDER BY e.id)
-		     FROM executions e LEFT JOIN requirement_revisions er ON er.id=e.requirement_id
+		     FROM executions e LEFT JOIN global_rule_revisions gr ON gr.revision=e.global_rules_revision LEFT JOIN requirement_revisions er ON er.id=e.requirement_id
 		     LEFT JOIN LATERAL (SELECT state,revision,execution_state,attempt_count FROM candidate_test_plan_status WHERE execution_id=e.id ORDER BY revision DESC LIMIT 1) tp ON true
 		     LEFT JOIN code_reviews r ON r.execution_id=e.id WHERE e.task_id = t.id), '[]'),
 		    (SELECT jsonb_agg(jsonb_build_object(
@@ -540,6 +545,16 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			caps.SupportsCodex, caps.SupportsClaude, caps.SupportsValidation = false, false, false
 		}
 	}
+	var globalRevision int
+	if caps.SupportsCodex || caps.SupportsClaude {
+		err = tx.QueryRowContext(ctx, `SELECT revision FROM (SELECT revision,content FROM global_rule_revisions ORDER BY revision DESC LIMIT 1) r WHERE content<>''`).Scan(&globalRevision)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if globalRevision > 0 && !caps.SupportsGlobalRules {
+			caps.SupportsCodex, caps.SupportsClaude = false, false
+		}
+	}
 	canStart := registered != nil && caps.SupportsResources && caps.SupportsStartup
 	canAssess := caps.SupportsDeclaredChecks && caps.SupportsRiskPolicy
 	err = tx.QueryRowContext(ctx, `
@@ -635,13 +650,19 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	hash := sha256.Sum256([]byte(j.LeaseToken))
 	j.Workspace = workerWorkspace(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	j.LeaseSeconds = executionLeaseSeconds(j.Kind)
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until,decision_context)
+	if j.Kind != "codex_issue" || j.Spec.VerifyCommit != "" {
+		globalRevision = 0
+	}
+	var rules []byte
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until,decision_context,global_rules_revision)
 		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7,$8,
-		    clock_timestamp() + $6 * interval '1 second',NULLIF($9,'')::jsonb->'decisions')`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources, string(j.GoalContext))
+		    clock_timestamp() + $6 * interval '1 second',NULLIF($9,'')::jsonb->'decisions',NULLIF($10,0))
+		RETURNING (SELECT to_jsonb(r) FROM global_rule_revisions r WHERE r.revision=global_rules_revision)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources, string(j.GoalContext), globalRevision).Scan(&rules)
 	if err != nil {
 		return nil, err
 	}
+	j.GlobalRules = rules
 	if _, err = tx.ExecContext(ctx, `
 		INSERT INTO task_events(task_id, execution_id, type) VALUES ($1, $2, 'execution_claimed')`, j.TaskID, j.ExecutionID); err != nil {
 		return nil, err

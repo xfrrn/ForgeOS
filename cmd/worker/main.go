@@ -277,7 +277,7 @@ func (w *worker) run(ctx context.Context) error {
 	w.journal = journal
 	defer journal.Close()
 	writer := w.codex != "" || w.claude.bin != ""
-	caps := store.WorkerCapabilities{SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
+	caps := store.WorkerCapabilities{SupportsGlobalRules: true, SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
 	caps.SupportsStartup = os.Getenv("FORGEOS_STARTUP_IMAGE") != ""
 	if caps.SupportsStartup && os.Getenv("FORGEOS_STARTUP_NETWORK") != "" && os.Getenv("FORGEOS_STARTUP_PROJECT_ID") != "" {

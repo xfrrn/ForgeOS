@@ -73,6 +73,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
+	SupportsGlobalRules      bool  `json:"supports_global_rules,omitempty"`
 	SupportsStartup          bool  `json:"supports_startup,omitempty"`
 	StartupIntegratedProject int64 `json:"startup_integrated_project,omitempty"`
 	SupportsResources        bool  `json:"supports_resources,omitempty"`
@@ -92,7 +93,8 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 		integrated = 0
 	}
 	return WorkerCapabilities{
-		SupportsStartup: c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,
+		SupportsGlobalRules: c.SupportsGlobalRules && node.SupportsGlobalRules,
+		SupportsStartup:     c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,
 		SupportsResources:      c.SupportsResources && node.SupportsResources,
 		SupportsCodex:          c.SupportsCodex && node.SupportsCodex,
 		SupportsClaude:         c.SupportsClaude && node.SupportsClaude,

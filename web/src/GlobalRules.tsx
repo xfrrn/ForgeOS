@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 
-type Revision = { revision: number; content: string; content_sha256: string; published_by: string; published_at: string }
+export type GlobalRulesRevision = { revision: number; content: string; content_sha256: string; published_by: string; published_at: string }
 
 export function GlobalRules({request}: {request: ApiRequest}) {
   const [open, setOpen] = useState(false)
-  const [current, setCurrent] = useState<Revision | null>(null)
-  const [view, setView] = useState<Revision | null>(null)
+  const [current, setCurrent] = useState<GlobalRulesRevision | null>(null)
+  const [view, setView] = useState<GlobalRulesRevision | null>(null)
   const [draft, setDraft] = useState<{base: number; content: string}>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -19,7 +19,7 @@ export function GlobalRules({request}: {request: ApiRequest}) {
     active.current = controller
     setBusy(true); setError('')
     try {
-      const result = await request<Revision | null>('/global-rules' + (revision ? '?revision=' + revision : ''), {signal: controller.signal})
+      const result = await request<GlobalRulesRevision | null>('/global-rules' + (revision ? '?revision=' + revision : ''), {signal: controller.signal})
       if (controller.signal.aborted) return
       if (!revision) setCurrent(result)
       setView(result); setOpen(true)
@@ -33,9 +33,9 @@ export function GlobalRules({request}: {request: ApiRequest}) {
     active.current = controller
     setBusy(true); setError(''); setNotice('')
     try {
-      const saved = await request<Revision>('/global-rules', {method: 'PUT', signal: controller.signal,
+      const saved = await request<GlobalRulesRevision>('/global-rules', {method: 'PUT', signal: controller.signal,
         body: JSON.stringify({previous_revision: draft.base, content: draft.content})})
-      const latest = await request<Revision>('/global-rules', {signal: controller.signal})
+      const latest = await request<GlobalRulesRevision>('/global-rules', {signal: controller.signal})
       if (controller.signal.aborted) return
       setCurrent(latest); setView(saved); setDraft(undefined); setNotice('已发布修订 ' + saved.revision + '。')
     } catch (e) {

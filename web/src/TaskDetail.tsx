@@ -1,3 +1,4 @@
+import type { GlobalRulesRevision } from './GlobalRules'
 import { PlanEditor } from './PlanEditor'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import GoalPlan, { type Plan, type GoalChild } from './GoalPlan'
@@ -30,6 +31,7 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
 }
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  global_rules?: GlobalRulesRevision
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
   observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
   ci_candidate?: string; ci_pause_requested_at?: string
@@ -313,6 +315,10 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
+    {attempt.global_rules && <details><summary>领取时的全局默认规则 · 修订 {attempt.global_rules.revision}</summary>
+      <p>{attempt.global_rules.published_by} · {formatTime(attempt.global_rules.published_at)}</p>
+      <pre className="material-content">{attempt.global_rules.content}</pre><p>SHA-256 · <code>{attempt.global_rules.content_sha256}</code></p>
+    </details>}
     {Boolean(attempt.decision_context?.length) && <details><summary>领取时引用的项目决策（{attempt.decision_context?.length}）</summary>
       {attempt.decision_context?.map(d => <section key={d.id}><h4><a href={'#' + d.ref}>决策 #{d.id}</a></h4>
         <p>{d.statement}</p><p>适用条件 · {d.validity}</p><p>来源 · {d.source}</p>
