@@ -2456,3 +2456,12 @@ PostgreSQL 集成测试覆盖首次暂停已恢复、第二次只发出请求时
 | 核对候选、批准和交付；在独立运行中于恢复前修改草稿 | 正常候选只含要求的文件，修改现场时停止 | 候选 `b7c7d41197e035293494ee6d929e5cc776eb9271` 只新增 daemon-check.md，唯一 H1、页面标题和来源路径正确。文档验证和必需 CI 通过，合并 `a20b40671bdfc36b376b7e14663937eb55aab3dc`，任务 DONE，Issue 关闭。改动草稿的一轮为 FAILED，只有原进程，保留外部修改，无候选或交付。[PR #142](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/142) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44104150073) |
 
 PostgreSQL 18 与 Docker 的 244 项 Go 测试及子测试全部通过，零跳过；Go vet 通过。节点回归覆盖已完成模型回合产生的业务问题，恢复后沿用原序号、问题、依据和 Session。
+
+写入任务在 Worker 重启后接回原回合的 ForgeOS 提交为 `58a5e5fa730eec1c3e60d97145827df98970ded0`。
+
+### 专题 06、07、16 · Claude 在后续检查点接回同一条 Owner 指令
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从 Chrome 向 beta #143 的首轮排入指令，要求在新增阅读指南中加入指定 H2。等第二个原生进程完成 Read 后暂停、重启控制面、结束 Worker 4380，启动 Worker 21076 | 节点应接回本次实际检查点 1，首轮已写入的草稿和第二轮的指令继续生效 | 原生进程依次为 4148、45988、45196。Worker 日志确认接回检查点 1。三个进程的 Session 均为 `fe3e624a-2b57-4617-a7d9-86319d8d48a4`。恢复前后两条原生用户输入都包含本次 Owner 指令，后者含恢复说明。 |
+| 核对检查点、候选及 GitHub 交付 | 同一指令只登记一次；最终文档只生成一个指定 H2，通过原有门禁 | 检查点 0、1 均确认原 Session，2 无 Session。候选 `5b36b55332a1996f0af3ac3e9f9b0ac6bfa5092b` 仅新增 restart-reading.md，唯一 H1、三个来源及页面标题正确，H2 “Handoff 9b456efb” 只出现一次。必需 CI 第二次通过，合并 `31e6fff90796c6766f2007fd98b76ba6fe7dbda1`，任务 DONE，Issue 关闭。[PR #144](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/144) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44104899278) |
