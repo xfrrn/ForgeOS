@@ -31,7 +31,7 @@ func TestCurationAccountAcrossExtractionAndReview(t *testing.T) {
 		return job
 	}
 	first := claim(false, false)
-	if first == nil || first.LeaseUntil != nil {
+	if first == nil || first.LeaseUntil != nil || !first.CaptureProfile {
 		t.Fatal("legacy unbudgeted job", first)
 	}
 	pool := ModelBudget{Name: "knowledge", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{p.ID, "curator"}, {p.ID, "curation_review"}}}
@@ -45,12 +45,20 @@ func TestCurationAccountAcrossExtractionAndReview(t *testing.T) {
 		t.Fatal("first configuration lost the running extraction")
 	}
 	out := Extraction{Session: "curator", Facts: []KnowledgeFact{{Statement: "Checkpoint offset", Quote: "274"}}}
+	profile := StructuredCodexProfile()
+	incomplete := profile
+	incomplete.DisabledFeatures = incomplete.DisabledFeatures[:1]
+	out.Profile = &incomplete
+	if err := s.RecordExtraction(ctx, p.ID, first.ID, first.Lease, out); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted inconsistent role settings", err)
+	}
+	out.Profile = &profile
 	must(s.RecordExtraction(ctx, p.ID, first.ID, first.Lease, out))
 	if claim(true, false) != nil {
 		t.Fatal("legacy client acquired a budgeted review")
 	}
 	review := claim(true, true)
-	if review == nil || review.LeaseUntil == nil {
+	if review == nil || review.LeaseUntil == nil || review.Extraction.Profile != nil {
 		t.Fatal("budgeted review", review)
 	}
 	must(s.RecordExtraction(ctx, p.ID, first.ID, first.Lease, out))
@@ -68,11 +76,16 @@ func TestCurationAccountAcrossExtractionAndReview(t *testing.T) {
 	if retry == nil || retry.ID != review.ID || retry.Lease == review.Lease {
 		t.Fatal("expired review was not reassigned", retry)
 	}
-	r := ManagementReview{Level: "D1", Verdict: "approve", SessionID: "review", Rationale: "observed", Evidence: "274"}
+	r := ManagementReview{Level: "D1", Verdict: "approve", SessionID: "review", Rationale: "observed", Evidence: "274", Profile: &profile}
 	if err = s.ReviewCuration(ctx, p.ID, review.ID, review.Lease, r); !errors.Is(err, ErrConflict) {
 		t.Fatal("expired receipt", err)
 	}
 	must(s.ReviewCuration(ctx, p.ID, retry.ID, retry.Lease, r))
+	must(s.ReviewCuration(ctx, p.ID, retry.ID, retry.Lease, r))
+	r.Profile = nil
+	if err := s.ReviewCuration(ctx, p.ID, retry.ID, retry.Lease, r); !errors.Is(err, ErrConflict) {
+		t.Fatal("replay dropped recorded role settings", err)
+	}
 	var reserved int
 	must(s.db.QueryRowContext(ctx, "SELECT reserved FROM model_budget_usage WHERE name='knowledge'").Scan(&reserved))
 	if reserved != 0 || claim(true, true) != nil {
@@ -119,7 +132,7 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	if next, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || next != nil {
 		t.Fatal("duplicate confirmation queued", err)
 	}
-	out := Extraction{"curator", []KnowledgeFact{{"The queue resumed at the saved offset during rehearsal.", "offset 275"}}}
+	out := Extraction{Session: "curator", Facts: []KnowledgeFact{{"The queue resumed at the saved offset during rehearsal.", "offset 275"}}}
 	if err := s.RecordExtraction(ctx, p.ID, job.ID, job.Lease, out); !errors.Is(err, ErrConflict) {
 		t.Fatal("incorrect quote", err)
 	}
@@ -249,7 +262,7 @@ func TestCurationDecisionRequiresEscalatedReview(t *testing.T) {
 			if err != nil || job == nil {
 				t.Fatal(job, err)
 			}
-			if err := s.RecordExtraction(ctx, project.ID, job.ID, job.Lease, Extraction{"extract", []KnowledgeFact{{"Proposed cap.", source.Content}}}); err != nil {
+			if err := s.RecordExtraction(ctx, project.ID, job.ID, job.Lease, Extraction{Session: "extract", Facts: []KnowledgeFact{{"Proposed cap.", source.Content}}}); err != nil {
 				t.Fatal(err)
 			}
 			review, err := s.ClaimCuration(ctx, project.ID, true, false)

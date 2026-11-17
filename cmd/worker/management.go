@@ -72,10 +72,8 @@ func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 		return "", err
 	}
 	options := []string{"--skip-git-repo-check", "--output-schema", schema, "--output-last-message", output}
-	for _, feature := range []string{"shell_tool", "unified_exec", "multi_agent", "multi_agent_v2", "code_mode", "code_mode_host", "computer_use", "browser_use", "view_image", "image_generation"} {
-		options = append(options, "--disable", feature)
-	}
-	adapter := codexCLI{bin: bin, sandbox: "read-only", options: options}
+	profile := store.StructuredCodexProfile()
+	adapter := codexCLI{bin: bin, sandbox: profile.Sandbox, disabledFeatures: profile.DisabledFeatures, options: options}
 	session, err := adapter.runTurn(ctx, processLog{}, workspace, prompt, "")
 	if err != nil {
 		return "", err

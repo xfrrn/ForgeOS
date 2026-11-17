@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, type ApiRequest } from './shared'
 
+type StructuredProfile = { version: number; sandbox: string; permission: string; disabled_features: string[] }
+
+function RolePermissions({role, profile}: {role: string; profile: StructuredProfile}) {
+  return <details><summary>{role}权限配置</summary>
+    <p>Codex · 配置 v{profile.version} · 沙箱 <code>{profile.sandbox}</code> · 审批 <code>{profile.permission}</code></p>
+    <p>禁用功能 · {profile.disabled_features.join('、')}</p>
+  </details>
+}
+
 type Receipt = {
   id: number
   decision_id?: number
@@ -13,8 +22,8 @@ type Receipt = {
   revision: number
   content_sha256: string
   decisions?: {fact: number; id: number; status: string}[]
-  extraction: { session: string; facts: { statement: string; quote: string }[] } | null
-  review: { level: string; verdict: string; rationale: string; evidence: string; session_id: string } | null
+  extraction: { session: string; facts: { statement: string; quote: string }[]; profile?: StructuredProfile } | null
+  review: { level: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile } | null
 }
 
 export function KnowledgeCuration({project, path, request}: {project: number; path: string; request: ApiRequest}) {
@@ -81,6 +90,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
         !review ? '建议等待 Management 审核' : review.verdict === 'approve' && review.level === 'D1' ? '此修订已通过项目经验审核' :
         review.verdict === 'revise' ? '建议已退回' : '需要 Owner 决定'}</p>
       {extraction && <><p>提取会话 · <code>{extraction.session}</code></p>
+        {extraction.profile && <RolePermissions role="Curator" profile={extraction.profile}/>}
         {extraction.facts.map((f,i) => {
           const fact = i + 1
           return <div key={fact}><p>{f.statement}</p><blockquote>{f.quote}</blockquote>
@@ -96,7 +106,9 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
           </div>
         })}</>}
       {saveError && <p role="alert">{saveError}</p>}
-      {review && <><p>Management 审核 · {review.level} · <code>{review.session_id}</code></p><p>{review.rationale}</p><p>{review.evidence}</p></>}
+      {review && <><p>Management 审核 · {review.level} · <code>{review.session_id}</code></p>
+        {review.profile && <RolePermissions role="Management" profile={review.profile}/>}
+        <p>{review.rationale}</p><p>{review.evidence}</p></>}
       <button className="button" onClick={() => setRefresh(n => n + 1)}>刷新审核记录</button>
     </>}
   </section>

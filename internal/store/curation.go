@@ -17,14 +17,16 @@ type KnowledgeFact struct {
 type Extraction struct {
 	Session string          `json:"session"`
 	Facts   []KnowledgeFact `json:"facts"`
+	Profile *AgentProfile   `json:"profile,omitempty"`
 }
 
 type CurationJob struct {
-	ID         int64           `json:"id"`
-	Lease      string          `json:"lease"`
-	LeaseUntil *time.Time      `json:"lease_until,omitempty"`
-	Material   json.RawMessage `json:"material"`
-	Extraction *Extraction     `json:"extraction,omitempty"`
+	CaptureProfile bool            `json:"capture_profile,omitempty"`
+	ID             int64           `json:"id"`
+	Lease          string          `json:"lease"`
+	LeaseUntil     *time.Time      `json:"lease_until,omitempty"`
+	Material       json.RawMessage `json:"material"`
+	Extraction     *Extraction     `json:"extraction,omitempty"`
 }
 
 func (s *Store) ClaimCuration(ctx context.Context, project int64, review, supportsDeadline bool) (*CurationJob, error) {
@@ -50,7 +52,7 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 		ORDER BY `+until+` NULLS FIRST,id LIMIT 1 FOR UPDATE SKIP LOCKED)
 		UPDATE material_curations c SET `+lease+`=gen_random_uuid(),`+until+`=clock_timestamp()+interval '6 minutes',model_budget=$2
 		FROM candidate,curation_sources s WHERE c.id=candidate.id AND s.curation_id=c.id
-		RETURNING c.id,c.`+lease+`,jsonb_strip_nulls(to_jsonb(s)-'curation_id'-'receipt_path'-'is_current'),c.extraction,
+		RETURNING c.id,c.`+lease+`,jsonb_strip_nulls(to_jsonb(s)-'curation_id'-'receipt_path'-'is_current'),c.extraction-'profile',
 		CASE WHEN $3 THEN c.`+until+` END`, project, pool, supportsDeadline).Scan(&job.ID, &job.Lease, &job.Material, &extraction, &job.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -66,12 +68,13 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
+	job.CaptureProfile = true
 	return &job, nil
 }
 
 func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease string, out Extraction) error {
 	if out.Session == "" || len(out.Session) > 128 || strings.Trim(out.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" ||
-		out.Facts == nil || len(out.Facts) > 8 {
+		out.Facts == nil || len(out.Facts) > 8 || !out.Profile.validStructured() {
 		return ErrConflict
 	}
 	for _, f := range out.Facts {

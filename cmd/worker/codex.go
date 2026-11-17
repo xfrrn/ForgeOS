@@ -153,10 +153,11 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 }
 
 type codexCLI struct {
-	bin     string
-	version string
-	sandbox string
-	options []string
+	disabledFeatures []string
+	bin              string
+	version          string
+	sandbox          string
+	options          []string
 }
 
 func (c codexCLI) identity() (string, string) { return "codex", c.version }
@@ -164,7 +165,7 @@ func (c codexCLI) identity() (string, string) { return "codex", c.version }
 func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
 	// Preserve the CLI login, but keep account plugins, hooks, approvals and service tokens out of Issue execution.
 	args := []string{"-a", store.CodexApproval, "exec", "--ignore-user-config", "--ignore-rules",
-		"--disable", "apps", "--disable", "plugins", "--disable", "hooks", "-c", "mcp_servers={}",
+		"-c", "mcp_servers={}",
 		"-c", `web_search="disabled"`, "-c", "sandbox_workspace_write.network_access=false",
 		"-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
 		"-c", "projects." + strconv.Quote(workspace) + `.trust_level="untrusted"`,
@@ -173,6 +174,13 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 		args = append(args, "-c", `windows.sandbox="unelevated"`)
 	}
 	args = append(args, c.options...)
+	disabled := c.disabledFeatures
+	if disabled == nil {
+		disabled = store.CodexDisabledFeatures()
+	}
+	for _, feature := range disabled {
+		args = append(args, "--disable", feature)
+	}
 	if resume != "" {
 		if !nativeSessionID.MatchString(resume) {
 			return "", errors.New("invalid Codex recovery thread ID")
