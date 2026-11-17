@@ -36,7 +36,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		if err == nil && job == nil && capabilities.TestPlans {
 			var plan *store.TestPlanJob
-			plan, err = data.ClaimTestPlan(r.Context(), id, "management", r.URL.Query().Get("supports_candidate_context") == "1")
+			plan, err = data.ClaimTestPlan(r.Context(), id, "management", r.URL.Query().Get("supports_candidate_context") == "1", r.URL.Query().Get("supports_budget_deadline") == "1")
 			if plan != nil {
 				job = &store.ManagementJob{TestPlan: plan}
 			}

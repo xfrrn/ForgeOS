@@ -109,16 +109,18 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 		return err
 	}
 	conflict(approve())
+	pool := store.ModelBudget{Name: "tests", Harness: "codex", Slots: 1, TestPlanRoles: []store.TestPlanRole{{Project: project.ID, Role: "test"}, {Project: project.ID, Role: "management"}}}
+	// Configure after the first claim to exercise an upgrade with an in-flight turn.
 	claim := func(role string) *store.TestPlanJob {
 		t.Helper()
 		if published {
-			legacy, err := data.ClaimTestPlan(ctx, project.ID, role, false)
+			legacy, err := data.ClaimTestPlan(ctx, project.ID, role, false, false)
 			must(err)
 			if legacy != nil {
 				t.Fatal("legacy role received candidate context", role)
 			}
 		}
-		j, err := data.ClaimTestPlan(ctx, project.ID, role, published)
+		j, err := data.ClaimTestPlan(ctx, project.ID, role, published, true)
 		must(err)
 		if j == nil {
 			t.Fatal("no job", role)
@@ -142,14 +144,28 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 		return j
 	}
 	old := claim("test")
-	j, err := data.ClaimTestPlan(ctx, project.ID, "test", true)
+	if published {
+		must(data.SetModelBudgets(ctx, []store.ModelBudget{pool}))
+		conflict(data.SetModelBudgets(ctx, []store.ModelBudget{pool, {Name: "other", Harness: "codex", Slots: 1, TestPlanRoles: pool.TestPlanRoles}}))
+	}
+	j, err := data.ClaimTestPlan(ctx, project.ID, "test", true, true)
 	must(err)
 	if j != nil {
 		t.Fatal("concurrent lease")
 	}
 	must(request(1, nil))
+	if published {
+		pending, err := data.ClaimTestPlan(ctx, project.ID, "test", true, true)
+		must(err)
+		if pending != nil {
+			t.Fatal("new revision started before the superseded turn released its slot")
+		}
+	}
 	conflict(data.FinishTestPlan(ctx, project.ID, "test", store.TestPlanOutcome{ID: old.ID, Lease: old.Lease, Failed: true}))
 	j = claim("test")
+	if published && j.LeaseUntil == nil {
+		t.Fatal("missing budgeted plan deadline")
+	}
 	d := acceptance.Draft{Cases: []acceptance.Case{{Criterion: "requirement/1", Playbook: "documentation", Objective: "Read", Preconditions: "Candidate ready", Environment: "local", Steps: []string{"Open guide.md"}, Expected: "Read the guide.", Evidence: []string{"File and line"}, Tester: "human"}}, Questions: []acceptance.Question{}}
 	plan, err := j.Source.Basis.Bind("tester", j.Source.Library, d)
 	must(err)
@@ -166,7 +182,17 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	must(data.FinishTestPlan(ctx, project.ID, "test", r))
 	must(data.FinishTestPlan(ctx, project.ID, "test", r))
 	conflict(approve())
+	if published {
+		legacy, err := data.ClaimTestPlan(ctx, project.ID, "management", true, false)
+		must(err)
+		if legacy != nil {
+			t.Fatal("legacy management worker acquired budgeted coverage job")
+		}
+	}
 	j = claim("management")
+	if published && j.LeaseUntil == nil {
+		t.Fatal("missing budgeted coverage deadline")
+	}
 	coverage, err := j.Plan.Coverage("manager", []acceptance.CoverageItem{{Criterion: "requirement/1", Cases: []string{"TC-001"}, State: "covered", Rationale: "File lines can be verified."}})
 	must(err)
 	v := store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Coverage: &coverage}

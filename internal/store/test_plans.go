@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"time"
 
 	"forgeos/internal/acceptance"
 	"forgeos/internal/validation"
@@ -14,11 +15,12 @@ import (
 )
 
 type TestPlanJob struct {
-	ID        int64             `json:"id"`
-	Execution int64             `json:"execution_id"`
-	Lease     string            `json:"lease"`
-	Source    acceptance.Source `json:"source"`
-	Plan      *acceptance.Plan  `json:"plan,omitempty"`
+	ID         int64             `json:"id"`
+	Execution  int64             `json:"execution_id"`
+	Lease      string            `json:"lease"`
+	LeaseUntil *time.Time        `json:"lease_until,omitempty"`
+	Source     acceptance.Source `json:"source"`
+	Plan       *acceptance.Plan  `json:"plan,omitempty"`
 }
 
 type TestPlanOutcome struct {
@@ -128,16 +130,29 @@ func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revi
 const currentTestPlan = `t.status='WAITING_ACCEPTANCE' AND p.revision=(SELECT max(revision) FROM candidate_test_plans WHERE execution_id=p.execution_id)
 	AND p.execution_id=(SELECT max(id) FROM executions WHERE task_id=t.id)`
 
-func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, supportsContext bool) (*TestPlanJob, error) {
+func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, supportsContext, supportsDeadline bool) (*TestPlanJob, error) {
+	if role != "test" && role != "management" {
+		return nil, ErrConflict
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	pool, available, err := modelSlot(ctx, tx, "codex", "", role, project)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		return nil, err
+	}
 	var j TestPlanJob
 	var src, plan []byte
-	err := s.db.QueryRowContext(ctx, `WITH picked AS (
+	err = tx.QueryRowContext(ctx, `WITH picked AS (
 		SELECT p.id,p.execution_id,p.source,(SELECT outcome FROM candidate_test_plan_jobs WHERE plan_id=p.id AND role='test') AS plan
 		FROM candidate_test_plan_jobs j JOIN candidate_test_plans p ON p.id=j.plan_id JOIN work_items t ON t.id=p.task_id
 		WHERE t.project_id=$1 AND j.role=$2 AND ($3 OR NOT (p.source ? 'candidate_context')) AND j.completed_at IS NULL AND (j.lease_until IS NULL OR j.lease_until<=now())
 		AND `+currentTestPlan+` ORDER BY p.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED)
-		UPDATE candidate_test_plan_jobs j SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes' FROM picked
-		WHERE j.plan_id=picked.id AND j.role=$2 RETURNING picked.id,picked.execution_id,j.lease,picked.source,picked.plan`, project, role, supportsContext).Scan(&j.ID, &j.Execution, &j.Lease, &src, &plan)
+		UPDATE candidate_test_plan_jobs j SET lease=gen_random_uuid(),lease_until=clock_timestamp()+interval '6 minutes',model_budget=$4 FROM picked
+		WHERE j.plan_id=picked.id AND j.role=$2 RETURNING picked.id,picked.execution_id,j.lease,picked.source,picked.plan,
+		CASE WHEN $5 THEN j.lease_until END`, project, role, supportsContext, pool, supportsDeadline).Scan(&j.ID, &j.Execution, &j.Lease, &src, &plan, &j.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -151,6 +166,9 @@ func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, s
 		if err = json.Unmarshal(plan, &j.Plan); err != nil {
 			return nil, err
 		}
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
 	}
 	return &j, nil
 }
@@ -187,6 +205,18 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 	}
 	if err != nil {
 		return err
+	}
+	if !complete && !active {
+		// A superseded turn has stopped. Release its slot without publishing its result.
+		_, err = tx.ExecContext(ctx, `UPDATE candidate_test_plan_jobs SET lease_until=clock_timestamp()
+			WHERE plan_id=$1 AND role=$2 AND model_budget IS NOT NULL AND lease_until>clock_timestamp()`, out.ID, role)
+		if err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		return ErrConflict
 	}
 	var body any
 	if !out.Failed {
@@ -226,9 +256,6 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		if same && failed == out.Failed {
 			return nil
 		}
-		return ErrConflict
-	}
-	if !active {
 		return ErrConflict
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE candidate_test_plan_jobs SET outcome=$3,failed=$4,completed_at=now() WHERE plan_id=$1 AND role=$2`, out.ID, role, body, out.Failed)

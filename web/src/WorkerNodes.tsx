@@ -5,7 +5,7 @@ type Node = { worker: string; os: string; arch: string; cpus: number; slots: num
   model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
   last_seen: string; online: boolean; capabilities: Record<string, boolean> }
 
-type ModelBudget = { name: string; harness: string; slots: number; reserved: number; workers: string[]; reviewer_projects?: number[] }
+type ModelBudget = { name: string; harness: string; slots: number; reserved: number; workers: string[]; reviewer_projects?: number[]; test_plan_roles?: {project_id: number; role: 'test' | 'management'}[] }
 
 const capabilities: Record<string, string> = { supports_startup: '本地环境启动', supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划', supports_global_rules: '全局默认规则',
   supports_checkpoints: '检查点', supports_rework: '退回修订', supports_validation: '候选验证', supports_declared_checks: '项目检查', supports_risk_policy: '按风险选级' }
@@ -34,7 +34,8 @@ export function WorkerNodes({ request }: { request: ApiRequest }) {
   return <section className="panel detail-card"><h1>执行节点</h1>
     {error && <p role="alert">{error}</p>}
     {budgets.length > 0 && <section><h2>共享模型名额</h2>{budgets.map(b =>
-      <p key={b.name}>{b.name} · {b.harness} · 已占 {b.reserved} / {b.slots} · {[...b.workers, ...(b.reviewer_projects ?? []).map(id => `项目 ${id} 的 Reviewer`)].join('、')}</p>)}</section>}
+      <p key={b.name}>{b.name} · {b.harness} · 已占 {b.reserved} / {b.slots} · {[...b.workers, ...(b.reviewer_projects ?? []).map(id => `项目 ${id} 的 Reviewer`),
+        ...(b.test_plan_roles ?? []).map(m => `项目 ${m.project_id} ${m.role === 'test' ? '的 Test Agent' : '的覆盖审核'}`)].join('、')}</p>)}</section>}
     {!error && !nodes.length && <p>{loaded ? '尚未收到 Worker 心跳。' : '正在读取节点…'}</p>}
     {nodes.map(n => <article key={n.worker}><h2>{n.worker}</h2><p>{n.online ? '在线' : '心跳超时'} · {n.os} / {n.arch} · {n.cpus} 个逻辑 CPU</p>
       <p>已占名额 {n.reserved} / {n.slots}</p><p>最近心跳　<time dateTime={n.last_seen}>{formatTime(n.last_seen)}</time></p>

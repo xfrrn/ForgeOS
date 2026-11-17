@@ -73,7 +73,7 @@ func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsCont
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "claude", "", project)
+	pool, available, err := modelSlot(ctx, tx, "claude", "", "reviewer", project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		return nil, err
 	}

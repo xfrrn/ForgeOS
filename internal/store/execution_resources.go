@@ -85,7 +85,7 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 		}
 		if r.Kind == "model" {
 			var available bool
-			pool, available, err = modelSlot(ctx, tx, harness, worker, 0)
+			pool, available, err = modelSlot(ctx, tx, harness, worker, "", 0)
 			if err != nil || !available {
 				return false, err
 			}

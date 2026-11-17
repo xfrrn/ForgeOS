@@ -143,6 +143,14 @@ Owner 可以为同一个 Harness 账号设置共享并发上限。以 Owner 身�
 
 项目编号来自控制面对 Reviewer 身份的授权。工作台显示该项目及共享占用。没有可用名额时，候选继续等待；控制面有名额才签发六分钟的审查租约。报告、失败回执或租约到期都会释放本次审查占用。普通开发执行的失联处置仍沿用上一段规则。为已有审查租约首次配置预算时，有效的在途审查也纳入计数。
 
+Test Agent 生成候选测试计划和 Management 审核该计划的覆盖率都调用 Codex。Owner 在同一预算的 `test_plan_roles` 中按授权项目分别配置 `test` 和 `management`。例如，以下配置给项目 7 的两个阶段及执行节点共用一个名额。
+
+```json
+[{"name":"team-codex","harness":"codex","slots":1,"workers":["build-a"],"test_plan_roles":[{"project_id":7,"role":"test"},{"project_id":7,"role":"management"}]}]
+```
+
+角色在取得名额后领取六分钟租约；工作台“执行节点”显示 Test Agent、覆盖审核及其共享占用。Owner 在旧回合运行时修订测试计划，新版等待旧回合交回结果或租约到期。旧回合收到 409 后释放名额，旧结果不能推进新版。此配置用于候选测试计划的两种任务。其他 Management 任务的预算另记。
+
 ### 测量队列与事件读取
 
 在恢复出的隔离数据库上启动正式控制面和 Worker，将 Worker 指向验收克隆。选择一个已有事件的终态任务，并取要参与派发的项目 ID。下面的命令会真实创建 27 个 Git HEAD 任务。Owner 身份从环境变量 `FORGEOS_OWNER_TOKEN` 读取。

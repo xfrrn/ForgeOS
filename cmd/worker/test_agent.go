@@ -11,7 +11,7 @@ import (
 func (w *worker) runTestAgent(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.TestPlanJob
-		status, err := w.post(ctx, "/internal/test-agent/claim?supports_candidate_context=1", struct{}{}, &job)
+		status, err := w.post(ctx, "/internal/test-agent/claim?supports_candidate_context=1&supports_budget_deadline=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {
 			wait(ctx)
 			continue
@@ -30,18 +30,24 @@ func (w *worker) finishTestJob(ctx context.Context, job store.TestPlanJob, manag
 	path := "/internal/test-agent/result"
 	out := store.TestPlanOutcome{ID: job.ID, Lease: job.Lease}
 	var err error
+	turn := ctx
+	if job.LeaseUntil != nil {
+		var stop context.CancelFunc
+		turn, stop = context.WithDeadline(ctx, *job.LeaseUntil)
+		defer stop()
+	}
 	if management {
 		path = "/internal/management/test-plans/result"
 		if job.Plan == nil {
 			return fmt.Errorf("missing plan for review %d", job.ID)
 		}
-		report, e := coverageFromSource(ctx, job.Source, *job.Plan)
+		report, e := coverageFromSource(turn, job.Source, *job.Plan)
 		err = e
 		if err == nil {
 			out.Coverage = &report
 		}
 	} else {
-		plan, e := planFromSource(ctx, job.Source)
+		plan, e := planFromSource(turn, job.Source)
 		err = e
 		if err == nil {
 			out.Plan = &plan
