@@ -40,7 +40,7 @@ func (w *worker) pollModelPause(ctx context.Context, job store.Job, input store.
 	return nil, ctx.Err()
 }
 
-func (w *worker) runImplementationTurn(ctx context.Context, b *executionResources, sequence int, session, base string, identity []byte,
+func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequence int, session, base string, identity []byte,
 	stopClock func() time.Duration, resumeClock func(time.Duration), run func(context.Context, string, bool) (string, error)) (string, error) {
 	resuming := false
 	var resumeTrees *store.WorktreeTrees

@@ -48,6 +48,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		input.Capabilities.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"
+		input.Capabilities.SupportsPlannerPause = r.URL.Query().Get("supports_planner_pause") == "1"
 		input.Capabilities.SupportsReworkAnswers = input.Capabilities.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"
 		if raw := r.URL.Query().Get("adapter_probe"); raw != "" {
 			if len(raw) > 2048 || json.Unmarshal([]byte(raw), &input.Adapters) != nil || input.Adapters == nil {
@@ -269,6 +270,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		input.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"
+		input.SupportsPlannerPause = r.URL.Query().Get("supports_planner_pause") == "1"
 		input.SupportsReworkAnswers = input.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"
 		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.WorkerCapabilities)
 		if job == nil && err == nil {

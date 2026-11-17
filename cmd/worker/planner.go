@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
@@ -16,7 +17,8 @@ import (
 //go:embed plan_schema.json
 var plannerSchema []byte
 
-func (w *worker) planIssue(ctx context.Context, repo, workspace string, job store.Job, comments []store.CommentInput) store.Result {
+func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *executionResources, comments []store.CommentInput, stopBudget func() time.Duration, resumeBudget func(time.Duration)) store.Result {
+	job := budget.job
 	spec := job.Spec
 	r := store.Result{BaseCommit: spec.BaseCommit, ExitCode: 1}
 	if !w.planner {
@@ -53,7 +55,14 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, job stor
 		"Give each work item a stable unique ASCII identifier, explicit scope, dependencies by key, verifiable acceptance criteria, deliverables and repository paths as context references. " +
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
 	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexPlannerSandbox, options: []string{"--output-schema", schema, "--output-last-message", output}}
-	r.SessionID, err = w.runJobTurn(ctx, adapter, job, prompt, "", spec.BaseCommit, identity, nil, output)
+	r.SessionID, err = w.runModelTurn(ctx, budget, 0, "", spec.BaseCommit, identity, stopBudget, resumeBudget, func(turn context.Context, session string, resumed bool) (string, error) {
+		if resumed {
+			if err := preparePlannerResume(turn, workspace, output); err != nil {
+				return session, err
+			}
+		}
+		return w.runJobTurn(turn, adapter, job, prompt, session, spec.BaseCommit, identity, nil, output)
+	})
 	if err != nil {
 		r.Error = err.Error()
 		return r

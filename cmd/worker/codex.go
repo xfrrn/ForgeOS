@@ -350,6 +350,12 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	defer cancel()
 	activeTime := time.AfterFunc(time.Until(deadline), cancel)
 	defer activeTime.Stop()
+	stopBudget := func() time.Duration {
+		if !activeTime.Stop() {
+			return 0
+		}
+		return time.Until(deadline)
+	}
 	resumeBudget := func(remaining time.Duration) {
 		deadline = time.Now().Add(remaining)
 		activeTime.Reset(remaining)
@@ -396,13 +402,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 	}
 	if spec.Mode == "plan" {
-		result, err = withResource(ctx, &budget, "model", func() (store.Result, error) {
-			return w.planIssue(ctx, repo, workspace, job, batch.Comments), nil
-		})
-		if err != nil {
-			result.ExitCode, result.Error = 1, err.Error()
-			return result
-		}
+		result = w.planIssue(ctx, repo, workspace, &budget, batch.Comments, stopBudget, resumeBudget)
 		if result.ExitCode == 0 {
 			if _, err = w.checkpoint(ctx, job, 0, result.SessionID); err != nil {
 				return failed("confirm planning checkpoint", err)
@@ -453,12 +453,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		if job.RuntimeQuestions && job.SupportsCheckpoints {
 			question = &nativeQuestion{}
 		}
-		session, turnErr := w.runImplementationTurn(ctx, &budget, seq, result.SessionID, start, dir, func() time.Duration {
-			if !activeTime.Stop() {
-				return 0
-			}
-			return time.Until(deadline)
-		}, resumeBudget, func(turn context.Context, previous string, resumed bool) (string, error) {
+		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed bool) (string, error) {
 			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox}
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version

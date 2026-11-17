@@ -47,14 +47,21 @@ func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job sto
 		return session, err
 	}
 	if plannerOutput != "" {
-		status, err := localrepo.Git(ctx, job.Workspace, "status", "--porcelain", "--untracked-files=all")
-		if err != nil || len(status) != 0 {
-			return session, errors.New("cannot resume in a changed planner checkout")
-		}
-		if err := os.Remove(plannerOutput); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return session, errors.New("cannot clear incomplete planner output")
+		if err := preparePlannerResume(ctx, job.Workspace, plannerOutput); err != nil {
+			return session, err
 		}
 	}
 	_, err = run("The previous process was interrupted. Inspect the existing checkout and finish only the remaining authorized work.\n"+prompt, session)
 	return session, err
+}
+
+func preparePlannerResume(ctx context.Context, workspace, output string) error {
+	status, err := localrepo.Git(ctx, workspace, "status", "--porcelain", "--untracked-files=all")
+	if err != nil || len(status) != 0 {
+		return errors.New("cannot resume in a changed planner checkout")
+	}
+	if err := os.Remove(output); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return errors.New("cannot clear incomplete planner output")
+	}
+	return nil
 }

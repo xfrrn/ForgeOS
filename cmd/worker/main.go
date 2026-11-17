@@ -301,7 +301,7 @@ func (w *worker) run(ctx context.Context) error {
 		return err
 	}
 	// Old control planes accept the same heartbeat body and ignore the extra query field.
-	heartbeat := "/internal/workers/heartbeat?supports_model_pause=1&supports_rework_answers=1&adapter_probe=" + url.QueryEscape(string(probe))
+	heartbeat := "/internal/workers/heartbeat?" + workerCapabilityQuery + "&adapter_probe=" + url.QueryEscape(string(probe))
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
 			status, err := w.post(ctx, heartbeat, h, nil)
@@ -350,6 +350,8 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
+const workerCapabilityQuery = "supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1"
+
 func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
 	ctx, stop := context.WithCancelCause(parent)
 	var jobs sync.WaitGroup
@@ -388,7 +390,7 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 			job = saved.Job
 			log.Printf("checking saved owner question for execution %d at checkpoint %d", job.ExecutionID, saved.Sequence)
 		} else {
-			status, err := w.post(ctx, "/internal/claim?supports_model_pause=1&supports_rework_answers=1", claim, &job)
+			status, err := w.post(ctx, "/internal/claim?"+workerCapabilityQuery, claim, &job)
 			if status == http.StatusNoContent || temporary(status) {
 				<-occupied
 				if status != http.StatusNoContent && ctx.Err() == nil {

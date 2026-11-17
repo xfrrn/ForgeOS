@@ -8,6 +8,36 @@ import (
 	"time"
 )
 
+func TestPlannerPauseRequiresUpdatedWorker(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, plannerPause := range []bool{false, true} {
+		p, err := s.CreateProject(ctx, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.ImportIssue(ctx, p.ID, IssueSpec{Mode: "plan", Issue: Issue{ID: p.ID, Number: 1, RepositoryID: p.ID}, BaseCommit: strings.Repeat("a", 40), Validation: "docs"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		worker := "old-planner"
+		if plannerPause {
+			worker = "updated-planner"
+		}
+		caps := WorkerCapabilities{SupportsCodex: true, SupportsPlanner: true, SupportsCheckpoints: true, SupportsResources: true, SupportsModelPause: true, SupportsPlannerPause: plannerPause}
+		if err := s.RecordHeartbeat(ctx, WorkerHeartbeat{Worker: worker, OS: "linux", Arch: "amd64", CPUs: 1, Slots: 1, ModelSlots: 1, CISlots: 1, Capabilities: caps}); err != nil {
+			t.Fatal(err)
+		}
+		j, err := s.ClaimForProjects(ctx, worker, t.TempDir(), []int64{p.ID}, caps)
+		if err != nil || j == nil || j.ModelPause != plannerPause || j.RuntimeQuestions {
+			t.Fatalf("planner pause capability %v: job=%v, error=%v", plannerPause, j != nil, err)
+		}
+	}
+}
+
 func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))

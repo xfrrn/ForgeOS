@@ -747,7 +747,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.ReportLiveProcess = j.RecordProcesses
 		j.RecordToolActivity = j.RecordProcesses
 		j.ManageResources = registered != nil && caps.SupportsResources
-		j.ModelPause = j.RuntimeQuestions && j.ManageResources && caps.SupportsModelPause
+		j.ModelPause = j.SupportsCheckpoints && j.ManageResources && caps.SupportsModelPause && (j.Spec.Mode != "plan" || caps.SupportsPlannerPause)
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
