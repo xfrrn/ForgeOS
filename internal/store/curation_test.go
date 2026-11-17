@@ -4,8 +4,94 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
+
+func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, "decision-source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal := DecisionProposal{RequestKey: "queue", Statement: "The restored queue resumed at offset 274. Retain checkpoints.",
+		Source: "R21", Validity: "Recovery rehearsal only", EvidenceRefs: []string{"log/R21"}}
+	raw, err := s.ProposeDecision(ctx, p.ID, proposal)
+	var d struct{ ID int64 }
+	if err != nil || json.Unmarshal(raw, &d) != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DecisionCuration(ctx, p.ID, d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatal("proposal queued before confirmation", err)
+	}
+	for range 2 {
+		if _, err := s.Decide(ctx, p.ID, d.ID, "CONFIRMED"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, err := s.ClaimCuration(ctx, p.ID, false)
+	if err != nil || job == nil {
+		t.Fatal(job, err)
+	}
+	var src struct {
+		Kind, Content string
+		Revision      int64
+	}
+	if json.Unmarshal(job.Material, &src) != nil || src.Kind != "confirmed_decision" || src.Revision < 1 || !strings.Contains(src.Content, proposal.Statement) || !strings.Contains(src.Content, proposal.Validity) {
+		t.Fatal(string(job.Material))
+	}
+	if next, err := s.ClaimCuration(ctx, p.ID, false); err != nil || next != nil {
+		t.Fatal("duplicate confirmation queued", err)
+	}
+	out := Extraction{"curator", []KnowledgeFact{{"The queue resumed at the saved offset during rehearsal.", "offset 275"}}}
+	if err := s.RecordExtraction(ctx, p.ID, job.ID, job.Lease, out); !errors.Is(err, ErrConflict) {
+		t.Fatal("incorrect quote", err)
+	}
+	out.Facts[0].Quote = "offset 274"
+	if err := s.RecordExtraction(ctx, p.ID, job.ID, job.Lease, out); err != nil {
+		t.Fatal(err)
+	}
+	j, err := s.ClaimCuration(ctx, p.ID, true)
+	if err != nil || j == nil {
+		t.Fatal(j, err)
+	}
+	if err = s.ReviewCuration(ctx, p.ID, j.ID, j.Lease, ManagementReview{Level: "D1", Verdict: "approve", SessionID: "management", Rationale: "Scoped observation", Evidence: "R21"}); err != nil {
+		t.Fatal(err)
+	}
+	if hits, err := s.ProjectExperience(ctx, p.ID, 0); err != nil || !strings.Contains(string(hits), "confirmed_decision") {
+		t.Fatal(string(hits), err)
+	}
+	before, err := s.DecisionCuration(ctx, p.ID, d.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal.RequestKey = "replacement"
+	proposal.Supersedes = &d.ID
+	raw, err = s.ProposeDecision(ctx, p.ID, proposal)
+	var next struct{ ID int64 }
+	if err != nil || json.Unmarshal(raw, &next) != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Decide(ctx, p.ID, next.ID, "CONFIRMED"); err != nil {
+		t.Fatal(err)
+	}
+	if hits, err := s.ProjectExperience(ctx, p.ID, 0); err != nil || string(hits) != "[]" {
+		t.Fatal(string(hits), err)
+	}
+	if after, err := s.DecisionCuration(ctx, p.ID, d.ID); err != nil || string(before) != string(after) {
+		t.Fatal("lost historical review", err)
+	}
+	if _, err := s.DecisionCuration(ctx, p.ID+1, d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatal("foreign receipt", err)
+	}
+	if next, err := s.ClaimCuration(ctx, p.ID, false); err != nil || next == nil || next.ID == job.ID {
+		t.Fatal(next, err)
+	}
+}
 
 func TestOwnerMemoryIsOnePrivateCurationSourceOnRetry(t *testing.T) {
 	ctx := context.Background()

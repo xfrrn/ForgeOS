@@ -37,6 +37,17 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 	}
 }
 
+func TestCuratorRetriesNoncontiguousSourceQuote(t *testing.T) {
+	w := worker{codex: os.Args[0]}
+	out, err := w.extractFacts(context.Background(), json.RawMessage(`{"content":"SIMULATED_QUOTE_REPAIR: saved 918 then resumed at 918"}`))
+	if err != nil || len(out.Facts) != 1 || out.Facts[0].Quote != "resumed at 918" || out.Session == "" {
+		t.Fatal(out, err)
+	}
+	if _, err := w.extractFacts(context.Background(), json.RawMessage(`{"content":"SIMULATED_QUOTE_REPAIR: no quoted offset"}`)); err == nil {
+		t.Fatal("accepted a quote missing from the source after the retry")
+	}
+}
+
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "-p" {
@@ -80,8 +91,14 @@ func TestMain(m *testing.M) {
 		}
 		for k, arg := range os.Args {
 			if arg == "--output-last-message" && k+1 < len(os.Args) {
-				const plan = `{"objective":"Handbook","milestones":[{"name":"Docs","items":[{"key":"example","objective":"Write example","scope":"README","acceptance_criteria":"Example exists","deliverables":"Example"}]}]}`
-				if os.WriteFile(os.Args[k+1], []byte(plan), 0600) != nil {
+				output := `{"objective":"Handbook","milestones":[{"name":"Docs","items":[{"key":"example","objective":"Write example","scope":"README","acceptance_criteria":"Example exists","deliverables":"Example"}]}]}`
+				if strings.Contains(string(body), "SIMULATED_QUOTE_REPAIR") {
+					output = `{"facts":[{"statement":"Recovered.","quote":"saved resumed"}]}`
+					if strings.Contains(string(body), "previous extraction") {
+						output = `{"facts":[{"statement":"Recovered.","quote":"resumed at 918"}]}`
+					}
+				}
+				if os.WriteFile(os.Args[k+1], []byte(output), 0600) != nil {
 					os.Exit(3)
 				}
 				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)

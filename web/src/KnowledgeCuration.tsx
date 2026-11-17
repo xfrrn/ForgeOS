@@ -3,12 +3,15 @@ import { ApiError, type ApiRequest } from './shared'
 
 type Receipt = {
   id: number
+  decision_id?: number
+  revision: number
+  content_sha256: string
   decisions?: {fact: number; id: number; status: string}[]
   extraction: { session: string; facts: { statement: string; quote: string }[] } | null
   review: { level: string; verdict: string; rationale: string; evidence: string; session_id: string } | null
 }
 
-export function MaterialCuration({project, path, request}: {project: number; path: string; request: ApiRequest}) {
+export function KnowledgeCuration({project, path, request}: {project: number; path: string; request: ApiRequest}) {
   const [open, setOpen] = useState(false)
   const [receipt, setReceipt] = useState<Receipt>()
   const [error, setError] = useState('')
@@ -57,6 +60,7 @@ export function MaterialCuration({project, path, request}: {project: number; pat
     <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>知识提取与审核</button>
     {open && <>
       {error && <p role="alert">{error}</p>}
+      {receipt?.decision_id && <p>确认事件 #{receipt.revision} · SHA-256 · <code>{receipt.content_sha256}</code></p>}
       <p role="status">{!receipt ? '正在读取记录…' : !extraction ? '等待 Curator 提取' : !extraction.facts.length ? '此修订没有提取到项目经验' :
         !review ? '建议等待 Management 审核' : review.verdict === 'approve' && review.level === 'D1' ? '此修订已通过项目经验审核' :
         review.verdict === 'revise' ? '建议已退回' : '需要 Owner 决定'}</p>

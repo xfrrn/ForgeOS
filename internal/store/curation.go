@@ -36,8 +36,8 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review bool) (
 		SELECT id FROM material_curations WHERE project_id=$1 AND `+pending+` AND (`+until+` IS NULL OR `+until+`<=now())
 		ORDER BY `+until+` NULLS FIRST,id LIMIT 1 FOR UPDATE SKIP LOCKED)
 		UPDATE material_curations c SET `+lease+`=gen_random_uuid(),`+until+`=now()+interval '6 minutes'
-		FROM candidate,project_materials m WHERE c.id=candidate.id AND (m.project_id,m.key,m.revision)=(c.project_id,c.key,c.revision)
-		RETURNING c.id,c.`+lease+`,to_jsonb(m),c.extraction`, project).Scan(&job.ID, &job.Lease, &job.Material, &extraction)
+		FROM candidate,curation_sources s WHERE c.id=candidate.id AND s.curation_id=c.id
+		RETURNING c.id,c.`+lease+`,jsonb_strip_nulls(to_jsonb(s)-'curation_id'-'receipt_path'-'is_current'),c.extraction`, project).Scan(&job.ID, &job.Lease, &job.Material, &extraction)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -69,10 +69,10 @@ func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease s
 	}
 	var recorded int64
 	err = s.db.QueryRowContext(ctx, `UPDATE material_curations c SET extraction=$4::jsonb,extracted_at=COALESCE(extracted_at,now())
-		FROM project_materials m WHERE c.project_id=$1 AND c.id=$2 AND c.extraction_lease::text=$3
+		FROM curation_sources s WHERE c.project_id=$1 AND c.id=$2 AND c.extraction_lease::text=$3
 		AND (c.extraction=$4::jsonb OR (c.extraction IS NULL AND c.extraction_until>now()))
-		AND (c.project_id,c.key,c.revision)=(m.project_id,m.key,m.revision)
-		AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements($4::jsonb->'facts') f WHERE strpos(m.content,f->>'quote')=0)
+		AND s.curation_id=c.id
+		AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements($4::jsonb->'facts') f WHERE strpos(s.content,f->>'quote')=0)
 		RETURNING c.id`, project, id, lease, string(doc)).Scan(&recorded)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
@@ -98,14 +98,24 @@ func (s *Store) ReviewCuration(ctx context.Context, project, id int64, lease str
 	return err
 }
 
-func (s *Store) MaterialCuration(ctx context.Context, project int64, key string, revision int) (json.RawMessage, error) {
-	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('id',c.id,'key',c.key,'revision',c.revision,'content_sha256',m.content_sha256,
+const curationReceipt = `SELECT jsonb_build_object('id',c.id,'revision',s.revision,'content_sha256',s.content_sha256,
 		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at,
 		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
 		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
-		FROM material_curations c JOIN project_materials m USING(project_id,key,revision)
-		WHERE project_id=$1 AND key=$2 AND revision=$3`, project, key, revision).Scan(&doc)
+		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id))
+		FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id WHERE c.project_id=$1`
+
+func (s *Store) MaterialCuration(ctx context.Context, project int64, key string, revision int) (json.RawMessage, error) {
+	return readCurationReceipt(s.db.QueryRowContext(ctx, curationReceipt+" AND c.key=$2 AND c.revision=$3", project, key, revision))
+}
+
+func (s *Store) DecisionCuration(ctx context.Context, project, decision int64) (json.RawMessage, error) {
+	return readCurationReceipt(s.db.QueryRowContext(ctx, curationReceipt+" AND c.decision_id=$2", project, decision))
+}
+
+func readCurationReceipt(row *sql.Row) (json.RawMessage, error) {
+	var doc json.RawMessage
+	err := row.Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -117,11 +127,11 @@ func (s *Store) ProjectExperience(ctx context.Context, project, before int64) (j
 		return nil, err
 	}
 	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(a) ORDER BY id DESC),'[]') FROM (
-		SELECT c.id,c.key,c.revision,m.title,m.source,m.content_sha256,c.extraction->'facts' AS facts,c.reviewed_at
-		FROM material_curations c JOIN project_materials m USING(project_id,key,revision)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(jsonb_strip_nulls(to_jsonb(a)) ORDER BY id DESC),'[]') FROM (
+		SELECT c.id,c.key,c.decision_id,s.revision,s.title,s.source,s.kind,s.receipt_path,s.content_sha256,c.extraction->'facts' AS facts,c.reviewed_at
+		FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id
 		WHERE c.project_id=$1 AND ($2::bigint=0 OR c.id<$2) AND c.review->>'verdict'='approve' AND c.review->>'level'='D1'
-		AND NOT EXISTS (SELECT 1 FROM project_materials n WHERE n.project_id=c.project_id AND n.key=c.key AND n.revision>c.revision)
+		AND s.is_current
 		ORDER BY c.id DESC LIMIT 30) a`, project, before).Scan(&doc)
 	return doc, err
 }

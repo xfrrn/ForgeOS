@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, type ApiRequest } from './shared'
+import { KnowledgeCuration } from './KnowledgeCuration'
 
 const labels = { PROPOSED: '待确认', CONFIRMED: '已确认', REJECTED: '已拒绝', SUPERSEDED: '已替代', EXPIRED: '已失效' }
 type State = keyof typeof labels
@@ -113,12 +114,14 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
       {loading && <p role="status">正在读取决策…</p>}
       {!loading && !readError && !rows.length && <p>没有符合条件的决策。</p>}
       {rows.map(row => <article key={row.id} className="registered-project"><div>
-        <h3>#{row.id} · {row.statement}</h3><p>{labels[row.status]}{row.decided_by && ' · ' + row.decided_by}</p>
+        <h3>{decision ? '#' + row.id : <a href={'#' + base + '/' + row.id}>#{row.id}</a>} · {row.statement}</h3><p>{labels[row.status]}{row.decided_by && ' · ' + row.decided_by}</p>
         {row.status === 'CONFIRMED' && <p>计划引用 · <code>{base}/{row.id}</code></p>}
         <p>来源 · {row.source}</p><p>适用条件 · {row.validity}</p>
         {row.valid_until && <p>截止时间 · {formatTime(row.valid_until)}</p>}{row.supersedes && <p>替代对象 · #{row.supersedes}</p>}
         <details><summary>证据与历史</summary><ul>{row.evidence_refs.map((ref,i) => <li key={i}>{ref}</li>)}</ul>
           <ol>{row.history.map(h => <li key={h.status}>{formatTime(h.at)} · {h.actor} · {labels[h.status]}</li>)}</ol></details>
+        {decision && row.history.some(h => h.status === 'CONFIRMED') &&
+          <KnowledgeCuration project={project} path={base + '/' + row.id + '/curation'} request={request}/>}
         {row.status === 'PROPOSED' && <div className="detail-actions"><button className="button" disabled={busy} onClick={() => void decide(row.id,'CONFIRMED')}>确认决策</button>
           <button className="button" disabled={busy} onClick={() => void decide(row.id,'REJECTED')}>拒绝提案</button></div>}
         {row.status === 'CONFIRMED' && <div className="detail-actions"><button className="button" disabled={busy || Boolean(proposal)} onClick={() => start(row)}>提议替代</button>

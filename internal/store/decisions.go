@@ -61,13 +61,12 @@ func (s *Store) ProposeDecision(ctx context.Context, project int64, p DecisionPr
 	var originID *int64
 	var fact *int
 	if origin := p.Curation; origin != nil {
-		var key, digest, session string
-		var revision int
-		err = tx.QueryRowContext(ctx, `SELECT c.key,c.revision,m.content_sha256,c.review->>'session_id'
-			FROM material_curations c JOIN project_materials m USING(project_id,key,revision)
+		var digest, session string
+		err = tx.QueryRowContext(ctx, `SELECT s.receipt_path,s.content_sha256,c.review->>'session_id'
+			FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id
 			WHERE c.project_id=$1 AND c.id=$2 AND jsonb_array_length(c.extraction->'facts') >= $3
 			AND (c.review->>'verdict'='needs_owner' OR (c.review->>'verdict'='approve' AND c.review->>'level' IN ('D2','D3')))`,
-			project, origin.ID, origin.Fact).Scan(&key, &revision, &digest, &session)
+			project, origin.ID, origin.Fact).Scan(&p.Source, &digest, &session)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrConflict
 		}
@@ -75,7 +74,6 @@ func (s *Store) ProposeDecision(ctx context.Context, project int64, p DecisionPr
 			return nil, err
 		}
 		originID, fact = &origin.ID, &origin.Fact
-		p.Source = fmt.Sprintf("/projects/%d/materials/%s/revisions/%d/curation", project, key, revision)
 		p.EvidenceRefs = []string{fmt.Sprintf("curation:%d/fact:%d", origin.ID, origin.Fact), "sha256:" + digest, "management:" + session}
 	}
 	var id int64

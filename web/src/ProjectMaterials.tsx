@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { MaterialCuration } from './MaterialCuration'
+import { KnowledgeCuration } from './KnowledgeCuration'
 import { ShareDraft } from './ProjectShares'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 
@@ -147,7 +147,7 @@ export function ProjectMaterials({ project, request }: { project: number; reques
       {doc.revision < latest
         ? <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
         : <button className="button" disabled={busy} onClick={() => edit(doc, doc.revision)}>编辑此修订</button>}
-    </div><MaterialCuration project={project} path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
+    </div><KnowledgeCuration project={project} path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
       <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
   </div>
 }

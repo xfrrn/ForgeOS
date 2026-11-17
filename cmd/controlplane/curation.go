@@ -56,6 +56,19 @@ func registerCurationReview(mux *http.ServeMux, data *store.Store, project int64
 }
 
 func registerCurationReads(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	mux.HandleFunc("GET /projects/{id}/decisions/{decision}/curation", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		project, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		decision, err := strconv.ParseInt(r.PathValue("decision"), 10, 64)
+		if err != nil || decision < 1 {
+			problem(w, 400, "invalid decision id")
+			return
+		}
+		out, err := data.DecisionCuration(r.Context(), project, decision)
+		respond(w, 200, out, err)
+	}))
 	mux.HandleFunc("GET /projects/{id}/materials/{key}/revisions/{revision}/curation", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
