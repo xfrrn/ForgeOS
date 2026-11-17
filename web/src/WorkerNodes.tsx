@@ -6,9 +6,9 @@ type Node = { worker: string; os: string; arch: string; cpus: number; slots: num
   model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
   last_seen: string; online: boolean; capabilities: Record<string, unknown> & { adapters?: Record<string, Adapter> } }
 
-const agentRoleLabels = { curator: '知识提取', curation_review: '知识审核', plan_review: 'Goal 计划审核' }
+const agentRoleLabels = { curator: '知识提取', curation_review: '知识审核', plan_review: 'Goal 计划审核', share_review: '共享资料审核' }
 
-type ModelBudget = { name: string; harness: string; slots: number; reserved: number; workers: string[]; reviewer_projects?: number[]; test_plan_roles?: {project_id: number; role: 'test' | 'management'}[]; agent_roles?: {project_id: number; role: 'curator' | 'curation_review' | 'plan_review'}[] }
+type ModelBudget = { name: string; harness: string; slots: number; reserved: number; workers: string[]; reviewer_projects?: number[]; test_plan_roles?: {project_id: number; role: 'test' | 'management'}[]; agent_roles?: {project_id: number; role: keyof typeof agentRoleLabels}[] }
 
 const capabilities: Record<string, string> = { supports_startup: '本地环境启动', supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划', supports_global_rules: '全局默认规则',
   supports_checkpoints: '检查点', supports_rework: '退回修订', supports_validation: '候选验证', supports_declared_checks: '项目检查', supports_risk_policy: '按风险选级' }

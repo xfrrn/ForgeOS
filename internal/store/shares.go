@@ -76,20 +76,32 @@ func (s *Store) OutgoingShares(ctx context.Context, project, before int64) (json
 	return page, err
 }
 
-func (s *Store) ClaimShareReview(ctx context.Context, project int64) (*ManagementJob, error) {
+func (s *Store) ClaimShareReview(ctx context.Context, project int64, supportsDeadline bool) (*ManagementJob, error) {
 	job := ManagementJob{ProjectID: project, MinimumLevel: "D3", Share: &ShareReviewInput{}}
 	d := job.Share
-	err := s.db.QueryRowContext(ctx, `WITH candidate AS (
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	pool, available, err := modelSlot(ctx, tx, "codex", "", "share_review", project)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		return nil, err
+	}
+	err = tx.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT id FROM knowledge_shares WHERE project_id=$1 AND review IS NULL AND revoked_at IS NULL
-		AND (review_until IS NULL OR review_until<=now()) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
-		UPDATE knowledge_shares s SET review_lease=gen_random_uuid(),review_until=now()+interval '6 minutes'
+		AND (review_until IS NULL OR review_until<=clock_timestamp()) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+		UPDATE knowledge_shares s SET review_lease=gen_random_uuid(),review_until=clock_timestamp()+interval '6 minutes',model_budget=$2
 		FROM candidate c, project_materials m WHERE s.id=c.id AND (m.project_id,m.key,m.revision)=(s.project_id,s.material_key,s.revision)
-		RETURNING s.id,s.material_key,s.revision,s.recipient,s.title,s.content,m.title,m.source,m.content,s.review_lease`, project).
-		Scan(&d.ID, &d.MaterialKey, &d.Revision, &d.Recipient, &d.Title, &d.Content, &d.OriginalTitle, &d.OriginalSource, &d.OriginalContent, &job.Lease)
+		RETURNING s.id,s.material_key,s.revision,s.recipient,s.title,s.content,m.title,m.source,m.content,s.review_lease,CASE WHEN $3 THEN s.review_until END`, project, pool, supportsDeadline).
+		Scan(&d.ID, &d.MaterialKey, &d.Revision, &d.Recipient, &d.Title, &d.Content, &d.OriginalTitle, &d.OriginalSource, &d.OriginalContent, &job.Lease, &job.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return &job, err
+	if err != nil {
+		return nil, err
+	}
+	return &job, tx.Commit()
 }
 
 func (s *Store) ReviewShare(ctx context.Context, project, id int64, lease string, review ManagementReview) error {
@@ -107,9 +119,16 @@ func (s *Store) ReviewShare(ctx context.Context, project, id int64, lease string
 	var found int64
 	err = s.db.QueryRowContext(ctx, `UPDATE knowledge_shares SET review=$4::jsonb,reviewed_at=COALESCE(reviewed_at,now())
 		WHERE project_id=$1 AND id=$2 AND review_lease::text=$3
-		AND (review=$4::jsonb OR (review IS NULL AND review_until>now() AND revoked_at IS NULL))
+		AND (review=$4::jsonb OR (review IS NULL AND review_until>clock_timestamp() AND revoked_at IS NULL))
 		RETURNING id`, project, id, lease, string(doc)).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
+		// A revoked copy cannot be published. Its returning worker has finished using the account.
+		_, err = s.db.ExecContext(ctx, `UPDATE knowledge_shares SET review_until=clock_timestamp()
+			WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 AND review IS NULL AND revoked_at IS NOT NULL
+			AND review_until>clock_timestamp()`, project, id, lease)
+		if err != nil {
+			return err
+		}
 		return ErrConflict
 	}
 	return err

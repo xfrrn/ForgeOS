@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/lib/pq"
@@ -49,7 +50,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 			roles[member] = true
 		}
 		for _, member := range b.AgentRoles {
-			if b.Harness != "codex" || member.Project < 1 || (member.Role != "curator" && member.Role != "curation_review" && member.Role != "plan_review") || roles[member] {
+			if b.Harness != "codex" || member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review"}, member.Role) || roles[member] {
 				return ErrConflict
 			}
 			roles[member] = true
@@ -120,6 +121,12 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	_, err = tx.ExecContext(ctx, `UPDATE plan_revisions r SET model_budget=b.name FROM work_items t,model_budgets b
 		WHERE r.task_id=t.id AND r.model_budget IS NULL AND r.review IS NULL AND r.review_until>clock_timestamp()
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',t.project_id,'role','plan_review'))`)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE knowledge_shares s SET model_budget=b.name FROM model_budgets b
+		WHERE s.model_budget IS NULL AND s.review IS NULL AND s.review_until>clock_timestamp()
+		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',s.project_id,'role','share_review'))`)
 	if err != nil {
 		return err
 	}

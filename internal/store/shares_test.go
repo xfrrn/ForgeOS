@@ -46,10 +46,21 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 			t.Fatal(string(items), err)
 		}
 	}
-	job, err := s.ClaimShareReview(ctx, source.ID)
-	if err != nil || job == nil || job.Share.OriginalContent != m.Content {
+	job, err := s.ClaimShareReview(ctx, source.ID, false)
+	if err != nil || job == nil || job.LeaseUntil != nil || job.Share.OriginalContent != m.Content {
 		t.Fatal(err)
 	}
+	if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "shared", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: source.ID, Role: "share_review"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	assertUsage := func(expected int) {
+		t.Helper()
+		var used int
+		if err := s.db.QueryRowContext(ctx, `SELECT reserved FROM model_budget_usage WHERE name='shared'`).Scan(&used); err != nil || used != expected {
+			t.Fatalf("used %d, expected %d: %v", used, expected, err)
+		}
+	}
+	assertUsage(1)
 	review := ManagementReview{Level: "D2", Verdict: "approve", SessionID: "test-session", Rationale: "reviewed", Evidence: "private-source only in original"}
 	if err = s.ReviewShare(ctx, target.ID, id, job.Lease, review); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
@@ -65,6 +76,7 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	assertUsage(0)
 	modified := review
 	modified.Verdict = "revise"
 	if err = s.ReviewShare(ctx, source.ID, id, job.Lease, modified); !errors.Is(err, ErrConflict) {
@@ -84,4 +96,27 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 	if err != nil || string(feed) != "[]" {
 		t.Fatal(string(feed), err)
 	}
+	input.Title = "Another handoff"
+	raw, err = s.DraftShare(ctx, source.ID, input)
+	if err != nil || json.Unmarshal(raw, &receipt) != nil {
+		t.Fatal(string(raw), err)
+	}
+	if legacy, err := s.ClaimShareReview(ctx, source.ID, false); err != nil || legacy != nil {
+		t.Fatal("legacy worker received a budgeted share", legacy, err)
+	}
+	job, err = s.ClaimShareReview(ctx, source.ID, true)
+	if err != nil || job == nil || job.LeaseUntil == nil {
+		t.Fatal(job, err)
+	}
+	if _, err = s.SetSharePublished(ctx, source.ID, receipt.ID, receipt.Digest, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ReviewShare(ctx, source.ID, receipt.ID, "wrong", review); !errors.Is(err, ErrConflict) {
+		t.Fatal(err)
+	}
+	assertUsage(1)
+	if err = s.ReviewShare(ctx, source.ID, receipt.ID, job.Lease, review); !errors.Is(err, ErrConflict) {
+		t.Fatal("revoked draft accepted", err)
+	}
+	assertUsage(0)
 }

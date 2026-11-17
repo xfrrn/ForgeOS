@@ -161,6 +161,8 @@ Test Agent 生成候选测试计划和 Management 审核该计划的覆盖率都
 
 若同一账号还审核 Goal 的计划草案，在该预算的 `agent_roles` 中加入 `{"project_id":7,"role":"plan_review"}`，按实际项目替换编号。管理 Worker 需要支持计划审核的租约截止时间。名额已满时草案继续等待；控制面重启后仍按库中有效租约计数。Owner 在审核期间发布新版，旧回合的结果返回 409 并归还自己的名额，新版另行领取和审核。
 
+跨项目共享资料的 D3 审核使用来源项目的 `share_review` 名额。将 `{"project_id":7,"role":"share_review"}` 加入相应 Codex 账号的 `agent_roles`。Owner 在审核期间撤销草稿后，接收方看不到该副本；原生审核交回结果或租约到期才释放名额。其他草稿通过审核后仍须 Owner 发布。
+
 ### 测量队列与事件读取
 
 在恢复出的隔离数据库上启动正式控制面和 Worker，将 Worker 指向验收克隆。选择一个已有事件的终态任务，并取要参与派发的项目 ID。下面的命令会真实创建 27 个 Git HEAD 任务。Owner 身份从环境变量 `FORGEOS_OWNER_TOKEN` 读取。
