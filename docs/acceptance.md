@@ -19,6 +19,8 @@
 
 任务详情的下一回合指令已完成独立验收，扣除此项后约余 18–28 个工作包。两种适配器的版本探测和基础错误分类已有实测，运行中审批、中断等操作仍列在适配器工作内。
 
+在 beta #125 的验收和交付后，当前已实现的独立模型角色均已验证共享名额。按上表的工作包口径扣除“独立角色计入预算”，约余 17–27 个工作包。Linux 服务身份复用登录、供应方限流和最终全路线回归仍在估算内。
+
 另有三项由 Owner 确认保留待验收，单独计数：从第二台设备经 Tailscale 访问预览、使用 GitHub App 或细粒度凭据实测最小权限、第二位维护者批准受保护分支的 PR。全路线最终回归仍待执行。
 
 | 路线要求 | 已有实现或证据 | 待补齐或待验收 |
@@ -2252,6 +2254,8 @@ PostgreSQL 18 和 Docker 全包回归 238 项测试及子测试通过，零跳�
 
 ### 专题 07、11、14、16 A.3 · 固定预览上的两条观察争用反馈分类名额
 
+ForgeOS 实现提交 `a410eb5dc16c536db67818b2b2afc84a9dff2b07`。
+
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
 | 将私有 beta #125 导入控制面，让正式 Claude Worker 实现预览标题的检查说明。按候选 SHA 启动预览，用 Chrome 读取标题和 H1，再通过反馈入口分别登记两条观察 | 工作区只增加指定检查说明；两次独立观察均与同一候选关联 | 实现会话 `3bc7da32-5437-4772-9d0b-f7c4c4c224c0`，候选 `5da50fd7832b706d086d5afbeaff8a932934b4ce`，唯一变更为 `docs/queue-preview/feedback-check.md`。Chrome 核对标签页标题、可见 H1 均为 Queue handbook。反馈 1 和 2 已登记。 |
@@ -2259,3 +2263,14 @@ PostgreSQL 18 和 Docker 全包回归 238 项测试及子测试通过，零跳�
 | 两次回报后重启，从反馈历史回查每条证据及任务的验收状态 | 两条分类各自引用观察原文，独立于实现会话；名额归零，候选等待 Owner 验收 | 原生 Codex 会话分别为 `01a1e958-8d77-75a2-9af9-1e256acab17f` 和 `01a1e958-b957-7f72-8209-03f2313e608c`。两条均为 acceptance，证据都是对应观察的原文，均无 Owner 决定，任务仍为 WAITING_ACCEPTANCE，账号占用为 0。 |
 
 PostgreSQL 18 和 Docker 全包回归包含预算生效时的在途分类、过期重领、证据校验、错误项目、重复回报及事件幂等。238 项 Go 测试及子测试通过，零跳过。Go vet 和 Web 生产构建通过。
+
+### 专题 05、07、14、16 A.3 · Owner 先答复时的业务问题建议与交付
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 对 beta #125 的已分类预览观察，Owner 在候选验收时询问是否检查浏览器标题。用版本 85 配置一个 `question_advice` 名额，升级至版本 86 重试 | 沿用同一问题和候选，支持截止时间的 Management Worker 才可领取 | 配置从 409 变为 204，旧客户端得到空领取，任务等待回答。第一台 Worker 开始原生建议回合。 |
+| 首个回合运行中，Owner 明确回答应检查标签页标题，再询问是否应检查可见 H1。重启控制面，启动第二台 Worker | Owner 决定立即生效；第一回合返回前，第二条问题等待账号名额 | Chrome 可见占用 1/1；第二台 Worker 空领取，问题 2 尚无租约。原生会话 `01a1e95d-c58a-7bf2-b1fb-813db57bafe8` 对问题 1 回报 409。重启回读 Owner 答案仍为原文，问题 1 没有写入过时建议。 |
+| 问题 2 领取、回报后重启，读取建议及领取时的来源，再从 Owner 入口回答 | D2 建议引用可核对的固定来源，等待 Owner 作决定；两回合结束后占用归零 | 会话 `01a1e95d-f2c3-7b23-addb-cb540879b1b0` 回报 204，引用 `requirement:1:body` 中同时要求标签页标题和可见 H1 的原句。回读时状态 WAITING_INPUT，占用 0。Owner 确认两者均须满足后回到 WAITING_ACCEPTANCE。 |
+| 以同一 SHA 核对 Markdown 标题、唯一变更路径和验证回执，Owner 同时引用反馈 1、2 批准。跟踪真实 PR、必需检查和来源 Issue | 决定绑定相同候选和两条观察，检查通过后交付并关闭 Issue | 候选 `5da50fd7832b706d086d5afbeaff8a932934b4ce`，两条观察均关联批准回执。预设的首次 CI 失败后重跑，`acceptance-check` 与 `forgeos/local-ci` 均成功。PR #126 已合并，Merge SHA `2824245d2c7270bfc1aecbebeecbecaa713def67`，任务 DONE、Issue #125 已关闭。[Issue #125](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/125) · [PR #126](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/126) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44078720644) |
+
+全包 Go 回归在 PostgreSQL 18 和 Docker 上通过 238 项测试及子测试，零跳过。数据库覆盖在途配置、过期重领、D1 决策查阅、错误项目、D3 下限及结果重放。Go vet 和 Web 生产构建通过。

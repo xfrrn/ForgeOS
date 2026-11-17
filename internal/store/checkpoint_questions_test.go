@@ -102,7 +102,7 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 			result := Result{Commit: candidate, BaseCommit: spec.BaseCommit, SessionID: r.Session, Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}
 			switch end {
 			case "answer":
-				adviser, err := s.ClaimQuestionAdvice(ctx, p.ID, false)
+				adviser, err := s.ClaimQuestionAdvice(ctx, p.ID, false, true)
 				if err != nil || adviser == nil {
 					t.Fatal("management advice claim", err)
 				}

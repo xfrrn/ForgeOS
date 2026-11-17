@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+func checkAdviceBudget(t *testing.T, s *Store, want int) {
+	t.Helper()
+	var n int
+	if err := s.db.QueryRow(`SELECT reserved FROM model_budget_usage WHERE name='advice'`).Scan(&n); err != nil || n != want {
+		t.Fatalf("reserved %d, expected %d: %v", n, want, err)
+	}
+}
+
 func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
@@ -30,7 +38,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal(err)
 	}
 	claim := func(projectID int64) *ManagementJob {
-		j, err := s.ClaimQuestionAdvice(ctx, projectID, false)
+		j, err := s.ClaimQuestionAdvice(ctx, projectID, false, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,10 +51,14 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if claim(project.ID+1) != nil {
 		t.Fatal("cross-project claim")
 	}
-	j := claim(project.ID)
-	if j == nil || j.Question.ID != id || j.MinimumLevel != "D2" || claim(project.ID) != nil {
+	j, err := s.ClaimQuestionAdvice(ctx, project.ID, false, false)
+	if err != nil || j == nil || j.LeaseUntil != nil || j.Question.ID != id || j.MinimumLevel != "D2" || claim(project.ID) != nil {
 		t.Fatal("invalid advice reservation")
 	}
+	if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "advice", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: project.ID, Role: "question_advice"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	checkAdviceBudget(t, s, 1)
 	a := QuestionAdvice{Level: "D2", Rationale: "Owner selects the title.", Source: "question", Quote: "two unknown names", Session: "management-session"}
 	finish := func(pid int64, lease string) error { return s.CompleteQuestionAdvice(ctx, pid, id, lease, a) }
 	if !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
@@ -60,7 +72,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal(err)
 	}
 	retry := claim(project.ID)
-	if retry == nil || retry.Lease == j.Lease || !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
+	if retry == nil || retry.LeaseUntil == nil || retry.Lease == j.Lease || !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
 		t.Fatal("accepted superseded lease")
 	}
 	if _, err = s.db.ExecContext(ctx, `UPDATE question_advice_claims SET minimum_level='D3' WHERE question_id=$1`, id); err != nil {
@@ -78,6 +90,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if err = finish(project.ID, retry.Lease); err != nil {
 		t.Fatal(err)
 	}
+	checkAdviceBudget(t, s, 0)
 	detail, err := s.Task(ctx, task)
 	if err != nil || detail.Status != "WAITING_INPUT" || len(detail.Questions) != 1 || detail.Questions[0].Answer != "" || detail.Questions[0].ManagementAdvice == nil || detail.Questions[0].ManagementAdvice.At == nil {
 		t.Fatal(detail.Status, err)
@@ -156,10 +169,10 @@ func TestManagementDecisionLookup(t *testing.T) {
 			if _, err = s.AskAtCheckpoint(ctx, j.ExecutionID, q); err != nil {
 				t.Fatal(err)
 			}
-			if old, err := s.ClaimQuestionAdvice(ctx, project.ID, false); err != nil || old != nil {
+			if old, err := s.ClaimQuestionAdvice(ctx, project.ID, false, true); err != nil || old != nil {
 				t.Fatal("legacy reviewer claimed lookup", old, err)
 			}
-			m, err := s.ClaimQuestionAdvice(ctx, project.ID, true)
+			m, err := s.ClaimQuestionAdvice(ctx, project.ID, true, true)
 			if err != nil || m == nil || m.Question.ReferenceDecisionID != decision.ID {
 				t.Fatal(m, err)
 			}
@@ -184,12 +197,17 @@ func TestManagementDecisionLookup(t *testing.T) {
 				return
 			}
 			if scenario == "owner answered" {
+				if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "advice", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: project.ID, Role: "question_advice"}}}}); err != nil {
+					t.Fatal(err)
+				}
 				if _, err = s.AnswerQuestion(ctx, task.ID, m.Question.ID, "New heading"); err != nil {
 					t.Fatal(err)
 				}
+				checkAdviceBudget(t, s, 1)
 				if !errors.Is(finish(), ErrConflict) {
 					t.Fatal("overwrote Owner")
 				}
+				checkAdviceBudget(t, s, 0)
 				return
 			}
 			a.Quote = "Build receipt"

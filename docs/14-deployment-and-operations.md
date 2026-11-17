@@ -167,6 +167,8 @@ Test Agent 生成候选测试计划和 Management 审核该计划的覆盖率都
 
 预览反馈分类使用预览所在项目的预算。将 `{"project_id":7,"role":"feedback_classification"}` 加入 Codex 的 `agent_roles`。名额满时，新观察仍可提交，状态为待审核。Management 的有效分类回报释放名额，Owner 随后可在验收决定中引用对应反馈。
 
+实施检查点或候选验收中的业务问题建议使用项目的 `question_advice` 名额。如果 Owner 在建议生成期间答复，或问题已被撤回，在途回合仍占用名额。它交回旧问题的结果时返回 409 并释放自己的名额。后续问题独立领取。D2 建议保留来源和证据，正式答复由 Owner 提交。
+
 ### 测量队列与事件读取
 
 在恢复出的隔离数据库上启动正式控制面和 Worker，将 Worker 指向验收克隆。选择一个已有事件的终态任务，并取要参与派发的项目 ID。下面的命令会真实创建 27 个 Git HEAD 任务。Owner 身份从环境变量 `FORGEOS_OWNER_TOKEN` 读取。
