@@ -81,7 +81,7 @@ func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsCont
 	var snapshot []byte
 	err = tx.QueryRowContext(ctx, `WITH next AS(
 		SELECT r.execution_id,p.path,c.context FROM code_reviews r JOIN work_items t ON t.id=r.task_id JOIN projects p ON p.id=t.project_id
-		LEFT JOIN candidate_rule_context c ON c.execution_id=r.execution_id
+		CROSS JOIN LATERAL review_rules_for_execution(r.execution_id) AS c(context)
 		WHERE p.id=$1 AND ($2 OR c.context IS NULL) AND t.status IN ('WAITING_ACCEPTANCE','WAITING_INPUT') AND r.report IS NULL AND r.failed_at IS NULL
 		AND NOT EXISTS(SELECT 1 FROM executions e WHERE e.task_id=t.id AND e.id>r.execution_id)
 		AND (r.lease_until IS NULL OR r.lease_until<=now()) ORDER BY r.requested_at,r.execution_id LIMIT 1 FOR UPDATE OF r SKIP LOCKED)

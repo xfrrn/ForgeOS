@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -76,5 +77,79 @@ func TestRefreshKeepsDeliveryAndRequiresNewValidation(t *testing.T) {
 	redo, err := s.Claim(ctx, "model", root, true, true)
 	if err != nil || redo == nil || redo.Rework == nil || redo.Rework.Commit != head || redo.Spec.VerifyCommit != "" {
 		t.Fatal(redo, err)
+	}
+}
+
+func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(s.Migrate(ctx))
+	project, err := s.CreateProject(ctx, "refresh-rules")
+	must(err)
+	base, commit := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	task, err := s.ImportIssue(ctx, project.ID, IssueSpec{Issue: Issue{ID: 17, Number: 1, RepositoryID: 2}, BaseCommit: base, Validation: "docs"})
+	must(err)
+	initial, err := s.PublishGlobalRules(ctx, 0, "Keep original")
+	must(err)
+	root := t.TempDir()
+	job, err := s.ClaimForProjects(ctx, "dev", root, []int64{project.ID}, WorkerCapabilities{SupportsCodex: true, SupportsGlobalRules: true})
+	must(err)
+	if job == nil {
+		t.Fatal("missing implementation")
+	}
+	origin, originCommit := job.ExecutionID, commit
+	complete := func(session string) {
+		t.Helper()
+		must(s.Complete(ctx, job.ExecutionID, job.LeaseToken, Result{BaseCommit: base, Commit: commit, SessionID: session, Validation: &ValidationResult{Profile: "docs", Commit: commit}}))
+	}
+	complete("development")
+	_, err = s.PublishGlobalRules(ctx, 1, "New instructions")
+	must(err)
+	for _, next := range []struct{ base, head string }{{"c", "d"}, {"e", "f"}} {
+		_, err = s.Review(ctx, task.ID, job.ExecutionID, commit, "approve", "Checked candidate", true, "main")
+		must(err)
+		dl, err := s.ClaimDelivery(ctx, project.ID)
+		must(err)
+		if dl == nil {
+			t.Fatal("missing delivery")
+		}
+		dl.State, dl.PRNumber, dl.PRURL = "WAITING", 4, "https://github.com/a/b/pull/4"
+		must(s.SaveDelivery(ctx, *dl))
+		previous := commit
+		base, commit = strings.Repeat(next.base, 40), strings.Repeat(next.head, 40)
+		_, err = s.QueueRefreshedCandidate(ctx, task.ID, job.ExecutionID, previous, base, commit)
+		must(err)
+		job, err = s.ClaimForProjects(ctx, "ci", root, []int64{project.ID}, WorkerCapabilities{SupportsValidation: true})
+		must(err)
+		if job == nil || job.GlobalRules != nil {
+			t.Fatal("CI job claimed model rules")
+		}
+		complete("")
+	}
+	must(s.RequestCodeReview(ctx, task.ID, job.ExecutionID, commit))
+	review, err := s.ClaimCodeReview(ctx, project.ID, false)
+	must(err)
+	if review != nil {
+		t.Fatal("legacy reviewer took refreshed context")
+	}
+	review, err = s.ClaimCodeReview(ctx, project.ID, true)
+	must(err)
+	if review == nil {
+		t.Fatal("missing refreshed review")
+	}
+	var got struct {
+		Origin int64           `json:"implementation_execution_id"`
+		Commit string          `json:"implementation_commit"`
+		Rules  json.RawMessage `json:"global_rules"`
+	}
+	must(json.Unmarshal(review.CandidateContext, &got))
+	if got.Origin != origin || got.Commit != originCommit || string(got.Rules) != string(initial) || review.Commit != commit {
+		t.Fatalf("wrong implementation in %s", review.CandidateContext)
 	}
 }
