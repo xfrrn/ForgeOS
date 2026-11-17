@@ -102,7 +102,7 @@ const curationReceipt = `SELECT jsonb_build_object('id',c.id,'revision',s.revisi
 		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at,
 		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
 		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
-		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id,'event_id',c.event_id,'source',CASE WHEN c.event_id IS NOT NULL THEN s.source END,'delivery',s.delivery))
+		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id,'event_id',c.event_id,'source',CASE WHEN c.event_id IS NOT NULL THEN s.source END,'delivery',s.delivery,'goal',s.goal))
 		FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id WHERE c.project_id=$1`
 
 func (s *Store) MaterialCuration(ctx context.Context, project int64, key string, revision int) (json.RawMessage, error) {

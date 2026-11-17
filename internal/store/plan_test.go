@@ -303,6 +303,28 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 		!hits[0].At.Equal(parent.Events[len(parent.Events)-1].At) {
 		t.Fatalf("missing completed Goal revision: %v %v", hits, err)
 	}
+	event := parent.Events[len(parent.Events)-1].ID
+	receipt, err := s.EventCuration(ctx, p.ID, task.ID, event)
+	var completed struct {
+		Goal struct {
+			Revision int `json:"plan_revision"`
+			Children []struct{ Key string }
+		}
+	}
+	if err != nil || json.Unmarshal(receipt, &completed) != nil || completed.Goal.Revision != 4 || len(completed.Goal.Children) != 2 {
+		t.Fatal(string(receipt), err)
+	}
+	var source string
+	if err := s.db.QueryRowContext(ctx, "SELECT content FROM curation_sources WHERE kind='goal_delivered' AND revision=$1", event).Scan(&source); err != nil ||
+		!strings.Contains(source, "Candidate base matched the confirmed merge of prerequisite a.") || strings.Contains(source, "provisional") {
+		t.Fatal(source, err)
+	}
+	if err := s.CompleteGoal(ctx, *c); !errors.Is(err, ErrConflict) {
+		t.Fatal("duplicate completion", err)
+	}
+	if again, err := s.EventCuration(ctx, p.ID, task.ID, event); err != nil || string(again) != string(receipt) {
+		t.Fatal("changed completion snapshot", err)
+	}
 	raw, err := s.TaskContext(ctx, p.ID, secondJob.TaskID)
 	var contextView struct {
 		Plan         PlanRevision

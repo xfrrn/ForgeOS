@@ -628,7 +628,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
           <ol className="detail-timeline">{[...task.events].reverse().map(event =>
             <li key={event.id}><strong>{events[event.type] || event.type}</strong>
               <div><time dateTime={event.at}>{formatTime(event.at)}</time>{event.execution_id != null && <span> · 执行 #{event.execution_id}</span>}</div>
-              {event.type === 'pr_merged' && <KnowledgeCuration project={task.project_id} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}/curation`} request={request}/>}</li>)}</ol>
+              {(event.type === 'pr_merged' || event.type === 'goal_delivered') && <KnowledgeCuration project={task.project_id} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}/curation`} request={request}/>}</li>)}</ol>
           {!task.events.length && <p className="detail-empty-text">暂无事件。</p>}</section>
       </aside>
     </div>
