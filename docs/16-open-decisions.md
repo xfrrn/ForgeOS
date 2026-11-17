@@ -9,7 +9,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 ## A. 需要真实环境验证
 
 1. Codex App Server 0.169.0-alpha.11.1 已实测 stdio 初始化、只读 Thread、Turn 事件、新进程恢复与中断。正式 Worker 在 beta #35 使用 CLI 的 `exec resume`，写入和只读规划均在适配器丢失终态后恢复原 Thread 与沙箱。独立探针已核对单次 accept 的实际输出，同一会话再次运行相同命令仍须审批。decline 和 cancel 均阻止标记脚本执行，后者中断回合。正式 Worker 接入和其他版本兼容性待测。
-2. Claude Code 2.1.310 已在 Windows 真实验证 Headless Session Resume、问题答复和权限拒绝。正式 Worker 已交付私有 beta 的 Issue #22，任务页关联原生会话、版本和候选。beta #29 已从正式 Worker 实测 Claude 适配器丢失终态后退出，使用另一进程恢复原生会话和原工作区并完成交付。beta #105 已验证 Daemon 在业务问题检查点退出后的原会话恢复和交付。Linux 服务身份、运行中的原生模型进程被强制终止后的恢复仍待验收。
+2. Claude Code 2.1.310 已在 Windows 真实验证 Headless Session Resume、问题答复和权限拒绝。正式 Worker 已交付私有 beta 的 Issue #22，任务页关联原生会话、版本和候选。beta #29 已从正式 Worker 实测 Claude 适配器丢失终态后退出，使用另一进程恢复原生会话和原工作区并完成交付。beta #105 已验证 Daemon 在业务问题检查点退出后的原会话恢复和交付。beta #127 已直接终止此次执行的原生 Claude 子进程，另一个进程在原 Session 和 Worktree 完成同一执行并交付。Linux 服务身份的登录与恢复待验收。
 3. 两个 Windows 普通 Worker 已在同一 Codex 登录下实测共享 1 个并发名额，含等待、控制面重启和两项目交付。独立 Reviewer 已与普通 Claude 开发节点共用 1 个名额，并在控制面重启后回报固定候选。候选 Test Agent 和 Management 覆盖审核也已在同一 Codex 预算内实测修订争用、重启和归还名额。知识提取和审核也已实测共享名额，两份资料的提取与审核经独立原生会话完成。Goal 计划审核已用两个真实 Issue 验证两台 Management Worker 争用一个名额，控制面重启后继续计数。共享资料审核已验证审核期间撤销、在途名额保留和独立 D3 审核回报后的发布。仓库分析已实测两份固定提交在一个名额下依次完成，重启后可按 blob 回查原文。预览反馈分类已实测两台 Management Worker 争用一个名额，固定候选上的两条 Chrome 观察分别获得独立原生回报。业务问题建议已实测 Owner 在回合中先行答复、下一条问题等待名额、独立建议引用固定需求原文。Linux 专用用户登录复用和供应方实际限流仍待验收。
 4. Ubuntu systemd 的非 root 身份、HOME、PATH、回环代理例外、工作区与重启已验收。已在专用账号安装 Linux 原生 Codex 和 Claude，正式 Worker 实测启动探测、登记版本与操作能力、服务重启和 Worktree 派发。两种 CLI 的登录状态均返回未登录；专用用户下的登录复用和经代理的真实模型请求保持待验收。
 5. 本次实测使用已登录的 GitHub CLI 账号。GitHub App 或细粒度 Token 所需的最小权限，以及要求第二位维护者批准 PR 时的交付行为，仍待实测。2026-11-17 查询两个验收仓库的协作者均只有 xfrrn，Owner 确认暂无独立审查账号及受限凭据，两项保持待验收。
@@ -24,7 +24,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 1. Agent Profile 的版本和配置结构。
 2. 普通 Worker 的 Codex 和 Claude Code 适配器已从本机 CLI 探测版本和运行能力，Owner 可在执行节点页核对。两种适配器共用单回合 Go 接口，已从真实 Issue 验证原生终态失败、进程退出码、缺少终态时恢复原会话及交付。运行中的输入、原生审批与中断等操作仍待正式 Worker 验收。
 3. ACP 1.0 消息的 JSON Schema、文档样例及原生检查点决策请求与答复的控制面回读已验收。beta #107 已从真实原生 Worker 验证 Owner 答复的在线路由、消息身份和交付。beta #111 已验证 Worker 请求 Management 查阅决策、回执来源和在线恢复。其余角色消息的在线路由及按消息类型执行策略仍待补齐。
-4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。beta #103、#105 验证了 Daemon 在等待业务答复时退出，两个替代进程中只有一个接回原执行并完成交付。原生 CLI 被强制终止、整机重启后的模型恢复和跨 Session 交接仍待验收。
+4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。beta #103、#105 验证了 Daemon 在等待业务答复时退出，两个替代进程中只有一个接回原执行并完成交付。beta #127 已验证运行中的原生 Claude 被终止后的恢复。Codex 的同类场景、整机重启后的模型恢复和跨 Session 交接仍待验收。
 5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。适配器异常退出后，正式 Worker 已验证在原租约内恢复会话，见 B.4。
 6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。beta #49 验证了 Worker 后台传输、从 Owner 工作台下载原始日志和产物，以及 Windows 节点向 Linux 控制面传送文件。中央 CI 文件按项目分类型到期清理见专题 13。beta #52 已验证关闭来源 Issue 时取消运行中的 Docker 检查、保留日志、收回容器和继续派发。beta #54 已从任务页主动取消运行中的 CI，核对名额释放、日志归档及原 Issue 保持开放。beta #55 已从任务页暂停真实 CI，重启后恢复同一候选的完整复验。模型回合中的暂停和原生 Session 恢复仍见 B.4。
 7. `acceptance.yaml`、全局 Playbook、任务内计划生成、覆盖审查、修订归档和逐用例实测门禁已验证。六类预览反馈均有 Owner 处置入口。需求变更已实测到新候选页面，新工作项已独立完成真实 GitHub 交付，来源 Issue 保持开放。工作台已核对截图像素与归档回执。扩展视口截图已从工具栏采集到正式工作台归档。扩展录屏已从工具栏录制到归档回放；真实外部设备访问仍待验收。
