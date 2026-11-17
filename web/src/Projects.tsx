@@ -1,3 +1,4 @@
+import { GlobalRules } from './GlobalRules'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, Status, type ApiRequest } from './shared'
 
@@ -59,6 +60,7 @@ export function Projects({ request }: { request: ApiRequest }) {
   }
   return <div className="project-setup">
     <div className="page-heading"><h1>项目接入</h1></div>
+    <GlobalRules request={request}/>
     <form className="panel detail-card" onSubmit={register}>
       <label htmlFor="repo-path">本地仓库路径</label>
       <p id="repo-hint">填写控制面机器上的仓库根目录。可以使用相对于 FORGEOS_REPO_ROOT 的路径。</p>

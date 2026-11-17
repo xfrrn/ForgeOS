@@ -56,6 +56,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	registerCIFiles(mux, data, owner, workers)
 	registerDecisions(mux, data, owner, workers)
 	registerMaterials(mux, data, owner, workers)
+	registerGlobalRules(mux, data, owner, workers)
 	registerCurationReads(mux, data, owner, workers)
 	registerShares(mux, data, owner, workers)
 	registerIssueRoute(mux, data, root, owner)
