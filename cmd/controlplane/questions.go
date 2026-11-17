@@ -9,6 +9,19 @@ import (
 )
 
 func registerQuestionRoutes(mux *http.ServeMux, data *store.Store, owner string) {
+	mux.HandleFunc("GET /tasks/{id}/questions/{question}/messages", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		task, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		id, err := strconv.ParseInt(r.PathValue("question"), 10, 64)
+		if err != nil || id < 1 {
+			problem(w, 400, "invalid question id")
+			return
+		}
+		messages, err := data.QuestionMessages(r.Context(), task, id)
+		respond(w, http.StatusOK, messages, err)
+	}))
 	mux.HandleFunc("GET /tasks/decision-questions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		var before int64
 		if value := r.URL.Query().Get("before"); value != "" {

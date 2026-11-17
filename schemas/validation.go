@@ -27,6 +27,7 @@ func cachedSchema(uri string, raw []byte) func() (*jsonschema.Schema, error) {
 			return nil, err
 		}
 		c := jsonschema.NewCompiler()
+		c.AssertFormat()
 		if err = c.AddResource(uri, doc); err != nil {
 			return nil, err
 		}

@@ -84,6 +84,13 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 				t.Fatal(task, err)
 			}
 			id := task.Questions[0].ID
+			messages, err := s.QuestionMessages(ctx, task.ID, id)
+			if err != nil || len(messages) != 1 || messages[0].Type != "REQUEST" || messages[0].Payload["question"] != r.Question || messages[0].From.ID != "worker" {
+				t.Fatal(messages, err)
+			}
+			if _, err := s.QuestionMessages(ctx, next.ID, id); !errors.Is(err, ErrNotFound) {
+				t.Fatal("wrong task could read question", err)
+			}
 			stored := task.Questions[0].Trees
 			if (stored == nil) != (r.Trees == nil) || stored != nil && *stored != *r.Trees {
 				t.Fatalf("stored checkpoint trees = %v, want %v", stored, r.Trees)
@@ -109,6 +116,10 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 					}
 					if _, err := s.AskAtCheckpoint(ctx, j.ExecutionID, contender); !errors.Is(err, ErrQuestionClaimed) {
 						t.Fatal("second consumer", err)
+					}
+					exchange, err := s.QuestionMessages(ctx, task.ID, id)
+					if err != nil || len(exchange) != 2 || exchange[0].ID != messages[0].ID || exchange[1].Payload["answer"] != "Harbor" || exchange[1].To != messages[0].From || exchange[1].Correlation != messages[0].Correlation || exchange[1].ID == messages[0].ID {
+						t.Fatal(exchange, err)
 					}
 				}
 				if err := check(1, ""); err != nil {

@@ -62,4 +62,4 @@
 | [acceptance.yaml.example](schemas/acceptance.yaml.example) | 按模块路径选择验收方法、最低验证等级和人工验收条件 |
 | [acceptance.schema.json](schemas/acceptance.schema.json) | 项目验收规则的版本 1 合同，含模块、Playbook、环境和预期行为 |
 | [playbooks.json](schemas/playbooks.json) · [playbooks.schema.json](schemas/playbooks.schema.json) | 全局验收方法及版本 1 合同，按 ID 查阅前置条件、操作、判据与取证要求 |
-| [agent-message.example.json](schemas/agent-message.example.json) | Agent 决策请求的发送方、接收方、证据引用与幂等键 |
+| [agent-message.example.json](schemas/agent-message.example.json) · [消息格式 1.0](schemas/agent-message.schema.json) | Agent 消息的发送方、接收方、关联标识、幂等键、来源与载荷。原生检查点问题和 Owner 答复可由控制面按此格式回读。 |
