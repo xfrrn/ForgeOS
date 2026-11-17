@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"forgeos/internal/store"
@@ -28,11 +29,20 @@ type codexServerMessage struct {
 }
 
 type codexServer struct {
-	input   *json.Encoder
-	scanner *bufio.Scanner
-	pending []codexServerMessage
-	seq     int
-	resume  string
+	mu           sync.Mutex
+	input        *json.Encoder
+	scanner      *bufio.Scanner
+	pending      []codexServerMessage
+	seq          int
+	resume       string
+	thread, turn string
+	interrupt    bool
+}
+
+func (s *codexServer) write(message any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.input.Encode(message)
 }
 
 func checkCodexAppServer(bin string) error {
@@ -67,7 +77,7 @@ func (s *codexServer) read() (codexServerMessage, error) {
 
 func (s *codexServer) call(method string, params, result any) error {
 	s.seq++
-	if err := s.input.Encode(map[string]any{"id": s.seq, "method": method, "params": params}); err != nil {
+	if err := s.write(map[string]any{"id": s.seq, "method": method, "params": params}); err != nil {
 		return errors.New("could not write App Server request")
 	}
 	buffered := 0
@@ -97,6 +107,9 @@ func (s *codexServer) call(method string, params, result any) error {
 }
 
 func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspace, prompt, resume string) (session string, resultErr error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if resume != "" && !nativeSessionID.MatchString(resume) {
 		return "", errors.New("invalid Codex recovery thread ID")
 	}
@@ -133,7 +146,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			return "", errors.New("unsupported App Server output option")
 		}
 	}
-	cmd := exec.CommandContext(ctx, c.bin, args...)
+	processCtx, kill := context.WithCancel(context.WithoutCancel(ctx))
+	defer kill()
+	cmd := exec.CommandContext(processCtx, c.bin, args...)
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
 	input, err := cmd.StdinPipe()
 	if err != nil {
@@ -147,17 +162,43 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if err = process.start(cmd, stream); err != nil {
 		return "", err
 	}
-	stop := context.AfterFunc(ctx, func() { stream.Close() })
-	defer stop()
+	s := codexServer{input: json.NewEncoder(input), scanner: bufio.NewScanner(stream), resume: resume}
+	s.scanner.Buffer(make([]byte, 16<<10), 4<<20)
+	done, cancelDone := make(chan struct{}), make(chan struct{})
+	forceStop := func() { kill(); input.Close(); stream.Close() }
+	stop := context.AfterFunc(ctx, func() {
+		defer close(cancelDone)
+		// Bound both an unresponsive server and a blocked write to its stdin.
+		timeout := time.AfterFunc(5*time.Second, forceStop)
+		defer timeout.Stop()
+		s.mu.Lock()
+		active := s.turn != ""
+		var err error
+		if active {
+			s.interrupt = true
+			err = s.input.Encode(map[string]any{"id": "forgeos-interrupt", "method": "turn/interrupt", "params": map[string]string{"threadId": s.thread, "turnId": s.turn}})
+		}
+		s.mu.Unlock()
+		if !active || err != nil {
+			forceStop()
+			return
+		}
+		<-done
+	})
+	terminal := false
 	defer func() {
 		input.Close()
-		if resultErr != nil {
+		if resultErr != nil && !terminal {
 			stream.Close()
 			_ = cmd.Cancel()
 		}
 		timeout := time.AfterFunc(5*time.Second, func() { _ = cmd.Cancel() })
 		exit, journalErr := process.wait(cmd)
 		timeout.Stop()
+		close(done)
+		if !stop() {
+			<-cancelDone
+		}
 		if ctx.Err() != nil {
 			resultErr = ctx.Err()
 		} else if journalErr != nil {
@@ -166,13 +207,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			resultErr = fmt.Errorf("App Server exit: %w", exit)
 		}
 	}()
-	s := codexServer{input: json.NewEncoder(input), scanner: bufio.NewScanner(stream), resume: resume}
-	s.scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	var initialized json.RawMessage
 	if err = s.call("initialize", map[string]any{"clientInfo": map[string]string{"name": "forgeos", "version": "1"}}, &initialized); err != nil {
 		return "", err
 	}
-	if err = s.input.Encode(map[string]string{"method": "initialized"}); err != nil {
+	if err = s.write(map[string]string{"method": "initialized"}); err != nil {
 		return "", err
 	}
 	method := "thread/start"
@@ -238,6 +277,16 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		} else if m, err = s.read(); err != nil {
 			return session, err
 		}
+		if string(m.ID) == `"forgeos-interrupt"` {
+			s.mu.Lock()
+			requested := s.interrupt
+			s.mu.Unlock()
+			var response map[string]json.RawMessage
+			if !requested || m.Error != nil || json.Unmarshal(m.Result, &response) != nil || response == nil {
+				return session, errors.New("invalid App Server interrupt response")
+			}
+			continue
+		}
 		switch m.Method {
 		case "turn/started", "turn/completed", "item/started", "item/completed":
 			var event struct {
@@ -252,6 +301,13 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				return session, errors.New("App Server event does not match the active turn")
 			}
 			if m.Method == "turn/completed" {
+				terminal = true
+				s.mu.Lock()
+				s.turn = ""
+				s.mu.Unlock()
+				if ctx.Err() != nil {
+					return session, ctx.Err()
+				}
 				if event.Turn.Status != "completed" {
 					return session, errTurnFailed
 				}
@@ -264,6 +320,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 					}
 				}
 				return session, nil
+			}
+			if m.Method == "turn/started" {
+				s.mu.Lock()
+				s.thread, s.turn = session, turn.Turn.ID
+				s.mu.Unlock()
 			}
 			if m.Method == "item/completed" && event.Item.Type == "agentMessage" {
 				last = event.Item.Text

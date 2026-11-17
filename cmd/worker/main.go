@@ -316,6 +316,9 @@ func (w *worker) run(ctx context.Context) error {
 	}
 	// Old control planes accept the same heartbeat body and ignore the extra query field.
 	heartbeat := "/internal/workers/heartbeat?" + workerCapabilityQuery + "&adapter_probe=" + url.QueryEscape(string(probe))
+	if w.codexAppServer {
+		heartbeat += "&codex_interrupt=1"
+	}
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
 			status, err := w.post(ctx, heartbeat, h, nil)

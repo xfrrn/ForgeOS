@@ -11,7 +11,7 @@
 | 剩余范围 | 粗估项数 | 完成时须取得的证据 |
 | --- | ---: | --- |
 | 执行控制与会话恢复（06、07、12、16 A.1–4/B.4/C.3） | 5–7 | 从工作台查看模型及其他执行阶段的输出、发送排队指令；在模型回合暂停或取消，核对来源关闭、进程退出、整机重启和会话交接后的实际执行。 |
-| 角色配置、适配器与决策（03–07、16 B.1–3/C.4–5） | 4–6 | 回读生效的 Agent Profile；正式适配器报告实际能力；从不同角色经 ACP 路由请求，按 D0–D3 执行并留下决策与审批证据。App Server 单次放行、拒绝与取消已在独立探针实测，正式 Worker 接入待验。 |
+| 角色配置、适配器与决策（03–07、16 B.1–3/C.4–5） | 4–6 | 回读生效的 Agent Profile；正式适配器报告实际能力；从不同角色经 ACP 路由请求，按 D0–D3 执行并留下决策与审批证据。App Server 实现、规划、恢复与原生中断已从正式 Worker 验收；运行中输入与原生审批仍待验收。 |
 | 多节点、共享预算与 Linux 服务身份（07、14、16 A.2–4） | 3–4 | 使用同一模型账号的两节点竞争名额，独立角色计入预算；从 Linux 服务身份复用登录、经配置代理发起实际模型请求，核对并发及限额行为。 |
 | 知识检索与角色上下文（05、08、16 C.7） | 2–3 | 按语义检索并回到固定来源，在尚未覆盖的角色回合核对引用版本、范围和优先级。 |
 | 外部通知与集成（02、03、11、16 A.7） | 2–4 | 由外部通道接收实际通知，核对投递与重试；从提供方发起回调，关联预览环境和实际回执。 |
@@ -2737,3 +2737,21 @@ PostgreSQL 18 和 Docker 全包 Go 回归 265 项测试及子测试通过，零�
 本项已验证实现、只读规划及进程中断后的恢复。正式原生审批、运行中输入、`turn/interrupt` 和其他版本兼容性继续待验收。协议字段对照安装版本生成的 JSON schema 和官方 Thread 参数定义。[官方定义](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/json/v2/ThreadStartParams.json)
 
 本项最终 PostgreSQL 18 与 Docker 全包 Go 回归 279 项测试及子测试通过，零失败、零跳过；Go 静态检查通过。
+
+上述 App Server 实现、规划与恢复对应 ForgeOS 提交 `74e856fd9319af075704668556c5b5560c11d8d6`。
+
+### 专题 07、16 A.1/B.2 · 正式 App Server 原生中断
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在真实 beta #170 已写草稿、工具执行 120 秒观察等待时，从 Chrome 暂停模型 | 发送当前 Turn 的原生中断，退出工具及适配器，保存草稿并释放模型名额 | PID 22380 和工具 PID 5332 均退出。Thread `01a1ead5-e7c1-7661-8ea0-dda92149178e` 的 Turn `01a1ead5-eba6-7640-a671-18c6b9cbfecd` 原生记录为 turn_aborted/interrupted，进程退出码为 0。暂停请求到检查点约 1.83 秒，索引树与含草稿的工作树分别保留。模型池及节点保留名额均为 0。 |
+| 重启控制面，Chrome 恢复模型回合，核对候选并通过验收 | 在同一执行、Thread 和 Worktree 完成文档，再经必需 CI 交付 | 新 PID 38196 沿用原 Thread，保留指定 H1 并补全 Queue handbook 与 HTML 来源路径。候选 `29d810254aeb33672b2044f215b62c2e0f34ec25` 仅新增指定文件。Actions 44152156126 首轮仅预设失败步骤失败，同一 SHA 重跑成功；PR #171 合并为 `787ba9f27d6d2dbd854834c2b79786ac826a4e8b`，Issue #170 CLOSED、任务 DONE。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/171) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44152156126) |
+| 对 beta #19 的独立只读 Planner，在实际工具完成后从 Chrome 暂停，重启控制面并恢复 | 原生中断后保持工作区干净，在原 Thread 产出正式草案 | PID 38352 以 0 退出；Thread `01a1ead9-ab5d-7fc2-bbae-75489f6a23d5` 记录 interrupted。PID 40248 恢复原 Thread，归档修订 1、两个里程碑并进入 PLANNING。两个回合均为 never、read-only、禁网且工作目录一致。重启后任务及进程记录一致，Chrome 可展开两个进程。 |
+| beta #172 的工具等待期间，从 Chrome 取消任务，再派发 git_head | 中断当前回合，不能产生候选或交付；原 Issue 继续开放，释放的资源可复用 | Thread `01a1ead9-620a-7a02-a31a-69e713b98ee1` 的 Turn `01a1ead9-6670-7430-806c-fd4a0f08e4b6` 记录 turn_aborted/interrupted。原生 PID 46264 以 0 退出，工具 PID 27928 退出。任务 CANCELLED，无候选、无 PR；后续任务 2 DONE，模型保留名额为 0，Issue #172 OPEN。 |
+| Chrome 查看节点能力，再交叉运行新旧控制面和 Worker，等新心跳覆盖旧记录 | 只有新组合的 App Server 显示原生中断，混合版本仍能工作 | 页面显示“中断回合”。新 Worker 配旧控制面可持续运行，旧控制面忽略附加声明。切回旧 Worker 后，新控制面撤下 interrupt。已取消任务状态保持。 |
+
+针对性回归覆盖正常中断、完成与取消同时发生、原生拒绝、无响应超时，以及尚未收到 turn/started 时终止进程；所有取消场景均禁止输出。把请求的 Turn ID 临时改错，回归立即检出未中断目标回合，恢复代码后通过。原生协议的参数为 Thread ID 与 Turn ID。[官方定义](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/json/v2/TurnInterruptParams.json)
+
+正式原生审批、运行中的输入、Claude 原生中断及其他 Codex 版本继续待验收；这次没有扩大角色权限。
+
+本项最终 PostgreSQL 18 与 Docker 全包 Go 回归 285 项测试及子测试通过，零失败、零跳过。Go 静态检查、TypeScript 及生产构建通过。Linux 容器中的 App Server 针对性竞态检查通过。

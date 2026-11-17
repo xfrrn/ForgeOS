@@ -8,19 +8,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"forgeos/internal/store"
 )
 
 func testAppServerProcess() int {
 	const thread = "a7090935-460b-4930-8484-0f2008435a45"
 	in, out := json.NewDecoder(os.Stdin), json.NewEncoder(os.Stdout)
 	notify := func(method string, params any) { _ = out.Encode(map[string]any{"method": method, "params": params}) }
+	var cwd, scenario string
 	for {
 		var req struct {
-			ID     int
+			ID     json.RawMessage
 			Method string
 			Params struct {
-				Cwd, Sandbox, ApprovalPolicy, ThreadID string
-				Input                                  []struct{ Text string }
+				Cwd, Sandbox, ApprovalPolicy, ThreadID, TurnID string
+				Input                                          []struct{ Text string }
 			}
 		}
 		if in.Decode(&req) != nil {
@@ -32,6 +36,7 @@ func testAppServerProcess() int {
 			continue
 		case "initialize":
 		case "thread/start", "thread/resume":
+			cwd = req.Params.Cwd
 			if req.Params.ApprovalPolicy != "never" {
 				return 9
 			}
@@ -62,8 +67,15 @@ func testAppServerProcess() int {
 				"type": sandbox, "writableRoots": roots, "networkAccess": filepath.Base(req.Params.Cwd) == "network", "excludeTmpdirEnvVar": true, "excludeSlashTmp": true}}
 		case "turn/start":
 			prompt := req.Params.Input[0].Text
-			notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "inProgress"}})
+			scenario = prompt
+			if prompt != "before turn" {
+				notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "inProgress"}})
+			}
 			_ = out.Encode(map[string]any{"id": req.ID, "result": map[string]any{"turn": map[string]string{"id": "turn-1"}}})
+			if strings.Contains(prompt, "interrupt") || prompt == "before turn" {
+				notify("item/started", map[string]any{"threadId": thread, "turnId": "turn-1", "item": map[string]string{"id": "tool-1", "type": "commandExecution"}})
+				continue
+			}
 			if prompt == "missing terminal" {
 				return 17
 			}
@@ -86,10 +98,101 @@ func testAppServerProcess() int {
 			}
 			notify("turn/completed", map[string]any{"threadId": id, "turn": map[string]string{"id": turn, "status": status}})
 			continue
+		case "turn/interrupt":
+			if req.Params.ThreadID != thread || req.Params.TurnID != "turn-1" {
+				return 10
+			}
+			if err := os.WriteFile(filepath.Join(cwd, "interrupted"), []byte(scenario), 0600); err != nil {
+				return 11
+			}
+			if scenario == "ignore interrupt" {
+				continue
+			}
+			if scenario == "reject interrupt" {
+				_ = out.Encode(map[string]any{"id": req.ID, "error": map[string]any{"code": -32600, "message": "cannot interrupt"}})
+				continue
+			}
+			_ = out.Encode(map[string]any{"id": req.ID, "result": result})
+			status := "interrupted"
+			if scenario == "complete during interrupt" {
+				status = "completed"
+			}
+			notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": status}})
+			continue
 		default:
 			return 8
 		}
 		_ = out.Encode(map[string]any{"id": req.ID, "result": result})
+	}
+}
+
+func TestAppServerInterruptAndFallback(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"interrupt", "complete during interrupt", "ignore interrupt", "reject interrupt", "before turn"} {
+		t.Run(scenario, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			w := worker{repoRoot: root, workspaceRoot: root}
+			w.journal, err = w.openJournal(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.journal.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			output := filepath.Join(root, "result.json")
+			c := codexCLI{bin: bin, sandbox: "read-only", appServer: true, options: []string{"--output-last-message", output}}
+			type outcome struct {
+				session string
+				err     error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				s, e := c.runTurn(ctx, w.processLog(ctx, store.Job{RecordToolActivity: true}, "codex", "1.2.3"), root, scenario, "")
+				done <- outcome{s, e}
+			}()
+			for {
+				var events int
+				if e := w.journal.QueryRow("SELECT COUNT(*) FROM harness_tool_events").Scan(&events); e != nil {
+					t.Fatal(e)
+				}
+				if events > 0 {
+					break
+				}
+				if ctx.Err() != nil {
+					t.Fatal("never reached active tool", ctx.Err())
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			start := time.Now()
+			cancel()
+			got := <-done
+			if !errors.Is(got.err, context.Canceled) || got.session != "a7090935-460b-4930-8484-0f2008435a45" || time.Since(start) > 9*time.Second {
+				t.Fatal("did not stop the owned turn promptly", got, time.Since(start))
+			}
+			marker, e := os.ReadFile(filepath.Join(root, "interrupted"))
+			if scenario == "before turn" {
+				if !errors.Is(e, os.ErrNotExist) {
+					t.Fatal("sent interrupt before turn/started", e)
+				}
+			} else if e != nil || string(marker) != scenario {
+				t.Fatal("native interrupt was not sent", e)
+			}
+			var exit int
+			if e := w.journal.QueryRow("SELECT exit_code FROM harness_processes").Scan(&exit); e != nil {
+				t.Fatal(e)
+			}
+			graceful := scenario == "interrupt" || scenario == "complete during interrupt"
+			if (exit == 0) != graceful {
+				t.Fatal("incorrect process shutdown", exit)
+			}
+			if _, e := os.Stat(output); !errors.Is(e, os.ErrNotExist) {
+				t.Fatal("canceled turn published output", e)
+			}
+		})
 	}
 }
 

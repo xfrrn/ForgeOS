@@ -152,6 +152,10 @@ func (h WorkerHeartbeat) Valid() bool {
 			for _, op := range probe.Operations {
 				switch op {
 				case "probe", "start", "resume", "events":
+				case "interrupt":
+					if name != "codex" {
+						return false
+					}
 				default:
 					return false
 				}

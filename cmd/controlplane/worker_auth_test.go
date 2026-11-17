@@ -100,7 +100,7 @@ func TestWorkerProjectGrants(t *testing.T) {
 	post("alpha", pathProbe, h, 400)
 	h.Capabilities.SupportsCodex = true
 	post("alpha", pathProbe, h, 204)
-	checkProbe := func(want bool) {
+	checkProbe := func(want bool, interrupt bool) {
 		t.Helper()
 		rows, err := s.WorkerNodes(ctx)
 		var nodes []struct {
@@ -110,16 +110,26 @@ func TestWorkerProjectGrants(t *testing.T) {
 			t.Fatal("read adapter report", err)
 		}
 		probe, found := nodes[0].Capabilities.Adapters["codex"]
-		if found != want || found && (probe.Version != "0.169.0-alpha.11.1" || len(probe.Operations) != 3) {
+		count := 3
+		if interrupt {
+			count++
+		}
+		if found != want || found && (probe.Version != "0.169.0-alpha.11.1" || len(probe.Operations) != count || interrupt && probe.Operations[3] != "interrupt") {
 			t.Fatal("unexpected adapter report", probe)
 		}
 	}
-	checkProbe(true)
+	checkProbe(true, false)
+	post("alpha", pathProbe+"&codex_interrupt=1", h, 204)
+	checkProbe(true, true)
+	post("alpha", "/internal/workers/heartbeat?codex_interrupt=1", h, 400)
+	checkProbe(true, true)
+	post("alpha", pathProbe, h, 204)
+	checkProbe(true, false)
 	post("alpha", "/internal/workers/heartbeat?adapter_probe="+url.QueryEscape(`{"codex":{"version":"0.169.0","operations":["fork"]}}`), h, 400)
-	checkProbe(true)
+	checkProbe(true, false)
 	h.Capabilities.SupportsCodex = false
 	post("alpha", "/internal/workers/heartbeat", h, 204)
-	checkProbe(false)
+	checkProbe(false, false)
 	h.CPUs = 0
 	post("alpha", "/internal/workers/heartbeat", h, 400)
 	post("alpha", "/internal/claim", req, 403)

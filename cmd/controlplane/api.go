@@ -56,6 +56,15 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 				return
 			}
 		}
+		if r.URL.Query().Get("codex_interrupt") == "1" {
+			probe, ok := input.Adapters["codex"]
+			if !ok {
+				problem(w, 400, "Codex interrupt requires an adapter probe")
+				return
+			}
+			probe.Operations = append(probe.Operations, "interrupt")
+			input.Adapters["codex"] = probe
+		}
 		if !input.Valid() {
 			problem(w, 400, "invalid Worker identity, platform or capacity")
 			return

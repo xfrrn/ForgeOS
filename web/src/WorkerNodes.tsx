@@ -13,7 +13,7 @@ type ModelBudget = { name: string; harness: string; slots: number; reserved: num
 
 const capabilities: Record<string, string> = { supports_startup: '本地环境启动', supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划', supports_global_rules: '全局默认规则',
   supports_checkpoints: '检查点', supports_rework: '退回修订', supports_validation: '候选验证', supports_declared_checks: '项目检查', supports_risk_policy: '按风险选级' }
-const operations: Record<string, string> = { probe: '探测', start: '启动', resume: '恢复会话', events: '读取事件' }
+const operations: Record<string, string> = { probe: '探测', start: '启动', resume: '恢复会话', events: '读取事件', interrupt: '中断回合' }
 
 export function WorkerNodes({ request }: { request: ApiRequest }) {
   const [nodes, setNodes] = useState<Node[]>([])
