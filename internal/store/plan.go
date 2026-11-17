@@ -32,15 +32,16 @@ type PlanItem struct {
 }
 
 type PlanRevision struct {
-	ReviewContext *json.RawMessage  `json:"review_context,omitempty"`
-	Review        *ManagementReview `json:"review,omitempty"`
-	MinimumLevel  string            `json:"minimum_level,omitempty"`
-	ReviewedAt    *time.Time        `json:"reviewed_at,omitempty"`
-	TaskID        int64             `json:"task_id"`
-	Revision      int               `json:"revision"`
-	Plan          Plan              `json:"plan"`
-	At            time.Time         `json:"at"`
-	GitCommit     string            `json:"git_commit,omitempty"`
+	ReviewProcesses []ManagementProcess `json:"review_processes,omitempty"`
+	ReviewContext   *json.RawMessage    `json:"review_context,omitempty"`
+	Review          *ManagementReview   `json:"review,omitempty"`
+	MinimumLevel    string              `json:"minimum_level,omitempty"`
+	ReviewedAt      *time.Time          `json:"reviewed_at,omitempty"`
+	TaskID          int64               `json:"task_id"`
+	Revision        int                 `json:"revision"`
+	Plan            Plan                `json:"plan"`
+	At              time.Time           `json:"at"`
+	GitCommit       string              `json:"git_commit,omitempty"`
 }
 
 var planItemKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -176,7 +177,7 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 func (s *Store) PlanRevision(ctx context.Context, taskID int64, revision int64) (PlanRevision, error) {
 	var rev PlanRevision
 	var doc []byte
-	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) - 'review_lease' FROM plan_revisions r WHERE task_id=$1 AND revision=$2`,
+	err := s.db.QueryRowContext(ctx, `SELECT `+planRevisionJSON+` FROM plan_revisions r WHERE task_id=$1 AND revision=$2`,
 		taskID, revision).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrNotFound

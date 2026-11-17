@@ -61,7 +61,7 @@ func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) 
 	} else {
 		prompt += "Leave validation_minimum empty for this review.\n"
 	}
-	session, err := readOnlyJSONTurn(ctx, w.codex, reviewSchema, prompt+string(doc), 12<<10, &review)
+	session, err := w.planReviewTurn(ctx, job, prompt+string(doc), &review)
 	review.SessionID = session
 	if job.CaptureProfile {
 		p := store.StructuredCodexProfile()
@@ -71,6 +71,10 @@ func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) 
 }
 
 func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit int64, dest any) (string, error) {
+	return recordedJSONTurn(ctx, bin, contract, prompt, limit, dest, processLog{})
+}
+
+func recordedJSONTurn(ctx context.Context, bin, contract, prompt string, limit int64, dest any, process processLog) (string, error) {
 	workspace, err := os.MkdirTemp("", "forgeos-readonly-")
 	if err != nil {
 		return "", err
@@ -83,7 +87,7 @@ func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 	options := []string{"--skip-git-repo-check", "--output-schema", schema, "--output-last-message", output}
 	profile := store.StructuredCodexProfile()
 	adapter := codexCLI{bin: bin, sandbox: profile.Sandbox, disabledFeatures: profile.DisabledFeatures, options: options}
-	session, err := adapter.runTurn(ctx, processLog{}, workspace, prompt, "")
+	session, err := adapter.runTurn(ctx, process, workspace, prompt, "")
 	if err != nil {
 		return "", err
 	}
@@ -112,7 +116,7 @@ func managementTurn(ctx context.Context, until *time.Time) (context.Context, con
 func (w *worker) runManagement(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ManagementJob
-		status, err := w.post(ctx, "/internal/management/claim?supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
+		status, err := w.post(ctx, "/internal/management/claim?supports_plan_review_process=1&supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
 		if err != nil && !temporary(status) {
 			return err
 		}

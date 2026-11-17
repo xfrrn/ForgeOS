@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ApiError, Fact, Status, type ApiRequest } from './shared'
+import { ApiError, Fact, Status, formatTime, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 
 export type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[]; context_refs?: string[] }
-export type Plan = { revision: number; minimum_level?: string; git_commit?: string; review_context?: CandidateContext; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
+type ReviewProcess = { attempt: number; node: string; pid: number; version: string; session_id?: string; started_at: string; exited_at?: string; exit_code: number | null; observed_at: string; output?: { sequence: number; text: string } }
+export type Plan = { review_processes?: ReviewProcess[]; revision: number; minimum_level?: string; git_commit?: string; review_context?: CandidateContext; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 export type GoalChild = { id: number; key: string; status: string; plan_revision?: number }
 type Props = { taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
 
@@ -63,6 +64,14 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
       <p>{plan.plan.objective}</p>
       <PlanArchive key={plan.revision} taskID={taskID} plan={plan} request={request} disabled={disabled}/>
       {plan.review_context && <CandidateRuleEvidence context={plan.review_context} title="计划审核使用的规则依据"/>}
+      {plan.review_processes?.length ? <section><h3>Management 审核进程</h3>
+        {plan.review_processes.map(p => <details key={p.attempt}><summary>{p.node} · PID {p.pid} · {p.exited_at ? '已退出' : '最近观察，尚无退出回执'}</summary>
+          <dl><Fact label="原生版本" code>{p.version}</Fact><Fact label="原生会话" code>{p.session_id || '尚未确认'}</Fact>
+            <Fact label="开始时间">{formatTime(p.started_at)}</Fact><Fact label="最近上报">{formatTime(p.observed_at)}</Fact>
+            {p.exited_at && <Fact label="退出">{formatTime(p.exited_at)} · {p.exit_code}</Fact>}</dl>
+          {p.output && <><h4>模型公开消息</h4><p>最近 8 KiB，经脱敏后保存。</p><pre className="material-content">{p.output.text}</pre></>}
+        </details>)}
+      </section> : null}
       {plan.review && <div><h3>Management 审核 · {plan.review.effective_level}</h3>
         <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[plan.review.verdict] ?? plan.review.verdict}</Fact>
           <Fact label="理由">{plan.review.rationale}</Fact><Fact label="依据">{plan.review.evidence}</Fact>

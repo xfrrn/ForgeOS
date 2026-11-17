@@ -2967,3 +2967,24 @@ Claude 本项是业务问题检查点恢复，不代表活动工具强制中断�
 回归覆盖完整行前不落盘、分块凭据及私钥、凭据轮换、超长行、无换行尾部、脱敏器后续失败时保留已存前缀、真实 Docker 正常／立即退出／取消，以及租约、CI 名额、固定提交、环境和运行身份绑定。拒绝同字节数改写与终态删除、回退已观察输出。最终 PostgreSQL 18／Docker 全包 317 项测试及子测试通过，零失败、零跳过；Go 静态检查、TypeScript 和生产构建通过。
 
 本地证据目录 startup_output_live（proof.json、cli-proof.json）、startup_output_compat_oldcontrol、startup_output_compat_oldworker，回归报告 startup-output-final-regression.jsonl。Docker 回归需包含 curl 和 timeout 的 Linux 镜像，当前默认 golang:1.26.9-bookworm，可用 FORGEOS_STARTUP_IMAGE 指定预备镜像。启动日志为有界脱敏记录，尚未提供完整中央归档或到期清理。其他适配器增量、结构化工具结果、独立角色输出及全路线最终回归仍待完成；已列外部条件继续待验收。
+
+上述启动日志实现与验收对应 ForgeOS 提交 0497b7d0c94862d0f44a3401101ef12ffdeb1fc9。
+
+### 专题 07、13、16 C.3 · 独立 Management 计划审核进程
+
+2026-11-18 从私有 beta #2 的只读讨论接入三个独立验收库，在 Chrome 起草计划并启动真实 Management。这里验证审核及历史，不向讨论 Issue 提交代码或合并。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在任务 #1 的页面发布计划修订 1，启动独立 Management 并查看进程 | 只读权限不变，审核结束前可定位原生进程 | 节点 qa-management-current、PID 22896、Codex 0.169.0-alpha.11.1、Thread 01a1eba6-5794-7bc2-aff9-a126f300c6bc。核对原生参数 read-only／never 和父进程，Chrome 显示同一身份。 |
+| 原生审核仍运行时重启控制面，再等待结论 | 已观察进程保留，最终输出和审核会话一致 | 控制面重启回读原 Thread。退出码 0，公开输出与 SQLite 完全相同；结论 D2／revise，正确指出 README 修改超出原 Issue 的 Discussion only。 |
+| 分别运行旧控制面／新 Worker、新控制面／旧 Worker | 保留原审核，不补造缺省日志 | Thread 01a1eba6-9ae8-7860-af23-115260d2b632、01a1eba6-bcfe-73a0-b727-93d514069f75 均获得 revise；两种组合没有 review_processes，重启后页面仅显示原有审核回执。 |
+| 从页面发布修订 2，核对专属原生子进程后直接终止 | 保存失败退出，不生成成功审核 | PID 44936、Thread 01a1eba8-addf-76b3-b563-5eb33f8cac1f 退出码 15；页面保留退出和会话，修订 2 无 review。 |
+| 从页面发布修订 3，由同一 Management 守护进程继续 | 新修订有独立会话，失败历史不覆盖 | PID 40148、Thread 01a1eba8-b773-72e3-9b38-c01667e7b63b 成功退出，得到 D2／revise；修订 2 的失败记录保持相同。 |
+| 再重启控制面，分别打开三个修订 | 历史归属正确，公开消息可回读 | Chrome 分别展开三个进程并核对 Thread、退出及实际存在的输出；API 的各版 review_processes 与原记录相同。 |
+
+验收脚本起初对表单文本作了不正确的精确匹配，发布前定位超时；修正为实际文本框标签。发布成功后首次断言误写 201，接口合同为 200，核对已存修订后继续原任务。重启回读脚本曾在已登录标签页寻找登录框，改用新标签页后复验，没有重复模型审核或重复发布。
+
+PostgreSQL 18／Docker 全包 322 项测试及子测试通过，零失败、零跳过；随后新增的 Management HTTP 角色鉴权、未知字段、多 JSON 及超限正文专项通过。测试包含真实测试子进程的运行中消息、成功及非零退出、脱敏、旧组件无采集，以及 PostgreSQL 项目／修订／租约绑定、重放、改写拒绝、会话一致性、过期重领保留两次尝试。Go 静态检查、TypeScript 和生产构建通过。证据目录 management_process_current、management_process_oldcontrol、management_process_oldworker；回归报告 management-process-regression.jsonl。
+
+本项覆盖独立计划审核的进程和公开消息观察，不等同于其 Daemon 崩溃恢复、完整会话归档或其他独立角色已验收。原生 MCP 服务在正式 Worker 中仍被禁用，结构化 MCP 结果的真实验收依赖服务授权接入；没有为取证放宽现有工具权限。全路线其他工作及已列外部条件继续待完成。

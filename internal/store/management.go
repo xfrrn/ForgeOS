@@ -13,6 +13,7 @@ import (
 )
 
 type ManagementJob struct {
+	CaptureProcess     bool               `json:"capture_process,omitempty"`
 	ReviewContext      json.RawMessage    `json:"review_context,omitempty"`
 	CaptureProfile     bool               `json:"capture_profile,omitempty"`
 	LeaseUntil         *time.Time         `json:"lease_until,omitempty"`
@@ -178,6 +179,9 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	}
 	if !valid {
 		return ErrConflict
+	}
+	if err = verifyManagementProcess(ctx, tx, id, revision, lease, review.SessionID); err != nil {
+		return err
 	}
 	doc, err := json.Marshal(review)
 	if err != nil {

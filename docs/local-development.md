@@ -262,6 +262,8 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 未指定策略时，最低决定等级为 D2。Owner 保存修订时可附加 `minimum_level`，也可在首次领取前向 `POST /tasks/{id}/plans/{revision}/policy` 提交该字段。已指定的等级绑定当前修订。D1 只开放给 docs 验证的低风险范围；管理建议只能提高等级。D1 通过会在同一事务中激活子任务；退回、请求人工决定、D2 或 D3 均保留草案，Owner 可保存下一版或通过现有激活入口明确批准。代码交付仍经过独立的候选验收与 GitHub 门禁。
 
+计划审核期间，在对应 Goal 修订展开“Management 审核进程”查看节点、PID 和原生 Thread；回合结束后可回读退出码与公开消息。FORGEOS_WORKER_ID 可为审核节点命名，缺省使用主机名；FORGEOS_WORKER_STATE_DIR 指向仓库和工作区之外的私有目录，缺省沿用服务用户的 .forgeos/worker，角色日志文件与普通 Worker 分开。需要跨角色或节点定位时，同时核对节点名、计划修订和原生 Thread，PID 只在对应节点有意义。
+
 ## 启动知识提取角色
 
 在控制面设置 `FORGEOS_CURATOR_PROJECT_ID` 和该项目独立的 `FORGEOS_CURATOR_TOKEN`。把 Management 配置到同一项目，用两个单独的进程启动 `go run ./cmd/worker curator` 和 `go run ./cmd/worker management`。每个进程只需自己的角色令牌、回环 `FORGEOS_API_URL` 和能输出结构化结果的已登录本地 Codex。可用 `FORGEOS_CODEX_BIN` 指定可执行文件。

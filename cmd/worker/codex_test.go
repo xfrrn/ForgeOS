@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"forgeos/internal/store"
 )
@@ -140,6 +141,10 @@ func TestManagementFeedbackSendsCandidateEvidence(t *testing.T) {
 
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println("codex-cli 1.2.3")
+		os.Exit(0)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "app-server" {
 		os.Exit(testAppServerProcess())
 	}
@@ -265,6 +270,14 @@ func TestMain(m *testing.M) {
 					os.Exit(3)
 				}
 				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
+				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") {
+					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
+					time.Sleep(500 * time.Millisecond)
+					if strings.Contains(string(body), "FAIL_PROCESS") {
+						fmt.Println(`{"type":"turn.failed"}`)
+						os.Exit(7)
+					}
+				}
 				fmt.Println(`{"type":"turn.completed"}`)
 				os.Exit(0)
 			}

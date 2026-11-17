@@ -28,6 +28,9 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			return
 		}
 		job, err := data.ClaimManagement(r.Context(), id, r.URL.Query().Get("supports_plan_review_deadline") == "1", r.URL.Query().Get("supports_plan_review_context") == "1")
+		if job != nil && r.URL.Query().Get("supports_plan_review_process") == "1" {
+			job.CaptureProcess = true
+		}
 		if err == nil && job == nil && r.URL.Query().Get("supports_question_advice") == "1" {
 			job, err = data.ClaimQuestionAdvice(r.Context(), id, r.URL.Query().Get("supports_decision_lookups") == "1", r.URL.Query().Get("supports_question_deadline") == "1", r.URL.Query().Get("supports_question_context") == "1")
 		}
@@ -90,6 +93,12 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			err = data.CompleteManagement(r.Context(), id, input.TaskID, input.Revision, input.Lease, input.Review)
 		}
 		respond(w, http.StatusNoContent, nil, err)
+	}))
+	mux.HandleFunc("POST /internal/management/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var report store.ManagementProcessReport
+		if decodeLimited(w, r, &report, 64<<10) {
+			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
+		}
 	}))
 	registerCurationReview(mux, data, id, token)
 	mux.HandleFunc("POST /internal/management/questions/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
