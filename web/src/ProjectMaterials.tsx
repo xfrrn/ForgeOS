@@ -147,7 +147,7 @@ export function ProjectMaterials({ project, request }: { project: number; reques
       {doc.revision < latest
         ? <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
         : <button className="button" disabled={busy} onClick={() => edit(doc, doc.revision)}>编辑此修订</button>}
-    </div><MaterialCuration path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
+    </div><MaterialCuration project={project} path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
       <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
   </div>
 }

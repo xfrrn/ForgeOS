@@ -64,13 +64,13 @@ function App() {
   const notifications = route === '/notifications'
   const nodes = route === '/workers'
   const questions = route === '/questions'
-  const projectRoute = /^\/projects\/([1-9]\d*)\/(materials|decisions|shares(?:\/[1-9]\d*)?)$/.exec(route)
+  const projectRoute = /^\/projects\/([1-9]\d*)\/(materials|(?:decisions|shares)(?:\/[1-9]\d*)?)$/.exec(route)
   const projectID = projectRoute && Number.isSafeInteger(Number(projectRoute[1])) ? Number(projectRoute[1]) : undefined
   const materials = projectID && projectRoute?.[2] === 'materials'
-  const decisions = projectID && projectRoute?.[2] === 'decisions'
-  const sharePath = projectRoute?.[2].split('/')
-  const shareID = sharePath?.[1] ? Number(sharePath[1]) : undefined
-  const shares = projectID && sharePath?.[0] === 'shares' && (shareID === undefined || Number.isSafeInteger(shareID))
+  const projectPath = projectRoute?.[2].split('/')
+  const recordID = projectPath?.[1] ? Number(projectPath[1]) : undefined
+  const decisions = projectID && projectPath?.[0] === 'decisions' && (recordID === undefined || Number.isSafeInteger(recordID))
+  const shares = projectID && projectPath?.[0] === 'shares' && (recordID === undefined || Number.isSafeInteger(recordID))
   const projects = route === '/projects' || Boolean(materials || decisions || shares)
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9}))?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
@@ -127,8 +127,8 @@ function App() {
         id ? <TaskDetail key={id} id={id} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
         notifications ? <Notifications request={request} onRead={() => setNotificationRevision(n => n + 1)}/> :
         nodes ? <WorkerNodes request={request}/> :
-        shares && projectID ? <ProjectShares key={route} project={projectID} receipt={shareID} request={request}/> :
-        decisions && projectID ? <ProjectDecisions key={projectID} project={projectID} request={request}/> :
+        shares && projectID ? <ProjectShares key={route} project={projectID} receipt={recordID} request={request}/> :
+        decisions && projectID ? <ProjectDecisions key={route} project={projectID} decision={recordID} request={request}/> :
         materials && projectID ? <ProjectMaterials key={projectID} project={projectID} request={request}/> :
         projects ? <Projects request={request}/> :
         questions ? <DecisionQuestions request={request} onChanged={refreshCounts}/> :

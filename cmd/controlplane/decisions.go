@@ -8,6 +8,15 @@ import (
 )
 
 func registerDecisions(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	registerProjectRead(mux, "decisions/{decision}", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+		id, err := strconv.ParseInt(r.PathValue("decision"), 10, 64)
+		if err != nil || id < 1 {
+			problem(w, 400, "invalid decision id")
+			return
+		}
+		out, err := data.Decision(r.Context(), project, id)
+		respond(w, 200, out, err)
+	})
 	registerProjectRead(mux, "decisions", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		q := r.URL.Query()
 		status := q.Get("status")

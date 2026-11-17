@@ -8,7 +8,7 @@ type Decision = {
   evidence_refs: string[]; supersedes?: number; decided_by?: string; history: { status: State; actor: string; at: string }[]
 }
 
-export function ProjectDecisions({ project, request }: { project: number; request: ApiRequest }) {
+export function ProjectDecisions({ project, decision, request }: { project: number; decision?: number; request: ApiRequest }) {
   const base = `/projects/${project}/decisions`
   const [page, setPage] = useState({ status: 'CONFIRMED', before: 0 })
   const [rows, setRows] = useState<Decision[]>([])
@@ -28,14 +28,17 @@ export function ProjectDecisions({ project, request }: { project: number; reques
     if (page.before) q.set('before', String(page.before))
     setReadError(''); setLoading(true); setMore(false)
     if (!page.before) setRows([])
-    request<Decision[]>(base + '?' + q, { signal: controller.signal }).then(items => {
+    const read = decision
+      ? request<Decision>(base + '/' + decision, { signal: controller.signal }).then(row => [row])
+      : request<Decision[]>(base + '?' + q, { signal: controller.signal })
+    read.then(items => {
       if (controller.signal.aborted) return
       setRows(old => page.before ? [...old, ...items.filter(i => !old.some(row => row.id === i.id))] : items)
       setMore(items.length === 30)
     }).catch(e => { if (!controller.signal.aborted) setReadError(e.message) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [base, request, page])
+  }, [base, decision, request, page])
   useEffect(() => {
     if (loading || readError) return
     const deadlines = rows.filter(r => r.valid_until && (r.status === 'CONFIRMED' || r.status === 'PROPOSED'))
@@ -72,6 +75,7 @@ export function ProjectDecisions({ project, request }: { project: number; reques
     try {
       const saved = await request<Decision>(base, { method: 'POST', body: JSON.stringify({ ...input, request_key: retry.current.key }) })
       setProposal(undefined); setNotice(`已登记决策 #${saved.id} · ${labels[saved.status]}`); refresh(saved.status)
+      if (decision) location.hash = base + '/' + saved.id
     } catch (e) { setError(e instanceof Error ? e.message : '无法确认提案保存结果，请重试。') }
     finally { setBusy(false) }
   }
@@ -100,11 +104,11 @@ export function ProjectDecisions({ project, request }: { project: number; reques
         <label>截止时间（本地时间，可选）<input name="until" type="datetime-local"/></label>
         <div className="detail-actions"><button className="button">保存提案</button><button className="button" type="button" onClick={() => { setProposal(undefined); setError('') }}>取消编辑</button></div>
       </fieldset></form>}
-    <section className="panel detail-card"><div className="project-input">
+    <section className="panel detail-card">{decision ? <a href={'#' + base}>查看本项目全部决策</a> : <div className="project-input">
       <select aria-label="决策状态" value={page.status} onChange={e => refresh(e.target.value)}>
         {Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}<option value="ALL">全部状态</option>
       </select><button className="button" disabled={loading} onClick={() => refresh()}>刷新</button>
-      <button className="button" disabled={busy || Boolean(proposal)} onClick={() => start()}>提出决策</button></div>
+      <button className="button" disabled={busy || Boolean(proposal)} onClick={() => start()}>提出决策</button></div>}
       {readError && <p role="alert">{readError}</p>}
       {loading && <p role="status">正在读取决策…</p>}
       {!loading && !readError && !rows.length && <p>没有符合条件的决策。</p>}

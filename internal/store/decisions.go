@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -12,21 +13,32 @@ import (
 )
 
 type DecisionProposal struct {
-	RequestKey   string     `json:"request_key"`
-	Statement    string     `json:"statement"`
-	Source       string     `json:"source"`
-	Validity     string     `json:"validity"`
-	ValidUntil   *time.Time `json:"valid_until"`
-	EvidenceRefs []string   `json:"evidence_refs"`
-	Supersedes   *int64     `json:"supersedes"`
+	RequestKey   string          `json:"request_key"`
+	Statement    string          `json:"statement"`
+	Source       string          `json:"source"`
+	Validity     string          `json:"validity"`
+	ValidUntil   *time.Time      `json:"valid_until"`
+	EvidenceRefs []string        `json:"evidence_refs"`
+	Supersedes   *int64          `json:"supersedes"`
+	Curation     *DecisionOrigin `json:"curation,omitempty"`
+}
+
+type DecisionOrigin struct {
+	ID   int64 `json:"id"`
+	Fact int   `json:"fact"`
 }
 
 func (p DecisionProposal) Valid() bool {
 	text := func(s string, limit int) bool {
 		return strings.TrimSpace(s) != "" && len(s) <= limit && !strings.ContainsRune(s, 0)
 	}
-	if !text(p.RequestKey, 128) || !text(p.Statement, 4096) || !text(p.Source, 1024) ||
-		!text(p.Validity, 1024) || len(p.EvidenceRefs) < 1 || len(p.EvidenceRefs) > 16 || (p.Supersedes != nil && *p.Supersedes < 1) {
+	if !text(p.RequestKey, 128) || !text(p.Statement, 4096) || !text(p.Validity, 1024) || (p.Supersedes != nil && *p.Supersedes < 1) {
+		return false
+	}
+	if p.Curation != nil {
+		return p.Curation.ID > 0 && p.Curation.Fact >= 1 && p.Curation.Fact <= 8 && p.Source == "" && len(p.EvidenceRefs) == 0
+	}
+	if !text(p.Source, 1024) || len(p.EvidenceRefs) < 1 || len(p.EvidenceRefs) > 16 {
 		return false
 	}
 	for _, ref := range p.EvidenceRefs {
@@ -46,14 +58,34 @@ func (s *Store) ProposeDecision(ctx context.Context, project int64, p DecisionPr
 		return nil, err
 	}
 	defer tx.Rollback()
+	var originID *int64
+	var fact *int
+	if origin := p.Curation; origin != nil {
+		var key, digest, session string
+		var revision int
+		err = tx.QueryRowContext(ctx, `SELECT c.key,c.revision,m.content_sha256,c.review->>'session_id'
+			FROM material_curations c JOIN project_materials m USING(project_id,key,revision)
+			WHERE c.project_id=$1 AND c.id=$2 AND jsonb_array_length(c.extraction->'facts') >= $3
+			AND (c.review->>'verdict'='needs_owner' OR (c.review->>'verdict'='approve' AND c.review->>'level' IN ('D2','D3')))`,
+			project, origin.ID, origin.Fact).Scan(&key, &revision, &digest, &session)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConflict
+		}
+		if err != nil {
+			return nil, err
+		}
+		originID, fact = &origin.ID, &origin.Fact
+		p.Source = fmt.Sprintf("/projects/%d/materials/%s/revisions/%d/curation", project, key, revision)
+		p.EvidenceRefs = []string{fmt.Sprintf("curation:%d/fact:%d", origin.ID, origin.Fact), "sha256:" + digest, "management:" + session}
+	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO project_decisions AS d
-		(project_id,request_key,statement,source,validity,valid_until,evidence_refs,supersedes)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		(project_id,request_key,statement,source,validity,valid_until,evidence_refs,supersedes,curation_id,curation_fact)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		ON CONFLICT (project_id,request_key) DO UPDATE SET request_key=EXCLUDED.request_key
-		WHERE (d.statement,d.source,d.validity,d.valid_until,d.evidence_refs,d.supersedes) IS NOT DISTINCT FROM
-		(EXCLUDED.statement,EXCLUDED.source,EXCLUDED.validity,EXCLUDED.valid_until,EXCLUDED.evidence_refs,EXCLUDED.supersedes)
-		RETURNING id`, project, p.RequestKey, p.Statement, p.Source, p.Validity, p.ValidUntil, pq.Array(p.EvidenceRefs), p.Supersedes).Scan(&id)
+		WHERE (d.statement,d.source,d.validity,d.valid_until,d.evidence_refs,d.supersedes,d.curation_id,d.curation_fact) IS NOT DISTINCT FROM
+		(EXCLUDED.statement,EXCLUDED.source,EXCLUDED.validity,EXCLUDED.valid_until,EXCLUDED.evidence_refs,EXCLUDED.supersedes,EXCLUDED.curation_id,EXCLUDED.curation_fact)
+		RETURNING id`, project, p.RequestKey, p.Statement, p.Source, p.Validity, p.ValidUntil, pq.Array(p.EvidenceRefs), p.Supersedes, originID, fact).Scan(&id)
 	var constraint *pq.Error
 	if errors.As(err, &constraint) {
 		switch constraint.Code {
@@ -149,4 +181,13 @@ func (s *Store) Decisions(ctx context.Context, project, before int64, status str
 		(SELECT * FROM project_decision_index WHERE project_id=$1 AND ($2::bigint=0 OR id<$2)
 		 AND ($3='' OR status=$3) ORDER BY id DESC LIMIT 30) d`, project, before, status).Scan(&result)
 	return result, err
+}
+
+func (s *Store) Decision(ctx context.Context, project, id int64) (json.RawMessage, error) {
+	var doc json.RawMessage
+	err := s.db.QueryRowContext(ctx, "SELECT to_jsonb(d) FROM project_decision_index d WHERE project_id=$1 AND id=$2", project, id).Scan(&doc)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return doc, err
 }

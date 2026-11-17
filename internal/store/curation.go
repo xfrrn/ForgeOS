@@ -101,7 +101,9 @@ func (s *Store) ReviewCuration(ctx context.Context, project, id int64, lease str
 func (s *Store) MaterialCuration(ctx context.Context, project int64, key string, revision int) (json.RawMessage, error) {
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('id',c.id,'key',c.key,'revision',c.revision,'content_sha256',m.content_sha256,
-		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at)
+		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at,
+		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
+		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
 		FROM material_curations c JOIN project_materials m USING(project_id,key,revision)
 		WHERE project_id=$1 AND key=$2 AND revision=$3`, project, key, revision).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
