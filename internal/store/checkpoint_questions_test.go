@@ -102,6 +102,15 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 			result := Result{Commit: candidate, BaseCommit: spec.BaseCommit, SessionID: r.Session, Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}
 			switch end {
 			case "answer":
+				adviser, err := s.ClaimQuestionAdvice(ctx, p.ID)
+				if err != nil || adviser == nil {
+					t.Fatal("management advice claim", err)
+				}
+				advice := QuestionAdvice{Level: "D2", Rationale: "The Owner chooses.", Quote: r.Evidence, Source: "question", Session: r.Session}
+				if err := s.CompleteQuestionAdvice(ctx, p.ID, id, adviser.Lease, advice); !errors.Is(err, ErrConflict) {
+					t.Fatal("implementer acted as independent management", err)
+				}
+				advice.Session = "independent-management"
 				contender := r
 				contender.ResumeInstance = strings.Repeat("2", 64)
 				if answer, err := s.AskAtCheckpoint(ctx, j.ExecutionID, contender); err != nil || answer != "" {
@@ -110,6 +119,9 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 				for i := 0; i < 2; i++ {
 					if task, err = s.AnswerQuestion(ctx, task.ID, id, "Harbor"); err != nil || task.Status != "RUNNING" {
 						t.Fatal(task, err)
+					}
+					if err := s.CompleteQuestionAdvice(ctx, p.ID, id, adviser.Lease, advice); !errors.Is(err, ErrConflict) {
+						t.Fatal("late advice changed answered question", err)
 					}
 					if answer, err := s.AskAtCheckpoint(ctx, j.ExecutionID, r); err != nil || answer != "Harbor" {
 						t.Fatal(answer, err)

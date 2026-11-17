@@ -28,6 +28,9 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			return
 		}
 		job, err := data.ClaimManagement(r.Context(), id)
+		if err == nil && job == nil && r.URL.Query().Get("supports_question_advice") == "1" {
+			job, err = data.ClaimQuestionAdvice(r.Context(), id)
+		}
 		if err == nil && job == nil && capabilities.Shares {
 			job, err = data.ClaimShareReview(r.Context(), id)
 		}
@@ -89,6 +92,16 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		respond(w, http.StatusNoContent, nil, err)
 	}))
 	registerCurationReview(mux, data, id, token)
+	mux.HandleFunc("POST /internal/management/questions/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			ID     int64                `json:"id"`
+			Lease  string               `json:"lease"`
+			Advice store.QuestionAdvice `json:"advice"`
+		}
+		if decodeLimited(w, r, &input, 32<<10) {
+			respond(w, http.StatusNoContent, nil, data.CompleteQuestionAdvice(r.Context(), id, input.ID, input.Lease, input.Advice))
+		}
+	}))
 	registerTestPlanResult(mux, "/internal/management/test-plans/result", data, token, id, "management")
 	mux.HandleFunc("POST /internal/management/repository-analysis/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var out store.AnalysisResult

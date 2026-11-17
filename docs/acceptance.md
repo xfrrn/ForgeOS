@@ -1955,3 +1955,16 @@ ACP 1.0 格式及原生决策记录回读对应 ForgeOS 提交 `ca6aa459eba90d66
 | 改变消息的项目、Goal、工作项、执行、序号、问题、Git 依据、参与方或关联信息；重读三个归档来源；检查版本协商 | 不匹配的答复被拒绝，旧回执保持相同。声明使用 1.0 的任务不能退回纯文本答复 | Worker 专项用例拒绝 14 种不匹配的消息。三个历史来源共 10 条消息，摘要与上一节相同。旧任务接受旧格式，1.0 任务拒绝缺少消息的数据。 |
 
 本轮真实 PostgreSQL 与 Docker 全量回归 219 个测试及子测试通过，零跳过，Go vet 通过。新增的协议协商用例及消息绑定专项随后单独复验通过。
+
+原生 Worker 在线接收 ACP 决策答复对应 ForgeOS 提交 `2acb08c87842feb3426eba8022eb785257470510`。
+
+### 专题 05–06 · Management 审阅待答业务问题
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| beta #109 的 Codex 实现回合询问手册标题。启动项目专用的只读 Management 角色，在控制面重启后从 Chrome 打开待答队列 | Management 标注等级并引用冻结输入；临时标题缺乏最终授权时，问题继续等待 Owner | 审阅会话 `01a1e887-68ef-7972-a937-ffc97afc44f2` 从 `requirement:1:body` 引用等待 Owner 的原文，指出 Delta Bay 是临时标题。等级 D2，建议答复和页面输入框均为空。原生实现会话为 `01a1e887-1fc7-7d03-b95a-40e8cd7e567e`，审阅期间无候选。 |
+| Owner 在 Chrome 选择 `Harbor 61cdd789`，完成候选验收并等待 GitHub | 实现采用 Owner 的决定，独立审阅留在问题历史中 | 实现进程 35116、43384 共用原 Session。候选 `f6bbd203c03606dc5d293cb513fc03d5a11451bd` 仅新增指定标题文件。两项必需检查通过，合并为 `7f23984672646e04c0776cdbc78cf91aeefd98e3`，Issue 关闭。[PR #110](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/110) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44043633680) |
+| 在独立数据库还原 #55 快照，从候选验收接口提问不可逆生产操作所需的批准。让 Management 审阅，再从页面回答 | D3 留空建议。审阅和控制面重启都保留待答状态，Owner 答复后回到原候选 | 审阅会话 `01a1e889-db06-7941-afb8-0fd991b4f727` 引用缺少生产授权的原文。Chrome 显示 D3 和空输入框。Owner 明确未授权删除；执行 3 回到 WAITING_ACCEPTANCE，候选仍为 `aae51b5ff79b882a489d52e9869bd11aa3e47c11`，时间线有一次审阅事件。 |
+| 对同一归档候选提出有明确文字依据的 D2 选项；Owner 选择与建议不同的标题。再用原实现 Session 提交新审阅，并在 Owner 已答后提交迟到结果 | 有证据时显示建议，原实现者不能充当独立审阅者。Owner 的最终决定单独留存 | Management 会话 `01a1e88b-dc1b-7bf3-8c4a-448fb1c8e9f7` 建议 `Recovery receipt`，引用本题提供的原文；Owner 选择 `Archive appendix`，两者均可回读。控制面拒绝执行 1 的原 Session `01a1e604-db7d-7882-9d40-5cccf796c57d` 代审执行 3，也拒绝 Owner 已答后的首份审阅，均为 409。 |
+
+#55 的三次提问均在单独的恢复数据库内运行。真实 PostgreSQL 与 Docker 全量回归 221 个测试及子测试通过，零跳过；CI-only 原实现身份校验定稿后，重新通过上述归档实测、数据库专项测试与 Go vet。Web 构建通过。D1 问题的直接代答另行验收。

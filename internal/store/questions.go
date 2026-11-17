@@ -22,22 +22,23 @@ type QuestionRequest struct {
 
 type DecisionQuestion struct {
 	QuestionRequest
-	ID           int64          `json:"id"`
-	PlanRevision int            `json:"plan_revision"`
-	Sequence     *int           `json:"checkpoint_sequence,omitempty"`
-	Trees        *WorktreeTrees `json:"trees,omitempty"`
-	WithdrawnAt  *time.Time     `json:"withdrawn_at,omitempty"`
-	Requester    string         `json:"requester"`
-	At           time.Time      `json:"at"`
-	Answer       string         `json:"answer,omitempty"`
-	AnsweredBy   string         `json:"answered_by,omitempty"`
-	AnsweredAt   *time.Time     `json:"answered_at,omitempty"`
+	ManagementAdvice *QuestionAdvice `json:"management_advice,omitempty"`
+	ID               int64           `json:"id"`
+	PlanRevision     int             `json:"plan_revision"`
+	Sequence         *int            `json:"checkpoint_sequence,omitempty"`
+	Trees            *WorktreeTrees  `json:"trees,omitempty"`
+	WithdrawnAt      *time.Time      `json:"withdrawn_at,omitempty"`
+	Requester        string          `json:"requester"`
+	At               time.Time       `json:"at"`
+	Answer           string          `json:"answer,omitempty"`
+	AnsweredBy       string          `json:"answered_by,omitempty"`
+	AnsweredAt       *time.Time      `json:"answered_at,omitempty"`
 }
 
 func (s *Store) PendingQuestions(ctx context.Context, before int64) (json.RawMessage, error) {
 	var page json.RawMessage
 	err := s.db.QueryRowContext(ctx, `WITH pending AS (
-		SELECT q.id,q.task_id,t.project_id,q.execution_id,q.commit_sha,q.question,q.evidence,q.checkpoint_sequence,
+		SELECT q.id,q.task_id,t.project_id,q.execution_id,q.commit_sha,q.question,q.evidence,q.checkpoint_sequence,q.management_advice,
 		       t.spec->'issue'->>'repository' AS repository,t.spec->'issue'->>'title' AS title
 		FROM decision_questions q JOIN work_items t ON t.id=q.task_id
 		WHERE q.withdrawn_at IS NULL AND q.answer IS NULL AND t.status='WAITING_INPUT' AND ($1::bigint=0 OR q.id<$1)
