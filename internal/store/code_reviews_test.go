@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -57,7 +58,7 @@ func TestCodeReviewGate(t *testing.T) {
 	conflict(s.RequestCodeReview(ctx, task.ID, ex, base))
 	claim := func(projectID int64) *ReviewJob {
 		t.Helper()
-		j, err := s.ClaimCodeReview(ctx, projectID)
+		j, err := s.ClaimCodeReview(ctx, projectID, false)
 		must(err)
 		return j
 	}
@@ -104,5 +105,69 @@ func TestCodeReviewGate(t *testing.T) {
 	must(err)
 	if strings.Contains(string(receipt), retry.Lease) || !strings.Contains(string(receipt), "review-session") {
 		t.Fatal("unexpected receipt")
+	}
+}
+
+func TestReviewerUsesTheCandidatesOriginalRules(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(s.Migrate(ctx))
+	p, err := s.CreateProject(ctx, t.TempDir())
+	must(err)
+	base := strings.Repeat("a", 40)
+	sha := strings.Repeat("b", 40)
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 1, Number: 1, Title: "Heading"}, BaseCommit: base, Validation: "docs"})
+	must(err)
+	published, err := s.PublishGlobalRules(ctx, 0, "First title")
+	must(err)
+	dev := func(commit string) int64 {
+		t.Helper()
+		j, err := s.ClaimForProjects(ctx, "dev", t.TempDir(), []int64{p.ID}, WorkerCapabilities{SupportsCodex: true, SupportsRework: true, SupportsGlobalRules: true})
+		must(err)
+		if j == nil {
+			t.Fatal("missing candidate")
+		}
+		must(s.Complete(ctx, j.ExecutionID, j.LeaseToken, Result{BaseCommit: base, Commit: commit, SessionID: "development-" + commit, Validation: &ValidationResult{Profile: "docs", Commit: commit}}))
+		return j.ExecutionID
+	}
+	first := dev(sha)
+	_, err = s.Review(ctx, task.ID, first, sha, "reject", "Use the Owner heading", false, "")
+	must(err)
+	sha = strings.Repeat("c", 40)
+	second := dev(sha)
+	_, err = s.PublishGlobalRules(ctx, 1, "Later title")
+	must(err)
+	must(s.RequestCodeReview(ctx, task.ID, second, sha))
+	j, err := s.ClaimCodeReview(ctx, p.ID, false)
+	must(err)
+	if j != nil {
+		t.Fatal("legacy reviewer received rules it cannot use")
+	}
+	j, err = s.ClaimCodeReview(ctx, p.ID, true)
+	must(err)
+	if j == nil {
+		t.Fatal("compatible reviewer did not receive candidate")
+	}
+	var evidence struct {
+		GlobalRules json.RawMessage `json:"global_rules"`
+		Feedback    Review          `json:"acceptance_feedback"`
+		Decisions   json.RawMessage `json:"decisions"`
+	}
+	must(json.Unmarshal(j.CandidateContext, &evidence))
+	if string(evidence.GlobalRules) != string(published) || evidence.Feedback.Note != "Use the Owner heading" || evidence.Feedback.ExecutionID != first || evidence.Decisions != nil {
+		t.Fatalf("unexpected review context: %s", j.CandidateContext)
+	}
+	receipt, err := s.ReviewReceipt(ctx, task.ID, second)
+	must(err)
+	var archived ReviewJob
+	must(json.Unmarshal(receipt, &archived))
+	if string(archived.CandidateContext) != string(j.CandidateContext) {
+		t.Fatal("receipt differs from review dispatch")
 	}
 }

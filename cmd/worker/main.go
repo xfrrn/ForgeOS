@@ -228,7 +228,8 @@ func (w *worker) post(ctx context.Context, path string, body any, out any) (int,
 	defer resp.Body.Close()
 	if out != nil && resp.StatusCode == http.StatusOK {
 		maxJob := int64(2 << 20)
-		if _, ok := out.(*store.Job); ok {
+		switch out.(type) {
+		case *store.Job, *store.ReviewJob:
 			// A 16 KiB plan can cite hundreds of decisions with separately bounded text.
 			maxJob = 32 << 20
 		}

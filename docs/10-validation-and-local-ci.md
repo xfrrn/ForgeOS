@@ -87,6 +87,8 @@ Worker 从授权仓库的 Git 对象读取变更文件的前后内容和模式�
 
 在任务详情展开对应的 Worker 执行，可请求或重试独立审查。“查看审查报告”展示两个固定 SHA、审查会话、摘要和逐项证据。Owner 可以填写发现核对说明，或在候选验收中说明退回原因。页面与批准接口使用同一门禁状态。历史执行保留报告和 Owner 说明。
 
+有候选规则依据时，在报告内展开“审查使用的候选依据”，可核对实现回合领取的全局修订、项目决定以及本次修改所回应的 Owner 退回意见。后续发布新默认值或使项目决定失效后仍能复核该候选。专用 Reviewer 领取时声明 `supports_candidate_context`。需要这些依据的任务会等待支持它的 Reviewer；旧执行已经完成的审查保留原回执。
+
 ## 5. Local CI Runner
 
 从非 root Worker 运行 `worker validate-candidate`。设置 `FORGEOS_REPO_ROOT`、`FORGEOS_WORKSPACE_ROOT`、`FORGEOS_WORKER_ID`；`FORGEOS_CI_IMAGE` 可选择本机已缓存的 Linux 镜像，默认 `golang:1.25-alpine`。镜像需提供标准 shell、sleep、cp、rm、tar 和项目声明的工具。向标准输入写入一个 JSON 对象，例如：

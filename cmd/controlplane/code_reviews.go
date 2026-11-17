@@ -72,7 +72,13 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 		return errors.New("set FORGEOS_REVIEWER_PROJECT_ID and a distinct FORGEOS_REVIEWER_TOKEN")
 	}
 	mux.HandleFunc("POST /internal/reviewer/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
-		job, err := data.ClaimCodeReview(r.Context(), project)
+		var input struct {
+			SupportsContext bool `json:"supports_candidate_context"`
+		}
+		if r.ContentLength != 0 && !decode(w, r, &input) {
+			return
+		}
+		job, err := data.ClaimCodeReview(r.Context(), project, input.SupportsContext)
 		if err == nil && job == nil {
 			w.WriteHeader(204)
 			return

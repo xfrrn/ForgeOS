@@ -12,14 +12,15 @@ import (
 )
 
 type ReviewJob struct {
-	TaskID           int64  `json:"task_id"`
-	ExecutionID      int64  `json:"execution_id"`
-	Repo             string `json:"repo"`
-	RepoRelativePath string `json:"repo_relative_path,omitempty"`
-	Base             string `json:"base_commit"`
-	Commit           string `json:"commit"`
-	Requirement      string `json:"requirement"`
-	Lease            string `json:"lease"`
+	CandidateContext json.RawMessage `json:"candidate_context,omitempty"`
+	TaskID           int64           `json:"task_id"`
+	ExecutionID      int64           `json:"execution_id"`
+	Repo             string          `json:"repo"`
+	RepoRelativePath string          `json:"repo_relative_path,omitempty"`
+	Base             string          `json:"base_commit"`
+	Commit           string          `json:"commit"`
+	Requirement      string          `json:"requirement"`
+	Lease            string          `json:"lease"`
 }
 
 func (s *Store) SetCodeReviewPolicy(ctx context.Context, id int64, required bool) error {
@@ -64,7 +65,7 @@ func (s *Store) RequestCodeReview(ctx context.Context, task, execution int64, co
 	return tx.Commit()
 }
 
-func (s *Store) ClaimCodeReview(ctx context.Context, project int64) (*ReviewJob, error) {
+func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsContext bool) (*ReviewJob, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -77,20 +78,23 @@ func (s *Store) ClaimCodeReview(ctx context.Context, project int64) (*ReviewJob,
 		return nil, err
 	}
 	var j ReviewJob
+	var snapshot []byte
 	err = tx.QueryRowContext(ctx, `WITH next AS(
-		SELECT r.execution_id,p.path FROM code_reviews r JOIN work_items t ON t.id=r.task_id JOIN projects p ON p.id=t.project_id
-		WHERE p.id=$1 AND t.status IN ('WAITING_ACCEPTANCE','WAITING_INPUT') AND r.report IS NULL AND r.failed_at IS NULL
+		SELECT r.execution_id,p.path,c.context FROM code_reviews r JOIN work_items t ON t.id=r.task_id JOIN projects p ON p.id=t.project_id
+		LEFT JOIN candidate_rule_context c ON c.execution_id=r.execution_id
+		WHERE p.id=$1 AND ($2 OR c.context IS NULL) AND t.status IN ('WAITING_ACCEPTANCE','WAITING_INPUT') AND r.report IS NULL AND r.failed_at IS NULL
 		AND NOT EXISTS(SELECT 1 FROM executions e WHERE e.task_id=t.id AND e.id>r.execution_id)
 		AND (r.lease_until IS NULL OR r.lease_until<=now()) ORDER BY r.requested_at,r.execution_id LIMIT 1 FOR UPDATE OF r SKIP LOCKED)
-		UPDATE code_reviews r SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes' FROM next n
-		WHERE r.execution_id=n.execution_id RETURNING r.task_id,r.execution_id,n.path,r.base_commit,r.commit_sha,r.requirement,r.lease`, project).
-		Scan(&j.TaskID, &j.ExecutionID, &j.Repo, &j.Base, &j.Commit, &j.Requirement, &j.Lease)
+		UPDATE code_reviews r SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes', candidate_context=n.context FROM next n
+		WHERE r.execution_id=n.execution_id RETURNING r.task_id,r.execution_id,n.path,r.base_commit,r.commit_sha,r.requirement,r.lease,r.candidate_context`, project, supportsContext).
+		Scan(&j.TaskID, &j.ExecutionID, &j.Repo, &j.Base, &j.Commit, &j.Requirement, &j.Lease, &snapshot)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}
 	if err != nil {
 		return nil, err
 	}
+	j.CandidateContext = snapshot
 	return &j, tx.Commit()
 }
 
@@ -126,7 +130,9 @@ func (s *Store) CompleteCodeReview(ctx context.Context, project, execution int64
 
 func (s *Store) ReviewReceipt(ctx context.Context, task, execution int64) (json.RawMessage, error) {
 	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM code_review_receipts r WHERE task_id=$1 AND execution_id=$2`, task, execution).Scan(&doc)
+	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) || CASE WHEN c.candidate_context IS NULL THEN '{}'::jsonb
+		ELSE jsonb_build_object('candidate_context',c.candidate_context) END
+		FROM code_review_receipts r JOIN code_reviews c USING(execution_id) WHERE r.task_id=$1 AND r.execution_id=$2`, task, execution).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
