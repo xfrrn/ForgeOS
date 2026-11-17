@@ -74,7 +74,7 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 
 func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease string, out Extraction) error {
 	if out.Session == "" || len(out.Session) > 128 || strings.Trim(out.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" ||
-		out.Facts == nil || len(out.Facts) > 8 || !out.Profile.validStructured() {
+		out.Facts == nil || len(out.Facts) > 8 || !validStructuredProfile(out.Profile) {
 		return ErrConflict
 	}
 	for _, f := range out.Facts {

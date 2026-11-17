@@ -13,6 +13,7 @@ import (
 )
 
 type ReviewJob struct {
+	CaptureProfile   bool            `json:"capture_profile,omitempty"`
 	CandidateContext json.RawMessage `json:"candidate_context,omitempty"`
 	TaskID           int64           `json:"task_id"`
 	ExecutionID      int64           `json:"execution_id"`
@@ -102,6 +103,7 @@ func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsCont
 		return nil, err
 	}
 	j.CandidateContext = snapshot
+	j.CaptureProfile = true
 	return &j, tx.Commit()
 }
 

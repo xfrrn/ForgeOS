@@ -283,7 +283,7 @@ function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: At
 type ReviewReceipt = {
   candidate_context?: CandidateContext
   base_commit: string; commit_sha: string; owner_note?: string; owner_checked_at?: string
-  report: { session_id: string; summary: string; findings: { id: string; severity: string; file: string; side: string
+  report: { session_id: string; summary: string; profile?: {version: number; permission: string; tools: string[]}; findings: { id: string; severity: string; file: string; side: string
     line: number; evidence: string; evidence_verified: boolean; blocking: boolean; confidence: number; description: string; recommendation: string }[] }
 }
 
@@ -332,6 +332,10 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
       <dl className="detail-facts"><Fact label="审查会话" code>{receipt.report.session_id}</Fact>
         <Fact label="基础 SHA" code>{receipt.base_commit}</Fact><Fact label="候选 SHA" code>{receipt.commit_sha}</Fact></dl>
       {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="审查使用的候选依据"/>}
+      {receipt.report.profile && <details><summary>Reviewer 权限配置</summary>
+        <p>Claude Code · 配置 v{receipt.report.profile.version} · 审批 <code>{receipt.report.profile.permission}</code></p>
+        <p>可用工具 · {receipt.report.profile.tools.join('、') || '无'}</p>
+      </details>}
       <p>{receipt.report.summary}</p>
       {receipt.report.findings.length === 0 ? <p>未报告发现。</p> : <ol>{receipt.report.findings.map(f => <li key={f.id}>
         <strong>{f.id} · {f.severity}{f.blocking && ' · 阻塞'}</strong>

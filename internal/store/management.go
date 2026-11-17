@@ -96,7 +96,7 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDe
 }
 
 func (review ManagementReview) validate() error {
-	if !review.Profile.validStructured() || !decisionLevel(review.Level) || (review.ValidationMinimum != "" && !validation.ValidLevel(review.ValidationMinimum)) ||
+	if !validStructuredProfile(review.Profile) || !decisionLevel(review.Level) || (review.ValidationMinimum != "" && !validation.ValidLevel(review.ValidationMinimum)) ||
 		(review.Verdict != "approve" && review.Verdict != "revise" && review.Verdict != "needs_owner") ||
 		strings.TrimSpace(review.Rationale) == "" || len(review.Rationale) > 4096 || strings.TrimSpace(review.Evidence) == "" || len(review.Evidence) > 4096 ||
 		review.SessionID == "" || len(review.SessionID) > 128 || strings.Trim(review.SessionID, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" || review.EffectiveLevel != "" {

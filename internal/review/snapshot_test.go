@@ -56,6 +56,18 @@ func TestReviewChecksEvidenceAgainstBothGitObjects(t *testing.T) {
 			t.Fatal(r.Findings, err)
 		}
 	}
+	profile := ClaudeProfile()
+	r.Profile = &profile
+	if err := s.Verify(&r); err != nil {
+		t.Fatal(err)
+	}
+	for _, tools := range []*[]string{nil, {"Read"}} {
+		profile.Tools = tools
+		if s.Verify(&r) == nil {
+			t.Fatal("accepted an incomplete or expanded reviewer tool policy")
+		}
+	}
+	r.Profile = nil
 	r.Findings = append(r.Findings, r.Findings[0])
 	if s.Verify(&r) == nil {
 		t.Fatal("accepted duplicate finding IDs")

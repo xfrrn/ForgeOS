@@ -141,7 +141,7 @@ func TestAdapterAgentProfiles(t *testing.T) {
 	if !h.Valid() {
 		t.Fatal("implementation-only node rejected")
 	}
-	h.Adapters["claude"].Profiles["implementation"].Tools[0] = "Bash"
+	(*h.Adapters["claude"].Profiles["implementation"].Tools)[0] = "Bash"
 	if h.Valid() {
 		t.Fatal("unexpected tool accepted in profile v1")
 	}

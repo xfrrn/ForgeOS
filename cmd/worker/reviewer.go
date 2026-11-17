@@ -37,6 +37,9 @@ func (w *worker) runReviewer(ctx context.Context) error {
 			log.Printf("candidate review %d failed: %v", job.ExecutionID, err)
 			out["failed"] = true
 		} else {
+			if !job.CaptureProfile {
+				report.Profile = nil
+			}
 			out["report"] = report
 		}
 		for ctx.Err() == nil {

@@ -2631,3 +2631,15 @@ PostgreSQL 18 和 Docker 全包回归共 265 项 Go 测试及子测试通过，�
 | 交叉运行新 Worker 与旧控制面、旧 Worker 与新控制面 | 两种升级顺序均可完成提取和独立审核，不为未采集的回合生成配置 | 两轮各产生一对独立的原生会话，均获批准，两轮的旧格式回执均未携带权限配置。数据库回归验证缺失禁用项的配置被拒绝，幂等重报可复用相同回执，重报不能移除原配置。 |
 
 PostgreSQL 18 和 Docker 全包 Go 回归有 265 项测试及子测试通过、零跳过。Go 静态检查、TypeScript 及 Web 生产构建通过。
+
+上述独立知识角色会话配置对应 ForgeOS 提交 `32ca1e05e211d012316cd2eb3c8ab7496733c5ba`。
+
+### 专题 07、10、16 B.1 · 独立代码审查的原生权限
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从 beta #163 派发 Codex 实现，用旧版 `review-candidate` 审查真实候选，再让正式 Reviewer 领取同一候选 | 审查独立于实现。新报告应能核对实际审批与工具范围 | 实现 Thread `01a1ea90-8f00-7891-ac2a-a253fb7a6cd7`。旧审查会话 `e4b75b5c-9322-4643-bb30-0a03bb9cf424` 没有配置字段。新 Reviewer 的原生 Claude PID 46732 使用 `--permission-mode dontAsk --tools "" --strict-mcp-config`；正式会话 `ef0f882f-6c77-4a7a-a490-fea79495f6f6` 的回执记录 v1、`dontAsk` 和显式空工具列表。 |
+| 重启控制面，Chrome 打开候选审查报告并展开权限配置，核对 HTML 来源、标题及等待容量原句后通过验收 | UI 应与原报告一致；只有经过审查的候选才能交付 | 重启前后报告逐字段一致，页面可见原生会话、`dontAsk` 和“可用工具 · 无”。候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228` 仅改动指定指南。Actions 首轮命中预设失败步骤、同一 SHA 重跑通过，`acceptance-check` 和 `forgeos/local-ci` 均成功。PR #164 合并为 `a5bcb4f72940bd864fab43abdfd9458716c853cc`，Issue #163 已关闭，任务为 DONE。[审查后的 PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/164) · [Actions 运行](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44139074764) |
+| 从进入审查前的真实 PostgreSQL 快照分别启动新旧控制面及相反版本的 Reviewer；另恢复 beta #55 的旧审查快照 | 混合版本应能完成审查；既有报告不应推断权限字段 | 两个交叉组合的真实 Claude 审查均成功，保留旧格式。#55 执行 3 的旧报告、候选依据及会话 `9a961ecc-516a-491e-819f-2d358b537eff` 在升级前后逐字段相同。 |
+
+PostgreSQL 18 与 Docker 的全包 Go 回归有 265 项测试及子测试通过，零跳过。报告验证覆盖缺失工具列表及扩大工具范围的错误配置。Go 静态检查、TypeScript 检查及生产构建通过。

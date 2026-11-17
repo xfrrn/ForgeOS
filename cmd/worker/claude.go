@@ -59,7 +59,7 @@ func findClaude(configured string) (claudeCLI, error) {
 func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string) (*exec.Cmd, error) {
 	profile := store.ClaudeImplementationProfile()
 	args := []string{"-p", "--restricted", "--safe-mode", "--strict-mcp-config", "--no-chrome", "--disable-slash-commands",
-		"--permission-mode", profile.Permission, "--tools", strings.Join(profile.Tools, ","), "--verbose", "--output-format", "stream-json"}
+		"--permission-mode", profile.Permission, "--tools", strings.Join(*profile.Tools, ","), "--verbose", "--output-format", "stream-json"}
 	config := os.Getenv("CLAUDE_CONFIG_DIR")
 	if config == "" {
 		home, err := os.UserHomeDir()

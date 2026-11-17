@@ -2,8 +2,11 @@ package review
 
 import (
 	"errors"
+	"reflect"
 	"regexp"
 	"strings"
+
+	"forgeos/schemas"
 )
 
 type Finding struct {
@@ -21,16 +24,24 @@ type Finding struct {
 }
 
 type Report struct {
-	Base     string    `json:"base_commit"`
-	Commit   string    `json:"commit"`
-	Session  string    `json:"session_id"`
-	Summary  string    `json:"summary"`
-	Findings []Finding `json:"findings"`
+	Profile  *schemas.AgentProfile `json:"profile,omitempty"`
+	Base     string                `json:"base_commit"`
+	Commit   string                `json:"commit"`
+	Session  string                `json:"session_id"`
+	Summary  string                `json:"summary"`
+	Findings []Finding             `json:"findings"`
+}
+
+func ClaudeProfile() schemas.AgentProfile {
+	return schemas.AgentProfile{Version: 1, Permission: "dontAsk", Tools: &[]string{}}
 }
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 
 func (s Snapshot) Verify(r *Report) error {
+	if r.Profile != nil && !reflect.DeepEqual(*r.Profile, ClaudeProfile()) {
+		return errors.New("invalid Claude reviewer profile")
+	}
 	if r.Base != s.Base || r.Commit != s.Commit || !identifier.MatchString(r.Session) || strings.TrimSpace(r.Summary) == "" || len(r.Summary) > 2048 || r.Findings == nil || len(r.Findings) > 32 {
 		return errors.New("invalid review identity, summary or findings")
 	}

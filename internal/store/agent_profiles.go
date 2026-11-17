@@ -1,14 +1,12 @@
 package store
 
-import "reflect"
+import (
+	"reflect"
 
-type AgentProfile struct {
-	Version          int      `json:"version"`
-	Sandbox          string   `json:"sandbox,omitempty"`
-	Permission       string   `json:"permission"`
-	Tools            []string `json:"tools,omitempty"`
-	DisabledFeatures []string `json:"disabled_features,omitempty"`
-}
+	"forgeos/schemas"
+)
+
+type AgentProfile = schemas.AgentProfile
 
 const (
 	CodexImplementationSandbox = "workspace-write"
@@ -17,7 +15,7 @@ const (
 )
 
 func ClaudeImplementationProfile() AgentProfile {
-	return AgentProfile{Version: 1, Permission: "acceptEdits", Tools: []string{"Read", "Glob", "Grep", "Edit", "Write"}}
+	return AgentProfile{Version: 1, Permission: "acceptEdits", Tools: &[]string{"Read", "Glob", "Grep", "Edit", "Write"}}
 }
 
 func CodexDisabledFeatures() []string {
@@ -30,7 +28,7 @@ func StructuredCodexProfile() AgentProfile {
 			"code_mode", "code_mode_host", "computer_use", "browser_use", "view_image", "image_generation")}
 }
 
-func (p *AgentProfile) validStructured() bool {
+func validStructuredProfile(p *AgentProfile) bool {
 	return p == nil || reflect.DeepEqual(*p, StructuredCodexProfile())
 }
 

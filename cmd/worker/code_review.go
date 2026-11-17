@@ -81,8 +81,9 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 		"Before and after arrays contain one entry per source line. Use base for deleted lines and candidate for present lines. Return an empty findings array if there are no supported findings.\n"
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-p", "--output-format", "json", "--json-schema", codeReviewSchema, "--tools", "", "--strict-mcp-config",
-		"--disable-slash-commands", "--no-chrome", "--permission-mode", "dontAsk", "--setting-sources", "user", "--settings", `{"disableAllHooks":true}`)
+	profile := review.ClaudeProfile()
+	cmd := exec.CommandContext(ctx, bin, "-p", "--output-format", "json", "--json-schema", codeReviewSchema, "--tools", strings.Join(*profile.Tools, ","), "--strict-mcp-config",
+		"--disable-slash-commands", "--no-chrome", "--permission-mode", profile.Permission, "--setting-sources", "user", "--settings", `{"disableAllHooks":true}`)
 	cmd.Dir, cmd.WaitDelay = dir, 3*time.Second
 	for _, entry := range harnessEnv() {
 		if !strings.HasPrefix(strings.ToUpper(entry), "CODEX_HOME=") {
@@ -124,7 +125,7 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 	if json.Unmarshal(raw, &result) != nil || result.Failed || result.Subtype != "success" || result.Output == nil {
 		return report, errors.New("Claude returned no structured review")
 	}
-	return review.Report{Base: snapshot.Base, Commit: snapshot.Commit, Session: result.Session, Summary: result.Output.Summary, Findings: result.Output.Findings}, nil
+	return review.Report{Base: snapshot.Base, Commit: snapshot.Commit, Session: result.Session, Summary: result.Output.Summary, Findings: result.Output.Findings, Profile: &profile}, nil
 }
 
 func runCandidateReview(ctx context.Context, in io.Reader, out io.Writer) error {
