@@ -7,14 +7,7 @@ import (
 	"errors"
 )
 
-func (s *Store) TaskContext(ctx context.Context, project, task int64) (json.RawMessage, error) {
-	var result json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object(
-		'project_id',t.project_id,'task_id',t.id,'kind',t.kind,'status',t.status,
-		'base_commit',t.spec->'base_commit','issue',t.spec->'issue','project_config_blob',t.spec->'project_config_blob',
-		'goal_id',t.goal_id,'plan_key',t.plan_key,'active_revision',g.active_revision,
-		'requirement',to_jsonb(req),'plan',to_jsonb(p),'dependencies',COALESCE(deps.items,'[]'::jsonb))
-		FROM work_items t JOIN work_items g ON g.id=COALESCE(t.goal_id,t.id) AND g.project_id=t.project_id
+const taskContextFrom = `FROM work_items t JOIN work_items g ON g.id=COALESCE(t.goal_id,t.id) AND g.project_id=t.project_id
 		LEFT JOIN LATERAL (SELECT r.task_id,r.revision,r.observed_at,r.issue FROM requirement_revisions r
 			JOIN work_items src ON src.id=r.task_id AND src.project_id=t.project_id WHERE r.id=t.requirement_id) req ON true
 		LEFT JOIN LATERAL (SELECT r.task_id,r.revision,r.at,r.git_commit,r.plan FROM plan_revisions r
@@ -24,9 +17,28 @@ func (s *Store) TaskContext(ctx context.Context, project, task int64) (json.RawM
 			'pr_url',d.pr_url,'merge_sha',d.merge_sha) ORDER BY c.id) items
 			FROM work_dependencies w JOIN work_items c ON c.id=w.prerequisite AND c.project_id=t.project_id
 			LEFT JOIN deliveries d ON d.task_id=c.id WHERE w.task_id=t.id) deps ON true
-		WHERE t.project_id=$1 AND t.id=$2`, project, task).Scan(&result)
+		WHERE t.project_id=$1 AND t.id=$2`
+
+func (s *Store) TaskContext(ctx context.Context, project, task int64) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object(
+		'project_id',t.project_id,'task_id',t.id,'kind',t.kind,'status',t.status,
+		'base_commit',t.spec->'base_commit','issue',t.spec->'issue','project_config_blob',t.spec->'project_config_blob',
+		'goal_id',t.goal_id,'plan_key',t.plan_key,'active_revision',g.active_revision,
+		'requirement',to_jsonb(req),'plan',to_jsonb(p),'dependencies',COALESCE(deps.items,'[]'::jsonb))
+		`+taskContextFrom, project, task).Scan(&result)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
+	return result, err
+}
+
+// Freeze only the assigned child's sources alongside its lease, including the confirmed prerequisite deliveries.
+func childContext(ctx context.Context, tx *sql.Tx, project, task int64) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := tx.QueryRowContext(ctx, `SELECT jsonb_build_object(
+		'goal_id',t.goal_id,'plan_revision',p.revision,'plan_key',t.plan_key,
+		'requirement',to_jsonb(req),'dependencies',COALESCE(deps.items,'[]'::jsonb)) `+taskContextFrom,
+		project, task).Scan(&result)
 	return result, err
 }

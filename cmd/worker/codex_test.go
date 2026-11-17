@@ -16,6 +16,27 @@ import (
 	"forgeos/internal/store"
 )
 
+func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) {
+	job := store.Job{Spec: &store.IssueSpec{Issue: store.Issue{Title: "Assigned file"}}, LeaseToken: "private-lease-token"}
+	for _, evidence := range []json.RawMessage{nil, json.RawMessage(`{"plan_revision":2,"dependencies":[{"key":"guide"}]}`)} {
+		job.GoalContext = evidence
+		prompt, err := issuePrompt(job, "Keep the heading", nil)
+		if err != nil || strings.Contains(prompt, job.LeaseToken) {
+			t.Fatal("invalid implementation prompt", err)
+		}
+		_, payload, found := strings.Cut(prompt, "Issue JSON:\n")
+		var source struct {
+			Issue    store.Issue     `json:"issue"`
+			Goal     json.RawMessage `json:"goal_context"`
+			Feedback string          `json:"acceptance_feedback"`
+		}
+		if !found || json.Unmarshal([]byte(payload), &source) != nil || source.Issue != job.Spec.Issue ||
+			string(source.Goal) != string(evidence) || source.Feedback != "Keep the heading" {
+			t.Fatalf("incorrect sources: %s", payload)
+		}
+	}
+}
+
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "-p" {

@@ -245,23 +245,24 @@ type Event struct {
 }
 
 type Job struct {
-	RecordToolActivity  bool         `json:"record_tool_activity,omitempty"`
-	ReportLiveProcess   bool         `json:"report_live_process,omitempty"`
-	ReportCICandidate   bool         `json:"report_ci_candidate,omitempty"`
-	Startup             *StartupSpec `json:"startup,omitempty"`
-	ManageResources     bool         `json:"manage_resources,omitempty"`
-	RecordProcesses     bool         `json:"record_processes,omitempty"`
-	LeaseSeconds        int          `json:"lease_seconds,omitempty"`
-	SupportsCheckpoints bool         `json:"supports_checkpoints,omitempty"`
-	Kind                string       `json:"kind"`
-	Spec                *IssueSpec   `json:"spec,omitempty"`
-	Rework              *Review      `json:"rework,omitempty"`
-	ExecutionID         int64        `json:"execution_id"`
-	TaskID              int64        `json:"task_id"`
-	RepoPath            string       `json:"repo_path"`
-	RepoRelativePath    string       `json:"repo_relative_path,omitempty"`
-	Workspace           string       `json:"workspace"`
-	LeaseToken          string       `json:"lease_token"`
+	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
+	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
+	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
+	ReportCICandidate   bool            `json:"report_ci_candidate,omitempty"`
+	Startup             *StartupSpec    `json:"startup,omitempty"`
+	ManageResources     bool            `json:"manage_resources,omitempty"`
+	RecordProcesses     bool            `json:"record_processes,omitempty"`
+	LeaseSeconds        int             `json:"lease_seconds,omitempty"`
+	SupportsCheckpoints bool            `json:"supports_checkpoints,omitempty"`
+	Kind                string          `json:"kind"`
+	Spec                *IssueSpec      `json:"spec,omitempty"`
+	Rework              *Review         `json:"rework,omitempty"`
+	ExecutionID         int64           `json:"execution_id"`
+	TaskID              int64           `json:"task_id"`
+	RepoPath            string          `json:"repo_path"`
+	RepoRelativePath    string          `json:"repo_relative_path,omitempty"`
+	Workspace           string          `json:"workspace"`
+	LeaseToken          string          `json:"lease_token"`
 }
 
 type Result struct {
@@ -535,6 +536,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	}
 	// Recheck with a fresh snapshot after taking the project lock.
 	var spec []byte
+	var child bool
 	err = tx.QueryRowContext(ctx, `
 		UPDATE work_items SET status = 'RUNNING'
 		WHERE status = 'READY' AND id = (SELECT w.id FROM work_items w WHERE w.project_id = $1 AND w.status = 'READY'
@@ -552,7 +554,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
-		RETURNING id, kind, spec, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&j.TaskID, &j.Kind, &spec, &j.ExecutionID)
+		RETURNING id, kind, spec, goal_id IS NOT NULL, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -569,6 +571,12 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	if spec != nil {
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
 			return nil, err
+		}
+		if child && j.Spec.VerifyCommit == "" {
+			j.GoalContext, err = childContext(ctx, tx, projectID, j.TaskID)
+			if err != nil {
+				return nil, err
+			}
 		}
 		j.ReportCICandidate = j.Spec.Mode != "plan"
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""

@@ -210,6 +210,16 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if err != nil || secondJob == nil || secondJob.TaskID != next.TaskID || secondJob.Spec.BaseCommit != merged {
 		t.Fatalf("did not freeze delivered base: %+v %v", secondJob, err)
 	}
+	var evidence struct {
+		PlanRevision int `json:"plan_revision"`
+		Requirement  RequirementRevision
+		Dependencies []Delivery
+	}
+	if err := json.Unmarshal(secondJob.GoalContext, &evidence); err != nil || evidence.PlanRevision != 3 ||
+		evidence.Requirement.TaskID != task.ID || evidence.Requirement.Revision != 1 ||
+		len(evidence.Dependencies) != 1 || evidence.Dependencies[0].MergeSHA != merged {
+		t.Fatalf("missing child claim evidence: %s %v", secondJob.GoalContext, err)
+	}
 	if c, err := s.ClaimGoalClosure(ctx, p.ID); c != nil || err != nil {
 		t.Fatalf("premature parent closure: %v %v", c, err)
 	}

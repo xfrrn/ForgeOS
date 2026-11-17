@@ -50,7 +50,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版。跨项目验收问题的批量答复、Owner 按原生审核意见修改并批准指定修订见下文 | `70781ba`、`f8503c5`、`abb5257`、`d9fc283`、`a6f05da` | 跨操作 D0–D3 策略、ACP 路由及其他阶段的问题汇总 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理。来源关闭取消、工作台取消及暂停后恢复同一候选的 CI 已实测（beta #52、#54、#55）。Owner 从工作台修订、批准并归档计划，beta #67 完成子项及父 Issue 交付 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3`、`a5d2193`、`84758c5`、`a221a0d`、`d9fc283`、`a6f05da`、`616dcb6` | 通用命令队列、原生模型回合中的暂停与取消 |
 | 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断。已验收节点登记与普通执行容量、模型终态回执丢失后的恢复、运行中与结束后的进程记录及工具调用（beta #61、#63） | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b`、`611850e`、`9f6d396`、`e8a84ea`、`d78ae18`、`9f83fff`、`db6155b`、`3c9226b` | 原生进程被强制终止后的恢复、Linux 模型登录复用、多节点恢复 |
-| 08 项目知识 | 固定版本工程事实、来源历史检索、项目决策、私有资料修订和跨项目脱敏审批均见下文验收记录 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`、`e80e961`、`4713fdc`、`f7a9bbe` | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
+| 08 项目知识 | 固定版本工程事实、历史检索、私有资料与跨项目脱敏审批已验收。节点可查询固定需求、计划与依赖；原生实现回合的使用见 beta #69 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`、`e80e961`、`4713fdc`、`f7a9bbe`、`a6c797e` | 语义检索、全局规则、Curator 其余触发条件和角色上下文 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与恢复、状态接口、执行租约与用途绑定、一次性解包、签发与失败审计。具名 Worker 在活动租约中轮换令牌与 mTLS 客户端证书 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`、`72cd89d`、`8c83ac8`、`266f11f`、`40736ea` | 生产专用操作策略及其他节点身份场景 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限。任务页跨节点下载 CI 文件（beta #49），中央及 Windows、Linux 节点按策略清理，真实候选 CI 的取消和恢复见专题 06 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`、`0420f45`、`6f9b0c1`、`b465048`、`9f0c704`、`84758c5`、`a221a0d` | 其他验证器与独立审核角色场景 |
 | 11 预览与人工验收 | 工作项归档计划、覆盖审核及用例实测；Caddy、静态预览、DOM/Canvas 和同源嵌套 iframe 选择、用例关联、六类 Management 分类、阻塞澄清、按反馈退回和批准、从反馈修订需求及派发独立工作项（beta #19–21）、工作台 PNG 标注与遮挡归档。扩展截图、标签页录屏及归档回放，动态应用预览，隔离网络中的独立 Staging 网关均已实测 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`、`7565fa6`、`e71b7c8`、`978d184`、`71e6c9a`、`7fe001f`、`ec7a462`、`17bb819`、`c561e40`、`99de4f6`、`bf27241`、`7cbd8a3`、`5a5d685`、`d34260b`、`2b805b4`、`5279f11`、`c382473`、`732a4a8`、`6280acd`、`a6ade1d`、`9a08b44`、`f876721`、`ba4a31d` | 真实提供方回调投递、外部 tailnet 设备访问 |
@@ -1558,3 +1558,17 @@ TypeScript、Web 生产构建通过。本场景验收至子任务就绪，来源
 | 重启控制面，分别重读两项依赖任务 | 固定资料和交付证据可恢复 | 两个项目的完整响应与重启前一致。Owner 与项目节点的响应也逐字段一致 |
 
 数据库回归同时核对不同修订的子项及其前置合并记录。启用 PostgreSQL 和 Docker 的全量 Go 回归 166 项通过，零跳过；Go vet 通过。
+
+### 专题 06、08 · 实现回合使用固定需求和前置交付证据
+
+在新的私有 beta 克隆和独立 PostgreSQL schema `development_context_role1` 部署正式控制面、Worker 和 Chrome。基线 `eed7fa9f83776301e04421e582b3688b464bfa77`。来源 Issue 指定两个带随机值的标题，计划与子任务规格只引用父需求，未抄入标题。第二项还要引用第一项未来的合并。[Issue #69](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/69)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 激活两项有依赖的计划，运行首项 Codex，在 Chrome 批准候选 | 读取父需求中的标题，只写本项文件；第二项继续等待 | 会话 `01a1e6e7-8b69-7ae3-b9d4-714a0e146bbc` 的候选 `a421f3fb80d5acff20ea364d4c75e623345bfb53` 只新增 `docs/capacity-context.md`，全文是标题“Capacity ledger 80460926”。复验两项必需检查后合并为 `a4ecd0207e90ace7e6369f13f9b52f79c91d308d`，父 Issue 仍开放。[PR #70](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/70) |
+| 重启控制面后领取第二项，核对与前置项交付的版本关系、页面标题和回执正文 | 以首项合并版本为基础，只生成第二个文件，填入真实 PR 地址和完整合并 SHA | 会话 `01a1e6ea-2908-7463-9b42-b4de2ef04f3e` 的候选 `b036e53e71709e2b80a5694c4fa0841adbc2183c` 只新增 `docs/queue-context-receipt.md`，标题是“Queue receipt 0b148783”，正文含 PR #70 的完整地址及合并 SHA。Chrome 已按该候选批准。[PR #71](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/71) |
+| 在相同基线的新克隆用原生 Claude Code 领取第一项，在本地验收并重启控制面 | 独立 Harness 同样能取得父需求标题，只修改分配的文件 | Claude Code 2.1.310，会话 `a85fb186-1066-417e-a0cd-3970973fdf94`，候选 `0c60cecbf565aee445dbe31446d81a4339c38601`。文件名、唯一标题和验证回执均通过。这个隔离场景在 ACCEPTED 截止，重启后可回读同一回执 |
+
+第二项 `acceptance-check` 与 `forgeos/local-ci` 成功，实际合并 SHA 为 `50f39ddabab401ca5161ca97aaabc9553add310e`。两项交付后，父 Goal 为 DONE，来源 Issue 已关闭。[父项回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/69#issuecomment-6933868151)
+
+启用 PostgreSQL 与 Docker 的全量 Go 回归 167 项通过，零跳过；Go vet 通过。同一版本重新通过三个项目身份的上下文 API 与重启复测。

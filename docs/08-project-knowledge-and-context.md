@@ -136,6 +136,8 @@ Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revisi
 
 Management、Planner、Development、Review、Test、Operations 获取不同上下文和工具权限。
 
+执行 Goal 子工作项时，控制面在领取事务中把 `goal_context` 随任务交给 Worker。其中包含 Goal ID、工作项 key、绑定的计划修订、来源需求的固定版本，以及本项直接前置任务的 PR 和合并 SHA。实现回合可据此核对原文中的细节或引用已合并的交付。可修改的范围来自分配给该子项的规格。Worker 把这些来源作为数据传给 Codex 或 Claude 的实现回合；后续评论检查点与同次执行的会话恢复继续使用领取时的数据。
+
 ## 8. Knowledge Curator
 
 触发：
