@@ -66,6 +66,9 @@ func (s *Store) SearchMaterials(ctx context.Context, project int64, kind, query,
 	if _, err := s.Project(ctx, project); err != nil {
 		return nil, err
 	}
+	if query != "" && after == "" && s.embeddings != nil {
+		return s.hybridMaterials(ctx, project, kind, query)
+	}
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `WITH latest AS (
 		SELECT DISTINCT ON (key) * FROM project_materials WHERE project_id=$1 AND key>$4 ORDER BY key,revision DESC
@@ -73,7 +76,8 @@ func (s *Store) SearchMaterials(ctx context.Context, project int64, kind, query,
 		SELECT m.*,to_tsvector('simple',title || ' ' || content) AS words,plainto_tsquery('simple',$3) AS terms
 		FROM latest m WHERE ($2='' OR kind=$2)
 	), page AS (
-		SELECT project_id,key,revision,kind,title,source,imported_at,content_sha256,left(content,500) AS excerpt,
+		SELECT project_id,key,revision,kind,title,source,imported_at,content_sha256,'current'::text AS status,
+		       0 AS start_char,least(length(content),500) AS end_char,left(content,500) AS excerpt,
 		       ts_rank(words,terms) AS rank
 		FROM matches WHERE $3='' OR words @@ terms OR strpos(lower(title || ' ' || content),lower($3))>0
 		ORDER BY rank DESC,key LIMIT 30

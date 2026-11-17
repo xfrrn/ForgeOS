@@ -144,6 +144,19 @@ Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revisi
 
 列表入口 `GET /projects/{id}/materials` 可按 `kind` 筛选。传入 `q` 返回相关度最高的 30 条当前版本记录和摘要；不传关键词时按 key 浏览，用 `after=<末项 key>` 翻页。项目节点使用同样的读取路径，在前面加 `/internal`，只允许访问授权项目。项目工程文档仍由 Agent 在对应 Git 版本按需读取。
 
+### 项目资料混合检索
+
+控制面默认提供全文和子串检索。启用语义排序时，在 ForgeOS 数据库安装 `vector` 扩展，并将扩展 schema 加入连接角色的 `search_path`。为控制面同时设置以下两项，再重启服务。
+
+| 配置 | 值 |
+| --- | --- |
+| `FORGEOS_EMBEDDINGS_URL` | 项目可信推理服务的完整 `POST /v1/embeddings` 地址，例如 `http://127.0.0.1:8081/v1/embeddings`。该服务接收查询及授权范围内资料的正文片段。 |
+| `FORGEOS_EMBEDDINGS_MODEL` | 服务接受的固定模型标识。索引按模型标识保存，更新权重时使用新标识。验收使用固定权重的多语言 MiniLM。 |
+
+非空查询先按项目、最新修订和资料类型限定范围。首次查询将还没有索引的正文按 Unicode 字符分段，向推理服务分批编码，同一修订的向量一次提交。小段之间重叠，保留段首和段尾在原文中的位置。较大的既有资料集首次查询需要等待编码；后续查询复用数据库中的向量。正文或模型更新后，在下一次匹配范围内的查询中生成新索引。配置的推理服务不可用时，搜索返回错误；浏览和按修订读取仍可用。
+
+数据库用 pgvector 的余弦距离选出每份资料最相关的片段，然后合并语义与关键词名次。命中项含 `project_id`、`key`、`revision`、`status=current`、`source`、`imported_at`、`content_sha256` 和 `excerpt`。正文位置为从零开始、左闭右开的 `[start_char, end_char)`。工作台显示从 1 开始的字符位置，点击结果读取命中修订；若已有更新，可另行打开最新版。工程文档、决策及经审批的经验有各自的来源和读取入口。[pgvector](https://github.com/pgvector/pgvector) · [本地推理服务](https://github.com/huggingface/text-embeddings-inference) · [验收模型](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42)
+
 ## 7. 角色上下文
 
 Management、Planner、Development、Review、Test、Operations 获取不同上下文和工具权限。

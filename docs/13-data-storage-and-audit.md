@@ -3,7 +3,7 @@
 ## 1. 存储职责
 
 - PostgreSQL：业务实体、状态、关系、索引、审计元数据。
-- pgvector：知识语义检索（可后置）。
+- pgvector：启用项目资料混合检索时，在已授权的资料范围内计算余弦距离。`material_embeddings` 按项目、资料、修订、模型和正文位置保存分段向量。普通 PostgreSQL 也能迁移和备份该表。[配置与结果字段](08-project-knowledge-and-context.md#项目资料混合检索)
 - OpenBao：真实密钥。
 - Git：代码、工程文档、重要计划快照和 ADR。
 - 本地文件/对象存储：日志、截图、录屏、报告、构建产物。

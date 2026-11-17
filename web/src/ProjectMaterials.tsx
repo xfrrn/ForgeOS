@@ -8,7 +8,7 @@ const kinds = { material: '导入资料', profile: '项目档案', environment: 
 type Kind = keyof typeof kinds
 type Draft = { key: string; kind: Kind; title: string; source: string; content: string }
 type Document = Draft & { revision: number; content_sha256: string; imported_at: string }
-type Summary = Omit<Document, 'content'> & { excerpt: string }
+type Summary = Omit<Document, 'content'> & { excerpt: string; start_char?: number; end_char?: number }
 const empty: Draft = { key: '', kind: 'material', title: '', source: '', content: '' }
 const options = Object.entries(kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)
 
@@ -62,14 +62,16 @@ export function ProjectMaterials({ project, request }: { project: number; reques
     return () => c.abort()
   }, [request, base, filter])
 
-  async function read(key: string, revision?: number) {
+  async function read(key: string, revision?: number, fromList = false) {
     const signal = lifetime.current?.signal
     setBusy(true); setError('')
     try {
-      const value = await request<Document>(base + '/' + encodeURIComponent(key) + (revision ? '?revision=' + revision : ''), { signal })
+      const path = base + '/' + encodeURIComponent(key)
+      const head = fromList ? await request<Document>(path, { signal }) : undefined
+      const value = head && head.revision === revision ? head : await request<Document>(path + (revision ? '?revision=' + revision : ''), { signal })
       if (signal?.aborted) return
       setDoc(value); setDraft(undefined); setConflict(undefined)
-      if (!revision) setLatest(value.revision)
+      if (head || !revision) setLatest(head?.revision ?? value.revision)
     } catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : '无法读取资料。') }
     finally { if (!signal?.aborted) setBusy(false) }
   }
@@ -125,7 +127,8 @@ export function ProjectMaterials({ project, request }: { project: number; reques
       {!listing && !listError && !rows.length && <p>没有匹配的资料。</p>}
       {rows.map(row => <article className="registered-project" key={row.key}><div>
         <h3>{row.title}</h3><p><code>{row.key}</code> · {kinds[row.kind]} · 修订 {row.revision}</p>
-        <p>{row.excerpt}</p></div><button className="button" disabled={formLocked} onClick={() => void read(row.key)}>查看 · {row.key}</button></article>)}
+        {row.start_char !== undefined && row.end_char !== undefined && <p>{row.source} · 正文第 {row.start_char + 1}–{row.end_char} 字符</p>}
+        <p>{row.excerpt}</p></div><button className="button" disabled={formLocked} onClick={() => void read(row.key, row.revision, true)}>查看 · {row.key}</button></article>)}
       {more && <button className="button" disabled={listing} onClick={() => setFilter({ ...filter, after: rows[rows.length-1].key })}>更多资料</button>}
     </section>
     {error && <p role="alert" className="detail-problem">{error}</p>}

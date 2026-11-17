@@ -18,7 +18,7 @@ ForgeOS 让维护者在远程提交需求，由自有机器上的 Worker 调用 
 | --- | --- |
 | 控制面与管理界面 | Go 模块化单体、React + TypeScript、PostgreSQL。Orchestrator 管理调度和执行状态，Policy Engine 强制检查权限。 |
 | 本地执行 | 独立的 Go Worker Daemon，可与控制面同机部署。基座使用 Git Worktree 隔离改动，单项目交付时接入 Codex 和 Local CI Runner。部署时由 systemd 管理进程。 |
-| 预览、密钥与知识 | 远程验收采用 Tailscale 私网，Caddy 可代理预览路由。OpenBao 管理业务密钥。知识检索可从 PostgreSQL 全文搜索起步，按需引入 pgvector。 |
+| 预览、密钥与知识 | 远程验收采用 Tailscale 私网，Caddy 可代理预览路由。OpenBao 管理业务密钥。项目资料支持 PostgreSQL 全文搜索，配置 pgvector 和本地推理服务后可按语义检索并回读命中的修订。[混合检索配置](docs/08-project-knowledge-and-context.md#项目资料混合检索) |
 
 ## 查阅与维护文档
 

@@ -76,6 +76,9 @@ func run(ctx context.Context) error {
 	if err := data.Migrate(initCtx); err != nil {
 		return fmt.Errorf("apply database migration: %w", err)
 	}
+	if err := data.ConfigureMaterialSearch(initCtx, os.Getenv("FORGEOS_EMBEDDINGS_URL"), os.Getenv("FORGEOS_EMBEDDINGS_MODEL")); err != nil {
+		return err
+	}
 
 	mux := routes(data, root, owner, workers, delivery)
 	registerGitHubWebhooks(mux, data, owner, pollers)
