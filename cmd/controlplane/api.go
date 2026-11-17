@@ -32,6 +32,16 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		nodes, err := data.WorkerNodes(r.Context())
 		respond(w, http.StatusOK, nodes, err)
 	}))
+	mux.HandleFunc("GET /workers/model-budgets", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		rows, err := data.ModelBudgets(r.Context())
+		respond(w, http.StatusOK, rows, err)
+	}))
+	mux.HandleFunc("PUT /workers/model-budgets", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		var rows []store.ModelBudget
+		if decodeLimited(w, r, &rows, 64<<10) {
+			respond(w, http.StatusNoContent, nil, data.SetModelBudgets(r.Context(), rows))
+		}
+	}))
 	workers.handle(mux, "POST /internal/workers/heartbeat", workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		var input store.WorkerHeartbeat
 		if !decode(w, r, &input) {

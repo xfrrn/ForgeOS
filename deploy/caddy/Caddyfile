@@ -14,7 +14,7 @@ https://*.{$FORGEOS_GATEWAY_DOMAIN}:{$FORGEOS_GATEWAY_PORT:443} {
 
 	@workbench {
 		host forgeos.{$FORGEOS_GATEWAY_DOMAIN}
-		path / /ui/ /ui/assets/* /tasks /tasks/* /projects /projects/* /executions/* /workers
+		path / /ui/ /ui/assets/* /tasks /tasks/* /projects /projects/* /executions/* /workers /workers/model-budgets
 	}
 	handle @workbench {
 		reverse_proxy {$FORGEOS_CONTROL_UPSTREAM:127.0.0.1:8080}

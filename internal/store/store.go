@@ -250,6 +250,9 @@ var candidateDecisionReferencesSchema string
 //go:embed 075_live_ci_log.sql
 var liveCILogSchema string
 
+//go:embed 076_model_budgets.sql
+var modelBudgetsSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -389,7 +392,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -573,6 +576,12 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	defer tx.Rollback()
 	var j Job
 	var projectID int64
+	var codexBudget, claudeBudget bool
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(bool_or(harness='codex'),false),COALESCE(bool_or(harness='claude'),false)
+		FROM model_budgets WHERE $1=ANY(workers)`, worker).Scan(&codexBudget, &claudeBudget)
+	if err != nil {
+		return nil, err
+	}
 	// Serialize reservations across projects, including simultaneous claims by the same node.
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('forgeos.worker_capacity'),hashtext($1))`, worker); err != nil {
 		return nil, err
@@ -598,6 +607,10 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		}
 	}
 	var globalRevision int
+	if registered == nil || !caps.SupportsResources {
+		caps.SupportsCodex = caps.SupportsCodex && !codexBudget
+		caps.SupportsClaude = caps.SupportsClaude && !claudeBudget
+	}
 	if caps.SupportsCodex || caps.SupportsClaude {
 		err = tx.QueryRowContext(ctx, `SELECT revision FROM (SELECT revision,content FROM global_rule_revisions ORDER BY revision DESC LIMIT 1) r WHERE content<>''`).Scan(&globalRevision)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {

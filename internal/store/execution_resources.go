@@ -31,17 +31,23 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 		return false, err
 	}
 	defer tx.Rollback()
+	if r.Kind == "model" {
+		if _, err = tx.ExecContext(ctx, `LOCK TABLE model_budgets IN ROW SHARE MODE`); err != nil {
+			return false, err
+		}
+	}
 	hash := sha256.Sum256([]byte(r.Lease))
-	var worker, kind string
+	var worker, kind, harness string
+	var pool sql.NullString
 	var step int64
 	var limit int
 	var sourceClosed, ownerStop bool
-	err = tx.QueryRowContext(ctx, `SELECT n.worker, e.resource_step, e.resource_kind,
+	err = tx.QueryRowContext(ctx, `SELECT n.worker, e.resource_step, e.resource_kind, e.model_budget,COALESCE(NULLIF(t.spec->>'harness',''),'codex'),
 		COALESCE(CASE WHEN $3='model' THEN n.model_slots ELSE n.ci_slots END,n.slots),t.source_closure_id IS NOT NULL,(e.owner_cancel_requested_at IS NOT NULL OR e.ci_pause_requested_at IS NOT NULL)
 		FROM executions e JOIN worker_nodes n ON n.worker=e.worker JOIN work_items t ON t.id=e.task_id
 		WHERE e.id=$1 AND e.lease_hash=$2 AND e.resource_managed AND e.result IS NULL AND e.abandoned_at IS NULL
 		AND t.waiting_execution_id IS NULL AND ($3='ci' OR t.kind='codex_issue')
-		FOR UPDATE OF n,e,t`, execution, hash[:], r.Kind).Scan(&worker, &step, &kind, &limit, &sourceClosed, &ownerStop)
+		FOR UPDATE OF n,e,t`, execution, hash[:], r.Kind).Scan(&worker, &step, &kind, &pool, &harness, &limit, &sourceClosed, &ownerStop)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, ErrConflict
 	}
@@ -59,6 +65,7 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 			return false, ErrConflict
 		}
 		kind = ""
+		pool = sql.NullString{}
 	} else if step != r.Step || kind != r.Kind {
 		if r.Step != step+1 || kind != "" {
 			return false, ErrConflict
@@ -76,10 +83,27 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 		if used >= limit {
 			return false, nil
 		}
+		if r.Kind == "model" {
+			var slots int
+			err = tx.QueryRowContext(ctx, `SELECT name, slots FROM model_budgets WHERE harness=$1 AND $2=ANY(workers) FOR UPDATE`, harness, worker).Scan(&pool, &slots)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return false, err
+			}
+			if pool.Valid {
+				// Read occupancy in a fresh snapshot after the account row lock.
+				err = tx.QueryRowContext(ctx, `SELECT reserved FROM model_budget_usage WHERE name=$1`, pool.String).Scan(&used)
+				if err != nil {
+					return false, err
+				}
+				if used >= slots {
+					return false, nil
+				}
+			}
+		}
 		step, kind = r.Step, r.Kind
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE executions SET resource_step=$2,resource_kind=$3
-		WHERE id=$1 AND lease_until>clock_timestamp()`, execution, step, kind)
+	res, err := tx.ExecContext(ctx, `UPDATE executions SET resource_step=$2,resource_kind=$3,model_budget=$4
+		WHERE id=$1 AND lease_until>clock_timestamp()`, execution, step, kind, pool)
 	if err != nil {
 		return false, err
 	}
