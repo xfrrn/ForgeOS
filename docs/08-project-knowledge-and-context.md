@@ -128,7 +128,7 @@ Owner 通过 `GET /projects/{id}/history` 检索某一项目。按项目授权�
 
 在已登记的测试项目中，用已配置的 `FORGEOS_OWNER_TOKEN` 运行 `python scripts/probe_project_materials.py <控制面地址> <项目ID>`。脚本使用 Playwright 和 Chrome，创建一条独立资料并核对两份浏览器会话的冲突与历史回读。
 
-Owner 用 `PUT /projects/{id}/materials/{key}` 导入 UTF-8 文本，正文上限为 256 KiB。传入 `previous_revision`、`kind`、`title`、`source` 和 `content`。首次使用修订 0，后续传入要更新的修订号。类型可选 `material`（导入资料）、`profile`（项目背景、负责人等）和 `environment`（机器和环境说明）。凭据值存入密钥管理服务。
+Owner 用 `PUT /projects/{id}/materials/{key}` 导入 UTF-8 文本，正文上限为 256 KiB。传入 `previous_revision`、`kind`、`title`、`source` 和 `content`。首次使用修订 0，后续传入要更新的修订号。类型可选 `material`（导入资料）、`profile`（项目背景、负责人等）、`environment`（机器和环境说明）和 `memory`（Owner 明确要求记住）。凭据值存入密钥管理服务。
 
 Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revision=1` 可读固定版本。每版保留原文、来源、导入时间和基于 UTF-8 原文的 SHA-256。重报相同版本和内容会返回原记录；对已存在的修订提交不同内容返回 409。
 
@@ -149,6 +149,8 @@ Management、Planner、Development、Review、Test、Operations 获取不同上�
 有建议时，`worker management` 在另一个只读会话核对原文、适用条件和建议。只有当前修订的 D1 批准建议进入本项目的经验列表。退回、需要 Owner 处理和较高等级的建议保留审核回执。业务决策、架构规则及跨项目共享仍通过相应的确认入口。新修订导入后，经验列表立即停止引用旧版；旧版的建议、引句、审核理由和会话可从任务工作台的“项目接入 → 项目资料 → 知识提取与审核”回读。
 
 Owner 可读取 `GET /projects/{id}/materials/{key}/revisions/{revision}/curation`，核对提取与审核时间、两次会话及固定资料摘要。Owner 的 `GET /projects/{id}/experience` 与项目节点的 `GET /internal/projects/{id}/experience` 返回可用的项目经验，每页最多 30 条，以最后一项 ID 作为 `before` 读取下一页。[角色启动方法](local-development.md#启动知识提取角色)
+
+在“项目接入 → 项目资料”选择“记住一条项目经验”，填写标题、来源与观察原文，提交记忆请求。工作台为草稿生成可重复使用的资料标识。保存回执丢失时可直接重试；后续补充或更正可在同一标识下编辑新修订。通过类型“Owner 记忆请求”可筛选这些来源。Curator 和 Management 按固定修订提取、审核，Owner 可在“知识提取与审核”追溯结果。
 
 触发：
 - 决策确认；

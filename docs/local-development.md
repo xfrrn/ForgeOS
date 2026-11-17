@@ -263,7 +263,7 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 在控制面设置 `FORGEOS_CURATOR_PROJECT_ID` 和该项目独立的 `FORGEOS_CURATOR_TOKEN`。把 Management 配置到同一项目，用两个单独的进程启动 `go run ./cmd/worker curator` 和 `go run ./cmd/worker management`。每个进程只需自己的角色令牌、回环 `FORGEOS_API_URL` 和能输出结构化结果的已登录本地 Codex。可用 `FORGEOS_CODEX_BIN` 指定可执行文件。
 
-从工作台导入含有实测观察的项目资料，打开“知识提取与审核”。依次核对原文引句、两个会话和审核决定；项目节点可通过 `GET /internal/projects/{id}/experience` 回读审核通过的当前修订。提取和审核分别使用六分钟租约。原进程中断且没有成功回报时，角色进程会在租约到期后重新领取。
+从工作台导入含有实测观察的项目资料，或选择“记住一条项目经验”并提交观察原文。打开已保存修订的“知识提取与审核”。依次核对原文引句、两个会话和审核决定；项目节点可通过 `GET /internal/projects/{id}/experience` 回读审核通过的当前修订。提取和审核分别使用六分钟租约。原进程中断且没有成功回报时，角色进程会在租约到期后重新领取。
 
 ## 为多个 Worker 分配项目
 

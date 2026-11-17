@@ -3,7 +3,7 @@ import { MaterialCuration } from './MaterialCuration'
 import { ShareDraft } from './ProjectShares'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 
-const kinds = { material: '导入资料', profile: '项目档案', environment: '环境说明' }
+const kinds = { material: '导入资料', profile: '项目档案', environment: '环境说明', memory: 'Owner 记忆请求' }
 type Kind = keyof typeof kinds
 type Draft = { key: string; kind: Kind; title: string; source: string; content: string }
 type Document = Draft & { revision: number; content_sha256: string; imported_at: string }
@@ -72,8 +72,12 @@ export function ProjectMaterials({ project, request }: { project: number; reques
     } catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : '无法读取资料。') }
     finally { if (!signal?.aborted) setBusy(false) }
   }
-  function edit(value?: Document) {
-    setDraft(value || { ...empty }); setPrevious(value?.revision || 0); setConflict(undefined); setError('')
+  function edit(value: Draft, revision = 0) {
+    setDraft(value); setPrevious(revision); setConflict(undefined); setError('')
+  }
+  function remember() {
+    const key = 'memory-' + crypto.getRandomValues(new Uint32Array(4)).join('-')
+    edit({ ...empty, kind: 'memory', key, source: 'Owner 工作台' })
   }
   async function save(e: FormEvent) {
     e.preventDefault()
@@ -111,7 +115,8 @@ export function ProjectMaterials({ project, request }: { project: number; reques
         <input aria-label="检索资料" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或正文"/>
         <select aria-label="筛选资料类型" value={kind} onChange={e => setKind(e.target.value)}><option value="">全部类型</option>{options}</select>
         <button className="button">检索</button>
-        <button type="button" className="button" disabled={formLocked} onClick={() => edit()}>导入资料</button>
+        <button type="button" className="button" disabled={formLocked} onClick={() => edit(empty)}>导入资料</button>
+        <button type="button" className="button" disabled={formLocked} onClick={remember}>记住一条项目经验</button>
       </form>
       {listError && <p role="alert">{listError}</p>}
       {listing && <p role="status">正在读取资料…</p>}
@@ -123,7 +128,7 @@ export function ProjectMaterials({ project, request }: { project: number; reques
     </section>
     {error && <p role="alert" className="detail-problem">{error}</p>}
     {draft ? <form className="panel detail-card material-form" onSubmit={save}>
-      <h2 ref={contentHeading} tabIndex={-1}>{previous ? '编辑资料' : '导入项目资料'}</h2>
+      <h2 ref={contentHeading} tabIndex={-1}>{previous ? '编辑资料' : draft.kind === 'memory' ? '记住一条项目经验' : '导入项目资料'}</h2>
       <fieldset disabled={busy}>
         <label>资料标识<input required value={draft.key} readOnly={previous > 0} onChange={e => { setConflict(undefined); setDraft({ ...draft, key: e.target.value }) }}/></label>
         <label htmlFor="material-kind">资料类型</label>
@@ -134,14 +139,14 @@ export function ProjectMaterials({ project, request }: { project: number; reques
         <textarea id="material-body" required rows={10} value={draft.content} onChange={e => setDraft({ ...draft, content: e.target.value })}/>
         {conflict && <section><h3>当前最新版</h3><DocumentText doc={conflict}/>
           <button className="button" type="button" onClick={() => { setPrevious(conflict.revision); setConflict(undefined); setError('') }}>以修订 {conflict.revision} 为基础继续编辑</button></section>}
-        <div className="detail-actions"><button className="button" disabled={Boolean(conflict)}>保存修订 {previous + 1}</button>
+        <div className="detail-actions"><button className="button" disabled={Boolean(conflict)}>{!previous && draft.kind === 'memory' ? '提交记忆请求' : `保存修订 ${previous + 1}`}</button>
           <button type="button" className="button" onClick={() => { setDraft(undefined); setConflict(undefined); setError('') }}>取消编辑</button></div>
       </fieldset>
     </form> : doc && <section key={doc.key + '/' + doc.revision} className="panel detail-card"><h2 ref={contentHeading} tabIndex={-1}><code>{doc.key}</code></h2><DocumentText doc={doc}/><div className="detail-actions">
       {doc.revision > 1 && <button className="button" disabled={busy} onClick={() => void read(doc.key, doc.revision-1)}>上一修订</button>}
       {doc.revision < latest
         ? <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
-        : <button className="button" disabled={busy} onClick={() => edit(doc)}>编辑此修订</button>}
+        : <button className="button" disabled={busy} onClick={() => edit(doc, doc.revision)}>编辑此修订</button>}
     </div><MaterialCuration path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
       <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
   </div>

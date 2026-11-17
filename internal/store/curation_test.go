@@ -7,6 +7,41 @@ import (
 	"testing"
 )
 
+func TestOwnerMemoryIsOnePrivateCurationSourceOnRetry(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, "owner-memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := MaterialInput{Kind: "memory", Title: "Queue checkpoint", Source: "Owner replay log", Content: "The queue resumed at offset 274."}
+	for range 2 {
+		if _, err := s.SaveMaterial(ctx, p.ID, "memory-queue", m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, err := s.ClaimCuration(ctx, p.ID, false)
+	if err != nil || job == nil {
+		t.Fatal(job, err)
+	}
+	var source struct {
+		MaterialInput
+		Revision int
+	}
+	if err := json.Unmarshal(job.Material, &source); err != nil || source.Revision != 1 || source.MaterialInput != m {
+		t.Fatal(source, err)
+	}
+	if next, err := s.ClaimCuration(ctx, p.ID, false); err != nil || next != nil {
+		t.Fatal(next, err)
+	}
+	if list, err := s.ProjectExperience(ctx, p.ID, 0); err != nil || string(list) != "[]" {
+		t.Fatal(string(list), err)
+	}
+}
+
 func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
