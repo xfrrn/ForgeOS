@@ -84,9 +84,20 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 			return
 		}
 		if job != nil {
+			job.CaptureProcess = r.URL.Query().Get("supports_process") == "1"
 			job.RepoRelativePath = localrepo.RelativePath(root, job.Repo)
 		}
 		respond(w, 200, job, err)
+	}))
+	mux.HandleFunc("POST /internal/reviewer/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var report store.ManagementProcessReport
+		if decodeLimited(w, r, &report, 64<<10) {
+			if report.ReviewerExecution <= 0 {
+				problem(w, 403, "Reviewer identity only reports candidate review processes")
+				return
+			}
+			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), project, report))
+		}
 	}))
 	mux.HandleFunc("POST /internal/reviewer/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var input struct {

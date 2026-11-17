@@ -16,32 +16,33 @@ type ManagementProcess struct {
 }
 
 type ManagementProcessReport struct {
-	TestPlanID   int64          `json:"test_plan_id,omitempty"`
-	TestPlanRole string         `json:"test_plan_role,omitempty"`
-	CurationID   int64          `json:"curation_id,omitempty"`
-	CurationRole string         `json:"curation_role,omitempty"`
-	Turn         int            `json:"turn,omitempty"`
-	FeedbackID   int64          `json:"feedback_id,omitempty"`
-	QuestionID   int64          `json:"question_id,omitempty"`
-	AnalysisTask int64          `json:"analysis_task,omitempty"`
-	ShareID      int64          `json:"share_id,omitempty"`
-	TaskID       int64          `json:"task_id,omitempty"`
-	Revision     int            `json:"revision,omitempty"`
-	Lease        string         `json:"lease"`
-	Node         string         `json:"node"`
-	Process      HarnessProcess `json:"process"`
+	ReviewerExecution int64          `json:"reviewer_execution,omitempty"`
+	TestPlanID        int64          `json:"test_plan_id,omitempty"`
+	TestPlanRole      string         `json:"test_plan_role,omitempty"`
+	CurationID        int64          `json:"curation_id,omitempty"`
+	CurationRole      string         `json:"curation_role,omitempty"`
+	Turn              int            `json:"turn,omitempty"`
+	FeedbackID        int64          `json:"feedback_id,omitempty"`
+	QuestionID        int64          `json:"question_id,omitempty"`
+	AnalysisTask      int64          `json:"analysis_task,omitempty"`
+	ShareID           int64          `json:"share_id,omitempty"`
+	TaskID            int64          `json:"task_id,omitempty"`
+	Revision          int            `json:"revision,omitempty"`
+	Lease             string         `json:"lease"`
+	Node              string         `json:"node"`
+	Process           HarnessProcess `json:"process"`
 }
 
 const planRevisionJSON = `(to_jsonb(r)-'review_lease') || jsonb_build_object('review_processes',
  COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id)
  FROM management_processes p WHERE p.task_id=r.task_id AND p.revision=r.revision),'[]'::jsonb))`
 
-const managementProcessTarget = `lease_hash=$1 AND ((task_id=$2 AND revision=$3) OR share_id=$4 OR analysis_task=$5 OR question_id=$6 OR feedback_id=$7 OR (curation_id=$8 AND curation_role=$9 AND ($10=0 OR role_turn=$10)) OR (test_plan_id=$11 AND test_plan_role=$12))`
+const managementProcessTarget = `lease_hash=$1 AND ((task_id=$2 AND revision=$3) OR share_id=$4 OR analysis_task=$5 OR question_id=$6 OR feedback_id=$7 OR (curation_id=$8 AND curation_role=$9 AND ($10=0 OR role_turn=$10)) OR (test_plan_id=$11 AND test_plan_role=$12) OR reviewer_execution=$13)`
 
 func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, report ManagementProcessReport) error {
 	p := report.Process
 	targets := 0
-	for _, id := range []int64{report.TaskID, report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.TestPlanID} {
+	for _, id := range []int64{report.TaskID, report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.TestPlanID, report.ReviewerExecution} {
 		if id < 0 {
 			return ErrConflict
 		}
@@ -62,7 +63,11 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	} else if (report.CurationRole != "curator" && report.CurationRole != "management") || report.Turn < 1 || report.Turn > 2 || (report.CurationRole == "management" && report.Turn != 1) {
 		return ErrConflict
 	}
-	if !p.Valid() || p.Harness != "codex" || p.HandoffFrom != "" || len(p.Tools) != 0 || p.ToolOutput != nil ||
+	harness := "codex"
+	if report.ReviewerExecution != 0 {
+		harness = "claude"
+	}
+	if !p.Valid() || p.Harness != harness || p.HandoffFrom != "" || len(p.Tools) != 0 || p.ToolOutput != nil ||
 		!p.outputExcludes(report.Lease) || len(report.Lease) != 36 || report.Node == "" || len(report.Node) > 128 ||
 		strings.Trim(report.Node, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" {
 		return ErrConflict
@@ -73,7 +78,10 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	}
 	defer tx.Rollback()
 	var valid bool
-	if report.TestPlanID != 0 {
+	if report.ReviewerExecution != 0 {
+		err = tx.QueryRowContext(ctx, `SELECT r.report IS NULL AND r.failed_at IS NULL AND r.lease_until>clock_timestamp()
+ FROM code_reviews r JOIN work_items t ON t.id=r.task_id WHERE r.execution_id=$1 AND t.project_id=$2 AND r.lease::text=$3 FOR UPDATE OF r`, report.ReviewerExecution, project, report.Lease).Scan(&valid)
+	} else if report.TestPlanID != 0 {
 		// Superseded revisions still report their actual exit before releasing a budget slot.
 		err = tx.QueryRowContext(ctx, `SELECT j.completed_at IS NULL AND j.lease_until>clock_timestamp()
  FROM candidate_test_plan_jobs j JOIN candidate_test_plans p ON p.id=j.plan_id JOIN work_items t ON t.id=p.task_id
@@ -132,7 +140,7 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	var raw []byte
 	var node string
 	err = tx.QueryRowContext(ctx, `SELECT process,node FROM management_processes WHERE `+managementProcessTarget,
-		hash[:], report.TaskID, report.Revision, report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole).Scan(&raw, &node)
+		hash[:], report.TaskID, report.Revision, report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole, report.ReviewerExecution).Scan(&raw, &node)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -168,10 +176,13 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	if report.TestPlanID != 0 {
 		conflictTarget = "test_plan_id,test_plan_role,lease_hash"
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO management_processes(task_id,revision,lease_hash,node,process,share_id,analysis_task,question_id,feedback_id,curation_id,curation_role,role_turn,test_plan_id,test_plan_role) VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,NULLIF($6,0),NULLIF($7,0),NULLIF($8,0),NULLIF($9,0),NULLIF($10,0),NULLIF($11,''),NULLIF($12,0),NULLIF($13,0),NULLIF($14,''))
+	if report.ReviewerExecution != 0 {
+		conflictTarget = "reviewer_execution,lease_hash"
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO management_processes(task_id,revision,lease_hash,node,process,share_id,analysis_task,question_id,feedback_id,curation_id,curation_role,role_turn,test_plan_id,test_plan_role,reviewer_execution) VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,NULLIF($6,0),NULLIF($7,0),NULLIF($8,0),NULLIF($9,0),NULLIF($10,0),NULLIF($11,''),NULLIF($12,0),NULLIF($13,0),NULLIF($14,''),NULLIF($15,0))
  ON CONFLICT(`+conflictTarget+`) DO UPDATE SET process=excluded.process,
  observed_at=CASE WHEN management_processes.process=excluded.process THEN management_processes.observed_at ELSE clock_timestamp() END`,
-		report.TaskID, report.Revision, hash[:], report.Node, string(raw), report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole)
+		report.TaskID, report.Revision, hash[:], report.Node, string(raw), report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole, report.ReviewerExecution)
 	if err != nil {
 		return err
 	}
@@ -181,7 +192,7 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 func verifyManagementProcess(ctx context.Context, tx *sql.Tx, target ManagementProcessReport, session string) error {
 	hash := sha256.Sum256([]byte(target.Lease))
 	var raw []byte
-	err := tx.QueryRowContext(ctx, `SELECT process FROM management_processes WHERE `+managementProcessTarget+` ORDER BY role_turn DESC LIMIT 1`, hash[:], target.TaskID, target.Revision, target.ShareID, target.AnalysisTask, target.QuestionID, target.FeedbackID, target.CurationID, target.CurationRole, target.Turn, target.TestPlanID, target.TestPlanRole).Scan(&raw)
+	err := tx.QueryRowContext(ctx, `SELECT process FROM management_processes WHERE `+managementProcessTarget+` ORDER BY role_turn DESC LIMIT 1`, hash[:], target.TaskID, target.Revision, target.ShareID, target.AnalysisTask, target.QuestionID, target.FeedbackID, target.CurationID, target.CurationRole, target.Turn, target.TestPlanID, target.TestPlanRole, target.ReviewerExecution).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -196,7 +207,7 @@ func verifyManagementProcess(ctx context.Context, tx *sql.Tx, target ManagementP
 		return ErrConflict
 	}
 	// Failed role outcomes may record a real nonzero exit, but never an active process.
-	if ((target.AnalysisTask == 0 && target.TestPlanID == 0) || session != "") && (*p.ExitCode != 0 || p.Session != session) {
+	if ((target.AnalysisTask == 0 && target.TestPlanID == 0 && target.ReviewerExecution == 0) || session != "") && (*p.ExitCode != 0 || p.Session != session) {
 		return ErrConflict
 	}
 	return nil

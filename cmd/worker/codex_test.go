@@ -142,6 +142,10 @@ func TestManagementFeedbackSendsCandidateEvidence(t *testing.T) {
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		if strings.Contains(filepath.Base(os.Args[0]), "fake-review-claude") {
+			fmt.Println("1.2.3 (Claude Code)")
+			os.Exit(0)
+		}
 		fmt.Println("codex-cli 1.2.3")
 		os.Exit(0)
 	}
@@ -149,6 +153,9 @@ func TestMain(m *testing.M) {
 		os.Exit(testAppServerProcess())
 	}
 	if len(os.Args) > 1 && os.Args[1] == "-p" {
+		if slices.Contains(os.Args, "--json-schema") {
+			os.Exit(testReviewProcess())
+		}
 		os.Exit(testClaudeProcess())
 	}
 	if len(os.Args) <= 1 || os.Args[1] != "-a" {

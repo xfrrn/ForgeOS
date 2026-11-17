@@ -3119,3 +3119,27 @@ PostgreSQL 18／真实 Docker 全包 346 项测试及子测试通过，零失败
 PostgreSQL 18／真实 Docker 全包 355 项测试及子测试通过，零失败、零跳过，报告 test-process-regression.jsonl。新增专项覆盖运行中失败回报不得释放名额、旧修订实际退出、项目／角色／租约／目标互斥、结果会话匹配、幂等回报、独立角色进程退出先于结果以及旧协议；Go 静态检查、TypeScript 和生产构建通过。证据目录 test_process_current、test_process_oldcontrol、test_process_oldworker；升级证据 curation_process_current/test-process-migration-proof.json。
 
 本项验收进程观察及结果绑定；还原候选保持 WAITING_ACCEPTANCE，生成用例未执行，case_results 为空，不将 covered 当作候选通过。失败修订保留失败状态，被替代修订不补造计划。Reviewer 实时进程、独立 Daemon 崩溃补报和原会话恢复、完整归档及全路线最终验收仍待完成；已列外部条件保持待验收。
+
+上述候选测试计划与覆盖审核进程实现和验收对应 ForgeOS 提交 64b281a2019916f9b012e2b3b2bc7299a5db04fb。
+
+### 专题 07、10、13、16 C.3 · 独立 Claude Reviewer 进程
+
+2026-11-18 在隔离 PostgreSQL 18 库还原 beta #163 的真实候选 d689d8e011d2c9e1e49e93cfa632d31b132c2228，从 Chrome 请求独立代码审查。使用 Claude Code 2.1.310 的原生事件流；本轮没有再次写入 GitHub 或交付候选。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从任务请求审查，确认原生子进程和 Session 后终止 | 保存实际退出，不生成审查报告，归还并发名额 | PID 36716、Session d18702d9-9045-48d9-85aa-2f270224a9b3、退出码 15；report 为空、failed_at 已记录，reserved 为 0。此回合尚未产生公开文本，页面不补造消息。 |
+| Chrome 点击重试，读取运行中原生进程，回合中重启控制面 | 新尝试绑定同一候选，旧失败不被覆盖 | PID 45088、Session c7e3be7b-6e46-4d49-92f6-0356e0aadc34；运行中页面可见，重启后仍回读同一会话。原生参数 stream-json／verbose、dontAsk、tools 空列表，禁扩展和浏览器。 |
+| 原生重试完成并核对公开消息 | 真实退出先于成功报告，消息与节点日志一致 | 退出码 0；原候选及基线不变，报告无发现，与实现会话不同。SQLite、API 和 Chrome 的公开消息完全一致，reserved 为 0。 |
+| 再次重启后打开审查记录 | 失败与成功原生身份、配置和消息可回读 | 两条进程 JSON 不变，页面可展开两次 Session、存在的公开消息及无工具权限配置。 |
+| 角色令牌互访、伪造另一个角色目标、读取 Owner 历史 | 角色和项目历史权限隔离 | 跨端点 401；Management 冒充 Reviewer、Reviewer 报告计划审核目标均 403；两个角色读取 Owner 审查记录均 401。 |
+| 旧控制面／新 Worker、新控制面／旧 Worker | 原最终 JSON 审查继续可用，不补造进程 | 两组原生审查均完成，无发现，权限配置相同，重启后 Chrome 可回读报告，进程列表为空。 |
+| 测试计划库从迁移 104 升至 105 | 新增 Reviewer 来源不损坏已有多角色历史 | 六条计划生成／覆盖审核记录的 ID、节点和完整 JSON 不变；Chrome 回读成功、被替代及两角色失败四版记录。 |
+
+旧控制面组合的原生 Session 为 02e25de9-a535-49b1-81c7-98588ea29d90；旧 Worker 组合为 a084a101-3457-4d17-82e3-5d6ee5b649c2。真实候选保持 WAITING_ACCEPTANCE；审查无发现不等同于 Owner 验收或重新交付。
+
+专项测试覆盖原生成功、旧协议、非零退出、会话不匹配、缺少终态、缺少结构化结果、错误终态和超大结果。初次 Windows 测试复现上报取消时 SQLite 文件仍由测试 Worker 持有；让短暂本地读取先关闭语句，再结束上报器后，八种场景连续三轮通过且临时日志正常释放。数据库回归覆盖项目／角色／租约／来源互斥、运行中不得失败或成功回报、非零退出不得产生成功报告、重试历史与结果幂等。原有其他角色继续使用共享上报器。
+
+PostgreSQL 18／真实 Docker 全包 367 项测试及子测试通过，零失败、零跳过，报告 review-process-regression.jsonl。Go 静态检查、TypeScript 和生产构建通过。证据目录 review_process_current、review_process_oldcontrol、review_process_oldworker；升级证据 test_process_current/review-process-migration-proof.json。Chrome 脚本在首次失败后的刷新中曾提前选择未出现的按钮而超时；修正等待条件后从同一失败记录重试，没有重做或抹除失败证据。
+
+本项覆盖 Reviewer 有界公开消息、原生进程与报告绑定。用户点击失败重试创建新会话，不能算作独立 Daemon 崩溃补报或原 Session 恢复；这些恢复能力、完整归档和全路线最终验收仍待完成，已列外部条件保持待验收。

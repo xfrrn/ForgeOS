@@ -282,9 +282,10 @@ function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: At
 }
 
 type ReviewReceipt = {
+  processes?: ReviewProcess[]; failed_at?: string
   candidate_context?: CandidateContext
   base_commit: string; commit_sha: string; owner_note?: string; owner_checked_at?: string
-  report: { session_id: string; summary: string; profile?: {version: number; permission: string; tools: string[]}; findings: { id: string; severity: string; file: string; side: string
+  report?: { session_id: string; summary: string; profile?: {version: number; permission: string; tools: string[]}; findings: { id: string; severity: string; file: string; side: string
     line: number; evidence: string; evidence_verified: boolean; blocking: boolean; confidence: number; description: string; recommendation: string }[] }
 }
 
@@ -298,17 +299,24 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const path = `/tasks/${task.id}/code-review`
-  const hasReport = state === 'needs_check' || state === 'clear'
   useEffect(() => {
-    if (!open || !hasReport) return
+    if (!open || !state) return
     const controller = new AbortController()
     setReceipt(null)
     setError('')
-    request<ReviewReceipt>(`${path}?execution_id=${attempt.id}`, { signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setReceipt(data) })
-      .catch(() => { if (!controller.signal.aborted) setError('无法读取审查报告，请重新打开。') })
-    return () => controller.abort()
-  }, [path, attempt.id, state, hasReport, open, request])
+    let timer: ReturnType<typeof setTimeout>
+    async function read() {
+      try {
+        const data = await request<ReviewReceipt>(`${path}?execution_id=${attempt.id}`,{signal:controller.signal})
+        if (controller.signal.aborted) return
+        setReceipt(data); setError('')
+        if (!data.report && !data.failed_at) timer = setTimeout(read, 8000)
+      } catch { if (!controller.signal.aborted) setError('无法读取审查记录，请重新打开。') }
+    }
+    void read()
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [path, attempt.id, state, open, request])
+
   async function submit(check: boolean) {
     setBusy(true)
     setError('')
@@ -327,9 +335,10 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
     <p>{state ? labels[state] : task.requires_code_review ? '此项目要求审查，正在等待 Reviewer 领取。' : '尚未请求审查。'}</p>
     {current && (!state || state === 'failed') && <button className="button" disabled={busy}
       onClick={() => void submit(false)}>{state === 'failed' ? '重试审查' : '请求独立审查'}</button>}
-    {hasReport && <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起审查报告' : '查看审查报告'}</button>}
+    {state && <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起审查记录' : '查看审查记录'}</button>}
     {open && !receipt && !error && <p role="status">正在读取审查报告…</p>}
-    {open && receipt && <>
+    {open && receipt && <ManagementProcesses processes={receipt.processes} title="Reviewer 审查进程"/>}
+    {open && receipt?.report && <>
       <dl className="detail-facts"><Fact label="审查会话" code>{receipt.report.session_id}</Fact>
         <Fact label="基础 SHA" code>{receipt.base_commit}</Fact><Fact label="候选 SHA" code>{receipt.commit_sha}</Fact></dl>
       {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="审查使用的候选依据"/>}

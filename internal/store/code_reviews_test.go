@@ -12,6 +12,11 @@ import (
 )
 
 func TestCodeReviewGate(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) { testCodeReviewGate(t, false) })
+	t.Run("process", func(t *testing.T) { testCodeReviewGate(t, true) })
+}
+
+func testCodeReviewGate(t *testing.T, capture bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	s := New(isolatedDatabase(t))
@@ -91,7 +96,44 @@ func TestCodeReviewGate(t *testing.T) {
 		}
 	}
 	phase(1, false, false)
+	process := func(j *ReviewJob, session string) ManagementProcessReport {
+		return ManagementProcessReport{ReviewerExecution: ex, Lease: j.Lease, Node: "review-node", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "claude", Version: "1.2.3", Session: session, Started: time.Now().UTC().Truncate(time.Second)}}
+	}
+	observe := func(p ManagementProcessReport) { t.Helper(); must(s.ObserveManagementProcess(ctx, project.ID, p)) }
+	exit := func(p *ManagementProcessReport, code int) {
+		t.Helper()
+		end := p.Process.Started.Add(time.Second)
+		p.Process.Exited = &end
+		p.Process.ExitCode = &code
+		observe(*p)
+	}
+	failedProcess := process(j, "failed-review")
+	if capture {
+		for _, change := range []func(*ManagementProcessReport){
+			func(p *ManagementProcessReport) { p.ReviewerExecution = -1 },
+			func(p *ManagementProcessReport) { p.TaskID = task.ID; p.Revision = 1 },
+			func(p *ManagementProcessReport) { p.TestPlanRole = "management" },
+			func(p *ManagementProcessReport) { p.CurationRole = "curator" },
+			func(p *ManagementProcessReport) { p.Process.Harness = "codex" },
+			func(p *ManagementProcessReport) { p.Lease = strings.Repeat("x", 36) },
+		} {
+			bad := failedProcess
+			change(&bad)
+			conflict(s.ObserveManagementProcess(ctx, project.ID, bad))
+		}
+		conflict(s.ObserveManagementProcess(ctx, project.ID+1, failedProcess))
+		observe(failedProcess)
+		conflict(s.FailCodeReview(ctx, project.ID, ex, j.Lease))
+		phase(1, false, false)
+		exit(&failedProcess, 15)
+		bad := review.Report{Base: base, Commit: commit, Session: "failed-review"}
+		conflict(s.CompleteCodeReview(ctx, project.ID, ex, j.Lease, bad))
+	}
 	must(s.FailCodeReview(ctx, project.ID, ex, j.Lease))
+	if capture {
+		must(s.FailCodeReview(ctx, project.ID, ex, j.Lease))
+		conflict(s.ObserveManagementProcess(ctx, project.ID, failedProcess))
+	}
 	checkState("failed")
 	if claim(project.ID) != nil {
 		t.Fatal("failed review retried without request")
@@ -131,6 +173,16 @@ func TestCodeReviewGate(t *testing.T) {
 	}
 	conflict(complete(project.ID, retry.Lease))
 	report.Session = "review-session"
+	if capture {
+		p := process(retry, report.Session)
+		observe(p)
+		conflict(complete(project.ID, retry.Lease))
+		conflict(s.FailCodeReview(ctx, project.ID, ex, retry.Lease))
+		exit(&p, 0)
+		report.Session = "wrong-review"
+		conflict(complete(project.ID, retry.Lease))
+		report.Session = "review-session"
+	}
 	conflict(complete(project.ID+1, retry.Lease))
 	conflict(complete(project.ID, j.Lease))
 	must(complete(project.ID, retry.Lease))
@@ -148,6 +200,15 @@ func TestCodeReviewGate(t *testing.T) {
 	checkState("clear")
 	receipt, err := s.ReviewReceipt(ctx, task.ID, ex)
 	must(err)
+	if capture {
+		var r struct {
+			Processes []ManagementProcess `json:"processes"`
+		}
+		must(json.Unmarshal(receipt, &r))
+		if len(r.Processes) != 2 || *r.Processes[0].ExitCode != 15 || *r.Processes[1].ExitCode != 0 || r.Processes[0].Session != "failed-review" || r.Processes[1].Session != "review-session" {
+			t.Fatal("lost review attempt histories")
+		}
+	}
 	if strings.Contains(string(receipt), retry.Lease) || !strings.Contains(string(receipt), "review-session") {
 		t.Fatal("unexpected receipt")
 	}

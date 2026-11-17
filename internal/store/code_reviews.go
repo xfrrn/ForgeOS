@@ -13,6 +13,7 @@ import (
 )
 
 type ReviewJob struct {
+	CaptureProcess   bool            `json:"capture_process,omitempty"`
 	CaptureProfile   bool            `json:"capture_profile,omitempty"`
 	CandidateContext json.RawMessage `json:"candidate_context,omitempty"`
 	TaskID           int64           `json:"task_id"`
@@ -124,8 +125,23 @@ func (s *Store) CompleteCodeReview(ctx context.Context, project, execution int64
 	if err != nil {
 		return err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var found int64
-	err = s.db.QueryRowContext(ctx, `UPDATE code_reviews r SET report=$4::jsonb,completed_at=COALESCE(completed_at,now())
+	err = tx.QueryRowContext(ctx, `SELECT r.execution_id FROM code_reviews r JOIN work_items t ON t.id=r.task_id WHERE t.project_id=$1 AND r.execution_id=$2 AND r.lease::text=$3 FOR UPDATE OF r`, project, execution, lease).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{ReviewerExecution: execution, Lease: lease}, report.Session); err != nil {
+		return err
+	}
+	err = tx.QueryRowContext(ctx, `UPDATE code_reviews r SET report=$4::jsonb,completed_at=COALESCE(completed_at,now())
 		FROM work_items t WHERE t.id=r.task_id AND t.project_id=$1
 		AND r.execution_id=$2 AND r.lease::text=$3 AND r.commit_sha=$5 AND r.base_commit=$6
 		AND r.failed_at IS NULL AND (r.report=$4::jsonb OR (r.report IS NULL AND r.lease_until>now()
@@ -135,13 +151,16 @@ func (s *Store) CompleteCodeReview(ctx context.Context, project, execution int64
 	if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &constraint) && constraint.Code == "23505") {
 		return ErrConflict
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ReviewReceipt(ctx context.Context, task, execution int64) (json.RawMessage, error) {
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) || CASE WHEN c.candidate_context IS NULL THEN '{}'::jsonb
-		ELSE jsonb_build_object('candidate_context',c.candidate_context) END
+		ELSE jsonb_build_object('candidate_context',c.candidate_context) END || jsonb_build_object('processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.reviewer_execution=r.execution_id),'[]'::jsonb))
 		FROM code_review_receipts r JOIN code_reviews c USING(execution_id) WHERE r.task_id=$1 AND r.execution_id=$2`, task, execution).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -150,14 +169,32 @@ func (s *Store) ReviewReceipt(ctx context.Context, task, execution int64) (json.
 }
 
 func (s *Store) FailCodeReview(ctx context.Context, project, execution int64, lease string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var found int64
-	err := s.db.QueryRowContext(ctx, `UPDATE code_reviews r SET failed_at=COALESCE(r.failed_at,now())
+	err = tx.QueryRowContext(ctx, `SELECT r.execution_id FROM code_reviews r JOIN work_items t ON t.id=r.task_id WHERE t.project_id=$1 AND r.execution_id=$2 AND r.lease::text=$3 FOR UPDATE OF r`, project, execution, lease).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{ReviewerExecution: execution, Lease: lease}, ""); err != nil {
+		return err
+	}
+	err = tx.QueryRowContext(ctx, `UPDATE code_reviews r SET failed_at=COALESCE(r.failed_at,now())
 		FROM work_items t WHERE t.id=r.task_id AND t.project_id=$1 AND r.execution_id=$2 AND r.lease::text=$3
 		AND r.report IS NULL AND (r.failed_at IS NOT NULL OR r.lease_until>now()) RETURNING r.execution_id`, project, execution, lease).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) CheckReviewFindings(ctx context.Context, task, execution int64, commit, note string) error {

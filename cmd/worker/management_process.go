@@ -27,6 +27,13 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 	if err != nil {
 		return "", err
 	}
+	return w.roleProcessTurn(ctx, target, "codex", version, func(ctx context.Context, process processLog) (string, error) {
+		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, process)
+	})
+}
+
+func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
+	var err error
 	node := w.id
 	if node == "" {
 		node, err = os.Hostname()
@@ -43,19 +50,23 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 	if target.TestPlanRole == "test" {
 		role = "test-agent"
 	}
+	if target.ReviewerExecution != 0 {
+		role = "reviewer"
+	}
 	recorder.id = role + "-" + node
 	db, err := recorder.openJournal(ctx)
 	if err != nil {
 		return "", err
 	}
-	defer db.Close()
+	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
 	recorder.journal = db
 	updates := make(chan struct{}, 1)
 	reporting, stop := context.WithCancel(context.WithValue(ctx, processUpdatesKey{}, updates))
 	key := sha256.Sum256([]byte(target.Lease))
 	target.Node = node
 	report := func(call context.Context) error {
-		p, err := scanHarnessProcess(db.QueryRowContext(call, readHarnessProcess+" WHERE lease_hash=? ORDER BY instance DESC LIMIT 1", key[:]))
+		// Let the bounded local read close its statement before stopping the reporter.
+		p, err := scanHarnessProcess(db.QueryRow(readHarnessProcess+" WHERE lease_hash=? ORDER BY instance DESC LIMIT 1", key[:]))
 		if err != nil {
 			return err
 		}
@@ -87,8 +98,8 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 			cancel()
 		}
 	}()
-	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, "codex", version)
-	session, turnErr := recordedJSONTurn(reporting, w.codex, contract, prompt, limit, dest, process)
+	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, harness, version)
+	session, turnErr := run(reporting, process)
 	stop()
 	<-done
 	// Persist the actual exit before allowing the role result to advance its source.

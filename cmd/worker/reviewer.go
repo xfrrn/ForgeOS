@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
 
+	"forgeos/internal/review"
 	"forgeos/internal/store"
 )
 
 func (w *worker) runReviewer(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ReviewJob
-		status, err := w.post(ctx, "/internal/reviewer/claim?supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
+		status, err := w.post(ctx, "/internal/reviewer/claim?supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue
@@ -25,7 +30,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 		if job.LeaseUntil != nil {
 			turn, stop = context.WithDeadline(ctx, *job.LeaseUntil)
 		}
-		report, err := reviewCandidate(turn, candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement, CandidateContext: job.CandidateContext})
+		report, err := w.reviewJob(turn, job)
 		if stop != nil {
 			stop()
 		}
@@ -54,4 +59,31 @@ func (w *worker) runReviewer(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (w *worker) reviewJob(ctx context.Context, job store.ReviewJob) (review.Report, error) {
+	input := candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement, CandidateContext: job.CandidateContext}
+	if !job.CaptureProcess {
+		return reviewCandidate(ctx, input, processLog{})
+	}
+	name := os.Getenv("FORGEOS_CLAUDE_BIN")
+	if name == "" {
+		name = "claude"
+	}
+	call, stop := context.WithTimeout(ctx, 10*time.Second)
+	cmd := exec.CommandContext(call, name, "--version")
+	cmd.Env = harnessEnv()
+	raw, err := cmd.Output()
+	stop()
+	version := claudeVersion.FindStringSubmatch(strings.TrimSpace(string(raw)))
+	if err != nil || len(version) != 2 {
+		return review.Report{}, fmt.Errorf("cannot identify the Claude Code reviewer version")
+	}
+	var report review.Report
+	_, err = w.roleProcessTurn(ctx, store.ManagementProcessReport{ReviewerExecution: job.ExecutionID, Lease: job.Lease}, "claude", version[1], func(ctx context.Context, p processLog) (string, error) {
+		var e error
+		report, e = reviewCandidate(ctx, input, p)
+		return report.Session, e
+	})
+	return report, err
 }

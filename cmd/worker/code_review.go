@@ -29,7 +29,7 @@ type candidateReview struct {
 	Requirement      string `json:"requirement"`
 }
 
-func reviewCandidate(ctx context.Context, input candidateReview) (review.Report, error) {
+func reviewCandidate(ctx context.Context, input candidateReview, process processLog) (review.Report, error) {
 	var report review.Report
 	if os.Geteuid() == 0 || strings.TrimSpace(input.Requirement) == "" || len(input.Requirement) > 64<<10 {
 		return report, errors.New("review requires a non-root identity and a bounded requirement")
@@ -42,7 +42,7 @@ func reviewCandidate(ctx context.Context, input candidateReview) (review.Report,
 	if err != nil {
 		return report, err
 	}
-	report, err = reviewSnapshot(ctx, snapshot, input)
+	report, err = reviewSnapshot(ctx, snapshot, input, process)
 	if err != nil {
 		return report, err
 	}
@@ -50,7 +50,7 @@ func reviewCandidate(ctx context.Context, input candidateReview) (review.Report,
 	return report, err
 }
 
-func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candidateReview) (review.Report, error) {
+func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candidateReview, process processLog) (review.Report, error) {
 	var report review.Report
 	name := os.Getenv("FORGEOS_CLAUDE_BIN")
 	if name == "" {
@@ -84,6 +84,14 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 	profile := review.ClaudeProfile()
 	cmd := exec.CommandContext(ctx, bin, "-p", "--output-format", "json", "--json-schema", codeReviewSchema, "--tools", strings.Join(*profile.Tools, ","), "--strict-mcp-config",
 		"--disable-slash-commands", "--no-chrome", "--permission-mode", profile.Permission, "--setting-sources", "user", "--settings", `{"disableAllHooks":true}`)
+	if process.db != nil {
+		for i, arg := range cmd.Args {
+			if arg == "--output-format" {
+				cmd.Args[i+1] = "stream-json"
+			}
+		}
+		cmd.Args = append(cmd.Args, "--verbose")
+	}
 	cmd.Dir, cmd.WaitDelay = dir, 3*time.Second
 	for _, entry := range harnessEnv() {
 		if !strings.HasPrefix(strings.ToUpper(entry), "CODEX_HOME=") {
@@ -100,17 +108,35 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 	if err != nil {
 		return report, err
 	}
-	if err = cmd.Start(); err != nil {
+	if err = process.start(cmd, stdout); err != nil {
 		return report, errors.New("could not start Claude reviewer")
 	}
 	closeStream := context.AfterFunc(ctx, func() { stdout.Close() })
 	defer closeStream()
-	raw, err := io.ReadAll(io.LimitReader(stdout, (1<<20)+1))
+	var raw []byte
+	if process.db == nil {
+		raw, err = io.ReadAll(io.LimitReader(stdout, (1<<20)+1))
+	} else {
+		var completed bool
+		_, completed, err = readClaudeEvents(stdout, "", process.session, func(kind string, body []byte) error {
+			if kind == "result" {
+				if len(body) > 1<<20 {
+					return errors.New("Claude review result too large")
+				}
+				raw = append([]byte(nil), body...)
+				return nil
+			}
+			return process.claudeActivity(kind, body)
+		}, nil)
+		if err == nil && !completed {
+			err = errors.New("Claude review has no terminal result")
+		}
+	}
 	if err != nil || len(raw) > 1<<20 {
 		cancel()
 	}
-	exit := cmd.Wait()
-	if exit != nil || err != nil || len(raw) > 1<<20 {
+	exit, journalErr := process.wait(cmd)
+	if exit != nil || journalErr != nil || err != nil || len(raw) > 1<<20 {
 		return report, errors.New("Claude review did not finish with a bounded result")
 	}
 	var result struct {
@@ -137,7 +163,7 @@ func runCandidateReview(ctx context.Context, in io.Reader, out io.Writer) error 
 	if err = json.Unmarshal(raw, &input); err != nil {
 		return errors.New("invalid candidate review request")
 	}
-	report, err := reviewCandidate(ctx, input)
+	report, err := reviewCandidate(ctx, input, processLog{})
 	if err != nil {
 		return err
 	}

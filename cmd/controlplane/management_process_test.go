@@ -19,6 +19,7 @@ func TestManagementProcessRouteKeepsRoleAndBodyBoundary(t *testing.T) {
 		{"", "{}", 401}, {"owner", "{}", 401}, {"worker", "{}", 401},
 		{"manager", `{"curation_id":1,"curation_role":"curator"}`, 403},
 		{"manager", `{"test_plan_id":1,"test_plan_role":"test"}`, 403},
+		{"manager", `{"reviewer_execution":1}`, 403},
 		{"manager", `{"unexpected":1}`, 400}, {"manager", "{} {}", 400},
 		{"manager", `{"process":{"output":{"text":"` + strings.Repeat("x", 64<<10) + `"}}}`, 400},
 	} {
@@ -77,6 +78,33 @@ func TestTestAgentProcessRouteKeepsRoleBoundary(t *testing.T) {
 		{"test-agent", `{"process":{"output":{"text":"` + strings.Repeat("x", 64<<10) + `"}}}`, 400},
 	} {
 		req := httptest.NewRequest("POST", "/internal/test-agent/process", strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		out := httptest.NewRecorder()
+		mux.ServeHTTP(out, req)
+		if out.Code != c.want {
+			t.Fatal(out.Code, c.want)
+		}
+	}
+}
+
+func TestReviewerProcessRouteKeepsRoleBoundary(t *testing.T) {
+	t.Setenv("FORGEOS_REVIEWER_PROJECT_ID", "1")
+	t.Setenv("FORGEOS_REVIEWER_TOKEN", "reviewer")
+	mux := http.NewServeMux()
+	if e := registerCodeReviews(mux, nil, "", "owner", "manager", legacyWorker("worker")); e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range []struct {
+		token, body string
+		want        int
+	}{
+		{"", "{}", 401}, {"manager", "{}", 401}, {"owner", "{}", 401}, {"worker", "{}", 401},
+		{"reviewer", `{"test_plan_id":1,"test_plan_role":"management"}`, 403},
+		{"reviewer", `{"task_id":1,"test_plan_role":"test"}`, 403},
+		{"reviewer", `{"unknown":1}`, 400}, {"reviewer", "{} {}", 400},
+		{"reviewer", `{"process":{"output":{"text":"` + strings.Repeat("x", 64<<10) + `"}}}`, 400},
+	} {
+		req := httptest.NewRequest("POST", "/internal/reviewer/process", strings.NewReader(c.body))
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		out := httptest.NewRecorder()
 		mux.ServeHTTP(out, req)

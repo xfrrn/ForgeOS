@@ -136,6 +136,11 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 				return session, false, errors.New("mismatched Claude Code result")
 			}
 			completed = true
+			if activity != nil {
+				if err := activity(event.Type, scanner.Bytes()); err != nil {
+					return session, completed, err
+				}
+			}
 			if event.IsError || event.Subtype != "success" {
 				outcome = errTurnFailed
 			} else if question != nil {

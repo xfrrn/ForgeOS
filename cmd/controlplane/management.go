@@ -107,7 +107,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 	mux.HandleFunc("POST /internal/management/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var report store.ManagementProcessReport
 		if decodeLimited(w, r, &report, 64<<10) {
-			if report.CurationRole == "curator" || report.TestPlanRole == "test" {
+			if report.CurationRole == "curator" || report.TestPlanRole == "test" || report.ReviewerExecution != 0 {
 				problem(w, 403, "Process requires its own role identity")
 				return
 			}
