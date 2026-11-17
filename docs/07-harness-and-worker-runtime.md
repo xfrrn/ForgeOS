@@ -67,6 +67,10 @@ Owner 在“执行节点”页查看每个适配器的版本和操作，API 字�
 
 优先评估 Codex App Server，利用其原生 Thread、Turn、事件流、恢复、中断和审批机制。具体协议版本、方法名称和能力必须以实际安装版本的官方文档和探测结果为准。
 
+普通 Worker 可设置 `FORGEOS_CODEX_TRANSPORT=app-server`，通过本地 stdio 执行 Codex 实现任务和只读 Planner。启动时检查可执行文件支持的参数。每回合核对返回的工作目录、Thread、沙箱、网络限制、可写目录和审批模式，再发送任务。事件必须属于当前 Thread 与 Turn，结构化计划只在该回合正式完成后保存。进程、会话及工具活动沿用任务的执行记录。未设置该变量时使用 `exec`。
+
+App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 审批和沙箱。进程禁用 apps、plugins、hooks、MCP 和网页搜索，设置本次基础指令与空开发者指令，关闭自动载入项目指令。beta #168 已从正式 Worker 完成实现、Owner 退回、返工期间原生进程被终止后的同 Thread 恢复，以及 PR #169 的必需 CI、合并和 Issue 关闭。只读 Planner 已返回固定计划并在 Chrome 回读。该接入已验证版本为 `0.169.0-alpha.11.1`；正式流程中的原生审批、运行中输入和 `turn/interrupt` 仍待验收。[逐项证据](acceptance.md)
+
 在已登录的 Harness 用户下执行 `python scripts/probe_codex_app_server.py --bin <原生可执行文件>`，通过本地 stdio 启动两个独立 App Server。探测核对服务返回的只读 sandbox，完成首轮后关闭进程，在第二个进程恢复原 Thread 并读取随机标识，再中断第三轮。以返回的 Turn ID 和 `turn/completed` 状态核对中断。当前实测版本要求先接收 `turn/started` 通知，再调用 `turn/interrupt`。可用 `codex app-server generate-json-schema --out <目录>` 对照安装版本的字段。[App Server 协议说明](https://developers.openai.com/codex/app-server/)
 
 用同一命令加 `--approvals` 实测命令审批。探针在只读 Thread 中用 `accept` 批准一次只输出随机数的 Python 命令，核对工具项状态和标准输出，然后在同一 Thread 再次提交相同命令，核对新的审批请求并拒绝。接下来分别拒绝和取消临时目录中的标记脚本，检查标记文件始终不存在、拒绝后回合完成、取消后回合中断。每次审批均比对工作目录、命令、Thread、Turn 和工具项编号。输出保留原生回执。

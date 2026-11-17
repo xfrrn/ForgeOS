@@ -64,7 +64,7 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		ordinaryRuleOrder + "Inspect the relevant repository documents and code. Return only a concise plan in the supplied schema. " +
 		"Give each work item a stable unique ASCII identifier, explicit scope, dependencies by key, verifiable acceptance criteria, deliverables and repository paths as context references. " +
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
-	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexPlannerSandbox, options: []string{"--output-schema", schema, "--output-last-message", output}}
+	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexPlannerSandbox, appServer: w.codexAppServer, options: []string{"--output-schema", schema, "--output-last-message", output}}
 	if job.RecoverPlannerPause && w.journal != nil {
 		budget.capturePause = func(q *parkedCheckpoint, interrupted bool) error {
 			q.Planner = &pausedPlanner{Comments: comments}

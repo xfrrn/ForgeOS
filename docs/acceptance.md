@@ -2719,3 +2719,21 @@ PostgreSQL 18 与 Docker 的全包 Go 回归 265 项测试及子测试通过，�
 | 旧版先生成建议，再升级回读；双向运行新旧 Worker 和控制面 | 保留旧建议内容，两个交叉组合仍能审阅 | 历史会话 `01a1eab8-57c6-72f1-9f42-8714ffc55de5` 的建议在新控制面与 Chrome 中逐字段一致。混合版本会话 `01a1eab8-58b4-7463-b3e4-1d93940c8082`、`01a1eab8-57c6-7773-87b3-a08431110241` 均返回 D2，使用旧格式。 |
 
 PostgreSQL 18 和 Docker 全包 Go 回归 265 项测试及子测试通过，零跳过。Go 静态检查、TypeScript 及生产构建通过。临时移除配置校验后，针对性回归检出非法权限；恢复后通过。重放已回答问题的回执不能删除原权限。
+
+上述业务问题建议权限对应 ForgeOS 提交 `aa645c211c08250cdab9caae9066158bd020076e`。
+
+### 专题 07、16 A.1 · 正式 Worker 使用 App Server 实现、规划与恢复
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 设置普通 Worker 的 `FORGEOS_CODEX_TRANSPORT=app-server`，从真实 beta #168 派发 Codex 实现 | 原生进程使用 stdio，权限及当前工作目录经回执核对，候选进入实际验收流程 | 版本 `0.169.0-alpha.11.1`、PID 45188、Thread `01a1eac2-7460-7393-bf9e-9a64e0ef2b0d`。首候选 `5b63d89118a4e8aca5c515cd6d36b209f831d685` 只新增指定来源指南。返回 workspaceWrite、never、禁网和受限可写目录，通过本地检查后为 WAITING_ACCEPTANCE。 |
+| Chrome 退回候选，要求补充指定句子；在新返工执行中终止正在运行的 App Server | 返工使用独立执行。该执行恢复时沿用崩溃前 Thread 与工作区，保留进程及工具活动 | 执行 2 的 PID 27940 被终止，退出码 15。Worker 经恢复校验后启动 PID 48244，继续 Thread `01a1eac4-b542-7331-9d12-c249efb59ae7` 并成功退出。两进程均有归档的命令工具事件。新候选 `039ccf9b6bee303a9d233183b95a03f7fa721840` 包含来源原句及指定补充句，只改一份指南，按空白分词为 38 词。 |
+| Chrome 核对并通过返工候选，等待正式 GitHub 交付 | 精确候选通过必需检查、合并并关闭 Issue | Actions 44148894325 首轮命中预设失败步骤，同一 SHA 重跑成功；`acceptance-check` 和 `forgeos/local-ci` 均为 SUCCESS。PR #169 合并为 `c34cca80bf85d8ef17db0d98e01131701ed2e2d8`，Issue #168 CLOSED、工作项 DONE。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/169) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44148894325) |
+| 在独立验收库对同一 Issue 启动 App Server 只读 Planner，从 Chrome 打开计划修订 1 | 只读规划输出符合计划契约，正式归档后等待审核 | Thread `01a1eac6-2bb3-7a11-890f-a3aa19597213` 生成两项工作内容及验收标准，任务处于 PLANNING。归档计划目标在 Chrome 可见，仓库保持干净。 |
+| 增加返回工作目录校验后，直接调用同一 Go 适配器执行两次真实结构化回合；另重启正式 Worker 检查启动探测 | 能核对实际目录与原生权限，新进程恢复原 Thread 并保存结构化输出 | Thread `01a1eacc-b88a-7d10-9f71-0e14a097bb6b` 两回合均成功，第二回合沿用第一回合的状态。新版 Worker 正常启动并维持可领取状态。 |
+
+针对性回归拒绝错误 Thread、缺失 Turn、错误工作目录、扩大的沙箱、网络或可写目录、改变审批模式及超出角色权限的原生请求；缺失终态与失败终态分别进入恢复和失败路径。临时移除 Thread 匹配条件时，测试检出错误，恢复条件后通过。
+
+本项已验证实现、只读规划及进程中断后的恢复。正式原生审批、运行中输入、`turn/interrupt` 和其他版本兼容性继续待验收。协议字段对照安装版本生成的 JSON schema 和官方 Thread 参数定义。[官方定义](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/json/v2/ThreadStartParams.json)
+
+本项最终 PostgreSQL 18 与 Docker 全包 Go 回归 279 项测试及子测试通过，零失败、零跳过；Go 静态检查通过。

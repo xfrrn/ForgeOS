@@ -153,6 +153,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 }
 
 type codexCLI struct {
+	appServer        bool
 	disabledFeatures []string
 	bin              string
 	version          string
@@ -163,6 +164,9 @@ type codexCLI struct {
 func (c codexCLI) identity() (string, string) { return "codex", c.version }
 
 func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
+	if c.appServer {
+		return c.runAppServer(ctx, process, workspace, prompt, resume)
+	}
 	// Preserve the CLI login, but keep account plugins, hooks, approvals and service tokens out of Issue execution.
 	args := []string{"-a", store.CodexApproval, "exec", "--ignore-user-config", "--ignore-rules",
 		"-c", "mcp_servers={}",
@@ -488,7 +492,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			}
 		}
 		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed *store.WorktreeTrees) (string, error) {
-			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox}
+			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version
 				adapter = w.claude

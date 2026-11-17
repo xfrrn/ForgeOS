@@ -31,6 +31,7 @@ type worker struct {
 	api, token, id, repoRoot, workspaceRoot string
 	tokenFile                               string
 	codex, codexVersion                     string
+	codexAppServer                          bool
 	claude                                  claudeCLI
 	planner                                 bool
 	slots                                   int
@@ -160,10 +161,23 @@ func fromEnv(role string) (*worker, error) {
 	if err != nil {
 		return nil, err
 	}
+	switch os.Getenv("FORGEOS_CODEX_TRANSPORT") {
+	case "", "exec":
+	case "app-server":
+		if w.codex == "" {
+			return nil, errors.New("App Server transport requires an available Codex executable")
+		}
+		if err = checkCodexAppServer(w.codex); err != nil {
+			return nil, err
+		}
+		w.codexAppServer = true
+	default:
+		return nil, errors.New("FORGEOS_CODEX_TRANSPORT must be exec or app-server")
+	}
 	if w.codex != "" {
 		w.codexVersion, err = readCodexVersion(w.codex)
 		if err != nil {
-			if os.Getenv("FORGEOS_CODEX_BIN") != "" {
+			if os.Getenv("FORGEOS_CODEX_BIN") != "" || w.codexAppServer {
 				return nil, err
 			}
 			log.Printf("skipping discovered Codex: %v", err)
