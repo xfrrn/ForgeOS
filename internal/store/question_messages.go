@@ -51,6 +51,11 @@ func readQuestionMessages(row *sql.Row) ([]schemas.AgentMessage, error) {
 		Payload: map[string]any{"request_kind": "decision", "question": q.Question, "blocking": true, "evidence": q.Evidence,
 			"evidence_refs": []string{"git:" + q.Commit}, "checkpoint_sequence": *q.Sequence},
 	}
+	if q.ReferenceDecisionID != 0 {
+		request.To = schemas.Actor{Type: "agent", ID: "management"}
+		request.Payload["request_kind"] = "decision_lookup"
+		request.Payload["reference"] = "decision:" + strconv.FormatInt(q.ReferenceDecisionID, 10)
+	}
 	if goal.Valid {
 		id := "GOAL-" + strconv.FormatInt(goal.Int64, 10)
 		request.Goal = &id
@@ -61,10 +66,17 @@ func readQuestionMessages(row *sql.Row) ([]schemas.AgentMessage, error) {
 		reply := request
 		reply.ID = correlation + "-RESPONSE"
 		reply.IdempotencyKey = reply.ID
-		reply.From, reply.To = request.To, request.From
-		reply.From.ID = q.AnsweredBy
+		reply.From, reply.To = schemas.Actor{Type: "owner", ID: q.AnsweredBy}, request.From
 		reply.Type, reply.Trust, reply.Timestamp = "RESPONSE", "owner_authenticated", q.AnsweredAt.UTC()
 		reply.Payload = map[string]any{"request_id": request.ID, "answer": q.Answer}
+		if q.AnsweredBy == "management" {
+			if q.ReferenceDecisionID == 0 || q.ManagementAdvice == nil || q.ManagementAdvice.Level != "D1" || len(q.ReferenceSnapshot) == 0 {
+				return nil, ErrConflict
+			}
+			reply.From, reply.Trust = request.To, "agent_generated"
+			reply.Payload["decision"] = q.ReferenceSnapshot
+			reply.Payload["session_id"] = q.ManagementAdvice.Session
+		}
 		messages = append(messages, reply)
 	}
 	for _, m := range messages {

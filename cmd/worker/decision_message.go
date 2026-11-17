@@ -42,17 +42,38 @@ func checkpointAnswer(raw []json.RawMessage, workerID string, job store.Job, seq
 	request, response := pair[0], pair[1]
 	owner := schemas.Actor{Type: "owner", ID: "owner"}
 	agent := schemas.Actor{Type: "agent", ID: workerID}
+	recipient, kind := owner, "decision"
+	manager := schemas.Actor{Type: "agent", ID: "management"}
+	reference := fmt.Sprintf("decision:%d", q.ReferenceDecisionID)
+	if q.ReferenceDecisionID > 0 {
+		if !job.DecisionLookups || request.Payload["reference"] != reference {
+			return nil, errors.New("unexpected project decision lookup")
+		}
+		recipient, kind = manager, "decision_lookup"
+	}
 	refs, _ := request.Payload["evidence_refs"].([]any)
-	if request.Type != "REQUEST" || request.From != agent || request.To != owner || request.Trust != "agent_generated" ||
-		request.Payload["request_kind"] != "decision" || request.Payload["blocking"] != true || request.Payload["checkpoint_sequence"] != float64(sequence) ||
+	if request.Type != "REQUEST" || request.From != agent || request.To != recipient || request.Trust != "agent_generated" ||
+		request.Payload["request_kind"] != kind || request.Payload["blocking"] != true || request.Payload["checkpoint_sequence"] != float64(sequence) ||
 		request.Payload["question"] != q.Question || request.Payload["evidence"] != q.Evidence || len(refs) != 1 || refs[0] != "git:"+job.Spec.BaseCommit {
 		return nil, errors.New("decision request does not match the waiting checkpoint")
 	}
 	answer, ok := response.Payload["answer"].(string)
-	if response.Type != "RESPONSE" || response.From != owner || response.To != agent || response.Trust != "owner_authenticated" ||
+	if response.Type != "RESPONSE" || response.To != agent ||
 		response.Correlation != request.Correlation || response.Payload["request_id"] != request.ID || response.ID == request.ID ||
 		response.IdempotencyKey == request.IdempotencyKey || !ok || strings.TrimSpace(answer) == "" || len(answer) > 4096 {
 		return nil, errors.New("decision response does not match the owner request")
 	}
-	return json.Marshal(map[string]string{"question": q.Question, "answer": answer, "request_id": request.ID, "response_id": response.ID, "correlation_id": request.Correlation})
+	receipt := map[string]any{"question": q.Question, "answer": answer, "request_id": request.ID, "response_id": response.ID, "correlation_id": request.Correlation}
+	if response.From == manager && q.ReferenceDecisionID > 0 && response.Trust == "agent_generated" {
+		decision, _ := response.Payload["decision"].(map[string]any)
+		session, _ := response.Payload["session_id"].(string)
+		validity, _ := decision["validity"].(string)
+		if session == "" || validity == "" || decision["id"] != reference || decision["text"] != answer {
+			return nil, errors.New("invalid Management decision evidence")
+		}
+		receipt["answered_by"], receipt["decision"], receipt["session_id"] = "management", decision, session
+	} else if response.From != owner || response.Trust != "owner_authenticated" {
+		return nil, errors.New("invalid checkpoint decision respondent")
+	}
+	return json.Marshal(receipt)
 }

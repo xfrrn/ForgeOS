@@ -50,7 +50,7 @@ type Issue = { title: string; number: number; body: string; url: string; reposit
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
-type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; trees?: { index: string; worktree: string }; management_advice?: Advice; withdrawn_at?: string; answer?: string; answered_at?: string }
+type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; trees?: { index: string; worktree: string }; management_advice?: Advice; withdrawn_at?: string; answer?: string; answered_by?: string; answered_at?: string }
 type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
@@ -71,7 +71,7 @@ const events: Record<string, string> = {
   plan_revised: '已保存计划版本',
   plan_activated: '计划已生效', goal_item_created: '从计划创建工作项',
   dependencies_delivered: '前置交付已确认',
-  decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答', management_question_reviewed: 'Management 已审阅业务问题',
+  decision_requested: '已请求业务决定', decision_answered: 'Owner 已回答', management_question_reviewed: 'Management 已审阅业务问题', management_decision_answered: 'Management 已引用项目决策答复',
   goal_delivered: '全部子项已交付，父 Issue 已关闭',
   goal_item_superseded: '已从后续计划移除', goal_item_revised: '已更新待执行工作项',
   delivery_base_refreshed: '已在新的目标提交上准备候选',
@@ -455,7 +455,7 @@ function Decision({ taskID, q, canAnswer, request, onAnswer }: { taskID: number;
       {q.trees && <><Fact label="检查点暂存区树" code>{q.trees.index}</Fact><Fact label="检查点工作树" code>{q.trees.worktree}</Fact></>}
       {q.answered_at && <Fact label="答复时间">{formatTime(q.answered_at)}</Fact>}</dl>
     {q.management_advice && <QuestionAdvice advice={q.management_advice}/>}
-    {q.withdrawn_at ? <p>执行已结束，问题已撤回。</p> : q.answer ? <p>Owner 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
+    {q.withdrawn_at ? <p>执行已结束，问题已撤回。</p> : q.answer ? <p>{q.answered_by === 'management' ? 'Management' : 'Owner'} 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor={`answer-${q.id}`}>业务答复</label>
       <textarea id={`answer-${q.id}`} required value={answer} onChange={e => setAnswer(e.target.value)}/>
       <button className="button primary" disabled={busy || !answer.trim()}>提交答复</button>

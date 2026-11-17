@@ -1968,3 +1968,16 @@ ACP 1.0 格式及原生决策记录回读对应 ForgeOS 提交 `ca6aa459eba90d66
 | 对同一归档候选提出有明确文字依据的 D2 选项；Owner 选择与建议不同的标题。再用原实现 Session 提交新审阅，并在 Owner 已答后提交迟到结果 | 有证据时显示建议，原实现者不能充当独立审阅者。Owner 的最终决定单独留存 | Management 会话 `01a1e88b-dc1b-7bf3-8c4a-448fb1c8e9f7` 建议 `Recovery receipt`，引用本题提供的原文；Owner 选择 `Archive appendix`，两者均可回读。控制面拒绝执行 1 的原 Session `01a1e604-db7d-7882-9d40-5cccf796c57d` 代审执行 3，也拒绝 Owner 已答后的首份审阅，均为 409。 |
 
 #55 的三次提问均在单独的恢复数据库内运行。真实 PostgreSQL 与 Docker 全量回归 221 个测试及子测试通过，零跳过；CI-only 原实现身份校验定稿后，重新通过上述归档实测、数据库专项测试与 Go vet。Web 构建通过。D1 问题的直接代答另行验收。
+
+Management 审阅待答业务问题对应 ForgeOS 提交 `770717acaeb9995e8b2604c38726db93630cf54d`。
+
+### 专题 05–06 · D1 查阅已确认的项目决策
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Owner 在私有 beta 项目登记并确认决策 #1，限定其用于构建回执的标题；导入 Issue #111，要求实现者查阅此决策 | 控制面冻结提问的任务与检查点，重启后仍能交由该项目的独立 Management 审阅 | 执行 1、检查点 0、基础提交 7f239846。Codex 会话 01a1e896-8746-7ba2-9e99-0aaa9b0e64dd 主动查阅决策 #1。[Issue #111](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/111) |
+| 启动 Management，直接从 ACP 和 Chrome 核对答复，继续原生实现 | 独立会话按 D1 引用完整原文和适用范围，Worker 依该记录恢复，无需 Owner 手工答题 | 管理会话 01a1e896-cd20-7953-abef-a3dfb0ad3e88 引用 decision:1。QUESTION-1-RESPONSE 的来源为 agent_generated，关联 QUESTION-1-REQUEST。Chrome 显示 Management 答复；两个实现进程 13644、21072 共用原生会话。仅新增 docs/confirmed-build-receipt.md，标题为 Build receipt 5241b7b0。审核上下文未将该答复计入 Owner 答复。 |
+| 核对候选、按 SHA 验收，等待受保护分支检查、合并和 Issue 回写 | 两项检查通过后合并同一候选，关闭 Issue | 候选 c7a8b9da55632bd0ce19dd09186435b7677f80c7，必需检查 acceptance-check 和 forgeos/local-ci 通过，合并 bcae3339bd433ccab80b6a86a541f4d8f95396f4，Issue 已关闭。[PR #112](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/112) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44045978613) |
+| 复制 #55 的历史验收库，从正式控制面升级 72 → 73，再新增一道验收问题并用 Owner 答复 | 保留原有三题的答复、身份与审核记录，第四题正常回到原候选 | 逐项比较原有记录一致。新问题 #4 由 Owner 答复，状态恢复 WAITING_ACCEPTANCE，候选仍为 aae51b5ff79b882a489d52e9869bd11aa3e47c11。 |
+
+PostgreSQL 18 与 Docker 全量回归通过 226 个测试和子测试，零跳过。专项验证还覆盖同项目原文、领到任务后失效、跨项目编号、Owner 抢先回答，以及 ACP 来源与授权级别的区分。Go vet 与 Web 生产构建通过。

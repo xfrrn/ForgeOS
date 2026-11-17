@@ -21,6 +21,8 @@ type QuestionRequest struct {
 }
 
 type DecisionQuestion struct {
+	ReferenceSnapshot   json.RawMessage `json:"reference_snapshot,omitempty"`
+	ReferenceDecisionID int64           `json:"reference_decision_id,omitempty"`
 	QuestionRequest
 	ManagementAdvice *QuestionAdvice `json:"management_advice,omitempty"`
 	ID               int64           `json:"id"`
@@ -120,13 +122,14 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 }
 
 type CheckpointQuestion struct {
-	ResumeInstance string         `json:"resume_instance,omitempty"`
-	Trees          *WorktreeTrees `json:"trees,omitempty"`
-	Lease          string         `json:"lease_token"`
-	Sequence       *int           `json:"sequence"`
-	Session        string         `json:"session_id"`
-	Question       string         `json:"question"`
-	Evidence       string         `json:"evidence"`
+	ReferenceDecisionID int64          `json:"reference_decision_id,omitempty"`
+	ResumeInstance      string         `json:"resume_instance,omitempty"`
+	Trees               *WorktreeTrees `json:"trees,omitempty"`
+	Lease               string         `json:"lease_token"`
+	Sequence            *int           `json:"sequence"`
+	Session             string         `json:"session_id"`
+	Question            string         `json:"question"`
+	Evidence            string         `json:"evidence"`
 }
 
 type WorktreeTrees struct {
@@ -136,9 +139,19 @@ type WorktreeTrees struct {
 
 var ErrQuestionClaimed = errors.New("another worker process already claimed this checkpoint answer")
 
+func DecisionLookupText(id int64) (string, string) {
+	return "What does confirmed project decision #" + strconv.FormatInt(id, 10) + " state?", "Read the confirmed decision and its validity for this project."
+}
+
 func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r CheckpointQuestion) (string, error) {
 	if r.Sequence == nil || *r.Sequence < 0 || int64(*r.Sequence) > 2147483647 || len(r.Lease) != 64 || r.Session == "" || len(r.Session) > 128 || !decisionText(r.Question) || !decisionText(r.Evidence) {
 		return "", ErrConflict
+	}
+	if r.ReferenceDecisionID != 0 {
+		question, evidence := DecisionLookupText(r.ReferenceDecisionID)
+		if r.ReferenceDecisionID < 0 || r.Question != question || r.Evidence != evidence || r.ResumeInstance == "" {
+			return "", ErrConflict
+		}
 	}
 	var trees any
 	if r.ResumeInstance != "" && (r.Trees == nil || len(r.ResumeInstance) != 64 || !validCommit(r.ResumeInstance)) {
@@ -194,10 +207,10 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	var answer string
 	var same, fenced bool
 	var id int64
-	err = tx.QueryRowContext(ctx, `SELECT q.id,COALESCE(answer,''),question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb, cr.question_id IS NOT NULL
+	err = tx.QueryRowContext(ctx, `SELECT q.id,COALESCE(answer,''),COALESCE(reference_decision_id,0)=$6 AND question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb, cr.question_id IS NOT NULL
 		FROM decision_questions q LEFT JOIN checkpoint_resumes cr ON cr.question_id=q.id
 		WHERE execution_id=$1 AND checkpoint_sequence=$2 AND withdrawn_at IS NULL`,
-		execution, *r.Sequence, r.Question, r.Evidence, trees).Scan(&id, &answer, &same, &fenced)
+		execution, *r.Sequence, r.Question, r.Evidence, trees, r.ReferenceDecisionID).Scan(&id, &answer, &same, &fenced)
 	if err == nil {
 		if !same || fenced != (r.ResumeInstance != "") {
 			return "", ErrConflict
@@ -221,8 +234,8 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	if status != "RUNNING" {
 		return "", ErrConflict
 	}
-	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester,checkpoint_sequence,trees)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, task, execution, revision, base, "checkpoint:"+strconv.Itoa(*r.Sequence), r.Question, r.Evidence, requester, *r.Sequence, trees).Scan(&id)
+	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester,checkpoint_sequence,trees,reference_decision_id)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11::bigint,0)) RETURNING id`, task, execution, revision, base, "checkpoint:"+strconv.Itoa(*r.Sequence), r.Question, r.Evidence, requester, *r.Sequence, trees, r.ReferenceDecisionID).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -250,7 +263,7 @@ func (s *Store) AnswerQuestion(ctx context.Context, id, qID int64, answer string
 	}
 	defer tx.Rollback()
 	var status string
-	var prior sql.NullString
+	var prior, actor sql.NullString
 	var waiting sql.NullInt64
 	var runtime, withdrawn, expired bool
 	var execution int64
@@ -261,8 +274,8 @@ func (s *Store) AnswerQuestion(ctx context.Context, id, qID int64, answer string
 	if err != nil {
 		return Task{}, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT q.answer,q.execution_id,q.checkpoint_sequence IS NOT NULL,q.withdrawn_at IS NOT NULL,e.lease_until<=clock_timestamp()
-		FROM decision_questions q JOIN executions e ON e.id=q.execution_id WHERE q.task_id=$1 AND q.id=$2`, id, qID).Scan(&prior, &execution, &runtime, &withdrawn, &expired)
+	err = tx.QueryRowContext(ctx, `SELECT q.answer,q.answered_by,q.execution_id,q.checkpoint_sequence IS NOT NULL,q.withdrawn_at IS NOT NULL,e.lease_until<=clock_timestamp()
+		FROM decision_questions q JOIN executions e ON e.id=q.execution_id WHERE q.task_id=$1 AND q.id=$2`, id, qID).Scan(&prior, &actor, &execution, &runtime, &withdrawn, &expired)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -270,7 +283,7 @@ func (s *Store) AnswerQuestion(ctx context.Context, id, qID int64, answer string
 		return Task{}, err
 	}
 	if prior.Valid {
-		if prior.String != answer {
+		if actor.String != "owner" || prior.String != answer {
 			return Task{}, ErrConflict
 		}
 	} else {

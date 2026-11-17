@@ -22,6 +22,7 @@ type parkedQuestion struct {
 	GitDir                               []byte
 	Trees                                store.WorktreeTrees
 	Remaining                            time.Duration
+	ReferenceDecisionID                  int64
 	ResourceStep                         int64
 }
 
@@ -38,7 +39,7 @@ func (w *worker) nativeVersion(job store.Job) string {
 }
 
 func (w *worker) resumeOwnerQuestion(ctx context.Context, job store.Job, saved parkedQuestion, start string, recovery *questionRecovery, resumeBudget func(time.Duration)) (json.RawMessage, error) {
-	q := nativeQuestion{Question: saved.Question, Evidence: saved.Evidence, requested: true}
+	q := nativeQuestion{ReferenceDecisionID: saved.ReferenceDecisionID, Question: saved.Question, Evidence: saved.Evidence, requested: true}
 	answer, err := w.waitForOwner(ctx, job, saved.Sequence, saved.Session, q, &saved.Trees)
 	if err != nil {
 		if errors.Is(err, store.ErrQuestionClaimed) {

@@ -26,7 +26,7 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
       if (signal?.aborted) return
       setRows(previous => {
         const prior = new Map(previous.map(q => [q.id, q]))
-        const items = page.items.map(q => prior.get(q.id) ?? { ...q, draft: '', error: '' })
+        const items = page.items.map(q => ({ draft: '', error: '', ...prior.get(q.id), ...q }))
         const seen = new Set(items.map(q => q.id))
         const keep = previous.filter(q => !seen.has(q.id) && (cursor || q.draft.trim()))
         return [...items, ...keep].sort((a, b) => b.id - a.id)
@@ -97,7 +97,7 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
           const draft = e.currentTarget.value
           setRows(prev => prev.map(item => item.id === q.id ? { ...item, draft, error: '' } : item))
         }}/>
-        {q.recorded ? <><p className="detail-notice" role="status">已记录的 Owner 答复 · {q.recorded}</p>
+        {q.recorded ? <><p className="detail-notice" role="status">已记录的答复 · {q.recorded}</p>
           <button type="button" className="detail-text-button" onClick={() => setRows(prev => prev.filter(item => item.id !== q.id))}>移除已答问题</button></> :
           q.error && <p className="detail-problem" role="alert">{q.error}</p>}
       </section>)}

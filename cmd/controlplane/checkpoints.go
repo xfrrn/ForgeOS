@@ -32,6 +32,10 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		if !decode(w, r, &input) {
 			return
 		}
+		if input.ReferenceDecisionID != 0 && r.URL.Query().Get("acp") != "1.0" {
+			problem(w, http.StatusBadRequest, "decision lookup requires ACP 1.0")
+			return
+		}
 		answer, err := data.AskAtCheckpoint(r.Context(), id, input)
 		if errors.Is(err, store.ErrQuestionClaimed) {
 			problem(w, http.StatusPreconditionFailed, err.Error())

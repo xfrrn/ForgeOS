@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -27,7 +30,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal(err)
 	}
 	claim := func(projectID int64) *ManagementJob {
-		j, err := s.ClaimQuestionAdvice(ctx, projectID)
+		j, err := s.ClaimQuestionAdvice(ctx, projectID, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,5 +95,124 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	var events int
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM task_events WHERE question_id=$1 AND type='management_question_reviewed'`, id).Scan(&events); err != nil || events != 1 {
 		t.Fatal(events, err)
+	}
+}
+
+func TestManagementDecisionLookup(t *testing.T) {
+	ctx := context.Background()
+	for _, scenario := range []string{"confirmed", "expired after claim", "foreign", "owner answered"} {
+		t.Run(scenario, func(t *testing.T) {
+			s := New(isolatedDatabase(t))
+			if err := s.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+			project, err := s.CreateProject(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pid := project.ID
+			if scenario == "foreign" {
+				other, err := s.CreateProject(ctx, t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				pid = other.ID
+			}
+			proposal := DecisionProposal{RequestKey: "heading", Statement: "Heading: Build receipt", Source: "style guide", Validity: "Build receipts", EvidenceRefs: []string{"guide:headings"}}
+			raw, err := s.ProposeDecision(ctx, pid, proposal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decision struct{ ID int64 }
+			if err = json.Unmarshal(raw, &decision); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.Decide(ctx, pid, decision.ID, "CONFIRMED"); err != nil {
+				t.Fatal(err)
+			}
+			spec := IssueSpec{Issue: Issue{RepositoryID: project.ID, ID: 20, Number: 1, URL: "https://github.com/acme/sample/issues/1"}, BaseCommit: strings.Repeat("a", 40), Validation: "docs"}
+			task, err := s.ImportIssue(ctx, project.ID, spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			j, err := s.Claim(ctx, "node", root, true, true, true, true)
+			if err != nil || j == nil || !j.DecisionLookups || j.TaskID != task.ID {
+				t.Fatal(j, err)
+			}
+			seq := 0
+			q := CheckpointQuestion{ReferenceDecisionID: decision.ID, Sequence: &seq, Session: "impl", Lease: j.LeaseToken, ResumeInstance: strings.Repeat("1", 64), Trees: &WorktreeTrees{Index: spec.BaseCommit, Worktree: spec.BaseCommit}}
+			q.Question, q.Evidence = DecisionLookupText(decision.ID)
+			for _, session := range []string{"", q.Session} {
+				if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wrong := q
+			wrong.Question = "Approve a change?"
+			if _, err = s.AskAtCheckpoint(ctx, j.ExecutionID, wrong); !errors.Is(err, ErrConflict) {
+				t.Fatal("free-form lookup accepted", err)
+			}
+			if _, err = s.AskAtCheckpoint(ctx, j.ExecutionID, q); err != nil {
+				t.Fatal(err)
+			}
+			if old, err := s.ClaimQuestionAdvice(ctx, project.ID, false); err != nil || old != nil {
+				t.Fatal("legacy reviewer claimed lookup", old, err)
+			}
+			m, err := s.ClaimQuestionAdvice(ctx, project.ID, true)
+			if err != nil || m == nil || m.Question.ReferenceDecisionID != decision.ID {
+				t.Fatal(m, err)
+			}
+			a := QuestionAdvice{Level: "D1", Source: fmt.Sprintf("decision:%d", decision.ID), Quote: proposal.Statement, Rationale: "The guide covers the requested receipt.", Session: "reviewer"}
+			finish := func() error { return s.CompleteQuestionAdvice(ctx, project.ID, m.Question.ID, m.Lease, a) }
+			if scenario == "foreign" {
+				if m.MinimumLevel != "D2" || strings.Contains(string(m.Question.Sources), proposal.Statement) || !errors.Is(finish(), ErrConflict) {
+					t.Fatal("foreign decision disclosed")
+				}
+				return
+			}
+			if m.MinimumLevel != "D1" {
+				t.Fatal(m.MinimumLevel)
+			}
+			if scenario == "expired after claim" {
+				if _, err = s.Decide(ctx, pid, decision.ID, "EXPIRED"); err != nil {
+					t.Fatal(err)
+				}
+				if !errors.Is(finish(), ErrConflict) {
+					t.Fatal("expired decision settled lookup")
+				}
+				return
+			}
+			if scenario == "owner answered" {
+				if _, err = s.AnswerQuestion(ctx, task.ID, m.Question.ID, "New heading"); err != nil {
+					t.Fatal(err)
+				}
+				if !errors.Is(finish(), ErrConflict) {
+					t.Fatal("overwrote Owner")
+				}
+				return
+			}
+			a.Quote = "Build receipt"
+			if !errors.Is(finish(), ErrConflict) {
+				t.Fatal("short quote settled lookup")
+			}
+			a.Quote = proposal.Statement
+			for i := 0; i < 2; i++ {
+				if err = finish(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err = s.AnswerQuestion(ctx, task.ID, m.Question.ID, a.Quote); !errors.Is(err, ErrConflict) {
+				t.Fatal("same Management answer attributed to Owner")
+			}
+			got, err := s.AskAtCheckpoint(ctx, j.ExecutionID, q)
+			if err != nil || got != a.Quote {
+				t.Fatal(got, err)
+			}
+			msg, err := s.QuestionMessages(ctx, task.ID, m.Question.ID)
+			if err != nil || len(msg) != 2 || msg[1].From.ID != "management" || msg[1].Trust != "agent_generated" {
+				t.Fatal(msg, err)
+			}
+		})
 	}
 }

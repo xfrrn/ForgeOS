@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,4 +88,36 @@ func TestCheckpointAnswerMatchesClaimAndQuestion(t *testing.T) {
 			}
 		})
 	}
+	manager := schemas.Actor{Type: "agent", ID: "management"}
+	q.read(`{"forgeos_lookup_decision":13}`)
+	if !q.requested || q.ReferenceDecisionID != 13 || q.Question == "" {
+		t.Fatal(q)
+	}
+	pair := newPair()
+	pair[0].To = manager
+	pair[0].Payload["request_kind"], pair[0].Payload["reference"] = "decision_lookup", "decision:13"
+	pair[1].From, pair[1].Trust = manager, "agent_generated"
+	pair[1].Payload["session_id"] = "reviewer"
+	pair[1].Payload["decision"] = map[string]any{"id": "decision:13", "validity": "Documentation", "text": "Harbor"}
+	if _, err := read(pair); err == nil {
+		t.Fatal("unnegotiated lookup")
+	}
+	job.DecisionLookups = true
+	got, err = read(pair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt, err := issuePrompt(job, "", nil, got)
+	if err != nil || !strings.Contains(prompt, `"management_reference":`) || strings.Contains(prompt, `"owner_clarification":`) {
+		t.Fatal(prompt, err)
+	}
+	pair[1].Payload["answer"] = "Different"
+	if _, err := read(pair); err == nil {
+		t.Fatal("accepted a fabricated statement")
+	}
+	q.read(`{"forgeos_lookup_decision":13,"forgeos_question":"approve?"}`)
+	if !q.requested || q.Question != "" {
+		t.Fatal("ambiguous lookup", q)
+	}
+
 }

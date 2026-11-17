@@ -29,7 +29,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		job, err := data.ClaimManagement(r.Context(), id)
 		if err == nil && job == nil && r.URL.Query().Get("supports_question_advice") == "1" {
-			job, err = data.ClaimQuestionAdvice(r.Context(), id)
+			job, err = data.ClaimQuestionAdvice(r.Context(), id, r.URL.Query().Get("supports_decision_lookups") == "1")
 		}
 		if err == nil && job == nil && capabilities.Shares {
 			job, err = data.ClaimShareReview(r.Context(), id)

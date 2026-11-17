@@ -64,9 +64,10 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 
 // Only the adapter's final assistant message may ask for a business decision.
 type nativeQuestion struct {
-	Question  string `json:"forgeos_question"`
-	Evidence  string `json:"evidence"`
-	requested bool
+	Question            string `json:"forgeos_question"`
+	Evidence            string `json:"evidence"`
+	ReferenceDecisionID int64
+	requested           bool
 }
 
 func (q *nativeQuestion) read(message string) {
@@ -76,7 +77,17 @@ func (q *nativeQuestion) read(message string) {
 		message = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(message, "```json"), "```"))
 	}
 	var fields map[string]json.RawMessage
-	if !strings.HasPrefix(message, "{") || json.Unmarshal([]byte(message), &fields) != nil || fields["forgeos_question"] == nil {
+	if !strings.HasPrefix(message, "{") || json.Unmarshal([]byte(message), &fields) != nil {
+		return
+	}
+	if ref := fields["forgeos_lookup_decision"]; ref != nil {
+		q.requested = true
+		if len(fields) == 1 && json.Unmarshal(ref, &q.ReferenceDecisionID) == nil && q.ReferenceDecisionID > 0 {
+			q.Question, q.Evidence = store.DecisionLookupText(q.ReferenceDecisionID)
+		}
+		return
+	}
+	if fields["forgeos_question"] == nil {
 		return
 	}
 	q.requested = true
@@ -89,7 +100,10 @@ func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, sessi
 	if strings.TrimSpace(q.Question) == "" || strings.TrimSpace(q.Evidence) == "" || len(q.Question) > 4096 || len(q.Evidence) > 4096 {
 		return nil, errors.New("invalid business question from harness")
 	}
-	input := store.CheckpointQuestion{Trees: trees, Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
+	if q.ReferenceDecisionID != 0 && (!job.DecisionLookups || job.DecisionProtocol != "1.0" || !job.ResumeQuestions) {
+		return nil, errors.New("decision lookup unavailable")
+	}
+	input := store.CheckpointQuestion{ReferenceDecisionID: q.ReferenceDecisionID, Trees: trees, Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
 	path := fmt.Sprintf("/internal/executions/%d/checkpoint-question", job.ExecutionID)
 	switch job.DecisionProtocol {
 	case "1.0":
