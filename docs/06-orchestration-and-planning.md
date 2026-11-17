@@ -121,3 +121,5 @@ Issue 的实现回合结束后，Worker 在进入 CI 前登记固定的候选提
 ## 8. 审批
 
 Management Agent 审核计划，Policy Engine 检查权限。大型计划是否需要 Owner 决策取决于决策等级，不是仅按任务大小决定。
+
+计划修订保存独立 Management 会话实际使用的 Codex 沙箱、审批模式和禁用功能。工作台在该修订的审核依据中显示这份配置。旧记录保留已有字段，新旧 Worker 与控制面交叉升级时按领取响应协商配置回执。beta #165 已实测原生 Planner、独立 Management、Owner 的 D2 批准和两个依赖子项交付，最终关闭原始 Issue。[验收证据](acceptance.md)

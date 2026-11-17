@@ -2655,3 +2655,17 @@ PostgreSQL 18 与 Docker 的全包 Go 回归有 265 项测试及子测试通过�
 | 双向交叉运行新旧 Worker 和控制面，重读升级前的副本 1 | 混合版本能审核，旧记录保留原内容 | 副本 4、5 各获一份原生审核回执，均沿用旧格式。副本 1 在重启和升级前后逐字段相同。 |
 
 PostgreSQL 18 和 Docker 全包 Go 回归 265 项通过、零跳过。Go 静态检查、TypeScript 及 Web 生产构建通过。
+
+上述共享副本审核权限对应 ForgeOS 提交 `1e768608d4600123bd0a40670d359d27a81005aa`。
+
+### 专题 06、16 B.1 · 固定 Goal 计划修订的独立审核权限
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从 beta #165 请求原生 Planner，设置 D2 下限后由正式 Management 审核修订 1 | 两个角色有独立会话，审核配置来自实际原生进程；批准后等待 Owner | Planner Thread `01a1ea9d-558d-7ab1-8be6-054fabf2631e`。Management PID 6808、会话 `01a1eaa0-3167-78c2-b9cb-fc08cc4d2bf9` 的 `read-only`、`never` 和 13 个禁用功能与回执相同。审核结果 approve、有效等级 D2，Owner 操作前保持 PLANNING。 |
+| 重启控制面，从 Chrome 打开修订 1 的审核配置，再批准并激活 | 固定审核可回读，只有首个子项可以启动 | 重启前后计划与审核逐字段一致。页面显示原生会话和权限。Owner 激活后首项 READY、第二项 BLOCKED。 |
+| 对照 HTML 来源验收标题指南，通过 Chrome 验收后等待正式交付 | 只提交指定文件，两个必需检查通过后合并 | 候选 `10f7f7dc20861ce83d64e8539c795adbb35a87de`，PR #166 合并为 `a647a7f43ac65b24b995cf6faa694bc44d537a60`。Actions 44141627564 首轮命中预设失败步骤，同一 SHA 重跑通过，`acceptance-check` 与 `forgeos/local-ci` 均成功。[PR #166](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/166) |
+| 对照容量原句及第一份指南的相对链接验收依赖子项，等待父项收敛 | 第二项以首项合并 SHA 为基础，全部交付后关闭父 Issue | 第二项 base 为 `a647a7f43ac65b24b995cf6faa694bc44d537a60`，候选 `40ab0fb34550701f82b3d464b56f81f42cfb0334` 仅改容量指南。两个必需检查成功，PR #167 合并为 `e1dc8569937471aed1059ff422469fb949e4014b`。Actions 44142162255 的预设失败亦在原 SHA 重跑通过。父 Goal DONE、Issue #165 CLOSED，修订 1 仍关联原 Management 会话。[PR #167](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/167) |
+| 恢复审核前真实 PostgreSQL 快照，分别运行旧控制面与新 Worker、新控制面与旧 Worker | 双向交叉升级能审核，旧版格式保留 | 两个原生审核会话 `01a1eaa0-b8ed-7030-8987-3fb664bfc1e0`、`01a1eaa0-fefe-7b12-9910-5cf146d4d203` 均返回可接受的旧格式并保留 D2 下限。 |
+
+PostgreSQL 18 与 Docker 全包 Go 回归 265 项测试及子测试通过，零跳过。Go 静态检查、TypeScript 检查及生产构建通过。

@@ -32,7 +32,7 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	claim := func() *ManagementJob {
 		t.Helper()
 		job, err := s.ClaimManagement(ctx, p.ID, true)
-		if err != nil || job == nil {
+		if err != nil || job == nil || !job.CaptureProfile {
 			t.Fatal(job, err)
 		}
 		return job
@@ -59,7 +59,8 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	if err = s.SetPlanMinimum(ctx, task.ID, 1, "D1"); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
-	review := ManagementReview{Verdict: "approve", Level: "D1", Rationale: "examples match issue", Evidence: "README", SessionID: "manager"}
+	profile := StructuredCodexProfile()
+	review := ManagementReview{Verdict: "approve", Level: "D1", Rationale: "examples match issue", Evidence: "README", SessionID: "manager", Profile: &profile}
 	if _, err = s.SavePlanWithPolicy(ctx, task.ID, 1, plan, "D3"); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,8 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	}
 	used(0)
 	pending, err := s.Task(ctx, task.ID)
-	if err != nil || pending.Status != "PLANNING" || len(pending.Children) != 0 || pending.Plan.Review.EffectiveLevel != "D3" {
+	if err != nil || pending.Status != "PLANNING" || len(pending.Children) != 0 || pending.Plan.Review.EffectiveLevel != "D3" ||
+		pending.Plan.Review.Profile == nil || !validStructuredProfile(pending.Plan.Review.Profile) {
 		t.Fatal(pending, err)
 	}
 	if _, err = s.SavePlan(ctx, task.ID, 2, plan); err != nil {

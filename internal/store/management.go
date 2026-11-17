@@ -93,6 +93,7 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDe
 	if err = json.Unmarshal(plan, &job.Plan); err != nil {
 		return nil, err
 	}
+	job.CaptureProfile = true
 	return &job, tx.Commit()
 }
 
