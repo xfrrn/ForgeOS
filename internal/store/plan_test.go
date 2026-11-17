@@ -101,7 +101,7 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	_, pending := decision(p.ID, "unconfirmed private draft", "PROPOSED")
 	_, foreign := decision(other.ID, "foreign private decision", "CONFIRMED")
 	second.ContextRefs = []string{"README.md", ref, pending, foreign, ref}
-	plan := Plan{Objective: "Document usage", Milestones: []Milestone{{"Handbook", []PlanItem{second, first}}}}
+	plan := Plan{Objective: "Document usage", Milestones: []Milestone{{"Handbook", []PlanItem{second, first}}, {Name: "Later"}}}
 	root := t.TempDir()
 	job, err := s.Claim(ctx, "worker", root, true)
 	if err != nil || job == nil {

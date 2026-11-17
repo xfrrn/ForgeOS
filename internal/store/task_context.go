@@ -17,8 +17,8 @@ const taskContextFrom = `FROM work_items t JOIN work_items g ON g.id=COALESCE(t.
 			SELECT jsonb_agg(jsonb_build_object('id',d.id,'statement',d.statement,'validity',d.validity,
 				'valid_until',d.valid_until,'source',d.source,'confirmed_at',d.history->-1->'at','ref',refs.ref) ORDER BY refs.pos) items
 			FROM (SELECT ref,min(pos) AS pos FROM jsonb_array_elements(p.plan->'milestones') m
-				CROSS JOIN LATERAL jsonb_array_elements(m->'items') i
-				CROSS JOIN LATERAL jsonb_array_elements_text(i->'context_refs') WITH ORDINALITY r(ref,pos)
+				CROSS JOIN LATERAL jsonb_array_elements(NULLIF(m->'items','null'::jsonb)) i
+				CROSS JOIN LATERAL jsonb_array_elements_text(NULLIF(i->'context_refs','null'::jsonb)) WITH ORDINALITY r(ref,pos)
 				WHERE i->>'key'=t.plan_key GROUP BY ref) refs
 			JOIN project_decision_index d ON d.project_id=t.project_id AND d.status='CONFIRMED'
 				AND refs.ref='/projects/' || t.project_id || '/decisions/' || d.id
