@@ -26,9 +26,7 @@ class Client:
         if not line:
             raise RuntimeError("App Server closed the protocol stream")
         msg = json.loads(line)
-        if "method" in msg and "id" in msg:
-            raise RuntimeError("Unexpected server request during the read-only probe")
-        if msg.get("method") in {"turn/started", "turn/completed", "item/completed"}:
+        if ("method" in msg and "id" in msg) or msg.get("method") in {"turn/started", "turn/completed", "item/completed"}:
             self.notifications.append(msg)
         return msg
 
@@ -37,46 +35,62 @@ class Client:
         self.send({"id": self.sequence, "method": method, "params": params})
         while True:
             msg = self.receive()
-            if msg.get("id") == self.sequence:
+            if "method" not in msg and msg.get("id") == self.sequence:
                 if "error" in msg:
                     raise RuntimeError(f"{method} failed with protocol error {msg['error'].get('code')}")
                 return msg["result"]
 
-    def thread(self, workspace, existing=None):
-        params = {"cwd": str(workspace), "sandbox": "read-only", "approvalPolicy": "never"}
+    def thread(self, workspace, existing=None, approval="never"):
+        params = {"cwd": str(workspace), "sandbox": "read-only", "approvalPolicy": approval}
         if existing:
             params["threadId"] = existing
         result = self.call("thread/resume" if existing else "thread/start", params)
-        if result["sandbox"]["type"] != "readOnly" or result["approvalPolicy"] != "never":
+        if result["sandbox"]["type"] != "readOnly" or result["approvalPolicy"] != approval:
             raise RuntimeError("App Server selected an unexpected sandbox or approval policy")
         thread = result["thread"]["id"]
         if existing and existing != thread:
             raise RuntimeError("App Server resumed a different thread")
         return thread
 
-    def turn(self, thread, prompt, interrupt=False):
+    def turn(self, thread, prompt, interrupt=False, decision=None):
         self.notifications.clear()
         turn = self.call("turn/start", {"threadId": thread, "input": [{"type": "text", "text": prompt}]})["turn"]["id"]
         message, started = "", False
+        self.approval = None
         while True:
             if not self.notifications:
                 self.receive()
                 continue
             event = self.notifications.pop(0)
             params = event["params"]
+            if "id" in event:
+                if (decision not in ("decline", "cancel") or self.approval is not None
+                        or event["method"] != "item/commandExecution/requestApproval"
+                        or params.get("threadId") != thread or params.get("turnId") != turn
+                        or not params.get("itemId") or "approval_probe.py" not in (params.get("command") or "")):
+                    raise RuntimeError(f"Unexpected server request: {event['method']}")
+                self.approval = {"request": event["id"], "item": params["itemId"], "decision": decision}
+                self.send({"id": event["id"], "result": {"decision": decision}})
+                continue
             if params.get("threadId") != thread:
                 continue
             method = event["method"]
-            if method == "item/completed" and params.get("turnId") == turn and params["item"]["type"] == "agentMessage":
-                message = params["item"]["text"].strip()
+            if method == "item/completed" and params.get("turnId") == turn:
+                item = params["item"]
+                if item["type"] == "agentMessage":
+                    message = item["text"].strip()
+                if self.approval and item["type"] == "commandExecution" and item["id"] == self.approval["item"]:
+                    self.approval["status"] = item["status"]
             if method == "turn/started" and params["turn"]["id"] == turn:
                 if interrupt and not started:
                     self.call("turn/interrupt", {"threadId": thread, "turnId": turn})
                 started = True
             if method == "turn/completed" and params["turn"]["id"] == turn:
-                expected = "interrupted" if interrupt else "completed"
+                expected = "interrupted" if interrupt or decision == "cancel" else "completed"
                 if not started or params["turn"]["status"] != expected:
-                    raise RuntimeError(f"Expected a started then {expected} turn")
+                    raise RuntimeError(f"Expected a started then {expected} turn, got {params['turn']['status']}")
+                if decision and (not self.approval or self.approval.get("status") != "declined"):
+                    raise RuntimeError("The turn ended without a declined command receipt")
                 return turn, message
 
 
@@ -117,13 +131,32 @@ def server(binary, workspace):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin", default="codex", help="native Codex executable")
-    binary = shutil.which(parser.parse_args().bin)
+    parser.add_argument("--approvals", action="store_true", help="exercise decline and cancel on native command approvals")
+    args = parser.parse_args()
+    binary = shutil.which(args.bin)
     if not binary or (os.name == "nt" and Path(binary).suffix.lower() != ".exe"):
         parser.error("supply the path to the native CLI executable with --bin")
     version = subprocess.check_output([binary, "--version"], text=True, timeout=10).strip()
     marker = "FORGE-" + secrets.token_hex(8)
     with tempfile.TemporaryDirectory(prefix="forgeos-app-server-") as tmp:
         workspace = Path(tmp)
+        if args.approvals:
+            # The fixture has no external dependencies. Its only effect would be visible here.
+            (workspace / "approval_probe.py").write_text(
+                "from pathlib import Path\nPath('executed.txt').write_text('ran')\n", encoding="utf-8")
+            receipts = []
+            with server(binary, workspace) as client:
+                for decision in ("decline", "cancel"):
+                    thread = client.thread(workspace, approval="untrusted")
+                    turn, _ = client.turn(thread, "Run the command python approval_probe.py in the current "
+                                          "directory once, using your shell tool. We are testing the native "
+                                          "approval UI. If permission is declined, stop without retrying "
+                                          "or using another tool.", decision=decision)
+                    if (workspace / "executed.txt").exists():
+                        raise RuntimeError("Denied command executed")
+                    receipts.append({"thread": thread, "turn": turn, **client.approval})
+            print(json.dumps({"version": version, "sandbox": "read-only", "approvals": receipts}))
+            return
         with server(binary, workspace) as first:
             thread = first.thread(workspace)
             start, answer = first.turn(thread, f"Test case {marker}. Do not use tools. Reply only OK.")

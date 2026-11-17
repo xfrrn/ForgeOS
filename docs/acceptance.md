@@ -2021,3 +2021,17 @@ D1 查阅已确认项目决策对应 ForgeOS 提交 `36b88b4f7d5787517ff6aeb5cbd
 | 在另一份 #55 还原库退回候选，从任务详情暂停执行 36 的 build，再从暂停状态恢复 | 原执行结束，新执行重新验证同一候选，实时输出和最终归档都属于新运行 | 候选 f98d9143e97902fad0c4a1b217daa795dbda2708 保持不变。执行 36 的 ci-run-315086847 和执行 37 的 ci-run-2160220780 分别报告 21 字节，观察时间不同。恢复后的 format、unit、build 均通过，归档摘要与上行一致，任务回到 WAITING_ACCEPTANCE。 |
 
 PostgreSQL 和 Docker 均启用时，Go 全包回归共 229 项测试及子测试通过，零跳过。Go vet 和 Web 生产构建通过。
+
+声明式 CI 实时日志对应 ForgeOS 提交 `f374f06d3ade00e8460b7970072f25d3de9b1e4d`。
+
+### 专题 07、16 A.1 · 原生命令审批拒绝与取消
+
+在本机运行 `python scripts/probe_codex_app_server.py --bin <codex.exe> --approvals`，Codex CLI 版本为 0.169.0-alpha.11.1。每个场景在独立的只读 Thread 中请求运行临时目录里的同一标记脚本，审批策略为 untrusted。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 对 turn 01a1e8c7-3a4d-7bf0-9dce-a042483dc8ea 的原生命令审批请求 0 回复 decline | 命令未留下执行标记，模型可结束当前回合 | 工具项 exec-b2f1e209-cbe2-4773-be86-b8b06689c7fc 状态 declined；无标记文件，回合 completed。 |
+| 对 turn 01a1e8c7-64a1-7b72-94c0-c6ebc8bc4886 的原生命令审批请求 1 回复 cancel | 命令未留下执行标记，当前回合被中断 | 工具项 exec-205923eb-1b9f-4297-8f50-a69e96c85762 状态 declined；无标记文件，回合 interrupted。 |
+| 运行同一探针原有的启动、跨进程恢复和主动中断场景 | 第二个进程恢复原线程并读出随机标识，第三回合中断 | PID 38556、24492，线程 01a1e8c3-b64e-7810-babb-43b1bccf0dcc；三项断言通过。 |
+
+一次额外诊断运行在收到首个审批请求后连接关闭，未取得第二项回执。随后从新线程复跑两个场景，通过了工具项终态、回合终态和文件系统三组断言。
