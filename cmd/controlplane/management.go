@@ -52,6 +52,13 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 				job = &store.ManagementJob{RepositoryAnalysis: analysis}
 			}
 		}
+		if err == nil && job == nil && r.URL.Query().Get("supports_curation") == "1" {
+			c, claimErr := data.ClaimCuration(r.Context(), id, true)
+			err = claimErr
+			if c != nil {
+				job = &store.ManagementJob{Curation: c}
+			}
+		}
 		if err == nil && job == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -81,6 +88,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		respond(w, http.StatusNoContent, nil, err)
 	}))
+	registerCurationReview(mux, data, id, token)
 	registerTestPlanResult(mux, "/internal/management/test-plans/result", data, token, id, "management")
 	mux.HandleFunc("POST /internal/management/repository-analysis/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var out store.AnalysisResult

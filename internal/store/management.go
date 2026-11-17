@@ -11,6 +11,7 @@ import (
 )
 
 type ManagementJob struct {
+	Curation           *CurationJob      `json:"curation,omitempty"`
 	RepositoryAnalysis *AnalysisJob      `json:"repository_analysis,omitempty"`
 	Feedback           *FeedbackJob      `json:"feedback,omitempty"`
 	TestPlan           *TestPlanJob      `json:"test_plan,omitempty"`

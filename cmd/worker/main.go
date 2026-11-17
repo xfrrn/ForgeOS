@@ -94,8 +94,11 @@ func fromEnv(role string) (*worker, error) {
 		}
 		return w, nil
 	}
-	if role == "management" || role == "test-agent" {
+	if role == "management" || role == "test-agent" || role == "curator" {
 		w.token = os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
+		if role == "curator" {
+			w.token = os.Getenv("FORGEOS_CURATOR_TOKEN")
+		}
 		if role == "test-agent" {
 			w.token = os.Getenv("FORGEOS_TEST_AGENT_TOKEN")
 		}
@@ -424,8 +427,8 @@ func main() {
 	if len(os.Args) == 2 {
 		role = os.Args[1]
 	}
-	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" {
-		log.Fatal("usage: worker [management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager]")
+	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" && role != "curator" {
+		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {
@@ -433,6 +436,8 @@ func main() {
 	}
 	if role == "test-agent" {
 		err = w.runTestAgent(ctx)
+	} else if role == "curator" {
+		err = w.runCurator(ctx)
 	} else if role == "reviewer" {
 		err = w.runReviewer(ctx)
 	} else if role == "management" {

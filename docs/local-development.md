@@ -259,6 +259,12 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 未指定策略时，最低决定等级为 D2。Owner 保存修订时可附加 `minimum_level`，也可在首次领取前向 `POST /tasks/{id}/plans/{revision}/policy` 提交该字段。已指定的等级绑定当前修订。D1 只开放给 docs 验证的低风险范围；管理建议只能提高等级。D1 通过会在同一事务中激活子任务；退回、请求人工决定、D2 或 D3 均保留草案，Owner 可保存下一版或通过现有激活入口明确批准。代码交付仍经过独立的候选验收与 GitHub 门禁。
 
+## 启动知识提取角色
+
+在控制面设置 `FORGEOS_CURATOR_PROJECT_ID` 和该项目独立的 `FORGEOS_CURATOR_TOKEN`。把 Management 配置到同一项目，用两个单独的进程启动 `go run ./cmd/worker curator` 和 `go run ./cmd/worker management`。每个进程只需自己的角色令牌、回环 `FORGEOS_API_URL` 和能输出结构化结果的已登录本地 Codex。可用 `FORGEOS_CODEX_BIN` 指定可执行文件。
+
+从工作台导入含有实测观察的项目资料，打开“知识提取与审核”。依次核对原文引句、两个会话和审核决定；项目节点可通过 `GET /internal/projects/{id}/experience` 回读审核通过的当前修订。提取和审核分别使用六分钟租约。原进程中断且没有成功回报时，角色进程会在租约到期后重新领取。
+
 ## 为多个 Worker 分配项目
 
 控制面可用 `FORGEOS_WORKERS_FILE` 代替单一 `FORGEOS_WORKER_TOKEN`。文件是 JSON 数组，每项含 `worker_id`、`token_sha256`（原始随机令牌的 SHA-256 十六进制摘要）与 `projects`（允许领取的项目 ID 数组）。在对应 Worker 上设置相同的 `FORGEOS_WORKER_ID`。可用 `FORGEOS_WORKER_TOKEN` 设置固定令牌，或用 `FORGEOS_WORKER_TOKEN_FILE` 指向节点服务账号可读、位于项目和工作区之外的绝对路径。两种方式只选一种。文件内容为一行可打印 ASCII 令牌，允许末尾换行。使用文件时，Worker 每次发起请求都会重新读取。

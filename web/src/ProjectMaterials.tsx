@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { MaterialCuration } from './MaterialCuration'
 import { ShareDraft } from './ProjectShares'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 
@@ -136,11 +137,12 @@ export function ProjectMaterials({ project, request }: { project: number; reques
         <div className="detail-actions"><button className="button" disabled={Boolean(conflict)}>保存修订 {previous + 1}</button>
           <button type="button" className="button" onClick={() => { setDraft(undefined); setConflict(undefined); setError('') }}>取消编辑</button></div>
       </fieldset>
-    </form> : doc && <section className="panel detail-card"><h2 ref={contentHeading} tabIndex={-1}><code>{doc.key}</code></h2><DocumentText doc={doc}/><div className="detail-actions">
+    </form> : doc && <section key={doc.key + '/' + doc.revision} className="panel detail-card"><h2 ref={contentHeading} tabIndex={-1}><code>{doc.key}</code></h2><DocumentText doc={doc}/><div className="detail-actions">
       {doc.revision > 1 && <button className="button" disabled={busy} onClick={() => void read(doc.key, doc.revision-1)}>上一修订</button>}
       {doc.revision < latest
         ? <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
         : <button className="button" disabled={busy} onClick={() => edit(doc)}>编辑此修订</button>}
-    </div><ShareDraft key={doc.key + '/' + doc.revision} project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
+    </div><MaterialCuration path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
+      <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
   </div>
 }

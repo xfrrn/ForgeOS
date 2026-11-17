@@ -55,7 +55,7 @@ func loadWorkers(file, legacy, owner, manager string) (*workerRegistry, error) {
 		return nil, errors.New("configure either FORGEOS_WORKERS_FILE or FORGEOS_WORKER_TOKEN on the control plane")
 	}
 	a := &workerRegistry{file: file, nodeRoutes: http.NewServeMux(), reserved: map[[sha256.Size]byte]bool{}}
-	for _, token := range []string{"", owner, manager, os.Getenv("FORGEOS_REVIEWER_TOKEN"), os.Getenv("FORGEOS_TEST_AGENT_TOKEN")} {
+	for _, token := range []string{"", owner, manager, os.Getenv("FORGEOS_REVIEWER_TOKEN"), os.Getenv("FORGEOS_TEST_AGENT_TOKEN"), os.Getenv("FORGEOS_CURATOR_TOKEN")} {
 		a.reserved[sha256.Sum256([]byte(token))] = true
 	}
 	if err := a.reload(); err != nil {

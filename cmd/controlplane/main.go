@@ -109,6 +109,9 @@ func run(ctx context.Context) error {
 	if err := registerManagement(mux, data, os.Getenv("FORGEOS_MANAGEMENT_PROJECT_ID"), manager, owner, workers); err != nil {
 		return err
 	}
+	if err := registerCurator(mux, data, owner, manager, workers); err != nil {
+		return err
+	}
 	var servers []*http.Server
 	done := make(chan error, 2)
 	start := func(listener net.Listener, handler http.Handler) {

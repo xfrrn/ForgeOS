@@ -1,0 +1,86 @@
+package main
+
+import (
+	"errors"
+	"net/http"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+
+	"forgeos/internal/store"
+)
+
+func registerCurator(mux *http.ServeMux, data *store.Store, owner, manager string, workers *workerRegistry) error {
+	scope, token := os.Getenv("FORGEOS_CURATOR_PROJECT_ID"), os.Getenv("FORGEOS_CURATOR_TOKEN")
+	if scope == "" && token == "" {
+		return nil
+	}
+	id, err := strconv.ParseInt(scope, 10, 64)
+	if err != nil || id < 1 || strings.TrimSpace(token) == "" || workers.match(token) != nil ||
+		slices.Contains([]string{owner, manager, os.Getenv("FORGEOS_TEST_AGENT_TOKEN"), os.Getenv("FORGEOS_REVIEWER_TOKEN")}, token) {
+		return errors.New("set FORGEOS_CURATOR_PROJECT_ID and a distinct FORGEOS_CURATOR_TOKEN")
+	}
+	mux.HandleFunc("POST /internal/curator/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		job, err := data.ClaimCuration(r.Context(), id, false)
+		if job == nil && err == nil {
+			w.WriteHeader(204)
+			return
+		}
+		respond(w, 200, job, err)
+	}))
+	mux.HandleFunc("POST /internal/curator/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var out struct {
+			ID         int64            `json:"id"`
+			Lease      string           `json:"lease"`
+			Extraction store.Extraction `json:"extraction"`
+		}
+		if decodeLimited(w, r, &out, 256<<10) {
+			respond(w, 204, nil, data.RecordExtraction(r.Context(), id, out.ID, out.Lease, out.Extraction))
+		}
+	}))
+	return nil
+}
+
+func registerCurationReview(mux *http.ServeMux, data *store.Store, project int64, token string) {
+	mux.HandleFunc("POST /internal/management/curation/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var out struct {
+			ID     int64                  `json:"id"`
+			Lease  string                 `json:"lease"`
+			Review store.ManagementReview `json:"review"`
+		}
+		if decodeLimited(w, r, &out, 64<<10) {
+			respond(w, 204, nil, data.ReviewCuration(r.Context(), project, out.ID, out.Lease, out.Review))
+		}
+	}))
+}
+
+func registerCurationReads(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	mux.HandleFunc("GET /projects/{id}/materials/{key}/revisions/{revision}/curation", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		project, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		n, err := strconv.ParseInt(r.PathValue("revision"), 10, 32)
+		key := r.PathValue("key")
+		if err != nil || n < 1 || !store.ValidMaterialKey(key) {
+			problem(w, 400, "invalid material revision")
+			return
+		}
+		out, err := data.MaterialCuration(r.Context(), project, key, int(n))
+		respond(w, 200, out, err)
+	}))
+	registerProjectRead(mux, "experience", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+		var before int64
+		if r.URL.Query().Has("before") {
+			var err error
+			before, err = strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+			if err != nil || before < 1 {
+				problem(w, 400, "invalid experience cursor")
+				return
+			}
+		}
+		out, err := data.ProjectExperience(r.Context(), project, before)
+		respond(w, 200, out, err)
+	})
+}

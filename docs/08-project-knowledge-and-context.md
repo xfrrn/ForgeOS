@@ -142,6 +142,14 @@ Management、Planner、Development、Review、Test、Operations 获取不同上�
 
 ## 8. Knowledge Curator
 
+### 导入资料后提取项目经验
+
+每次导入项目资料、档案或环境说明都会按项目、资料标识和修订号生成一条提取记录。升级前已有的资料修订也可领取。专用 `worker curator` 在独立只读 Codex 会话中提取最多八条技术观察或项目经验，每条附原文引句。控制面逐条核对引句确实出现在该修订正文中。没有足够证据时，记录空结果。
+
+有建议时，`worker management` 在另一个只读会话核对原文、适用条件和建议。只有当前修订的 D1 批准建议进入本项目的经验列表。退回、需要 Owner 处理和较高等级的建议保留审核回执。业务决策、架构规则及跨项目共享仍通过相应的确认入口。新修订导入后，经验列表立即停止引用旧版；旧版的建议、引句、审核理由和会话可从任务工作台的“项目接入 → 项目资料 → 知识提取与审核”回读。
+
+Owner 可读取 `GET /projects/{id}/materials/{key}/revisions/{revision}/curation`，核对提取与审核时间、两次会话及固定资料摘要。Owner 的 `GET /projects/{id}/experience` 与项目节点的 `GET /internal/projects/{id}/experience` 返回可用的项目经验，每页最多 30 条，以最后一项 ID 作为 `before` 读取下一页。[角色启动方法](local-development.md#启动知识提取角色)
+
 触发：
 - 决策确认；
 - Goal 完成；
