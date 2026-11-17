@@ -432,13 +432,17 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		dir = saved.GitDir
 		budget.step = saved.ResourceStep
 		result.SessionID = saved.Session
-		if !activeTime.Stop() {
-			return failed("execution budget expired before resume", nil)
-		}
-		ownerReply, err = w.resumeOwnerQuestion(ctx, job, *saved, start, recovery, resumeBudget)
-		seq = saved.Sequence + 1
-		if err == nil {
-			batch, err = w.checkpoint(ctx, job, seq, "")
+		if saved.Writer != nil {
+			seq, batch, ownerReply = saved.Sequence, saved.Writer.Batch, saved.Writer.OwnerReply
+		} else {
+			if !activeTime.Stop() {
+				return failed("execution budget expired before resume", nil)
+			}
+			ownerReply, err = w.resumeOwnerQuestion(ctx, job, *saved, start, recovery, resumeBudget)
+			seq = saved.Sequence + 1
+			if err == nil {
+				batch, err = w.checkpoint(ctx, job, seq, "")
+			}
 		}
 	} else {
 		dir, err = checkedWorktree(ctx, repo, workspace, start)
@@ -452,6 +456,19 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		var question *nativeQuestion
 		if job.RuntimeQuestions && job.SupportsCheckpoints {
 			question = &nativeQuestion{}
+		}
+		if job.RecoverWriterPause && w.journal != nil {
+			if saved := recovery.saved; saved != nil && saved.Writer != nil && saved.Writer.Asked {
+				question = &nativeQuestion{Question: saved.Question, Evidence: saved.Evidence, ReferenceDecisionID: saved.ReferenceDecisionID, requested: true}
+			}
+			budget.capturePause = func(q *parkedCheckpoint, interrupted bool) error {
+				q.Writer = &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: !interrupted}
+				if !interrupted && question != nil && question.requested {
+					q.Writer.Asked = true
+					q.Question, q.Evidence, q.ReferenceDecisionID = question.Question, question.Evidence, question.ReferenceDecisionID
+				}
+				return nil
+			}
 		}
 		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed bool) (string, error) {
 			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox}

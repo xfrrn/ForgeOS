@@ -15,11 +15,24 @@ import (
 )
 
 func TestResumeFinishedPlannerOutputWithoutRerunningModel(t *testing.T) {
+	testFinishedPause(t, false)
+}
+
+func TestResumeFinishedWriterQuestionWithoutRerunningModel(t *testing.T) {
+	testFinishedPause(t, true)
+}
+
+func testFinishedPause(t *testing.T, writer bool) {
+	t.Helper()
 	ctx := context.Background()
 	w, j, base := fixture(t)
 	j.Kind, j.LeaseToken, j.LeaseSeconds = "codex_issue", strings.Repeat("a", 64), 300
 	j.Spec = &store.IssueSpec{Mode: "plan", BaseCommit: base, Validation: "docs"}
 	j.ModelPause, j.RecoverPlannerPause, j.ManageResources, j.SupportsCheckpoints = true, true, true, true
+	if writer {
+		j.Spec.Mode, j.RecoverPlannerPause = "", false
+		j.RecoverWriterPause, j.RuntimeQuestions, j.ResumeQuestions, j.CheckpointWorktrees = true, true, true, true
+	}
 	w.planner, w.codex, w.codexVersion = true, "must-not-run", "current"
 	dir, err := checkedWorktree(ctx, j.RepoPath, j.Workspace, base)
 	if err != nil {
@@ -29,6 +42,7 @@ func TestResumeFinishedPlannerOutputWithoutRerunningModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	asked := make(chan store.CheckpointQuestion, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/internal/executions/12/model-pause":
@@ -40,6 +54,13 @@ func TestResumeFinishedPlannerOutputWithoutRerunningModel(t *testing.T) {
 			json.NewEncoder(rw).Encode(store.ModelPause{Instance: 1, Session: "original", Parked: &now, Resumed: &now, Index: trees.Index, Worktree: trees.Worktree})
 		case "/internal/executions/12/checkpoints", "/internal/executions/12/renew":
 			rw.WriteHeader(http.StatusNoContent)
+		case "/internal/executions/12/checkpoint-question":
+			var q store.CheckpointQuestion
+			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+				t.Error(err)
+			}
+			asked <- q
+			rw.WriteHeader(http.StatusPreconditionFailed)
 		default:
 			t.Errorf("unexpected request %s", r.URL.Path)
 			rw.WriteHeader(http.StatusBadRequest)
@@ -59,6 +80,12 @@ func TestResumeFinishedPlannerOutputWithoutRerunningModel(t *testing.T) {
 	}
 	plan := store.Plan{Objective: "Document usage", Milestones: []store.Milestone{{Name: "Docs", Items: []store.PlanItem{{Key: "usage", Objective: "usage", Scope: "README", Acceptance: "example present", Deliverables: "README"}}}}}
 	q := parkedCheckpoint{Job: j, ResourceStep: 1, GitDir: dir, Trees: trees, Remaining: time.Minute, Version: w.codexVersion, Session: "original", Planner: &pausedPlanner{Finished: &plan}}
+	if writer {
+		q.Planner = nil
+		q.Sequence, q.ResourceStep = 3, 4
+		q.Writer = &pausedWriter{Finished: true, Asked: true}
+		q.Question, q.Evidence = "Which title?", "Two titles remain"
+	}
 	if err = w.saveParkedCheckpoint(ctx, q); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +93,19 @@ func TestResumeFinishedPlannerOutputWithoutRerunningModel(t *testing.T) {
 	if err != nil || saved == nil {
 		t.Fatal("missing parked plan", err)
 	}
-	result := w.executeAttempt(ctx, j, &checkpointRecovery{saved: saved, leaveUnsettled: true})
+	recovery := checkpointRecovery{saved: saved, leaveUnsettled: true}
+	result := w.executeAttempt(ctx, j, &recovery)
+	if writer {
+		select {
+		case restored := <-asked:
+			if restored.Sequence == nil || *restored.Sequence != q.Sequence || restored.Question != q.Question || restored.Evidence != q.Evidence || restored.Session != q.Session || !recovery.leaveUnsettled {
+				t.Fatal("lost the completed writer's pending question")
+			}
+		default:
+			t.Fatal("restored writer did not submit its question", result.Error)
+		}
+		return
+	}
 	if result.ExitCode != 0 || result.Plan == nil || result.Plan.Objective != plan.Objective || result.SessionID != "original" {
 		t.Fatal(result)
 	}

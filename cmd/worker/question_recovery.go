@@ -25,11 +25,19 @@ type parkedCheckpoint struct {
 	ReferenceDecisionID                  int64
 	ResourceStep                         int64
 	Planner                              *pausedPlanner `json:",omitempty"`
+	Writer                               *pausedWriter  `json:",omitempty"`
 }
 
 type pausedPlanner struct {
 	Comments []store.CommentInput
 	Finished *store.Plan
+}
+
+type pausedWriter struct {
+	Batch      store.CheckpointPage
+	OwnerReply json.RawMessage
+	Finished   bool
+	Asked      bool
 }
 
 type checkpointRecovery struct {
@@ -134,12 +142,14 @@ func (w *worker) readParkedCheckpoint(ctx context.Context, id int64) (*parkedChe
 		return nil, fmt.Errorf("invalid stored checkpoint for execution %d", id)
 	}
 	if q.Planner != nil {
-		if q.Job.Spec.Mode != "plan" || !q.Job.RecoverPlannerPause || !q.Job.ModelPause || !q.Job.ManageResources || q.Sequence != 0 ||
+		if q.Writer != nil || q.Job.Spec.Mode != "plan" || !q.Job.RecoverPlannerPause || !q.Job.ModelPause || !q.Job.ManageResources || q.Sequence != 0 ||
 			(q.Planner.Finished != nil && q.Planner.Finished.Validate() != nil) {
 			return nil, fmt.Errorf("invalid stored planner checkpoint for execution %d", id)
 		}
 	} else if q.Job.Spec.Mode == "plan" || !q.Job.ResumeQuestions {
 		return nil, fmt.Errorf("invalid stored question checkpoint for execution %d", id)
+	} else if w := q.Writer; w != nil && (!q.Job.RecoverWriterPause || !q.Job.ModelPause || !q.Job.ManageResources || w.Asked && !w.Finished) {
+		return nil, fmt.Errorf("invalid stored implementation checkpoint for execution %d", id)
 	}
 	return &q, nil
 }

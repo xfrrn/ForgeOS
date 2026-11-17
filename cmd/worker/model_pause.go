@@ -50,7 +50,7 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 	stopClock func() time.Duration, resumeClock func(time.Duration), run func(context.Context, string, bool) (string, error)) (string, error) {
 	resuming := false
 	var resumeTrees *store.WorktreeTrees
-	if b.plannerCheckpoint != nil && b.recovery.saved != nil {
+	if b.capturePause != nil && b.recovery.saved != nil && (b.recovery.saved.Planner != nil || b.recovery.saved.Writer != nil) {
 		q := b.recovery.saved
 		if stopClock() <= 0 {
 			return q.Session, context.DeadlineExceeded
@@ -60,7 +60,8 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 			return q.Session, err
 		}
 		resumeClock(q.Remaining)
-		if q.Planner.Finished != nil {
+		b.recovery.saved = nil
+		if (q.Planner != nil && q.Planner.Finished != nil) || (q.Writer != nil && q.Writer.Finished) {
 			return q.Session, w.verifyQuestionWorkspace(ctx, b.job, base, identity, sequence, &q.Trees)
 		}
 		session, resuming, resumeTrees = q.Session, true, &q.Trees
@@ -125,10 +126,9 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 			return next, context.DeadlineExceeded
 		}
 		q := parkedCheckpoint{Job: b.job, Session: next, Trees: trees, ResourceStep: b.step, Sequence: sequence, GitDir: identity, Remaining: remaining}
-		if b.plannerCheckpoint != nil {
+		if b.capturePause != nil {
 			q.Version = w.nativeVersion(b.job)
-			q.Planner, err = b.plannerCheckpoint(interrupted)
-			if err != nil {
+			if err := b.capturePause(&q, interrupted); err != nil {
 				return next, err
 			}
 			if err := w.saveParkedCheckpoint(ctx, q); err != nil {
@@ -148,7 +148,7 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 }
 
 func (w *worker) awaitModelResume(ctx context.Context, b *executionResources, q *parkedCheckpoint) error {
-	durable := q.Planner != nil
+	durable := q.Planner != nil || q.Writer != nil
 	input := store.PausePoll{Step: q.ResourceStep, Session: q.Session, Trees: &q.Trees}
 	if durable {
 		b.recovery.waiting, b.recovery.leaveUnsettled = true, true

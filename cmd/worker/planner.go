@@ -66,13 +66,13 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
 	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexPlannerSandbox, options: []string{"--output-schema", schema, "--output-last-message", output}}
 	if job.RecoverPlannerPause && w.journal != nil {
-		budget.plannerCheckpoint = func(interrupted bool) (*pausedPlanner, error) {
-			c := &pausedPlanner{Comments: comments}
+		budget.capturePause = func(q *parkedCheckpoint, interrupted bool) error {
+			q.Planner = &pausedPlanner{Comments: comments}
 			var err error
 			if !interrupted {
-				c.Finished, err = readPlannerOutput(output)
+				q.Planner.Finished, err = readPlannerOutput(output)
 			}
-			return c, err
+			return err
 		}
 	}
 	r.SessionID, err = w.runModelTurn(ctx, budget, 0, "", spec.BaseCommit, identity, stopBudget, resumeBudget, func(turn context.Context, session string, resumed bool) (string, error) {
