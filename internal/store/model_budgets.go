@@ -49,7 +49,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 			roles[member] = true
 		}
 		for _, member := range b.AgentRoles {
-			if b.Harness != "codex" || member.Project < 1 || (member.Role != "curator" && member.Role != "curation_review") || roles[member] {
+			if b.Harness != "codex" || member.Project < 1 || (member.Role != "curator" && member.Role != "curation_review" && member.Role != "plan_review") || roles[member] {
 				return ErrConflict
 			}
 			roles[member] = true
@@ -114,6 +114,12 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 		CASE WHEN c.extraction IS NULL THEN c.extraction_until ELSE c.review_until END >clock_timestamp()
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',c.project_id,
 			'role',CASE WHEN c.extraction IS NULL THEN 'curator' ELSE 'curation_review' END))`)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE plan_revisions r SET model_budget=b.name FROM work_items t,model_budgets b
+		WHERE r.task_id=t.id AND r.model_budget IS NULL AND r.review IS NULL AND r.review_until>clock_timestamp()
+		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',t.project_id,'role','plan_review'))`)
 	if err != nil {
 		return err
 	}

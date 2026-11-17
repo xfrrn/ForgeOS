@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"forgeos/internal/validation"
 )
 
 type ManagementJob struct {
+	LeaseUntil         *time.Time         `json:"lease_until,omitempty"`
 	Question           *QuestionAdviceJob `json:"question,omitempty"`
 	Curation           *CurationJob       `json:"curation,omitempty"`
 	RepositoryAnalysis *AnalysisJob       `json:"repository_analysis,omitempty"`
@@ -58,19 +60,28 @@ func (s *Store) SetPlanMinimum(ctx context.Context, id int64, revision int, leve
 	return err
 }
 
-func (s *Store) ClaimManagement(ctx context.Context, projectID int64) (*ManagementJob, error) {
+func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDeadline bool) (*ManagementJob, error) {
 	var job ManagementJob
 	var spec, plan []byte
-	err := s.db.QueryRowContext(ctx, `WITH candidate AS (
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	pool, available, err := modelSlot(ctx, tx, "codex", "", "plan_review", projectID)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		return nil, err
+	}
+	err = tx.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT t.id,t.project_id,t.spec,r.revision FROM work_items t
 		JOIN plan_revisions r ON r.task_id=t.id WHERE t.project_id=$1 AND t.status='PLANNING'
 		AND r.revision=(SELECT max(revision) FROM plan_revisions WHERE task_id=t.id)
-		AND r.review IS NULL AND (r.review_until IS NULL OR r.review_until<=now())
+		AND r.review IS NULL AND (r.review_until IS NULL OR r.review_until<=clock_timestamp())
 		ORDER BY r.at,t.id LIMIT 1 FOR UPDATE OF t,r SKIP LOCKED)
-		UPDATE plan_revisions r SET review_lease=gen_random_uuid(),review_until=now()+interval '6 minutes'
+		UPDATE plan_revisions r SET review_lease=gen_random_uuid(),review_until=clock_timestamp()+interval '6 minutes',model_budget=$2
 		FROM candidate c WHERE r.task_id=c.id AND r.revision=c.revision
-		RETURNING c.id,c.project_id,c.spec,r.revision,r.plan,r.review_lease,COALESCE(r.minimum_level,'D2')`, projectID).Scan(
-		&job.TaskID, &job.ProjectID, &spec, &job.Revision, &plan, &job.Lease, &job.MinimumLevel)
+		RETURNING c.id,c.project_id,c.spec,r.revision,r.plan,r.review_lease,COALESCE(r.minimum_level,'D2'),CASE WHEN $3 THEN r.review_until END`, projectID, pool, supportsDeadline).Scan(
+		&job.TaskID, &job.ProjectID, &spec, &job.Revision, &plan, &job.Lease, &job.MinimumLevel, &job.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -83,7 +94,7 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64) (*Manageme
 	if err = json.Unmarshal(plan, &job.Plan); err != nil {
 		return nil, err
 	}
-	return &job, nil
+	return &job, tx.Commit()
 }
 
 func (review ManagementReview) validate() error {
@@ -116,7 +127,7 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	var floor string
 	var stored []byte
 	var current, valid bool
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(minimum_level,'D2'),review,review_until>now(),
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(minimum_level,'D2'),review,review_until>clock_timestamp(),
 		revision=(SELECT max(revision) FROM plan_revisions WHERE task_id=$1)
 		FROM plan_revisions WHERE task_id=$1 AND revision=$2 AND review_lease::text=$3 FOR UPDATE`, id, revision, lease).Scan(&floor, &stored, &valid, &current)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -142,7 +153,17 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 		}
 		return nil
 	}
-	if !current || !valid || status != "PLANNING" {
+	if valid && (!current || status != "PLANNING") {
+		// The superseded review has finished running. Its verdict cannot apply to the current draft.
+		if _, err = tx.ExecContext(ctx, `UPDATE plan_revisions SET review_until=clock_timestamp() WHERE task_id=$1 AND revision=$2`, id, revision); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		return ErrConflict
+	}
+	if !valid {
 		return ErrConflict
 	}
 	doc, err := json.Marshal(review)

@@ -31,17 +31,29 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	}
 	claim := func() *ManagementJob {
 		t.Helper()
-		job, err := s.ClaimManagement(ctx, p.ID)
+		job, err := s.ClaimManagement(ctx, p.ID, true)
 		if err != nil || job == nil {
 			t.Fatal(job, err)
 		}
 		return job
 	}
-	if job, err := s.ClaimManagement(ctx, p.ID+1); err != nil || job != nil {
+	if job, err := s.ClaimManagement(ctx, p.ID+1, true); err != nil || job != nil {
 		t.Fatal(job, err)
 	}
 	first := claim()
-	if job, err := s.ClaimManagement(ctx, p.ID); err != nil || job != nil {
+	pool := ModelBudget{Name: "plans", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: p.ID, Role: "plan_review"}}}
+	if err := s.SetModelBudgets(ctx, []ModelBudget{pool}); err != nil {
+		t.Fatal(err)
+	}
+	used := func(want int) {
+		t.Helper()
+		var n int
+		if err := s.db.QueryRowContext(ctx, `SELECT reserved FROM model_budget_usage WHERE name=$1`, pool.Name).Scan(&n); err != nil || n != want {
+			t.Fatalf("reserved %d, want %d: %v", n, want, err)
+		}
+	}
+	used(1)
+	if job, err := s.ClaimManagement(ctx, p.ID, true); err != nil || job != nil {
 		t.Fatal(job, err)
 	}
 	if err = s.SetPlanMinimum(ctx, task.ID, 1, "D1"); !errors.Is(err, ErrConflict) {
@@ -51,16 +63,28 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	if _, err = s.SavePlanWithPolicy(ctx, task.ID, 1, plan, "D3"); err != nil {
 		t.Fatal(err)
 	}
+	if job, err := s.ClaimManagement(ctx, p.ID, true); err != nil || job != nil {
+		t.Fatal("superseded review still running", job, err)
+	}
 	if err = s.CompleteManagement(ctx, p.ID, task.ID, 1, first.Lease, review); !errors.Is(err, ErrConflict) {
 		t.Fatal("stale accepted", err)
 	}
+	used(0)
+	if job, err := s.ClaimManagement(ctx, p.ID, false); err != nil || job != nil {
+		t.Fatal("legacy worker received budgeted plan", job, err)
+	}
 	second := claim()
+	if second.LeaseUntil == nil {
+		t.Fatal("missing plan lease deadline")
+	}
+	used(1)
 	if _, err = s.db.ExecContext(ctx, `UPDATE plan_revisions SET review_until=now() WHERE task_id=$1 AND revision=2`, task.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.CompleteManagement(ctx, p.ID, task.ID, 2, second.Lease, review); !errors.Is(err, ErrConflict) {
 		t.Fatal("expired accepted", err)
 	}
+	used(0)
 	reissued := claim()
 	if reissued.Lease == second.Lease {
 		t.Fatal("lease reused")
@@ -76,6 +100,7 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	used(0)
 	pending, err := s.Task(ctx, task.ID)
 	if err != nil || pending.Status != "PLANNING" || len(pending.Children) != 0 || pending.Plan.Review.EffectiveLevel != "D3" {
 		t.Fatal(pending, err)
@@ -131,7 +156,7 @@ func TestManagementValidationMinimumAppliesOnActivation(t *testing.T) {
 	for i, floor := range []string{"V3", "V4", "V1"} {
 		rev, err := s.SavePlan(ctx, task.ID, i, plan)
 		must(err)
-		job, err := s.ClaimManagement(ctx, project.ID)
+		job, err := s.ClaimManagement(ctx, project.ID, true)
 		must(err)
 		if job == nil {
 			t.Fatal("no review job")
