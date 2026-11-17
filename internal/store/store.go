@@ -185,6 +185,9 @@ var ownerMemorySchema string
 //go:embed 054_curation_decisions.sql
 var curationDecisionsSchema string
 
+//go:embed 055_execution_decisions.sql
+var executionDecisionsSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -219,6 +222,7 @@ type Task struct {
 }
 
 type Execution struct {
+	DecisionContext        *json.RawMessage `json:"decision_context,omitempty"`
 	ObservedProcess        *ObservedProcess `json:"observed_process,omitempty"`
 	CICandidate            string           `json:"ci_candidate,omitempty"`
 	CIPauseRequestedAt     *time.Time       `json:"ci_pause_requested_at,omitempty"`
@@ -311,7 +315,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -369,7 +373,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
-		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,
+		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,
 		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
 		            FROM candidate_review_feedback f WHERE f.execution_id=e.id AND t.status='WAITING_ACCEPTANCE'
 		            AND e.id=(SELECT max(id) FROM executions WHERE task_id=t.id)),
@@ -614,9 +618,9 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	j.Workspace = workerWorkspace(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	j.LeaseSeconds = executionLeaseSeconds(j.Kind)
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until)
+		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until,decision_context)
 		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7,$8,
-		    clock_timestamp() + $6 * interval '1 second')`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources)
+		    clock_timestamp() + $6 * interval '1 second',NULLIF($9,'')::jsonb->'decisions')`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources, string(j.GoalContext))
 	if err != nil {
 		return nil, err
 	}

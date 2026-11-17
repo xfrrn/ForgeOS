@@ -114,6 +114,7 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
       {!loading && !readError && !rows.length && <p>没有符合条件的决策。</p>}
       {rows.map(row => <article key={row.id} className="registered-project"><div>
         <h3>#{row.id} · {row.statement}</h3><p>{labels[row.status]}{row.decided_by && ' · ' + row.decided_by}</p>
+        {row.status === 'CONFIRMED' && <p>计划引用 · <code>{base}/{row.id}</code></p>}
         <p>来源 · {row.source}</p><p>适用条件 · {row.validity}</p>
         {row.valid_until && <p>截止时间 · {formatTime(row.valid_until)}</p>}{row.supersedes && <p>替代对象 · #{row.supersedes}</p>}
         <details><summary>证据与历史</summary><ul>{row.evidence_refs.map((ref,i) => <li key={i}>{ref}</li>)}</ul>

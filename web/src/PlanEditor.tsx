@@ -72,7 +72,7 @@ export function PlanEditor({task, current, issueTitle, docsOnly, canEdit, disabl
           <label>验收条件<textarea required value={it.acceptance_criteria} onChange={e => item(mi, ii, {acceptance_criteria: e.target.value})}/></label>
           <label>交付物<textarea required value={it.deliverables} onChange={e => item(mi, ii, {deliverables: e.target.value})}/></label>
           <label>依赖工作项标识（每行一项）<textarea value={it.dependencies?.join('\n') ?? ''} onChange={e => item(mi, ii, {dependencies: e.target.value.split('\n')})}/></label>
-          <label>上下文引用（每行一项）<textarea value={it.context_refs?.join('\n') ?? ''} onChange={e => item(mi, ii, {context_refs: e.target.value.split('\n')})}/></label>
+          <label>上下文引用（每行一项）<textarea placeholder="仓库路径或项目决策页中的计划引用" value={it.context_refs?.join('\n') ?? ''} onChange={e => item(mi, ii, {context_refs: e.target.value.split('\n')})}/></label>
           <button className="button" type="button" onClick={() => milestone(mi, {items: m.items!.filter((_,i) => i !== ii)})}>移除工作项</button>
         </fieldset>)}
         <div className="detail-actions">

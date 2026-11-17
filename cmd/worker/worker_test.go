@@ -25,6 +25,27 @@ func git(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func TestChildClaimWithLargeDecisionContext(t *testing.T) {
+	// A single plan can reference enough 4 KiB statements to cross the role-job response limit.
+	rows := make([]map[string]any, 520)
+	for i := range rows {
+		rows[i] = map[string]any{"id": i + 1, "statement": strings.Repeat("x", 4096)}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"goal_context": map[string]any{"decisions": rows}})
+	}))
+	defer server.Close()
+	w := worker{api: server.URL, client: server.Client(), token: "worker"}
+	var job store.Job
+	if _, err := w.post(context.Background(), "/internal/claim", struct{}{}, &job); err != nil || len(job.GoalContext) <= 2<<20 {
+		t.Fatal(len(job.GoalContext), err)
+	}
+	var roleJob store.CurationJob
+	if _, err := w.post(context.Background(), "/internal/curator/claim", struct{}{}, &roleJob); err == nil {
+		t.Fatal("unexpectedly accepted oversized Curator response")
+	}
+}
+
 func fixture(t *testing.T) (*worker, store.Job, string) {
 	t.Helper()
 	base, err := filepath.EvalSymlinks(t.TempDir())

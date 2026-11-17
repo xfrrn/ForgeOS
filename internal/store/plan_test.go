@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -77,6 +78,29 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	first := PlanItem{Key: "a", Objective: "A", Scope: "docs", Acceptance: "Example exists", Deliverables: "README"}
 	second := first
 	second.Key, second.Dependencies = "b", []string{"a"}
+	other, err := s.CreateProject(ctx, "other repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := func(project int64, key, state string) (int64, string) {
+		t.Helper()
+		raw, err := s.ProposeDecision(ctx, project, DecisionProposal{RequestKey: key, Statement: key, Source: "Owner minutes",
+			Validity: "Handbook", EvidenceRefs: []string{"minutes/1"}})
+		var d struct{ ID int64 }
+		if err != nil || json.Unmarshal(raw, &d) != nil {
+			t.Fatal(string(raw), err)
+		}
+		if state != "PROPOSED" {
+			if _, err = s.Decide(ctx, project, d.ID, state); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return d.ID, fmt.Sprintf("/projects/%d/decisions/%d", project, d.ID)
+	}
+	confirmed, ref := decision(p.ID, "retained for this child", "CONFIRMED")
+	_, pending := decision(p.ID, "unconfirmed private draft", "PROPOSED")
+	_, foreign := decision(other.ID, "foreign private decision", "CONFIRMED")
+	second.ContextRefs = []string{"README.md", ref, pending, foreign, ref}
 	plan := Plan{Objective: "Document usage", Milestones: []Milestone{{"Handbook", []PlanItem{second, first}}}}
 	root := t.TempDir()
 	job, err := s.Claim(ctx, "worker", root, true)
@@ -214,11 +238,26 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 		PlanRevision int `json:"plan_revision"`
 		Requirement  RequirementRevision
 		Dependencies []Delivery
+		Decisions    []struct {
+			ID             int64
+			Ref, Statement string
+		}
 	}
 	if err := json.Unmarshal(secondJob.GoalContext, &evidence); err != nil || evidence.PlanRevision != 3 ||
 		evidence.Requirement.TaskID != task.ID || evidence.Requirement.Revision != 1 ||
-		len(evidence.Dependencies) != 1 || evidence.Dependencies[0].MergeSHA != merged {
+		len(evidence.Dependencies) != 1 || evidence.Dependencies[0].MergeSHA != merged ||
+		len(evidence.Decisions) != 1 || evidence.Decisions[0].ID != confirmed || evidence.Decisions[0].Ref != ref || evidence.Decisions[0].Statement != "retained for this child" {
 		t.Fatalf("missing child claim evidence: %s %v", secondJob.GoalContext, err)
+	}
+	if strings.Contains(string(child.GoalContext), "retained for this child") || strings.Contains(string(secondJob.GoalContext), "foreign private decision") {
+		t.Fatal("unassigned decision in claim")
+	}
+	if _, err := s.Decide(ctx, p.ID, confirmed, "EXPIRED"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := s.Task(ctx, secondJob.TaskID)
+	if err != nil || claimed.Execution.DecisionContext == nil || !strings.Contains(string(*claimed.Execution.DecisionContext), "retained for this child") {
+		t.Fatal("lost execution decision snapshot", err)
 	}
 	if c, err := s.ClaimGoalClosure(ctx, p.ID); c != nil || err != nil {
 		t.Fatalf("premature parent closure: %v %v", c, err)
@@ -268,13 +307,14 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	var contextView struct {
 		Plan         PlanRevision
 		Requirement  RequirementRevision
+		Decisions    []json.RawMessage
 		Dependencies []struct {
 			Key      string
 			MergeSHA string `json:"merge_sha"`
 		}
 	}
 	if err != nil || json.Unmarshal(raw, &contextView) != nil || contextView.Plan.Revision != 3 ||
-		contextView.Requirement.TaskID != task.ID || contextView.Requirement.Revision != 1 ||
+		contextView.Requirement.TaskID != task.ID || contextView.Requirement.Revision != 1 || len(contextView.Decisions) != 0 ||
 		len(contextView.Dependencies) != 1 || contextView.Dependencies[0].Key != "a" || contextView.Dependencies[0].MergeSHA != merged {
 		t.Fatalf("child context lost its frozen sources or merged prerequisite: %s %v", raw, err)
 	}

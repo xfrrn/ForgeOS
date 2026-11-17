@@ -227,10 +227,14 @@ func (w *worker) post(ctx context.Context, path string, body any, out any) (int,
 	}
 	defer resp.Body.Close()
 	if out != nil && resp.StatusCode == http.StatusOK {
-		const maxJob = 2 << 20
+		maxJob := int64(2 << 20)
+		if _, ok := out.(*store.Job); ok {
+			// A 16 KiB plan can cite hundreds of decisions with separately bounded text.
+			maxJob = 32 << 20
+		}
 		var data []byte
 		data, err = io.ReadAll(io.LimitReader(resp.Body, maxJob+1))
-		if err == nil && len(data) > maxJob {
+		if err == nil && int64(len(data)) > maxJob {
 			err = errors.New("claim response too large")
 		}
 		if err == nil {

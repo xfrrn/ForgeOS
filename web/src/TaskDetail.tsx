@@ -29,6 +29,7 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
 }
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
   observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
   ci_candidate?: string; ci_pause_requested_at?: string
   owner_cancel_requested_at?: string
@@ -311,6 +312,11 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
+    {Boolean(attempt.decision_context?.length) && <details><summary>领取时引用的项目决策（{attempt.decision_context?.length}）</summary>
+      {attempt.decision_context?.map(d => <section key={d.id}><h4><a href={'#' + d.ref}>决策 #{d.id}</a></h4>
+        <p>{d.statement}</p><p>适用条件 · {d.validity}</p><p>来源 · {d.source}</p>
+        <p>确认时间 · {formatTime(d.confirmed_at)}{d.valid_until && ' · 截止时间 ' + formatTime(d.valid_until)}</p>
+      </section>)}</details>}
     {observed && <section><h4>最近的节点进程报告</h4>
       <dl className="detail-facts">
         <Fact label="上报时状态">{observed.exited_at ? '进程已退出' : '进程运行中'}</Fact>

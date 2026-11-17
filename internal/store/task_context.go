@@ -13,6 +13,16 @@ const taskContextFrom = `FROM work_items t JOIN work_items g ON g.id=COALESCE(t.
 		LEFT JOIN LATERAL (SELECT r.task_id,r.revision,r.at,r.git_commit,r.plan FROM plan_revisions r
 			WHERE r.task_id=g.id AND (t.goal_id IS NULL OR r.revision=t.plan_revision)
 			ORDER BY r.revision DESC LIMIT 1) p ON true
+		LEFT JOIN LATERAL (
+			SELECT jsonb_agg(jsonb_build_object('id',d.id,'statement',d.statement,'validity',d.validity,
+				'valid_until',d.valid_until,'source',d.source,'confirmed_at',d.history->-1->'at','ref',refs.ref) ORDER BY refs.pos) items
+			FROM (SELECT ref,min(pos) AS pos FROM jsonb_array_elements(p.plan->'milestones') m
+				CROSS JOIN LATERAL jsonb_array_elements(m->'items') i
+				CROSS JOIN LATERAL jsonb_array_elements_text(i->'context_refs') WITH ORDINALITY r(ref,pos)
+				WHERE i->>'key'=t.plan_key GROUP BY ref) refs
+			JOIN project_decision_index d ON d.project_id=t.project_id AND d.status='CONFIRMED'
+				AND refs.ref='/projects/' || t.project_id || '/decisions/' || d.id
+		) decisions ON true
 		LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('task_id',c.id,'key',c.plan_key,'status',c.status,
 			'pr_url',d.pr_url,'merge_sha',d.merge_sha) ORDER BY c.id) items
 			FROM work_dependencies w JOIN work_items c ON c.id=w.prerequisite AND c.project_id=t.project_id
@@ -25,7 +35,8 @@ func (s *Store) TaskContext(ctx context.Context, project, task int64) (json.RawM
 		'project_id',t.project_id,'task_id',t.id,'kind',t.kind,'status',t.status,
 		'base_commit',t.spec->'base_commit','issue',t.spec->'issue','project_config_blob',t.spec->'project_config_blob',
 		'goal_id',t.goal_id,'plan_key',t.plan_key,'active_revision',g.active_revision,
-		'requirement',to_jsonb(req),'plan',to_jsonb(p),'dependencies',COALESCE(deps.items,'[]'::jsonb))
+		'requirement',to_jsonb(req),'plan',to_jsonb(p),'dependencies',COALESCE(deps.items,'[]'::jsonb),
+		'decisions',COALESCE(decisions.items,'[]'::jsonb))
 		`+taskContextFrom, project, task).Scan(&result)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -38,7 +49,8 @@ func childContext(ctx context.Context, tx *sql.Tx, project, task int64) (json.Ra
 	var result json.RawMessage
 	err := tx.QueryRowContext(ctx, `SELECT jsonb_build_object(
 		'goal_id',t.goal_id,'plan_revision',p.revision,'plan_key',t.plan_key,
-		'requirement',to_jsonb(req),'dependencies',COALESCE(deps.items,'[]'::jsonb)) `+taskContextFrom,
+		'requirement',to_jsonb(req),'dependencies',COALESCE(deps.items,'[]'::jsonb),
+		'decisions',COALESCE(decisions.items,'[]'::jsonb)) `+taskContextFrom,
 		project, task).Scan(&result)
 	return result, err
 }
