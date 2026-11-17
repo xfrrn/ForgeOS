@@ -1881,3 +1881,16 @@ CI 恢复后的候选会话与规则追溯对应提交 `80ef8450e93df5ffee7980f5
 | 由独立 Reviewer 审查返工候选，再从工作台批准并检查收尾 | Reviewer 看到与实现执行相同的答复和退回意见。两个子项完成后父 Goal 才可关闭 | Claude Code 审查会话 `84fdca33-9fff-454e-b6a5-da995a15b986` 对同一候选返回零项发现。两个 PR 的 `acceptance-check` 与 `forgeos/local-ci` 均成功，第二项合并为 `323fd788d959674abbc3692900e47d7c06a542eb`，父 Goal 为 DONE，GitHub 父 Issue 为 CLOSED。[第二个子 PR #100](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/100) · [两个子项的关闭回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/98#issuecomment-6939813159) |
 
 使用 PostgreSQL 18 与真实 Docker 运行全量 Go 回归，197 个测试及子测试通过，零跳过。另以 PostgreSQL 测试连续两次退回、验收时的答复、旧 Worker 能力及不同需求版本的隔离。Go vet 和 Web 生产构建通过。
+
+双子项 Goal 的返工答复继承对应 ForgeOS 提交 `674a466b10c1f18bdeb8fc455ba39149623aa4a6`。
+
+### 专题 14 · 验收数据库磁盘耗尽和回放期间主机重启
+
+2026-11-17，本机历史验收库因数据卷写满而停止。确认源实例离线后，将 1,118,124 个文件复制到 D 盘保留原身份与配置；按同版 PostgreSQL 18 空库布局补回缺失的空目录。源库与恢复库各自保留 WAL，源库的 1,679 个 WAL 文件已逐文件按 SHA-256 核对。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 D 盘副本启动实例。在首次回放期间 Windows 非正常重启后，再从相同副本启动 | PostgreSQL 自行从最后的检查点恢复，原证据可回读 | 13:49:26 到达 WAL `6/D4FFFF90`。13:51:04 完成恢复检查点，写入 13,924 个缓冲页，数据库可连接。随后显式执行 CHECKPOINT 成功。原验收路径现指向 D 盘活动实例，原离线副本另存。 |
+| 在数据库对照归档回执，再启动控制面，查询原任务和 `code-review` | 状态、候选、原生审查会话与归档一致，已交付任务仍有原合并 SHA | #55 的执行 3 仍为 WAITING_ACCEPTANCE，候选 `aae51b5ff79b882a489d52e9869bd11aa3e47c11`，审查会话 `9a961ecc-516a-491e-819f-2d358b537eff`。#88 和 #91 的执行 2 均为 DONE，候选分别为 `c29858e39b76ba7f0e606694fa98a5c4d33c776c` 和 `3d369395c8c78c29395526d442c2d92372f01b5d`，审查会话、Management 计划摘要及合并 SHA 均与对应回执一致。 |
+
+本次逐项核对覆盖上述三份归档。其他历史 schema 未逐表核对。
