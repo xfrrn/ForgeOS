@@ -148,27 +148,34 @@ func issuePrompt(job store.Job, feedback string, comments []store.CommentInput, 
 	return prompt + "\n\nIssue JSON:\n" + string(source), nil
 }
 
-var errCodexInterrupted = errors.New("Codex exited before the turn result")
+type codexCLI struct {
+	bin     string
+	version string
+	sandbox string
+	options []string
+}
 
-func runCodexTurn(ctx context.Context, process processLog, bin, workspace, sandbox, prompt, resume string, options ...string) (string, error) {
+func (c codexCLI) identity() (string, string) { return "codex", c.version }
+
+func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
 	// Preserve the CLI login, but keep account plugins, hooks, approvals and service tokens out of Issue execution.
 	args := []string{"-a", "never", "exec", "--ignore-user-config", "--ignore-rules",
 		"--disable", "apps", "--disable", "plugins", "--disable", "hooks", "-c", "mcp_servers={}",
 		"-c", `web_search="disabled"`, "-c", "sandbox_workspace_write.network_access=false",
 		"-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
 		"-c", "projects." + strconv.Quote(workspace) + `.trust_level="untrusted"`,
-		"--sandbox", sandbox, "--json", "-C", workspace}
+		"--sandbox", c.sandbox, "--json", "-C", workspace}
 	if runtime.GOOS == "windows" {
 		args = append(args, "-c", `windows.sandbox="unelevated"`)
 	}
-	args = append(args, options...)
+	args = append(args, c.options...)
 	if resume != "" {
 		if !nativeSessionID.MatchString(resume) {
 			return "", errors.New("invalid Codex recovery thread ID")
 		}
 		args = append(args, "resume", resume)
 	}
-	cmd := exec.CommandContext(ctx, bin, append(args, "-")...)
+	cmd := exec.CommandContext(ctx, c.bin, append(args, "-")...)
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
 	cmd.Stdin = strings.NewReader(prompt)
 	stream, err := cmd.StdoutPipe()
@@ -241,52 +248,16 @@ func runCodexTurn(ctx context.Context, process processLog, bin, workspace, sandb
 		return session, ctx.Err()
 	case err != nil:
 		return session, err
-	case exit != nil && !complete && !turnFailed && !reportedError && nativeSessionID.MatchString(session):
-		return session, errCodexInterrupted
+	case turnFailed:
+		return session, failedTurnExit(exit)
+	case exit != nil && !complete && !reportedError && nativeSessionID.MatchString(session):
+		return session, fmt.Errorf("%w: %w", errTurnInterrupted, exit)
 	case exit != nil:
 		return session, fmt.Errorf("Codex exec: %w", exit)
-	case turnFailed || !complete || session == "":
+	case !complete || session == "":
 		return session, errors.New("Codex did not report a completed turn with a session ID")
 	}
 	return session, nil
-}
-
-func (w *worker) codexTurn(ctx context.Context, job store.Job, prompt, previous, start string, identity []byte, schema, output string, question *nativeQuestion) (string, error) {
-	sandbox := "workspace-write"
-	var options []string
-	if schema != "" {
-		sandbox = "read-only"
-		options = []string{"--output-schema", schema, "--output-last-message", output}
-	}
-	run := func(prompt, resume string) (string, error) {
-		process := w.processLog(ctx, job, "codex", w.codexVersion)
-		process.question = question
-		if question != nil {
-			*question = nativeQuestion{}
-		}
-		return runCodexTurn(ctx, process, w.codex, job.Workspace, sandbox, prompt, resume, options...)
-	}
-	session, err := run(prompt, previous)
-	if session == "" && previous != "" {
-		return previous, err
-	}
-	if !errors.Is(err, errCodexInterrupted) || ctx.Err() != nil {
-		return session, err
-	}
-	if err := w.confirmRecovery(ctx, job, start, identity); err != nil {
-		return session, err
-	}
-	if output != "" {
-		status, err := localrepo.Git(ctx, job.Workspace, "status", "--porcelain", "--untracked-files=all")
-		if err != nil || len(status) != 0 {
-			return session, errors.New("cannot resume in a changed planner checkout")
-		}
-		if err := os.Remove(output); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return session, errors.New("cannot clear incomplete planner output")
-		}
-	}
-	_, err = run("The previous process was interrupted. Inspect the existing checkout and finish only the remaining authorized work.\n"+prompt, session)
-	return session, err
 }
 
 func checkedWorktree(ctx context.Context, repo, workspace, base string) ([]byte, error) {
@@ -479,11 +450,12 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			question = &nativeQuestion{}
 		}
 		session, turnErr := withResource(ctx, &budget, "model", func() (string, error) {
+			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: "workspace-write"}
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version
-				return w.claudeTurn(ctx, job, prompt, result.SessionID, start, dir, question)
+				adapter = w.claude
 			}
-			return w.codexTurn(ctx, job, prompt, result.SessionID, start, dir, "", "", question)
+			return w.runJobTurn(ctx, adapter, job, prompt, result.SessionID, start, dir, question, "")
 		})
 		if session != "" {
 			result.SessionID = session

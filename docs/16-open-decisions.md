@@ -22,7 +22,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 ## B. 需要进一步细化
 
 1. Agent Profile 的版本和配置结构。
-2. 普通 Worker 的 Codex 和 Claude Code 适配器已从本机 CLI 探测版本和运行能力，Owner 可在执行节点页核对；两种适配器均已在真实 Issue 上验证启动、恢复和事件回执。统一的 Go 接口、错误模型和其他操作仍待细化。
+2. 普通 Worker 的 Codex 和 Claude Code 适配器已从本机 CLI 探测版本和运行能力，Owner 可在执行节点页核对。两种适配器共用单回合 Go 接口，已从真实 Issue 验证原生终态失败、进程退出码、缺少终态时恢复原会话及交付。运行中的输入、原生审批与中断等操作仍待正式 Worker 验收。
 3. ACP 1.0 消息的 JSON Schema、文档样例及原生检查点决策请求与答复的控制面回读已验收。beta #107 已从真实原生 Worker 验证 Owner 答复的在线路由、消息身份和交付。beta #111 已验证 Worker 请求 Management 查阅决策、回执来源和在线恢复。其余角色消息的在线路由及按消息类型执行策略仍待补齐。
 4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。beta #103、#105 验证了 Daemon 在等待业务答复时退出，两个替代进程中只有一个接回原执行并完成交付。原生 CLI 被强制终止、整机重启后的模型恢复和跨 Session 交接仍待验收。
 5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。适配器异常退出后，正式 Worker 已验证在原租约内恢复会话，见 B.4。

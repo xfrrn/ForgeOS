@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -102,6 +104,9 @@ func TestMain(m *testing.M) {
 			}
 			if strings.Contains(string(body), "TERMINAL_FAILURE") {
 				fmt.Println(`{"type":"turn.failed"}`)
+				if strings.Contains(string(body), "ZERO_EXIT") {
+					os.Exit(0)
+				}
 			}
 			os.Exit(23)
 		}
@@ -178,6 +183,30 @@ func TestMain(m *testing.M) {
 	}
 	fmt.Println(`{"type":"turn.completed"}`)
 	os.Exit(0)
+}
+
+func TestAdapterTerminalFailure(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, adapter := range []harnessAdapter{codexCLI{bin: bin, sandbox: "workspace-write"}, claudeCLI{bin: bin}} {
+		name, _ := adapter.identity()
+		for _, exit := range []int{0, 23} {
+			t.Run(fmt.Sprintf("%s/%d", name, exit), func(t *testing.T) {
+				prompt := "SIMULATED_CODEX_RECOVERY TERMINAL_FAILURE"
+				if exit == 0 {
+					prompt += " ZERO_EXIT"
+				}
+				session, err := adapter.runTurn(context.Background(), processLog{}, t.TempDir(), prompt, "")
+				var cause *exec.ExitError
+				if !nativeSessionID.MatchString(session) || !errors.Is(err, errTurnFailed) || errors.Is(err, errTurnInterrupted) ||
+					errors.As(err, &cause) != (exit != 0) || cause != nil && cause.ExitCode() != exit {
+					t.Fatalf("session %q, failure %v, process exit %v", session, err, cause)
+				}
+			})
+		}
+	}
 }
 
 func TestCodexTurnRecovery(t *testing.T) {

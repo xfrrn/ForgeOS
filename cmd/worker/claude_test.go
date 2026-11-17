@@ -27,6 +27,13 @@ func testClaudeProcess() int {
 		return 2
 	}
 	fmt.Printf(`{"type":"system","subtype":"init","session_id":"%s"}`+"\n", testClaudeID)
+	if strings.Contains(string(body), "TERMINAL_FAILURE") {
+		fmt.Printf(`{"type":"result","subtype":"error","is_error":true,"session_id":"%s"}`+"\n", testClaudeID)
+		if strings.Contains(string(body), "ZERO_EXIT") {
+			return 0
+		}
+		return 23
+	}
 	if !slices.Contains(os.Args, "--resume") {
 		if os.WriteFile("resume.md", []byte("First edit.\n"), 0600) != nil {
 			return 2
@@ -124,12 +131,14 @@ func TestClaudeProcessRecovery(t *testing.T) {
 
 func TestClaudeStreamRejectsWrongSessionAndStructuredFailure(t *testing.T) {
 	init := fmt.Sprintf(`{"type":"system","subtype":"init","session_id":"%s"}`, testClaudeID)
-	failed := fmt.Sprintf(`{"type":"result","subtype":"error","is_error":true,"session_id":"%s"}`, testClaudeID)
 	confirm := func(string) error { return nil }
 	if _, _, err := readClaudeEvents(strings.NewReader(init), "00000000-0000-0000-0000-000000000000", confirm, nil, nil); err == nil {
 		t.Fatal("accepted an unrelated resumed session")
 	}
-	if _, terminal, err := readClaudeEvents(strings.NewReader(init+"\n"+failed), "", confirm, nil, nil); !terminal || !errors.Is(err, errClaudeTurnFailed) {
-		t.Fatal("lost terminal model failure", err)
+	for _, fields := range []string{`"subtype":"error","is_error":false`, `"subtype":"success","is_error":true`} {
+		failed := fmt.Sprintf(`{"type":"result",%s,"session_id":"%s"}`, fields, testClaudeID)
+		if _, terminal, err := readClaudeEvents(strings.NewReader(init+"\n"+failed), "", confirm, nil, nil); !terminal || !errors.Is(err, errTurnFailed) {
+			t.Fatal("lost terminal model failure", fields, err)
+		}
 	}
 }

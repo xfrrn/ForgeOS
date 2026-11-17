@@ -290,7 +290,8 @@ func (w *worker) run(ctx context.Context) error {
 	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(),
 		Slots: w.slots, ModelSlots: w.modelSlots, CISlots: w.ciSlots, Capabilities: caps}
 	adapters := map[string]store.AdapterProbe{}
-	for name, version := range map[string]string{"codex": w.codexVersion, "claude": w.claude.version} {
+	for _, adapter := range []harnessAdapter{codexCLI{version: w.codexVersion}, w.claude} {
+		name, version := adapter.identity()
 		if version != "" {
 			adapters[name] = store.AdapterProbe{Version: version, Operations: []string{"probe", "start", "resume", "events"}}
 		}

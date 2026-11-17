@@ -59,6 +59,8 @@ Adapter 应报告真实能力，不支持的能力不得伪装支持。
 
 Owner 在“执行节点”页查看每个适配器的版本和操作，API 字段为 `GET /workers` 的 `capabilities.adapters`。两种普通执行适配器当前报告 `probe`（检查 CLI）、`start`（启动回合）、`resume`（使用原会话发起新回合）、`events`（读取原生事件）。节点重新启动后，下一次心跳替换整份报告。老节点继续上报原有的任务能力字段。
 
+两种 CLI 通过同一个 Go 接口提供身份、版本和单回合执行。Codex 报告 `turn.failed`，或 Claude 报告失败的 `result` 时，Worker 保留模型失败及进程退出码，结束本次执行。Owner 可从失败任务发起新执行。若进程异常退出且缺少终态，适配器已确认可恢复的原生会话，Worker 会复核租约、Worktree 和起始提交，再从原会话重试一次。只读 Planner 还会检查工作树干净并清除上一次的临时输出。
+
 ## 4. Codex 接入建议
 
 优先评估 Codex App Server，利用其原生 Thread、Turn、事件流、恢复、中断和审批机制。具体协议版本、方法名称和能力必须以实际安装版本的官方文档和探测结果为准。

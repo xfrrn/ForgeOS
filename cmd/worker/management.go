@@ -75,7 +75,8 @@ func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 	for _, feature := range []string{"shell_tool", "unified_exec", "multi_agent", "multi_agent_v2", "code_mode", "code_mode_host", "computer_use", "browser_use", "view_image", "image_generation"} {
 		options = append(options, "--disable", feature)
 	}
-	session, err := runCodexTurn(ctx, processLog{}, bin, workspace, "read-only", prompt, "", options...)
+	adapter := codexCLI{bin: bin, sandbox: "read-only", options: options}
+	session, err := adapter.runTurn(ctx, processLog{}, workspace, prompt, "")
 	if err != nil {
 		return "", err
 	}

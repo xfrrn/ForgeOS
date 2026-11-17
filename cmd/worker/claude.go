@@ -15,13 +15,13 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"forgeos/internal/store"
 )
 
 type claudeCLI struct {
 	bin, version string
 }
+
+func (c claudeCLI) identity() (string, string) { return "claude", c.version }
 
 var claudeVersion = regexp.MustCompile(`^([0-9]+\.[0-9]+\.[0-9]+) \(Claude Code\)$`)
 var nativeSessionID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -92,9 +92,6 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 	return cmd, nil
 }
 
-var errClaudeInterrupted = errors.New("Claude Code exited before the turn result")
-var errClaudeTurnFailed = errors.New("Claude Code reported a failed turn")
-
 func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error, question *nativeQuestion) (session string, completed bool, err error) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 16<<10), 4<<20)
@@ -129,7 +126,7 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 			}
 			completed = true
 			if event.IsError || event.Subtype != "success" {
-				outcome = errClaudeTurnFailed
+				outcome = errTurnFailed
 			} else if question != nil {
 				question.read(event.Result)
 			}
@@ -141,8 +138,8 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 	return session, completed, outcome
 }
 
-func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, resume string, question *nativeQuestion) (string, error) {
-	cmd, err := w.claude.command(ctx, job.Workspace, prompt, resume)
+func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
+	cmd, err := c.command(ctx, workspace, prompt, resume)
 	if err != nil {
 		return "", err
 	}
@@ -150,17 +147,13 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 	if err != nil {
 		return "", errors.New("cannot open Claude result stream")
 	}
-	process := w.processLog(ctx, job, "claude", w.claude.version)
 	if err := process.start(cmd, stream); err != nil {
 		return "", err
 	}
 	stop := context.AfterFunc(ctx, func() { stream.Close() })
 	defer stop()
-	if question != nil {
-		*question = nativeQuestion{}
-	}
-	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool, question)
-	if parseErr != nil && !errors.Is(parseErr, errClaudeTurnFailed) {
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool, process.question)
+	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) {
 		stream.Close()
 		_ = cmd.Process.Kill()
 	}
@@ -170,25 +163,14 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 		return session, fmt.Errorf("record Claude process exit: %w", err)
 	case ctx.Err() != nil:
 		return session, ctx.Err()
+	case errors.Is(parseErr, errTurnFailed):
+		return session, failedTurnExit(exit)
 	case parseErr != nil:
 		return session, parseErr
 	case exit != nil && !completed && session != "":
-		return session, errClaudeInterrupted
+		return session, fmt.Errorf("%w: %w", errTurnInterrupted, exit)
 	case exit != nil || !completed:
 		return session, errors.New("Claude Code did not complete the turn")
 	}
 	return session, nil
-}
-
-func (w *worker) claudeTurn(ctx context.Context, job store.Job, prompt, previous, start string, identity []byte, question *nativeQuestion) (string, error) {
-	session, err := w.runClaudeProcess(ctx, job, prompt, previous, question)
-	if !errors.Is(err, errClaudeInterrupted) || ctx.Err() != nil {
-		return session, err
-	}
-	if err := w.confirmRecovery(ctx, job, start, identity); err != nil {
-		return session, err
-	}
-	prompt = "The previous process was interrupted. Inspect existing edits in this worktree and finish only the remaining authorized work.\n" + prompt
-	_, err = w.runClaudeProcess(ctx, job, prompt, session, question)
-	return session, err
 }

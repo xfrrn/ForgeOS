@@ -2148,3 +2148,21 @@ PostgreSQL 和 Docker 均启用时，Go 全包回归共 229 项测试及子测�
 | beta #117 · Claude Code | `d9afedc9-bea3-4bad-ac7a-03e2bd293a52`，PID 11044、36456，分别记录 12、2 条工具事件 | 候选 `ae076c7b347cd3e782af5d458ea6a163934c8370`，合并 `70f6e6136cdacd6b20ae7e515bae5d33a7433d64`。[PR #118](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/118) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44066462156) |
 
 alpha 首次导入选择了 auto。原生会话恢复成功，但固定基线缺少 validation.yaml，候选 `97b9413e9a07fc6a5ad673e17e43073c248a2de7` 在本地得到 CONFIG_FAILURE。保留该记录后，在新的隔离 schema 用 alpha 的 docs 配置重新导入同一 Issue。两仓均核对了必需检查的预设首次失败步骤，重跑通过后合并。启用 PostgreSQL 18 和 Docker 的全包回归共 232 项 Go 测试及子测试通过，零跳过。Go vet 与 Web 生产构建通过。
+
+执行节点的适配器版本和操作报告对应 ForgeOS 提交 `54122385ef11112ba1b00802d050172cf1d72858`。
+
+### 专题 07、16 · 原生回合的终态失败与会话恢复
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 导入 alpha #28 和 beta #119。验收代理为两个执行各配置一个不存在的模型，启动真实 CLI，在 Chrome 打开任务 | 单次模型失败保留退出码和会话，无自动恢复，无候选 | 两个任务均为 FAILED，各只有一条进程回执。页面显示 `harness reported a failed turn: exit status 1`。Codex 原生 PID 28084，Claude 原生 PID 39332。 |
+| Owner 重试。代理等待原生 CLI 正常退出，仅扣留新执行首个回合的成功终态，以 23 退出 | 同一新执行只恢复一次，复用原会话与 Worktree，正确完成本地验证 | 各有两条适配器回执，退出码依次为 23、0。四个底层 CLI 均正常退出。两仓均只新增 Issue 指定的 Markdown 文件。alpha 首次证据脚本因标题多一个句点停止；回读 Issue 原文和 Git 对象，确认句点紧随指定标题，按该仓实际标题复核后批准。 |
+| 将 alpha #28 单独以只读规划模式导入，在首个回合之后扣留终态。打开进程记录，再重启控制面 | 保持只读和原工作区，形成一份计划，重启后结果一致 | 两个原生 PID 37852、40436 的会话均为 `01a1e920-c8e1-7430-a9b6-45fa995394f5`，两份运行上下文均为 read-only、approval never，同一目录无改动。任务进入 PLANNING，计划修订 1，重启后完整任务回读一致。 |
+| 从两个实现任务分别批准固定候选，观察必需检查的首次预设失败，重跑失败的检查 | 重跑成功才合并；ForgeOS 的交付回执与 GitHub 的候选、合并和 Issue 状态相符 | 两个任务均为 DONE，两个 Issue 均已关闭，GitHub 的 acceptance-check 与 forgeos/local-ci 均成功。 |
+
+| 入口 | 恢复会话、原生 PID | 验收候选与交付 |
+| --- | --- | --- |
+| alpha #28 · Codex | `01a1e91d-278b-71c3-b84f-1bb4b91f915d`，41568、24652 | 候选 `7bcdc825f79ed2d1c671e6aa9f3a3e3963ed93e1`，合并 `be0f75750c0d38b790a487f533e731ceea44d09e`。[PR #29](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/29) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/44068493265) |
+| beta #119 · Claude Code | `1ae18d72-21ab-4448-ba03-3f0870f0dfda`，48976、38328 | 候选 `8b36eddf3802c4c96ea137b9232ceb174332120d`，合并 `e47bf8567555366738a3d5591831d7a8d96c13b6`。[PR #120](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/120) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44068122855) |
+
+启用 PostgreSQL 18 和 Docker 的全包回归共 237 项 Go 测试及子测试通过，零跳过。回归包括两种适配器报告失败终态并以 0 或 23 退出的组合。Go vet 和 Web 生产构建通过。真实模型进程在执行途中被强制终止以及整机断电仍待验收。
