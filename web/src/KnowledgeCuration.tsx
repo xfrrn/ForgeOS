@@ -1,14 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, type ApiRequest } from './shared'
-
-type StructuredProfile = { version: number; sandbox: string; permission: string; disabled_features: string[] }
-
-function RolePermissions({role, profile}: {role: string; profile: StructuredProfile}) {
-  return <details><summary>{role}权限配置</summary>
-    <p>Codex · 配置 v{profile.version} · 沙箱 <code>{profile.sandbox}</code> · 审批 <code>{profile.permission}</code></p>
-    <p>禁用功能 · {profile.disabled_features.join('、')}</p>
-  </details>
-}
+import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Receipt = {
   id: number

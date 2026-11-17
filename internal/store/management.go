@@ -13,6 +13,7 @@ import (
 )
 
 type ManagementJob struct {
+	CaptureProfile     bool               `json:"capture_profile,omitempty"`
 	LeaseUntil         *time.Time         `json:"lease_until,omitempty"`
 	Question           *QuestionAdviceJob `json:"question,omitempty"`
 	Curation           *CurationJob       `json:"curation,omitempty"`

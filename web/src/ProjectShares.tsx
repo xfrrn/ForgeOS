@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, type ApiRequest } from './shared'
+import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Copy = { id: number; title: string; content: string; digest: string; published_at?: string }
 type Receipt = Copy & {
   project_id: number; material_key: string; revision: number; recipient: number; proposed_at: string; revoked_at?: string
-  review?: { verdict: 'approve' | 'revise' | 'needs_owner'; rationale: string; evidence: string; effective_level: string; session_id: string }
+  review?: { verdict: 'approve' | 'revise' | 'needs_owner'; rationale: string; evidence: string; effective_level: string; session_id: string; profile?: StructuredProfile }
 }
 const verdicts = { approve: '审核通过，待发布', revise: '需要修改副本', needs_owner: '需要 Owner 决定' }
 
@@ -107,7 +108,8 @@ function ShareList({ project, receipt, direction, request }: { project: number; 
         <p>来源 · {row.material_key} · 修订 {row.revision}　接收项目 #{row.recipient}</p>
         <p>{row.revoked_at ? '已撤销 · ' + formatTime(row.revoked_at) : row.published_at ? '已发布' : row.review ? verdicts[row.review.verdict] : '等待 Management 审核'}</p>
         {row.review && <details><summary>审核依据 · {row.review.effective_level}</summary><p>{row.review.rationale}</p>
-          <p>证据 · {row.review.evidence}</p><p>原生会话 · <code>{row.review.session_id}</code></p></details>}
+          <p>证据 · {row.review.evidence}</p><p>原生会话 · <code>{row.review.session_id}</code></p>
+          {row.review.profile && <RolePermissions role="Management" profile={row.review.profile}/>}</details>}
         {!row.revoked_at && <div className="detail-actions">
           {row.review?.verdict === 'approve' && !row.published_at && <button className="button" disabled={busy || loading} onClick={() => void publish(row,'publish')}>发布给项目 #{row.recipient}</button>}
           <button className="button" disabled={busy || loading} onClick={() => void publish(row,'revoke')}>撤销副本</button>

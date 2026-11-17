@@ -58,6 +58,10 @@ func (w *worker) reviewManagement(ctx context.Context, job store.ManagementJob) 
 	}
 	session, err := readOnlyJSONTurn(ctx, w.codex, reviewSchema, prompt+string(doc), 12<<10, &review)
 	review.SessionID = session
+	if job.CaptureProfile {
+		p := store.StructuredCodexProfile()
+		review.Profile = &p
+	}
 	return review, err
 }
 

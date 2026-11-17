@@ -61,7 +61,11 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 		}
 	}
 	assertUsage(1)
-	review := ManagementReview{Level: "D2", Verdict: "approve", SessionID: "test-session", Rationale: "reviewed", Evidence: "private-source only in original"}
+	if !job.CaptureProfile {
+		t.Fatal("share claim omitted profile support")
+	}
+	profile := StructuredCodexProfile()
+	review := ManagementReview{Level: "D2", Verdict: "approve", SessionID: "test-session", Rationale: "reviewed", Evidence: "private-source only in original", Profile: &profile}
 	if err = s.ReviewShare(ctx, target.ID, id, job.Lease, review); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
@@ -86,7 +90,7 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	feed, err := s.SharedExperience(ctx, target.ID, 0)
-	if err != nil || !strings.Contains(string(feed), input.Content) || strings.Contains(string(feed), "private-source") {
+	if err != nil || !strings.Contains(string(feed), input.Content) || strings.Contains(string(feed), "private-source") || strings.Contains(string(feed), "disabled_features") || strings.Contains(string(feed), review.SessionID) {
 		t.Fatal(string(feed), err)
 	}
 	if _, err = s.SetSharePublished(ctx, source.ID, id, receipt.Digest, false); err != nil {

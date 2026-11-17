@@ -77,7 +77,7 @@ func (s *Store) OutgoingShares(ctx context.Context, project, before int64) (json
 }
 
 func (s *Store) ClaimShareReview(ctx context.Context, project int64, supportsDeadline bool) (*ManagementJob, error) {
-	job := ManagementJob{ProjectID: project, MinimumLevel: "D3", Share: &ShareReviewInput{}}
+	job := ManagementJob{ProjectID: project, MinimumLevel: "D3", Share: &ShareReviewInput{}, CaptureProfile: true}
 	d := job.Share
 	tx, pool, err := s.beginManagementClaim(ctx, project, "share_review", supportsDeadline)
 	if tx == nil {
