@@ -2338,8 +2338,20 @@ ForgeOS 验收提交 `0ad5bdc144a78af0ec0c3958237d93c1e2faa312`。
 
 ### 专题 06、07、16 · Owner 从 Chrome 取消运行中的模型和工具
 
+ForgeOS 验收提交 `b5c6217c65e59613b4112e191afd4d0f4b4f351c`。
+
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
 | 导入 beta #132，由正式 Worker 运行 120 秒标题观察。在工具等待期间提交同项目 HEAD 任务，从 Chrome 任务页点击“取消任务 · 执行 #1” | 取消绑定当前执行，后续任务在名额释放前等待 | 任务 2 初始为 READY。原生 Codex PID 17088，Thread 为 `01a1e97a-ff5c-7dd0-ae1e-b0ed113f550c`，工具子进程 PID 32240。 |
 | 等待取消回执，核对操作系统进程、任务及 GitHub | 模型和在途工具均退出，任务取消，保留来源 Issue | 两个 PID 均已退出。任务 CANCELLED，仅一次执行，回执原因是 Owner 请求停止。无候选和交付，Issue 回读为 OPEN。[Issue #132](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/132) |
 | 等待任务 2，再重启控制面查询原任务 | 下一任务取得名额，取消状态持久化 | 任务 2 为 DONE，返回 HEAD `2db282232add7f7571f5ca60473573d16f83de10`。原任务仍为 CANCELLED，事件依次为 issue_imported、execution_claimed、owner_cancel_requested、owner_cancelled。 |
+
+### 专题 05、07、16 B.1 · 普通 Worker 角色配置 v1
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 启动已安装 Codex 与 Claude 的普通 Worker，在 Chrome 打开“执行节点”，读取同一节点的 API。用 beta #19 启动 Planner，核对本次 Worktree 中运行的原生进程参数 | UI、API 与 Planner 实际使用的权限及沙箱一致 | 页面显示三个角色配置。Codex Planner PID 25040 使用 read-only 和 never，任务进入 PLANNING。控制面重启后配置相同；同一节点换成旧 Worker 后，旧心跳撤下配置。 |
+| 在两个隔离库分别从 beta #133 派发 Claude 和 Codex 实现。核对其运行参数，再检查本地验证、候选差异和文档内容 | 两种角色仅使用声明的权限；均生成指定文档 | Claude PID 40564 使用 acceptEdits，工具为 Read、Glob、Grep、Edit、Write，候选 `9e360fa515202b0e3f88acbea23fc69528cd659f`。Codex PID 21508 使用 workspace-write 和 never，候选 `02fd6ab22f16737bda508b5bf5f61385e77610c3`。两份候选各只新增一个文件，唯一 H1、来源路径、页面标题及本地验证均通过。 |
+| 批准 Codex 的固定候选，等待必需 CI 并回读 GitHub；重启控制面 | 交付使用批准的 SHA，节点角色配置可回读 | 必需检查按验收工作流首轮失败、重跑通过。PR #134 已合并为 `3839cde3cb4514141b02cedc766ee68900741dd3`，Issue #133 已关闭，任务 DONE。控制面重启后三种配置与原心跳相同。[PR #134](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/134) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44086353069) |
+
+先前以已有 #19 测试 Claude 实现，回报“相对基础提交没有变更”，该次没有生成候选。上表的实现验收使用明确要求新增文件的 #133。带 PostgreSQL 18 和 Docker 的回归通过 239 项 Go 测试及子测试，零跳过。`go vet ./...` 与 Web 构建通过。

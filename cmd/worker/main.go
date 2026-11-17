@@ -293,7 +293,7 @@ func (w *worker) run(ctx context.Context) error {
 	for _, adapter := range []harnessAdapter{codexCLI{version: w.codexVersion}, w.claude} {
 		name, version := adapter.identity()
 		if version != "" {
-			adapters[name] = store.AdapterProbe{Version: version, Operations: []string{"probe", "start", "resume", "events"}}
+			adapters[name] = store.AdapterProbe{Version: version, Operations: []string{"probe", "start", "resume", "events"}, Profiles: caps.Profiles(name)}
 		}
 	}
 	probe, err := json.Marshal(adapters)

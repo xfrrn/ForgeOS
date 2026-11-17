@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -122,8 +123,9 @@ type WorkerHeartbeat struct {
 }
 
 type AdapterProbe struct {
-	Version    string   `json:"version"`
-	Operations []string `json:"operations"`
+	Version    string                  `json:"version"`
+	Operations []string                `json:"operations"`
+	Profiles   map[string]AgentProfile `json:"profiles,omitempty"`
 }
 
 var platformName = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
@@ -136,6 +138,9 @@ func (h WorkerHeartbeat) Valid() bool {
 			return false
 		}
 		for name, probe := range h.Adapters {
+			if probe.Profiles != nil && !reflect.DeepEqual(probe.Profiles, h.Capabilities.Profiles(name)) {
+				return false
+			}
 			if !ValidHarnessVersion(name, probe.Version) || len(probe.Operations) == 0 {
 				return false
 			}

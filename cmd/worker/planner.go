@@ -52,7 +52,7 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, job stor
 		ordinaryRuleOrder + "Inspect the relevant repository documents and code. Return only a concise plan in the supplied schema. " +
 		"Give each work item a stable unique ASCII identifier, explicit scope, dependencies by key, verifiable acceptance criteria, deliverables and repository paths as context references. " +
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
-	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: "read-only", options: []string{"--output-schema", schema, "--output-last-message", output}}
+	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexPlannerSandbox, options: []string{"--output-schema", schema, "--output-last-message", output}}
 	r.SessionID, err = w.runJobTurn(ctx, adapter, job, prompt, "", spec.BaseCommit, identity, nil, output)
 	if err != nil {
 		r.Error = err.Error()

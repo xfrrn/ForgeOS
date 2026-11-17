@@ -21,7 +21,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 ## B. 需要进一步细化
 
-1. Agent Profile 的版本和配置结构。
+1. 普通 Worker 的 Agent Profile v1 按适配器和角色报告原生权限、沙箱或工具列表。已从节点页及运行中的原生进程核对 Codex 实现、Codex Planner 和 Claude 实现。独立角色的配置回读待补齐。
 2. 普通 Worker 的 Codex 和 Claude Code 适配器已从本机 CLI 探测版本和运行能力，Owner 可在执行节点页核对。两种适配器共用单回合 Go 接口，已从真实 Issue 验证原生终态失败、进程退出码、缺少终态时恢复原会话及交付。运行中的输入、原生审批与中断等操作仍待正式 Worker 验收。
 3. ACP 1.0 消息的 JSON Schema、文档样例及原生检查点决策请求与答复的控制面回读已验收。beta #107 已从真实原生 Worker 验证 Owner 答复的在线路由、消息身份和交付。beta #111 已验证 Worker 请求 Management 查阅决策、回执来源和在线恢复。其余角色消息的在线路由及按消息类型执行策略仍待补齐。
 4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。beta #103、#105 验证了 Daemon 在等待业务答复时退出，两个替代进程中只有一个接回原执行并完成交付。beta #127、#129 已分别验证运行中的原生 Claude 与 Codex 实现进程被终止后的恢复和交付。在 beta #19 的只读规划中也已直接终止原生进程，恢复后的同一 Thread 保持只读、禁网并生成草案。整机重启后的模型恢复和跨 Session 交接仍待验收。

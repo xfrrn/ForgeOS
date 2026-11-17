@@ -163,7 +163,7 @@ func (c codexCLI) identity() (string, string) { return "codex", c.version }
 
 func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
 	// Preserve the CLI login, but keep account plugins, hooks, approvals and service tokens out of Issue execution.
-	args := []string{"-a", "never", "exec", "--ignore-user-config", "--ignore-rules",
+	args := []string{"-a", store.CodexApproval, "exec", "--ignore-user-config", "--ignore-rules",
 		"--disable", "apps", "--disable", "plugins", "--disable", "hooks", "-c", "mcp_servers={}",
 		"-c", `web_search="disabled"`, "-c", "sandbox_workspace_write.network_access=false",
 		"-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
@@ -454,7 +454,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			question = &nativeQuestion{}
 		}
 		session, turnErr := withResource(ctx, &budget, "model", func() (string, error) {
-			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: "workspace-write"}
+			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox}
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version
 				adapter = w.claude

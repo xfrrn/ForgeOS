@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-type Adapter = { version: string; operations: string[] }
+type AgentProfile = { version: number; sandbox?: string; permission: string; tools?: string[] }
+type Adapter = { version: string; operations: string[]; profiles?: Partial<Record<'implementation' | 'planner', AgentProfile>> }
 type Node = { worker: string; os: string; arch: string; cpus: number; slots: number; reserved: number
   model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
   last_seen: string; online: boolean; capabilities: Record<string, unknown> & { adapters?: Record<string, Adapter> } }
@@ -47,6 +48,10 @@ export function WorkerNodes({ request }: { request: ApiRequest }) {
       {n.model_slots && n.ci_slots && <p>模型名额 {n.model_reserved} / {n.model_slots} · CI 名额 {n.ci_reserved} / {n.ci_slots}</p>}
       <p>{['Git HEAD', ...Object.entries(capabilities).filter(([key]) => n.capabilities[key]).map(([, label]) => label)].join(' · ')}</p>
       {Object.entries(n.capabilities.adapters ?? {}).map(([name, probe]) =>
-        <p key={name}>{capabilities[`supports_${name}`] ?? name} {probe.version} · {probe.operations.map(op => operations[op] ?? op).join('、')}</p>)}
+        <div key={name}><p>{capabilities[`supports_${name}`] ?? name} {probe.version} · {probe.operations.map(op => operations[op] ?? op).join('、')}</p>
+          {Object.entries(probe.profiles ?? {}).map(([role, p]) => <p key={role}>
+            {role === 'planner' ? '规划' : '实现'}角色配置 v{p.version} · 权限 {p.permission}
+            {p.sandbox && ` · 沙箱 ${p.sandbox}`}{p.tools && ` · 工具 ${p.tools.join('、')}`}
+          </p>)}</div>)}
     </article>)}</section>
 }

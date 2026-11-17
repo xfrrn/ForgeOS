@@ -124,6 +124,29 @@ func TestRegisteredHarnessRequiredForClaim(t *testing.T) {
 	check(true)
 }
 
+func TestAdapterAgentProfiles(t *testing.T) {
+	caps := WorkerCapabilities{SupportsCodex: true, SupportsClaude: true, SupportsPlanner: true}
+	h := WorkerHeartbeat{Worker: "node", OS: "linux", Arch: "amd64", CPUs: 1, Slots: 1, Capabilities: caps, Adapters: map[string]AdapterProbe{}}
+	for _, name := range []string{"codex", "claude"} {
+		h.Adapters[name] = AdapterProbe{Version: "1.2.3", Operations: []string{"start"}, Profiles: caps.Profiles(name)}
+	}
+	if !h.Valid() {
+		t.Fatal("enabled role profiles rejected")
+	}
+	h.Capabilities.SupportsPlanner = false
+	if h.Valid() {
+		t.Fatal("disabled planner reported")
+	}
+	delete(h.Adapters["codex"].Profiles, "planner")
+	if !h.Valid() {
+		t.Fatal("implementation-only node rejected")
+	}
+	h.Adapters["claude"].Profiles["implementation"].Tools[0] = "Bash"
+	if h.Valid() {
+		t.Fatal("unexpected tool accepted in profile v1")
+	}
+}
+
 func TestConcurrentNodeReservations(t *testing.T) {
 	ctx := context.Background()
 	db := isolatedDatabase(t)
