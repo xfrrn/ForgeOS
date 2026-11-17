@@ -762,7 +762,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.RecoverPlannerPause = j.ModelPause && j.Spec.Mode == "plan"
 		j.PlannerHandoff = j.SupportsCheckpoints && j.Spec.Mode == "plan"
 		j.RecoverWriterPause = j.ModelPause && j.RuntimeQuestions
-		j.WriterHandoff = j.RecoverWriterPause && j.Spec.Mode != "plan" && j.Spec.Harness != "claude"
+		j.WriterHandoff = j.RecoverWriterPause && j.Spec.Mode != "plan"
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)

@@ -83,3 +83,21 @@ func TestPlannerHandoffBindsBothThreadsToOneExecution(t *testing.T) {
 		t.Fatal("accepted a handoff without a failed resume")
 	}
 }
+
+func TestClaudeSessionChangeRequiresHandoff(t *testing.T) {
+	now := time.Now().UTC()
+	failed, ok := 1, 0
+	process := HarnessProcess{Instance: 1, PID: 10, Harness: "claude", Version: "2.1.310", Started: now, Exited: &now, ExitCode: &failed, Session: "original"}
+	h := ProcessHistory{process, process, process, process}
+	h[1].Instance, h[1].Session = 2, ""
+	h[2].Instance, h[2].Session, h[2].HandoffFrom, h[2].ExitCode = 3, "new", "original", &ok
+	h[3].Instance, h[3].Session, h[3].ExitCode = 4, "new", &ok
+	r := Result{Harness: process.Harness, HarnessVersion: process.Version, SessionID: "new"}
+	if !h.matches(r) {
+		t.Fatal("rejected linked handoff followed by another turn")
+	}
+	h[2].HandoffFrom = ""
+	if h.matches(r) {
+		t.Fatal("accepted an unlinked Claude session change")
+	}
+}

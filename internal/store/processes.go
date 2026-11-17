@@ -19,7 +19,7 @@ type HarnessProcess struct {
 }
 
 func (p HarnessProcess) Valid() bool {
-	if p.HandoffFrom != "" && (p.Harness != "codex" || p.Session == "" || p.HandoffFrom == p.Session || len(p.HandoffFrom) > 128 ||
+	if p.HandoffFrom != "" && (p.Session == "" || p.HandoffFrom == p.Session || len(p.HandoffFrom) > 128 ||
 		strings.Trim(p.HandoffFrom, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "") {
 		return false
 	}
@@ -37,8 +37,7 @@ func (history ProcessHistory) matches(result Result) bool {
 	var previous int64
 	var latestSession string
 	for i, p := range history {
-		if p.Instance <= previous || !p.Valid() || p.Harness != result.Harness || p.Version != result.HarnessVersion ||
-			p.Exited == nil || result.Harness == "claude" && p.Session != "" && result.SessionID != "" && p.Session != result.SessionID {
+		if p.Instance <= previous || !p.Valid() || p.Harness != result.Harness || p.Version != result.HarnessVersion || p.Exited == nil {
 			return false
 		}
 		if p.HandoffFrom != "" && (i < 2 || p.HandoffFrom != latestSession || history[i-1].Session != "" || *history[i-1].ExitCode != 1) {
@@ -46,6 +45,9 @@ func (history ProcessHistory) matches(result Result) bool {
 		}
 		previous = p.Instance
 		if p.Session != "" {
+			if result.Harness == "claude" && result.SessionID != "" && latestSession != "" && latestSession != p.Session && p.HandoffFrom == "" {
+				return false
+			}
 			latestSession = p.Session
 		}
 	}

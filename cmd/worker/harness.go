@@ -72,7 +72,7 @@ func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job sto
 	case job.PlannerHandoff && plannerOutput != "":
 		err = checkWorkspace()
 		input = fmt.Sprintf("The original read-only planning thread %s is unavailable. Continue execution %d at its frozen commit %s. Repeat discovery in this clean checkout and produce the requested plan using the original scope and discussion below.\n", session, job.ExecutionID, base)
-	case job.WriterHandoff && writerTrees != nil && name == "codex" && previous == session && !startedSession:
+	case job.WriterHandoff && writerTrees != nil && previous == session && !startedSession:
 		err = w.verifyQuestionWorkspace(ctx, job, base, identity, 0, writerTrees)
 		input = fmt.Sprintf("The original implementation thread %s is unavailable. The Owner resumed execution %d at checkpoint 0. The checkout starts at %s and preserves the paused index tree %s and worktree tree %s. Inspect the current files and staged and unstaged changes before acting. Preserve completed edits. Do not repeat earlier actions, migrations or deployments. If an effect cannot be verified locally, ask the Owner at the turn boundary. Finish only the remaining work within the frozen requirements below.\n", session, job.ExecutionID, base, writerTrees.Index, writerTrees.Worktree)
 	default:
