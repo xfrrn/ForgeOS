@@ -3,7 +3,10 @@ package localrepo
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os/exec"
 	"path"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -48,4 +51,64 @@ func DocumentContent(ctx context.Context, repo, blob string) (content, problem s
 	default:
 		return string(raw), "", nil
 	}
+}
+
+// DocumentCommits follows the branch's first-parent history. Divergent or pruned
+// history can only establish a transition between the two observed trees.
+func DocumentCommits(ctx context.Context, repo, previous, head string) ([]string, error) {
+	if !objectID.MatchString(head) || (previous != "" && !objectID.MatchString(previous)) {
+		return nil, errors.New("invalid document commit")
+	}
+	if previous == "" {
+		return []string{head}, nil
+	}
+	resolve := func(revision string) (string, error) {
+		raw, err := Git(ctx, repo, "rev-parse", "--verify", "--quiet", revision+"^{commit}")
+		var exit *exec.ExitError
+		if ctx.Err() == nil && errors.As(err, &exit) && exit.ExitCode() == 1 {
+			return "", nil
+		}
+		return strings.TrimSpace(string(raw)), err
+	}
+	old, err := resolve(previous)
+	if err != nil {
+		return nil, err
+	}
+	if old == "" {
+		return []string{head}, nil
+	}
+	raw, err := Git(ctx, repo, "rev-list", "--first-parent", "--count", previous+".."+head)
+	if err != nil {
+		return nil, err
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return nil, err
+	}
+	if n <= 1 {
+		return []string{head}, nil
+	}
+	ancestor, err := resolve(fmt.Sprintf("%s~%d", head, n))
+	if err != nil {
+		return nil, err
+	}
+	if ancestor != previous {
+		return []string{head}, nil
+	}
+
+	// Keep each durable batch small enough to resume across control-plane restarts.
+	const batch = 32
+	tip := head
+	if n > batch {
+		tip = fmt.Sprintf("%s~%d", head, n-batch)
+	}
+	raw, err = Git(ctx, repo, "rev-list", "--first-parent", "--reverse", fmt.Sprintf("--max-count=%d", min(n, batch)), tip)
+	if err != nil {
+		return nil, err
+	}
+	commits := strings.Fields(string(raw))
+	if len(commits) != min(n, batch) {
+		return nil, errors.New("incomplete document commit history")
+	}
+	return commits, nil
 }

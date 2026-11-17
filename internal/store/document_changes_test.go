@@ -99,4 +99,39 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	if err != nil || !strings.Contains(string(history), src.Content) {
 		t.Fatal(string(history), err)
 	}
+	t.Run("resume history between observations", func(t *testing.T) {
+		write("docs/offline.md", "Interim observation")
+		git("add", "docs/offline.md")
+		git("commit", "-qm", "Record intermediate evidence")
+		for range 32 {
+			git("commit", "-q", "--allow-empty", "-m", "Advance offline branch")
+		}
+		git("rm", "docs/offline.md")
+		git("commit", "-qm", "Retire intermediate evidence")
+		more, err := s.observeDocumentBatch(ctx, p.ID, repo)
+		if err != nil || !more {
+			t.Fatal("expected a durable partial scan", more, err)
+		}
+		var count int
+		countChanges := func() int {
+			t.Helper()
+			if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM repository_document_changes WHERE project_id=$1 AND path='docs/offline.md'`, p.ID).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			return count
+		}
+		if countChanges() != 1 {
+			t.Fatal("missing intermediate commit", count)
+		}
+		if err := New(s.db).ObserveDocumentHead(ctx, p.ID, repo); err != nil {
+			t.Fatal(err)
+		}
+		observe()
+		if countChanges() != 2 {
+			t.Fatal("missed final removal or repeated an earlier commit", count)
+		}
+		if err := s.db.QueryRowContext(ctx, `SELECT is_current FROM curation_sources WHERE project_id=$1 AND title='docs/offline.md'`, p.ID).Scan(&current); err != nil || current {
+			t.Fatal("superseded intermediate source", err)
+		}
+	})
 }
