@@ -25,7 +25,8 @@ func (s *Store) RecordCICandidate(ctx context.Context, id int64, lease, sha, ses
 			SELECT 1 FROM execution_checkpoints turn JOIN execution_checkpoints next
 			ON next.execution_id=turn.execution_id AND next.sequence=turn.sequence+1
 			WHERE turn.execution_id=e.id AND turn.session_id=$4 AND next.session_id IS NULL
-			AND NOT EXISTS(SELECT 1 FROM checkpoint_comments c WHERE c.execution_id=e.id AND c.sequence=next.sequence)))
+			AND NOT EXISTS(SELECT 1 FROM decision_questions q WHERE q.execution_id=e.id AND q.checkpoint_sequence=turn.sequence)
+            AND NOT EXISTS(SELECT 1 FROM checkpoint_comments c WHERE c.execution_id=e.id AND c.sequence=next.sequence)))
 		AND NOT EXISTS(SELECT 1 FROM acceptance_reviews r JOIN executions prev ON prev.id=r.execution_id
 			WHERE r.task_id=t.id AND r.decision='reject' AND (r."commit"=$3 OR prev.result->>'session_id'=$4))`, id, hash[:], sha, session)
 	if err != nil {

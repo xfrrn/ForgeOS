@@ -18,7 +18,7 @@ func (s *Store) CancelExecution(ctx context.Context, execution int64) error {
 	var task int64
 	var requested, running, paused bool
 	err = tx.QueryRowContext(ctx, `SELECT t.id,e.owner_cancel_requested_at IS NOT NULL,
-		t.status='RUNNING' AND t.source_closure_id IS NULL AND e.result IS NULL AND e.abandoned_at IS NULL,
+		(t.status='RUNNING' OR t.waiting_execution_id IS NOT DISTINCT FROM e.id) AND t.source_closure_id IS NULL AND e.result IS NULL AND e.abandoned_at IS NULL,
 		t.status='PAUSED' AND e.ci_pause_requested_at IS NOT NULL AND e.ci_resumed_at IS NULL
 		FROM executions e JOIN work_items t ON t.id=e.task_id WHERE e.id=$1 FOR UPDATE OF e,t`, execution).Scan(&task, &requested, &running, &paused)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -29,6 +29,9 @@ func (s *Store) CancelExecution(ctx context.Context, execution int64) error {
 	}
 	if !running && !paused {
 		return ErrConflict
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='RUNNING',waiting_execution_id=NULL WHERE id=$1 AND waiting_execution_id=$2`, task, execution); err != nil {
+		return err
 	}
 	event := "owner_cancel_requested"
 	if paused {

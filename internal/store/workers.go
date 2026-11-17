@@ -42,7 +42,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 	var kind string
 	var sourceClosed, ownerStop bool
 	err = tx.QueryRowContext(ctx, `SELECT t.kind,t.source_closure_id IS NOT NULL,(e.owner_cancel_requested_at IS NOT NULL OR e.ci_pause_requested_at IS NOT NULL) FROM executions e JOIN work_items t ON t.id=e.task_id
-		WHERE e.id=$1 AND e.lease_hash=$2 AND e.result IS NULL AND e.abandoned_at IS NULL AND t.status='RUNNING'
+		WHERE e.id=$1 AND e.lease_hash=$2 AND e.result IS NULL AND e.abandoned_at IS NULL AND (t.status='RUNNING' OR t.waiting_execution_id=e.id)
 		FOR UPDATE OF e,t`, id, hash[:]).Scan(&kind, &sourceClosed, &ownerStop)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict

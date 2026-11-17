@@ -10,7 +10,7 @@
 | 二 · 验证、页面验收与退回 | alpha 任务 3 重复导入不变。在 Chrome 打开候选差异，退回 `93a7c42e`，真实 Codex 在新工作区补写示例，生成 `785df9cf`。两个候选各有对应 SHA 的 docs 验证。旧批准返回 409，新批准在页面返回 ACCEPTED。 | 通过。两次按 Owner 身份的页面操作均由 Playwright 执行。 |
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
-| 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。GitHub 需求修订、回合间评论合并已在专题 06、12 实测。 | 跨操作的角色与决策分级、运行中 Harness 发起问题及恢复仍待验收。 |
+| 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。beta #94 和 #96 在实现回合提问，重启控制面并答复后从同一原生会话交付。 | 跨操作的角色与决策分级，以及在同一个双子项 Goal 中串联运行中提问和退回重做，仍待验收。 |
 | 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经风险分级后交付。Goal 34 的 Management 审核将子项提升至 V4。beta #17 从全局方法生成测试计划、澄清并复审，两项用例实测通过后交付。 | 通过上述候选场景。预览和反馈见下一行。 |
 | 三 · 预览、批注与知识 | Chrome、Caddy 双向 TLS、DOM 与 Canvas 批注、六类反馈、阻塞澄清、从反馈退回修订及新候选批准均已实测。beta #19 还验证了从反馈修订需求、采用和再次执行。项目知识的来源、决策索引和审核后的共享副本见专题 08。 | 外部设备与 tailnet、真实提供方投递待验收。动态 local-mock 应用的工作台交互和双向 TLS 网关已实测。扩展原生录屏已验收。已从扩展采集候选视口，在工作台遮挡、标注并归档。React 与 Vue 的同源 iframe 批注已实测。独立新工作项已从反馈 #2 实测到 beta PR #21 合并。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
@@ -1849,3 +1849,20 @@ CI 恢复后的候选会话与规则追溯对应提交 `80ef8450e93df5ffee7980f5
 验收只激活了隔离库的 Goal。[来源 Issue #2](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/2)
 
 全量回归首次与历史库物理恢复并行时，GitHub 导入测试出现一次配置读取失败，Worker 测试包超过默认 10 分钟期限。单独重跑导入测试通过。在 D 盘独立 PostgreSQL 18 上按包顺序从头执行 `go test -p 1 -timeout 30m -count=1 -json ./...`，启用真实 Docker，190 项通过、零跳过。Go vet、TypeScript 与 Web 生产构建通过。
+
+跨项目审批中心对应 ForgeOS 提交 `ec9ec1b32da0fb0352855efef19fef2844aa980b`。
+
+### 实现回合提出业务问题并恢复
+
+在两个独立的 PostgreSQL 18 schema 中，从 beta 仓库导入要求 Owner 选定手册标题的真实 Issue。分别启动原生 Codex 和 Claude Code 的正式 Worker，标题均在提问后由验收用的 Owner 身份给出。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 启动 Worker，读取任务、检查点和执行资源，再重启控制面 | 第一回合结束后进入 WAITING_INPUT，问题关联原会话和基础提交，可以腾出模型、CI 名额 | 两项执行均在检查点 0 提问。执行的资源类型为空，CI 候选与结果均为空；重启后同一问题仍在待答队列中。 |
+| 在 Chrome 的“待答问题”填入精确标题并提交，查看工作区、Git 差异和本地验证 | 第二回合复用 Session 和 Worktree，一次执行生成一份仅包含所选标题的文件 | Codex 的 PID 3244、13124 共用 `01a1e7f1-c820-7de0-863e-e3529e3c9005`，候选 `17a4befff15d0f162ede927e43dea7e882618708` 的 H1 为 `Harbor 4788ed62`。Claude Code 的 PID 12176、24688 共用 `59cecac8-b5f0-44b8-ad11-6f42b8bb5023`，候选 `9ef05d9a987ea7a0ecad214fad8f1dbc1f05a25e` 的 H1 为 `Harbor e48c5217`。两者均只改动指定的文件，本地验证退出码为 0。 |
+| 以 Owner 批准已核对的候选，重跑验收仓库刻意失败的 Actions 检查，查询 GitHub 与控制面 | 必需检查通过后才合并并关闭 Issue | 两个 PR 的 head 与相应候选相同。`acceptance-check` 与 `forgeos/local-ci` 均成功。Codex 合并为 `6d5e687e16312331d3bbc7984b6e8557bc58caea`，Claude Code 合并为 `e9f7f7b3e2e32744a621fcbd7049fa6568360e61`。两项任务 DONE、Issue CLOSED。[Codex PR #95](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/95) · [Claude PR #97](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/97) |
+| 使用 PostgreSQL 重报提问和答复，尝试错误租约、改写问题、跳过恢复回合、切换原生会话或并行派发同项目任务 | 幂等回执保留一次决定，所有越过检查点的操作被拒绝 | 同一问题和答复可重报。Owner 取消、关闭源 Issue、租约过期并核对结束三条路径均保留历史问题，结算后下一项才能领取。 |
+
+交付完成后分别重启控制面，在 Chrome 任务详情核对提问节点、提问和答复时间、基础提交、检查点及 Owner 原文。两项的待答队列均已清空。检查点 0、1 绑定同一 Session，检查点 2 没有待处理输入。两个执行均使用节点配额，三次资源申请依次为首轮实现、答复后实现和 CI，最终全部释放。
+
+在独立 PostgreSQL 18 上启用真实 Docker，执行 `go test -p 1 -timeout 30m -count=1 -json ./...`，196 个测试及子测试通过，零跳过。Go vet 和 Web 生产构建通过。

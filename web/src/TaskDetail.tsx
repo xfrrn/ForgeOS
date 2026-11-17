@@ -48,7 +48,7 @@ type Issue = { title: string; number: number; body: string; url: string; reposit
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
-type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; answer?: string }
+type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; withdrawn_at?: string; answer?: string; answered_at?: string }
 type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
@@ -447,8 +447,10 @@ function Decision({ taskID, q, canAnswer, request, onAnswer }: { taskID: number;
   }
   return <section className="panel detail-card detail-accept">
     <h2>业务决定 #{q.id}</h2><p>{q.question}</p>
-    <dl><Fact label="依据">{q.evidence}</Fact><Fact label={`执行 #${q.execution_id}`} code>{q.commit_sha}</Fact></dl>
-    {q.answer ? <p>Owner 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
+    <dl><Fact label="提问">{q.requester} · {formatTime(q.at)}</Fact>
+      <Fact label="依据">{q.evidence}</Fact><Fact label={q.checkpoint_sequence == null ? `执行 #${q.execution_id}` : `执行 #${q.execution_id} · 检查点 ${q.checkpoint_sequence} · 基础提交`} code>{q.commit_sha}</Fact>
+      {q.answered_at && <Fact label="答复时间">{formatTime(q.answered_at)}</Fact>}</dl>
+    {q.withdrawn_at ? <p>执行已结束，问题已撤回。</p> : q.answer ? <p>Owner 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor={`answer-${q.id}`}>业务答复</label>
       <textarea id={`answer-${q.id}`} required value={answer} onChange={e => setAnswer(e.target.value)}/>
       <button className="button primary" disabled={busy || !answer.trim()}>提交答复</button>
@@ -570,7 +572,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
     </div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
-    {last && ['RUNNING','PAUSED'].includes(task.status) && !task.source_closure && <section aria-label="执行控制">
+    {last && (['RUNNING','PAUSED'].includes(task.status) || (task.status === 'WAITING_INPUT' && last.status === 'RUNNING')) && !task.source_closure && <section aria-label="执行控制">
       {last.ci_candidate && <p>CI 候选提交 · <code>{last.ci_candidate}</code></p>}
       {last.owner_cancel_requested_at ? <p role="status">已请求取消执行 #{last.id}，等待 Worker 回执。</p> : <>
         {task.status === 'PAUSED'

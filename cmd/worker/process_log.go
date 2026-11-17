@@ -12,13 +12,14 @@ import (
 )
 
 type processLog struct {
-	db      *sql.DB
-	lease   [32]byte
-	harness string
-	version string
-	updates chan struct{}
-	id      int64
-	tools   *toolRecorder
+	db       *sql.DB
+	lease    [32]byte
+	harness  string
+	version  string
+	updates  chan struct{}
+	id       int64
+	tools    *toolRecorder
+	question *nativeQuestion
 }
 
 func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {

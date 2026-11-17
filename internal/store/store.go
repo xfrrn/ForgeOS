@@ -221,6 +221,9 @@ var candidateImplementationSchema string
 //go:embed 066_resumed_candidate_identity.sql
 var resumedCandidateIdentitySchema string
 
+//go:embed 067_checkpoint_questions.sql
+var checkpointQuestionSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -302,6 +305,7 @@ type Job struct {
 	RecordProcesses     bool            `json:"record_processes,omitempty"`
 	LeaseSeconds        int             `json:"lease_seconds,omitempty"`
 	SupportsCheckpoints bool            `json:"supports_checkpoints,omitempty"`
+	RuntimeQuestions    bool            `json:"runtime_questions,omitempty"`
 	Kind                string          `json:"kind"`
 	Spec                *IssueSpec      `json:"spec,omitempty"`
 	Rework              *Review         `json:"rework,omitempty"`
@@ -350,7 +354,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -584,7 +588,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
-		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND running.status = 'RUNNING')
+		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND (running.status = 'RUNNING' OR running.waiting_execution_id IS NOT NULL))
 		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -611,7 +615,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
-		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND status = 'RUNNING')
+		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND (status = 'RUNNING' OR waiting_execution_id IS NOT NULL))
 		RETURNING id, kind, spec, goal_id IS NOT NULL, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -638,6 +642,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		}
 		j.ReportCICandidate = j.Spec.Mode != "plan"
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
+		j.RuntimeQuestions = j.SupportsCheckpoints && j.Spec.Mode != "plan"
 		j.RecordProcesses = j.Spec.VerifyCommit == ""
 		j.ReportLiveProcess = j.RecordProcesses
 		j.RecordToolActivity = j.RecordProcesses
@@ -774,7 +779,8 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 					SELECT 1 FROM execution_checkpoints turn LEFT JOIN execution_checkpoints next
 					ON next.execution_id=turn.execution_id AND next.sequence=turn.sequence+1
 					WHERE turn.execution_id=$1 AND turn.session_id=$2
-					AND CASE WHEN $3 THEN turn.sequence=0 ELSE next.sequence IS NOT NULL AND next.session_id IS NULL
+					AND NOT EXISTS(SELECT 1 FROM decision_questions q WHERE q.execution_id=$1 AND q.checkpoint_sequence=turn.sequence)
+                    AND CASE WHEN $3 THEN turn.sequence=0 ELSE next.sequence IS NOT NULL AND next.session_id IS NULL
 					AND NOT EXISTS(SELECT 1 FROM checkpoint_comments c WHERE c.execution_id=$1 AND c.sequence=next.sequence) END)`,
 					id, result.SessionID, issue.Mode == "plan").Scan(&confirmed)
 				if err != nil {
@@ -864,10 +870,13 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 }
 
 func finishTask(ctx context.Context, tx *sql.Tx, taskID, executionID int64, status, eventType string) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE decision_questions SET withdrawn_at=now() WHERE execution_id=$1 AND checkpoint_sequence IS NOT NULL AND answer IS NULL AND withdrawn_at IS NULL`, executionID); err != nil {
+		return err
+	}
 	var eventID int64
 	err := tx.QueryRowContext(ctx, `
-		WITH finished AS (
-		    UPDATE work_items SET status = $2 WHERE id = $1 AND status = 'RUNNING' RETURNING id
+  WITH finished AS (
+		    UPDATE work_items SET status = $2,waiting_execution_id=NULL WHERE id=$1 AND (status='RUNNING' OR (waiting_execution_id=$3 AND $2 IN ('FAILED','CANCELLED'))) RETURNING id
 		)
 		INSERT INTO task_events(task_id, execution_id, type) SELECT id, $3, $4 FROM finished
 		RETURNING id`, taskID, status, executionID, eventType).Scan(&eventID)

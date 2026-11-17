@@ -64,7 +64,9 @@ func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq 
 	if session != "" {
 		// A native turn may be reported repeatedly after a dropped HTTP response.
 		var stored int
-		err = tx.QueryRowContext(ctx, `UPDATE execution_checkpoints SET session_id=$3 WHERE execution_id=$1 AND sequence=$2 AND (session_id IS NULL OR session_id=$3) RETURNING sequence`, id, seq, session).Scan(&stored)
+		err = tx.QueryRowContext(ctx, `UPDATE execution_checkpoints SET session_id=$3 WHERE execution_id=$1 AND sequence=$2 AND (session_id IS NULL OR session_id=$3)
+   AND NOT EXISTS(SELECT 1 FROM decision_questions q JOIN execution_checkpoints asked ON asked.execution_id=q.execution_id AND asked.sequence=q.checkpoint_sequence
+       WHERE q.execution_id=$1 AND q.checkpoint_sequence<$2 AND asked.session_id<>$3) RETURNING sequence`, id, seq, session).Scan(&stored)
 		if errors.Is(err, sql.ErrNoRows) {
 			return page, ErrConflict
 		}

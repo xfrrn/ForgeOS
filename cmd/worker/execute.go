@@ -33,6 +33,7 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 	} else if job.Kind != "" && job.Kind != "git_head" {
 		return failed("unsupported task kind", nil)
 	}
+	leaseCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	repo, err := localrepo.ResolveAssigned(ctx, w.repoRoot, job.RepoPath, job.RepoRelativePath)
@@ -54,7 +55,8 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 		return failed("execution workspace already exists or is inaccessible", err)
 	}
 	if job.Kind == "codex_issue" {
-		return w.executeIssue(ctx, repo, expected, job)
+		deadline, _ := ctx.Deadline()
+		return w.executeIssue(leaseCtx, repo, expected, job, deadline)
 	}
 	if job.Kind == "environment_check" {
 		if job.Startup == nil {

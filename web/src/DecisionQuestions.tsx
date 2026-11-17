@@ -3,7 +3,7 @@ import { ApiError, Icon, type ApiRequest } from './shared'
 
 type Question = {
   id: number; task_id: number; project_id: number; execution_id: number
-  repository?: string; title?: string; commit_sha: string; question: string; evidence: string
+  repository?: string; title?: string; checkpoint_sequence?: number; commit_sha: string; question: string; evidence: string
 }
 type Row = Question & { draft: string; error: string; recorded?: string }
 type Page = { items: Question[]; next_before: number | null }
@@ -88,7 +88,7 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
         <a className="detail-link" href={'#/tasks/' + q.task_id}>T-{q.task_id} · {q.repository || '项目 ' + q.project_id}{q.title && ' · ' + q.title}</a>
         <h2 id={`question-${q.id}`}>#{q.id} {q.question}</h2>
         <p>依据 · {q.evidence}</p>
-        <p>执行 #{q.execution_id} · <code>{q.commit_sha}</code></p>
+        <p>执行 #{q.execution_id} · {q.checkpoint_sequence != null && `检查点 ${q.checkpoint_sequence} · 基础提交 `}<code>{q.commit_sha}</code></p>
         <label htmlFor={`batch-answer-${q.id}`}>问题 #{q.id} 的答复</label>
         <textarea id={`batch-answer-${q.id}`} value={q.draft} disabled={busy} readOnly={!!q.recorded} onChange={e => {
           const draft = e.currentTarget.value

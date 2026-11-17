@@ -23,7 +23,7 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 		if evidence != nil {
 			job.GlobalRules = json.RawMessage(`{"revision":1,"content":"Default heading"}`)
 		}
-		prompt, err := issuePrompt(job, "Keep the heading", nil)
+		prompt, err := issuePrompt(job, "Keep the heading", nil, nil)
 		if err != nil || strings.Contains(prompt, job.LeaseToken) {
 			t.Fatal("invalid implementation prompt", err)
 		}
@@ -38,6 +38,22 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 			string(source.Rules) != string(job.GlobalRules) || string(source.Goal) != string(evidence) || source.Feedback != "Keep the heading" {
 			t.Fatalf("incorrect sources: %s", payload)
 		}
+	}
+}
+
+func TestOnlyFinalMessageCanRequestOwnerDecision(t *testing.T) {
+	var q nativeQuestion
+	q.read(`{"forgeos_question":"Which title?","evidence":"No title in the issue."}`)
+	if !q.requested || q.Question != "Which title?" || q.Evidence == "" {
+		t.Fatal(q)
+	}
+	q.read("Implemented the heading.")
+	if q.requested || q.Question != "" {
+		t.Fatal("reused earlier assistant text", q)
+	}
+	q.read(`{"forgeos_question":"Which title?","evidence":24}`)
+	if _, err := (&worker{}).waitForOwner(context.Background(), store.Job{}, 0, "native", q); !q.requested || err == nil {
+		t.Fatal("accepted malformed question", q)
 	}
 }
 

@@ -94,7 +94,7 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 var errClaudeInterrupted = errors.New("Claude Code exited before the turn result")
 var errClaudeTurnFailed = errors.New("Claude Code reported a failed turn")
 
-func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error) (session string, completed bool, err error) {
+func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error, question *nativeQuestion) (session string, completed bool, err error) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	var outcome error
@@ -104,6 +104,7 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 			Subtype string `json:"subtype"`
 			IsError bool   `json:"is_error"`
 			Session string `json:"session_id"`
+			Result  string `json:"result"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &event) != nil {
 			return session, completed, errors.New("invalid Claude Code event")
@@ -128,6 +129,8 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 			completed = true
 			if event.IsError || event.Subtype != "success" {
 				outcome = errClaudeTurnFailed
+			} else if question != nil {
+				question.read(event.Result)
 			}
 		}
 	}
@@ -137,7 +140,7 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 	return session, completed, outcome
 }
 
-func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, resume string) (string, error) {
+func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, resume string, question *nativeQuestion) (string, error) {
 	cmd, err := w.claude.command(ctx, job.Workspace, prompt, resume)
 	if err != nil {
 		return "", err
@@ -152,7 +155,10 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 	}
 	stop := context.AfterFunc(ctx, func() { stream.Close() })
 	defer stop()
-	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool)
+	if question != nil {
+		*question = nativeQuestion{}
+	}
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool, question)
 	if parseErr != nil && !errors.Is(parseErr, errClaudeTurnFailed) {
 		stream.Close()
 		_ = cmd.Process.Kill()
@@ -173,8 +179,8 @@ func (w *worker) runClaudeProcess(ctx context.Context, job store.Job, prompt, re
 	return session, nil
 }
 
-func (w *worker) claudeTurn(ctx context.Context, job store.Job, prompt, previous, start string, identity []byte) (string, error) {
-	session, err := w.runClaudeProcess(ctx, job, prompt, previous)
+func (w *worker) claudeTurn(ctx context.Context, job store.Job, prompt, previous, start string, identity []byte, question *nativeQuestion) (string, error) {
+	session, err := w.runClaudeProcess(ctx, job, prompt, previous, question)
 	if !errors.Is(err, errClaudeInterrupted) || ctx.Err() != nil {
 		return session, err
 	}
@@ -182,6 +188,6 @@ func (w *worker) claudeTurn(ctx context.Context, job store.Job, prompt, previous
 		return session, err
 	}
 	prompt = "The previous process was interrupted. Inspect existing edits in this worktree and finish only the remaining authorized work.\n" + prompt
-	_, err = w.runClaudeProcess(ctx, job, prompt, session)
+	_, err = w.runClaudeProcess(ctx, job, prompt, session, question)
 	return session, err
 }

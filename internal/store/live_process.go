@@ -42,8 +42,8 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 	hash := sha256.Sum256([]byte(report.LeaseToken))
 	var previous []byte
 	err = tx.QueryRowContext(ctx, `SELECT e.observed_process FROM executions e JOIN work_items t ON t.id=e.task_id
- WHERE e.id=$1 AND e.lease_hash=$2 AND e.result IS NULL AND e.abandoned_at IS NULL AND t.status='RUNNING'
- AND t.spec IS NOT NULL AND COALESCE(t.spec->>'verify_commit','')='' AND COALESCE(NULLIF(t.spec->>'harness',''),'codex')=$3 FOR UPDATE OF e`, execution, hash[:], p.Harness).Scan(&previous)
+ WHERE e.id=$1 AND e.lease_hash=$2 AND e.result IS NULL AND e.abandoned_at IS NULL AND (t.status='RUNNING' OR (t.waiting_execution_id=e.id AND $4))
+ AND t.spec IS NOT NULL AND COALESCE(t.spec->>'verify_commit','')='' AND COALESCE(NULLIF(t.spec->>'harness',''),'codex')=$3 FOR UPDATE OF e`, execution, hash[:], p.Harness, p.Exited != nil).Scan(&previous)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}

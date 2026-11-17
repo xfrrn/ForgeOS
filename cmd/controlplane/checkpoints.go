@@ -20,6 +20,18 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		rows, err := data.Checkpoints(r.Context(), id, execution)
 		respond(w, http.StatusOK, rows, err)
 	}))
+	workers.handle(mux, "POST /internal/executions/{id}/checkpoint-question", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var input store.CheckpointQuestion
+		if !decode(w, r, &input) {
+			return
+		}
+		answer, err := data.AskAtCheckpoint(r.Context(), id, input)
+		respond(w, http.StatusOK, map[string]string{"answer": answer}, err)
+	}))
 	workers.handle(mux, "POST /internal/executions/{id}/checkpoints", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
