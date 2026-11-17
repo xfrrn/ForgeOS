@@ -161,4 +161,21 @@ func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
 	report.Session = "independent-review"
 	must(s.CompleteCodeReview(ctx, project.ID, job.ExecutionID, claimed.Lease, report))
 
+	_, err = s.Review(ctx, task.ID, job.ExecutionID, commit, "reject", "Clarify the handbook wording.", false, "")
+	must(err)
+	job, err = s.ClaimForProjects(ctx, "dev", root, []int64{project.ID}, WorkerCapabilities{SupportsCodex: true, SupportsRework: true, SupportsGlobalRules: true})
+	must(err)
+	if job == nil || job.Rework == nil || job.Rework.Commit != commit {
+		t.Fatal("missing rework of refreshed candidate")
+	}
+	commit = strings.Repeat("9", 40)
+	if err = s.RecordCICandidate(ctx, job.ExecutionID, job.LeaseToken, commit, "development"); !errors.Is(err, ErrConflict) {
+		t.Errorf("rework reused the rejected implementation at CI: %v", err)
+	}
+	result := Result{BaseCommit: base, Commit: commit, SessionID: "development", Validation: &ValidationResult{Profile: "docs", Commit: commit}}
+	if err = s.Complete(ctx, job.ExecutionID, job.LeaseToken, result); !errors.Is(err, ErrConflict) {
+		t.Fatalf("rework reused rejected implementation at completion: %v", err)
+	}
+	must(s.RecordCICandidate(ctx, job.ExecutionID, job.LeaseToken, commit, "new-implementation"))
+	complete("new-implementation")
 }
