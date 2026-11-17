@@ -10,6 +10,41 @@ import (
 )
 
 func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	for _, action := range []string{"pause-model", "resume-model"} {
+		mux.HandleFunc("POST /executions/{id}/"+action, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+			id, ok := pathID(w, r)
+			if !ok {
+				return
+			}
+			var input struct {
+				Instance int64 `json:"instance"`
+			}
+			if !decode(w, r, &input) {
+				return
+			}
+			if input.Instance <= 0 {
+				problem(w, 400, "provide a positive process instance")
+				return
+			}
+			respond(w, http.StatusNoContent, nil, data.ControlModel(r.Context(), id, input.Instance, action == "resume-model"))
+		}))
+	}
+	workers.handle(mux, "POST /internal/executions/{id}/model-pause", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var input store.PausePoll
+		if !decode(w, r, &input) {
+			return
+		}
+		p, err := data.PollModelPause(r.Context(), id, input)
+		if err == nil && p == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		respond(w, http.StatusOK, p, err)
+	}))
 	mux.HandleFunc("POST /executions/{id}/instructions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

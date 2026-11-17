@@ -74,6 +74,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
+	SupportsModelPause       bool  `json:"supports_model_pause,omitempty"`
 	SupportsReworkAnswers    bool  `json:"supports_rework_answers,omitempty"`
 	SupportsGlobalRules      bool  `json:"supports_global_rules,omitempty"`
 	SupportsStartup          bool  `json:"supports_startup,omitempty"`
@@ -95,6 +96,7 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 		integrated = 0
 	}
 	return WorkerCapabilities{
+		SupportsModelPause:    c.SupportsModelPause && node.SupportsModelPause,
 		SupportsReworkAnswers: c.SupportsReworkAnswers && node.SupportsReworkAnswers,
 		SupportsGlobalRules:   c.SupportsGlobalRules && node.SupportsGlobalRules,
 		SupportsStartup:       c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,

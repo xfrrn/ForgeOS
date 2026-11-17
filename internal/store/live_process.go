@@ -63,7 +63,9 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 	if err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE executions SET observed_process=$2::jsonb || jsonb_build_object('observed_at',clock_timestamp())
+	res, err := tx.ExecContext(ctx, `UPDATE executions SET observed_process=$2::jsonb || jsonb_build_object('observed_at',clock_timestamp(),'resource_step',
+		CASE WHEN observed_process->>'instance'=$2::jsonb->>'instance' THEN (observed_process->>'resource_step')::bigint
+		     WHEN resource_kind='model' THEN resource_step END)
  WHERE id=$1 AND lease_until>clock_timestamp()`, execution, string(raw))
 	if err != nil {
 		return err

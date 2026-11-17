@@ -34,6 +34,8 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   queue_sequence?: number
+  pausable_instance?: number
+  model_pause?: { instance: number; session_id: string; requested_at?: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
   global_rules?: GlobalRulesRevision
   owner_clarifications?: CandidateContext['owner_clarifications']
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
@@ -595,10 +597,10 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
       setSendingCommand(false)
     }
   }
-  async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci') {
+  async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci' | 'pause-model' | 'resume-model', instance?: number) {
     setSendingCommand(true)
     try {
-      await request(`/executions/${execution}/${action}`, { method: 'POST' })
+      await request(`/executions/${execution}/${action}`, { method: 'POST', ...(instance ? {headers: {'Content-Type':'application/json'},body:JSON.stringify({instance})} : {}) })
       refresh()
       onChanged()
     } catch (cause) {
@@ -636,10 +638,16 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
     {last && (['RUNNING','PAUSED'].includes(task.status) || (task.status === 'WAITING_INPUT' && last.status === 'RUNNING')) && !task.source_closure && <section aria-label="执行控制">
       {last.ci_candidate && <p>CI 候选提交 · <code>{last.ci_candidate}</code></p>}
       {last.owner_cancel_requested_at ? <p role="status">已请求取消执行 #{last.id}，等待 Worker 回执。</p> : <>
-        {task.status === 'PAUSED'
+        {task.status === 'PAUSED' && last.ci_candidate
           ? <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'resume-ci')}>恢复 CI · 复验此提交</button>
           : last.ci_pause_requested_at ? <p role="status">已请求暂停 CI，等待 Worker 回执。</p>
           : last.ci_candidate && <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'pause-ci')}>暂停 CI · 执行 #{last.id}</button>}
+        {last.model_pause && !last.model_pause.resumed_at
+          ? task.status === 'PAUSED' && last.model_pause.parked_at
+            ? <div><p>已暂停模型会话 <code>{last.model_pause.session_id}</code></p>
+              <button className="button" disabled={loading || sendingCommand || last.lease_expired} onClick={() => void controlExecution(last.id,'resume-model',last.model_pause?.instance)}>恢复模型回合</button></div>
+            : <p role="status">已请求暂停模型，等待 Worker 保存工作区。</p>
+          : !!last.pausable_instance && <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id,'pause-model',last.pausable_instance)}>暂停模型回合</button>}
         {last.queue_sequence != null && <QueueInstruction key={`${last.id}/${last.queue_sequence}`} attempt={last.id} sequence={last.queue_sequence} request={request} refresh={refresh}/>}
         <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'cancel')}>取消任务 · 执行 #{last.id}</button>
       </>}

@@ -453,13 +453,22 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		if job.RuntimeQuestions && job.SupportsCheckpoints {
 			question = &nativeQuestion{}
 		}
-		session, turnErr := withResource(ctx, &budget, "model", func() (string, error) {
+		session, turnErr := w.runImplementationTurn(ctx, &budget, seq, result.SessionID, start, dir, func() time.Duration {
+			if !activeTime.Stop() {
+				return 0
+			}
+			return time.Until(deadline)
+		}, resumeBudget, func(turn context.Context, previous string, resumed bool) (string, error) {
 			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox}
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version
 				adapter = w.claude
 			}
-			return w.runJobTurn(ctx, adapter, job, prompt, result.SessionID, start, dir, question, "")
+			turnPrompt := prompt
+			if resumed {
+				turnPrompt = "The Owner resumed this interrupted turn. Inspect existing changes and finish only the remaining authorized work.\n" + prompt
+			}
+			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "")
 		})
 		if session != "" {
 			result.SessionID = session

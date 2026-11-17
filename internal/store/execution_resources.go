@@ -43,7 +43,7 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 	var limit int
 	var sourceClosed, ownerStop bool
 	err = tx.QueryRowContext(ctx, `SELECT n.worker, e.resource_step, e.resource_kind, e.model_budget,COALESCE(NULLIF(t.spec->>'harness',''),'codex'),
-		COALESCE(CASE WHEN $3='model' THEN n.model_slots ELSE n.ci_slots END,n.slots),t.source_closure_id IS NOT NULL,(e.owner_cancel_requested_at IS NOT NULL OR e.ci_pause_requested_at IS NOT NULL)
+		COALESCE(CASE WHEN $3='model' THEN n.model_slots ELSE n.ci_slots END,n.slots),t.source_closure_id IS NOT NULL,(e.owner_cancel_requested_at IS NOT NULL OR e.ci_pause_requested_at IS NOT NULL OR EXISTS(SELECT 1 FROM model_pauses mp WHERE mp.execution_id=e.id AND mp.resumed_at IS NULL))
 		FROM executions e JOIN worker_nodes n ON n.worker=e.worker JOIN work_items t ON t.id=e.task_id
 		WHERE e.id=$1 AND e.lease_hash=$2 AND e.resource_managed AND e.result IS NULL AND e.abandoned_at IS NULL
 		AND t.waiting_execution_id IS NULL AND ($3='ci' OR t.kind='codex_issue')
