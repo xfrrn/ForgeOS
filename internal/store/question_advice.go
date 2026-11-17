@@ -10,6 +10,7 @@ import (
 )
 
 type QuestionAdviceJob struct {
+	RuleContext         json.RawMessage `json:"rule_context,omitempty"`
 	ReferenceDecisionID int64           `json:"reference_decision_id,omitempty"`
 	ID                  int64           `json:"id"`
 	ExecutionID         int64           `json:"execution_id"`
@@ -19,22 +20,24 @@ type QuestionAdviceJob struct {
 }
 
 type QuestionAdvice struct {
-	Profile    *AgentProfile `json:"profile,omitempty"`
-	At         *time.Time    `json:"at,omitempty"`
-	Level      string        `json:"level"`
-	Rationale  string        `json:"rationale"`
-	Suggestion string        `json:"suggestion"`
-	Source     string        `json:"source"`
-	Quote      string        `json:"quote"`
-	Session    string        `json:"session_id"`
+	Context    *json.RawMessage `json:"context,omitempty"`
+	Profile    *AgentProfile    `json:"profile,omitempty"`
+	At         *time.Time       `json:"at,omitempty"`
+	Level      string           `json:"level"`
+	Rationale  string           `json:"rationale"`
+	Suggestion string           `json:"suggestion"`
+	Source     string           `json:"source"`
+	Quote      string           `json:"quote"`
+	Session    string           `json:"session_id"`
 }
 
 const liveAdviceQuestion = `t.status='WAITING_INPUT' AND q.answer IS NULL AND q.withdrawn_at IS NULL
 	AND (q.checkpoint_sequence IS NULL OR (t.waiting_execution_id=e.id AND e.lease_until>clock_timestamp()
 	AND e.owner_cancel_requested_at IS NULL AND t.source_closure_id IS NULL))`
 
-func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups, supportsDeadline bool) (*ManagementJob, error) {
+func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups, supportsDeadline, supportsContext bool) (*ManagementJob, error) {
 	var input QuestionAdviceJob
+	var rules []byte
 	job := ManagementJob{ProjectID: project, Question: &input, MinimumLevel: "D2", CaptureProfile: true}
 	tx, pool, err := s.beginManagementClaim(ctx, project, "question_advice", supportsDeadline)
 	if tx == nil {
@@ -43,6 +46,7 @@ func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups,
 	defer tx.Rollback()
 	err = tx.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT q.id,q.task_id,q.execution_id,q.commit_sha,q.question,q.evidence,q.reference_decision_id,
+			CASE WHEN $5 THEN question_rule_context(q.id) END AS rule_context,
 			CASE WHEN d.id IS NOT NULL THEN jsonb_build_object('id','decision:'||d.id,'text',d.statement,'validity',d.validity,
 				'valid_until',d.valid_until,'source',d.source,'evidence_refs',d.evidence_refs) END AS reference,rr.id AS requirement,rr.issue,
 			CASE WHEN impl.id IS NULL THEN e.decision_context ELSE impl.decision_context END AS decision_context,
@@ -56,7 +60,7 @@ func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups,
 		WHERE t.project_id=$1 AND (q.reference_decision_id IS NULL OR $2) AND q.management_advice IS NULL AND (c.lease_until IS NULL OR c.lease_until<=clock_timestamp())
 		AND `+liveAdviceQuestion+` ORDER BY q.id LIMIT 1 FOR UPDATE OF q SKIP LOCKED
 	), claimed AS (
-		INSERT INTO question_advice_claims(question_id,lease,lease_until,model_budget,minimum_level,sources)
+		INSERT INTO question_advice_claims(question_id,lease,lease_until,model_budget,minimum_level,sources,rule_context)
 		SELECT id,gen_random_uuid(),clock_timestamp()+interval '6 minutes',$3,minimum,
 			jsonb_build_array(jsonb_build_object('id','question','text',evidence)) ||
 			CASE WHEN requirement IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(
@@ -64,22 +68,23 @@ func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups,
 				jsonb_build_object('id','requirement:'||requirement||':body','text',issue->>'body')) END ||
 			COALESCE((SELECT jsonb_agg(jsonb_build_object('id','decision:'||(d->>'id'),'text',d->>'statement'))
 				FROM jsonb_array_elements(decision_context) d WHERE d->>'id' IS DISTINCT FROM reference_decision_id::text),'[]'::jsonb) ||
-			CASE WHEN reference IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(reference) END
-		FROM candidate ON CONFLICT(question_id) DO UPDATE SET lease=EXCLUDED.lease,lease_until=EXCLUDED.lease_until,model_budget=EXCLUDED.model_budget,sources=EXCLUDED.sources,minimum_level=EXCLUDED.minimum_level
-		RETURNING question_id,lease,sources,minimum_level,lease_until
-	) SELECT COALESCE(c.reference_decision_id,0),c.id,c.task_id,c.execution_id,c.commit_sha,c.question,r.lease,r.sources,r.minimum_level,CASE WHEN $4 THEN r.lease_until END FROM candidate c JOIN claimed r ON r.question_id=c.id`, project, lookups, pool, supportsDeadline).Scan(
-		&input.ReferenceDecisionID, &input.ID, &job.TaskID, &input.ExecutionID, &input.Commit, &input.Question, &job.Lease, &input.Sources, &job.MinimumLevel, &job.LeaseUntil)
+			CASE WHEN reference IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(reference) END || question_context_sources(rule_context),rule_context
+		FROM candidate ON CONFLICT(question_id) DO UPDATE SET lease=EXCLUDED.lease,lease_until=EXCLUDED.lease_until,model_budget=EXCLUDED.model_budget,sources=EXCLUDED.sources,minimum_level=EXCLUDED.minimum_level,rule_context=EXCLUDED.rule_context
+		RETURNING question_id,lease,sources,minimum_level,lease_until,rule_context
+	) SELECT COALESCE(c.reference_decision_id,0),c.id,c.task_id,c.execution_id,c.commit_sha,c.question,r.lease,r.sources,r.minimum_level,CASE WHEN $4 THEN r.lease_until END,r.rule_context FROM candidate c JOIN claimed r ON r.question_id=c.id`, project, lookups, pool, supportsDeadline, supportsContext).Scan(
+		&input.ReferenceDecisionID, &input.ID, &job.TaskID, &input.ExecutionID, &input.Commit, &input.Question, &job.Lease, &input.Sources, &job.MinimumLevel, &job.LeaseUntil, &rules)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	input.RuleContext = rules
 	return &job, tx.Commit()
 }
 
 func (s *Store) CompleteQuestionAdvice(ctx context.Context, project, id int64, lease string, a QuestionAdvice) error {
-	if !validStructuredProfile(a.Profile) || a.At != nil || (a.Level != "D1" && a.Level != "D2" && a.Level != "D3") || !decisionText(a.Rationale) || !decisionText(a.Source) || !decisionText(a.Quote) ||
+	if a.Context != nil || !validStructuredProfile(a.Profile) || a.At != nil || (a.Level != "D1" && a.Level != "D2" && a.Level != "D3") || !decisionText(a.Rationale) || !decisionText(a.Source) || !decisionText(a.Quote) ||
 		(a.Suggestion != "" && (!decisionText(a.Suggestion) || a.Level != "D2")) || a.Session == "" || len(a.Session) > 128 ||
 		strings.Trim(a.Session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" {
 		return ErrConflict
@@ -107,7 +112,7 @@ func (s *Store) CompleteQuestionAdvice(ctx context.Context, project, id int64, l
 		}
 	}
 	var same, recorded, closed, current bool
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE((q.management_advice-'at')=$4::jsonb,false),q.management_advice IS NOT NULL,
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE((q.management_advice-'at'-'context')=$4::jsonb,false),q.management_advice IS NOT NULL,
 		q.answer IS NOT NULL OR q.withdrawn_at IS NOT NULL,
 		(`+liveAdviceQuestion+`) AND c.lease_until>clock_timestamp() AND (c.minimum_level<>'D3' OR $8='D3')
 		AND ($8<>'D1' OR (c.minimum_level='D1' AND q.checkpoint_sequence IS NOT NULL AND
@@ -157,7 +162,9 @@ func (s *Store) CompleteQuestionAdvice(ctx context.Context, project, id int64, l
 		}
 		event = "management_decision_answered"
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE decision_questions SET management_advice=$2::jsonb || jsonb_build_object('at',clock_timestamp()) WHERE id=$1`, id, string(raw)); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE decision_questions q SET management_advice=$2::jsonb || jsonb_build_object('at',clock_timestamp())
+		|| CASE WHEN c.rule_context IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('context',c.rule_context) END
+		FROM question_advice_claims c WHERE q.id=$1 AND c.question_id=q.id`, id, string(raw)); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,question_id)

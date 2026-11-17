@@ -38,7 +38,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal(err)
 	}
 	claim := func(projectID int64) *ManagementJob {
-		j, err := s.ClaimQuestionAdvice(ctx, projectID, false, true)
+		j, err := s.ClaimQuestionAdvice(ctx, projectID, false, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,7 +51,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if claim(project.ID+1) != nil {
 		t.Fatal("cross-project claim")
 	}
-	j, err := s.ClaimQuestionAdvice(ctx, project.ID, false, false)
+	j, err := s.ClaimQuestionAdvice(ctx, project.ID, false, false, false)
 	if err != nil || j == nil || j.LeaseUntil != nil || j.Question.ID != id || j.MinimumLevel != "D2" || claim(project.ID) != nil {
 		t.Fatal("invalid advice reservation")
 	}
@@ -184,10 +184,10 @@ func TestManagementDecisionLookup(t *testing.T) {
 			if _, err = s.AskAtCheckpoint(ctx, j.ExecutionID, q); err != nil {
 				t.Fatal(err)
 			}
-			if old, err := s.ClaimQuestionAdvice(ctx, project.ID, false, true); err != nil || old != nil {
+			if old, err := s.ClaimQuestionAdvice(ctx, project.ID, false, true, false); err != nil || old != nil {
 				t.Fatal("legacy reviewer claimed lookup", old, err)
 			}
-			m, err := s.ClaimQuestionAdvice(ctx, project.ID, true, true)
+			m, err := s.ClaimQuestionAdvice(ctx, project.ID, true, true, true)
 			if err != nil || m == nil || m.Question.ReferenceDecisionID != decision.ID {
 				t.Fatal(m, err)
 			}

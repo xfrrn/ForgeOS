@@ -95,6 +95,21 @@ func TestManagementReviewSendsOnlyFrozenRuleContext(t *testing.T) {
 	}
 }
 
+func TestManagementAdviceSendsFrozenQuestionEvidence(t *testing.T) {
+	w := worker{codex: os.Args[0]}
+	for _, evidence := range []json.RawMessage{nil, json.RawMessage(`{"global_rules":{"revision":1,"content":"Fallback"},"owner_clarifications":[{"answer":"Owner heading"}]}`)} {
+		q := store.QuestionAdviceJob{Question: "SIMULATED_QUESTION_CONTEXT", RuleContext: evidence, Sources: json.RawMessage(`[{"id":"owner-answer:7","text":"Owner heading"}]`)}
+		a, err := w.adviseOwner(context.Background(), q, "D2")
+		want := string(evidence)
+		if evidence == nil {
+			want = "no-context"
+		}
+		if err != nil || a.Rationale != want || a.Source != "owner-answer:7" || a.Quote != "Owner heading" || a.Context != nil || a.Session == "" {
+			t.Fatal("lost question evidence", a, err)
+		}
+	}
+}
+
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "app-server" {
@@ -166,6 +181,26 @@ func TestMain(m *testing.M) {
 					}
 					result, e := json.Marshal(store.ManagementReview{Level: "D2", Verdict: "approve", Rationale: "Rule priority checked", Evidence: evidence})
 					if e != nil {
+						os.Exit(6)
+					}
+					output = string(result)
+				}
+				if strings.Contains(string(body), "SIMULATED_QUESTION_CONTEXT") {
+					var q store.QuestionAdviceJob
+					raw := string(body)[strings.LastIndex(string(body), "\n{")+1:]
+					if json.Unmarshal([]byte(raw), &q) != nil || (q.RuleContext != nil) != strings.Contains(string(body), ordinaryRuleOrder) {
+						os.Exit(5)
+					}
+					var sources []struct{ ID, Text string }
+					if json.Unmarshal(q.Sources, &sources) != nil || len(sources) != 1 {
+						os.Exit(5)
+					}
+					evidence := string(q.RuleContext)
+					if evidence == "" {
+						evidence = "no-context"
+					}
+					result, err := json.Marshal(store.QuestionAdvice{Level: "D2", Rationale: evidence, Source: sources[0].ID, Quote: sources[0].Text})
+					if err != nil {
 						os.Exit(6)
 					}
 					output = string(result)

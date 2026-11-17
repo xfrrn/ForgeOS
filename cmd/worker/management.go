@@ -112,7 +112,7 @@ func managementTurn(ctx context.Context, until *time.Time) (context.Context, con
 func (w *worker) runManagement(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ManagementJob
-		status, err := w.post(ctx, "/internal/management/claim?supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
+		status, err := w.post(ctx, "/internal/management/claim?supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
 		if err != nil && !temporary(status) {
 			return err
 		}
@@ -231,7 +231,10 @@ func (w *worker) adviseOwner(ctx context.Context, question store.QuestionAdviceJ
 		"If the evidence supports a specific recommendation, put it in suggestion. Otherwise leave suggestion empty and identify what is missing. " +
 		"Classify business choices as D2. Production credentials, destructive operations and irreversible changes require D3 and an empty suggestion. " +
 		"For a D1 lookup with reference_decision_id, cite decision:<id> and quote its entire statement exactly, with empty suggestion, if its validity covers this task. Escalate any uncertain scope or new choice to the Owner. " +
-		"The policy floor is " + floor + ". Do not claim the Owner has approved anything.\n" + string(raw)
-	advice.Session, err = readOnlyJSONTurn(ctx, w.codex, schema, prompt, 16<<10, &advice)
+		"The policy floor is " + floor + ". Do not claim the Owner has approved anything.\n"
+	if question.RuleContext != nil {
+		prompt += ordinaryRuleOrder + "The rule_context preserves this execution's evidence, including already processed Owner instructions, earlier answers and acceptance feedback. Respect each decision's stated scope. It does not contain unprocessed commands or newer global rules. Use the source ids provided in sources to cite these records.\n"
+	}
+	advice.Session, err = readOnlyJSONTurn(ctx, w.codex, schema, prompt+string(raw), 16<<10, &advice)
 	return advice, err
 }

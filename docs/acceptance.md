@@ -2772,3 +2772,20 @@ PostgreSQL 18 和 Docker 全包 Go 回归 265 项测试及子测试通过，零�
 PostgreSQL 18 与 Docker 全包 Go 回归 287 项测试及子测试通过，零失败、零跳过。随后对引用工作项的稳定排序再次运行相关数据库和 Worker 测试，通过；Go 静态检查、TypeScript 和生产构建通过。回归核对跨项目、未确认、失效和未引用决策的排除、重复引用合并、历史固定以及租约重领后的新快照。临时移除项目边界时，测试检出跨项目内容，恢复条件后通过。
 
 本项覆盖计划审核；其他角色的上下文和整条路线的最终回归仍待完成。
+
+
+上述 Management 计划审核固定规则依据对应 ForgeOS 提交 `20b8067c71a9a24ae374bee66bc7fed13a152bdb`。
+
+### 专题 05、08、16 C.7 · 业务问题建议的固定执行依据
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从真实 beta #176 派发单文件指南，在 Codex 工具观察等待期间用 Chrome 排队指定页脚的 Owner 指令；第一轮只询问标题 | 建议使用执行开始时的规则，不能把未处理指令当成已执行依据 | 问题 1 的原生建议会话 `01a1eafb-60e0-7890-b396-e439b735db46` 引用固定需求，D2 继续等待 Owner。快照含全局修订 1，无 owner_instructions。 |
+| 发布全局修订 2，再从 Chrome 回答标题。实现回合处理排队指令后提出第二个页脚问题 | 第二轮建议取得前一轮 Owner 答复、已处理指令和原全局版本，按 Owner 优先级给出建议 | 会话 `01a1eafb-c244-7af3-8fa6-15847c582673` 引用 `owner-command:1:7e3ccd18-f6dd-41ac-9a26-2492be84ccd3`，建议采用 Owner queued footer。上下文包含指定 H1 的前一答复、检查点 1 已处理指令和全局修订 1；不混入 Later fallback footer。两次原生 prompt 的上下文均逐字段匹配归档，权限均为 never、read-only、禁网。 |
+| 重启控制面，在 Chrome 待答页展开执行依据并回答；完成后打开任务历史 | 原建议保持不变，由 Owner 答复后继续执行；历史页可回读两次不同依据 | 两题分别答复后，原生实现会话 `01a1eafa-7576-7c82-939b-91b8ee005fbc` 生成候选 `03ec04ff4b630b1ff99d2a57fc77462181b7e373`，只新增 advice-authority.md。唯一 H1 为 Queue Owner advice，页脚为 Owner queued footer，同时保留 Queue handbook 和 HTML 来源路径。本地文档检查通过。首次历史页断言早于加载完成，补上页面等待后从同一候选复验通过。 |
+| Chrome 核对单文件内容并通过候选验收，等待正式交付 | 必需 CI 通过，合并精确候选并关闭 Issue | Actions 44159844163 首轮仅命中预设失败步骤，同一 SHA 重跑成功；acceptance-check 和 forgeos/local-ci 均 SUCCESS。PR #177 合并为 `fff9cd97784673a56dc215fbe7663a3ceca9b038`，Issue #176 CLOSED、任务 DONE。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/177) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44159844163) |
+| 从 beta #163 的旧候选快照运行历史升级、新旧控制面和 Worker 双向组合，并在旧候选生成后发布全局规则 | 历史及混合版本不补造未使用的上下文；新节点不能给旧候选套上后来发布的规则 | 历史会话 `01a1eafb-9ccd-7a91-9775-830ce15702fb` 升级后建议逐字段不变。旧控制面/新 Worker 会话 `01a1eafb-e172-7bd1-b8c0-b8b441d04654`、新控制面/旧 Worker 会话 `01a1eafc-2073-7a20-a15d-4fc6a8305668` 均无新 context 字段。新组合会话 `01a1eafc-60dd-7a83-ae80-67b0e6b60d84` 的上下文未附加后来发布的全局规则。四种组合均从重启后的 Chrome 核对原回执。 |
+
+数据库回归覆盖继承的 Owner 答复、当前执行的先前答复、验收退回意见、已处理指令的检查点边界、候选重复换基后的原实现规则、过期重领的旧格式、拒绝伪造依据和回答后的幂等回报。D1 的当前有效性、项目隔离及 D3 约束继续通过。临时删除检查点上限时，新增回归检出未来指令；恢复原条件后针对性复测通过。
+
+本项 PostgreSQL 18 与 Docker 全包 Go 回归 289 项测试及子测试通过，零失败、零跳过；Go 静态检查、TypeScript 和生产构建通过。预览反馈分类等尚未覆盖的角色上下文及最终全路线端到端仍待补齐或验收，当前 13–23 个工作包的粗估口径保持不变。

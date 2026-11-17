@@ -160,10 +160,23 @@ func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
 	}
 	report.Session = "independent-review"
 	must(s.CompleteCodeReview(ctx, project.ID, job.ExecutionID, claimed.Lease, report))
+	question, err := s.AskAtAcceptance(ctx, task.ID, QuestionRequest{ExecutionID: job.ExecutionID, Commit: commit, Key: "refresh-rules", Question: "Which rule applies?", Evidence: "The candidate was refreshed twice."})
+	must(err)
+	advice, err := s.ClaimQuestionAdvice(ctx, project.ID, false, true, true)
+	must(err)
+	if advice == nil {
+		t.Fatal("missing refreshed advice")
+	}
+	must(json.Unmarshal(advice.Question.RuleContext, &got))
+	if got.Origin != origin || got.Commit != originCommit || string(got.Rules) != string(initial) {
+		t.Fatalf("advice lost original implementation: %s", advice.Question.RuleContext)
+	}
+	_, err = s.AnswerQuestion(ctx, task.ID, question.Questions[0].ID, "Keep original")
+	must(err)
 
 	_, err = s.Review(ctx, task.ID, job.ExecutionID, commit, "reject", "Clarify the handbook wording.", false, "")
 	must(err)
-	job, err = s.ClaimForProjects(ctx, "dev", root, []int64{project.ID}, WorkerCapabilities{SupportsCodex: true, SupportsRework: true, SupportsGlobalRules: true})
+	job, err = s.ClaimForProjects(ctx, "dev", root, []int64{project.ID}, WorkerCapabilities{SupportsCodex: true, SupportsRework: true, SupportsReworkAnswers: true, SupportsGlobalRules: true})
 	must(err)
 	if job == nil || job.Rework == nil || job.Rework.Commit != commit {
 		t.Fatal("missing rework of refreshed candidate")
