@@ -213,6 +213,48 @@ func TestManagementDecisionLookup(t *testing.T) {
 			if err != nil || len(msg) != 2 || msg[1].From.ID != "management" || msg[1].Trust != "agent_generated" {
 				t.Fatal(msg, err)
 			}
+			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, ""); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, q.Session); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 2, 0, ""); err != nil {
+				t.Fatal(err)
+			}
+			sha := strings.Repeat("b", 40)
+			if err = s.RecordCICandidate(ctx, j.ExecutionID, j.LeaseToken, sha, q.Session); err != nil {
+				t.Fatal(err)
+			}
+			err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, Result{BaseCommit: spec.BaseCommit, Commit: sha, SessionID: q.Session, Validation: &ValidationResult{Profile: "docs", Commit: sha}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.Decide(ctx, pid, decision.ID, "EXPIRED"); err != nil {
+				t.Fatal(err)
+			}
+			if err = s.RequestCodeReview(ctx, task.ID, j.ExecutionID, sha); err != nil {
+				t.Fatal(err)
+			}
+			reviewer, err := s.ClaimCodeReview(ctx, pid, true)
+			if err != nil || reviewer == nil {
+				t.Fatal(reviewer, err)
+			}
+			var frozen struct {
+				References []struct {
+					Question int64  `json:"question_id"`
+					Session  string `json:"session_id"`
+					Decision struct{ ID, Text, Source, Validity string }
+				} `json:"management_references"`
+				Owner json.RawMessage `json:"owner_clarifications"`
+			}
+			if err = json.Unmarshal(reviewer.CandidateContext, &frozen); err != nil || len(frozen.References) != 1 || len(frozen.Owner) != 0 {
+				t.Fatal(string(reviewer.CandidateContext), err)
+			}
+			ref := frozen.References[0]
+			if ref.Question != m.Question.ID || ref.Session != a.Session || ref.Decision.ID != a.Source || ref.Decision.Text != proposal.Statement || ref.Decision.Validity != proposal.Validity || ref.Decision.Source != proposal.Source {
+				t.Fatal(ref)
+			}
 		})
 	}
 }
