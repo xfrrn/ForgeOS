@@ -136,7 +136,7 @@ func TestAdoptRequirementAfterTurn(t *testing.T) {
 	if _, err = s.ReviseFromFeedback(ctx, task.ID, preview.ID, change); !errors.Is(err, ErrConflict) {
 		t.Fatal("unclassified feedback accepted", err)
 	}
-	review, err := s.ClaimFeedback(ctx, p.ID, true)
+	review, err := s.ClaimFeedback(ctx, p.ID, true, false)
 	if err != nil || review == nil {
 		t.Fatal(review, err)
 	}

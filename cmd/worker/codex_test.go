@@ -110,6 +110,34 @@ func TestManagementAdviceSendsFrozenQuestionEvidence(t *testing.T) {
 	}
 }
 
+func TestManagementFeedbackSendsCandidateEvidence(t *testing.T) {
+	var report struct{ Classification store.FeedbackClassification }
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/management/feedback/result" || json.NewDecoder(r.Body).Decode(&report) != nil {
+			t.Error("invalid feedback report")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	w := worker{api: server.URL, client: server.Client(), codex: os.Args[0]}
+	for _, rules := range []json.RawMessage{nil, json.RawMessage(`{"requirement":{"revision":1},"rules":{"global_rules":{"revision":2}}}`)} {
+		source := map[string]any{"feedback": map[string]string{"note": "SIMULATED_FEEDBACK_CONTEXT"}}
+		want := "no-context"
+		if rules != nil {
+			source["context"] = rules
+			want = string(rules)
+		}
+		raw, err := json.Marshal(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report.Classification = store.FeedbackClassification{}
+		if err = w.classifyFeedback(context.Background(), store.FeedbackJob{ID: 1, Lease: "private-feedback-lease", Source: raw}); err != nil || report.Classification.Rationale != want || report.Classification.Context != nil || report.Classification.Session == "" {
+			t.Fatal("lost feedback evidence", report, err)
+		}
+	}
+}
+
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "app-server" {
@@ -200,6 +228,25 @@ func TestMain(m *testing.M) {
 						evidence = "no-context"
 					}
 					result, err := json.Marshal(store.QuestionAdvice{Level: "D2", Rationale: evidence, Source: sources[0].ID, Quote: sources[0].Text})
+					if err != nil {
+						os.Exit(6)
+					}
+					output = string(result)
+				}
+				if strings.Contains(string(body), "SIMULATED_FEEDBACK_CONTEXT") {
+					var source struct {
+						Context  json.RawMessage
+						Feedback struct{ Note string }
+					}
+					raw := string(body)[strings.LastIndex(string(body), "\n{")+1:]
+					if json.Unmarshal([]byte(raw), &source) != nil || strings.Contains(string(body), "private-feedback-lease") || !strings.Contains(string(body), ordinaryRuleOrder) {
+						os.Exit(5)
+					}
+					evidence := string(source.Context)
+					if evidence == "" {
+						evidence = "no-context"
+					}
+					result, err := json.Marshal(store.FeedbackClassification{Category: "requirement_change", Rationale: evidence, Evidence: source.Feedback.Note})
 					if err != nil {
 						os.Exit(6)
 					}

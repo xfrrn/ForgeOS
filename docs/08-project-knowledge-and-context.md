@@ -177,6 +177,8 @@ Management、Planner、Development、Review、Test、Operations 获取不同上�
 
 业务问题建议的领取请求通过 `supports_question_context=1` 声明支持执行依据。响应的 `question.rule_context` 包含原执行的全局规则、项目决策、验收退回意见、Owner 答复与已处理指令，以及先前通过 Management 查阅的决定。运行中问题以提问检查点为界；换基重验或只重跑验证的候选追溯原实现执行和提交。执行开始后发布的全局规则不会混入，Owner 答复也不会被降为普通讨论。可引用正文同步加入 `sources`，控制面仍核对 source 与 quote，且只从领取记录写入 `management_advice.context`，不接受角色自行回填。Owner 答复、重启和回执重放均保留原快照。未声明支持的旧节点保持原输入与回执，过期重领会清除未使用的快照，历史建议不补造新字段。
 
+预览反馈分类在领取时固定 `source.context`，包含预览的执行、候选和比较基线、该执行的需求修订、Goal 子项绑定的计划工作项及 `review_rules_for_execution` 返回的候选规则。换基或只重跑验证时，规则保留原实现执行和提交；不能用原实现的会话代做分类。原生分类按这些来源判断观察是否符合已确立的预期，当前项目规则或需求新版不会覆盖旧候选的依据。归档的 `classification.context` 由控制面从领取记录写入，角色不能伪造；重放、重启和旧 Worker 重领沿用与业务问题建议相同的兼容原则。
+
 实现回合通过 Management 查阅的决策按原检查点归档。独立代码审查、候选测试计划和覆盖审核从 `candidate_context.management_references` 取得当时的原文、适用条件、来源、问题编号与 Management 会话。点击任务详情中的“审查使用的候选依据”或“测试计划使用的候选依据”可核对这些记录。后续失效的决策仍可解释当时的候选。
 
 ### 在计划里引用已确认决策

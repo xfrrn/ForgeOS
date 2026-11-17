@@ -160,6 +160,31 @@ func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
 	}
 	report.Session = "independent-review"
 	must(s.CompleteCodeReview(ctx, project.ID, job.ExecutionID, claimed.Lease, report))
+	preview, err := s.OpenPreview(ctx, task.ID, job.ExecutionID, commit, "docs", 8091, 60)
+	must(err)
+	var pv struct{ ID string }
+	must(json.Unmarshal(preview, &pv))
+	fid, err := s.SubmitPreviewFeedback(ctx, task.ID, pv.ID, PreviewFeedback{Request: "33839ff1-e03a-42a7-ad7e-36586ea79c03", Execution: job.ExecutionID, Commit: commit, Path: "/", Note: "Keep original"})
+	must(err)
+	feedback, err := s.ClaimFeedback(ctx, project.ID, true, true)
+	must(err)
+	if feedback == nil {
+		t.Fatal("missing feedback")
+	}
+	var source struct {
+		Context struct{ Rules json.RawMessage }
+	}
+	must(json.Unmarshal(feedback.Source, &source))
+	must(json.Unmarshal(source.Context.Rules, &got))
+	if got.Origin != origin || got.Commit != originCommit || string(got.Rules) != string(initial) {
+		t.Fatalf("feedback lost original rules: %s", feedback.Source)
+	}
+	classification := FeedbackClassification{Category: "acceptance", Rationale: "Matches original", Evidence: "Keep original", Session: "development"}
+	if err = s.ClassifyFeedback(ctx, project.ID, fid, feedback.Lease, classification); !errors.Is(err, ErrConflict) {
+		t.Fatal("original implementation classified refreshed feedback", err)
+	}
+	classification.Session = "independent-classifier"
+	must(s.ClassifyFeedback(ctx, project.ID, fid, feedback.Lease, classification))
 	question, err := s.AskAtAcceptance(ctx, task.ID, QuestionRequest{ExecutionID: job.ExecutionID, Commit: commit, Key: "refresh-rules", Question: "Which rule applies?", Evidence: "The candidate was refreshed twice."})
 	must(err)
 	advice, err := s.ClaimQuestionAdvice(ctx, project.ID, false, true, true)

@@ -161,10 +161,10 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		}
 	})
 	t.Run("management lease and provenance", func(t *testing.T) {
-		if j, err := s.ClaimFeedback(ctx, p.ID+1, true); err != nil || j != nil {
+		if j, err := s.ClaimFeedback(ctx, p.ID+1, true, false); err != nil || j != nil {
 			t.Fatalf("other project: %v %v", j, err)
 		}
-		j, err := s.ClaimFeedback(ctx, p.ID, false)
+		j, err := s.ClaimFeedback(ctx, p.ID, false, false)
 		if err != nil || j == nil || j.ID != first || j.LeaseUntil != nil {
 			t.Fatalf("claim: %v %v", j, err)
 		}
@@ -179,7 +179,7 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			}
 		}
 		usage(1)
-		if second, err := s.ClaimFeedback(ctx, p.ID, true); err != nil || second != nil {
+		if second, err := s.ClaimFeedback(ctx, p.ID, true, false); err != nil || second != nil {
 			t.Fatalf("duplicate claim: %v %v", second, err)
 		}
 		c := FeedbackClassification{Category: "acceptance", Rationale: "The observer verified the displayed count.", Evidence: "Observed the count.", Session: "qa-triage"}
@@ -190,10 +190,10 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatalf("expired result: %v", err)
 		}
 		usage(0)
-		if legacy, err := s.ClaimFeedback(ctx, p.ID, false); err != nil || legacy != nil {
+		if legacy, err := s.ClaimFeedback(ctx, p.ID, false, false); err != nil || legacy != nil {
 			t.Fatal("old worker received budgeted feedback", legacy, err)
 		}
-		next, err := s.ClaimFeedback(ctx, p.ID, true)
+		next, err := s.ClaimFeedback(ctx, p.ID, true, false)
 		if err != nil || next == nil || !next.CaptureProfile || next.Lease == j.Lease || next.LeaseUntil == nil {
 			t.Fatalf("renewal: %v %v", next, err)
 		}
@@ -256,7 +256,7 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatal(err)
 		}
 		source.FeedbackID = id
-		j, err := s.ClaimFeedback(ctx, p.ID, true)
+		j, err := s.ClaimFeedback(ctx, p.ID, true, false)
 		if err != nil || j == nil || j.ID != id {
 			t.Fatal(j, err)
 		}

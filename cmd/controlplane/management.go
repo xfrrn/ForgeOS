@@ -43,7 +43,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		if err == nil && job == nil && capabilities.Feedback {
 			var f *store.FeedbackJob
-			f, err = data.ClaimFeedback(r.Context(), id, r.URL.Query().Get("supports_feedback_deadline") == "1")
+			f, err = data.ClaimFeedback(r.Context(), id, r.URL.Query().Get("supports_feedback_deadline") == "1", r.URL.Query().Get("supports_feedback_context") == "1")
 			if f != nil {
 				job = &store.ManagementJob{Feedback: f}
 			}

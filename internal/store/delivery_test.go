@@ -60,7 +60,7 @@ func TestReviewAndRework(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		j, err := s.ClaimFeedback(ctx, p.ID, true)
+		j, err := s.ClaimFeedback(ctx, p.ID, true, false)
 		if err != nil || j == nil || j.ID != id {
 			t.Fatalf("claim feedback %d: %v %v", id, j, err)
 		}
