@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"forgeos/internal/localrepo"
 )
@@ -51,6 +52,22 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 	if err != nil || first == nil || first.LeaseUntil != nil || len(first.Input.Sources) != 1 {
 		t.Fatal(err)
 	}
+	observe := func(report ManagementProcessReport, want bool) {
+		t.Helper()
+		e := s.ObserveManagementProcess(ctx, p.ID, report)
+		if (want && e != nil) || (!want && !errors.Is(e, ErrConflict)) {
+			t.Fatal("process observation", want, e)
+		}
+	}
+	observation := ManagementProcessReport{AnalysisTask: task.ID, Lease: first.Lease, Node: "analysis-node", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.2.3", Session: "expired-thread", Started: time.Now().UTC().Truncate(time.Second)}}
+	observe(observation, true)
+	bad := observation
+	bad.TaskID = task.ID
+	bad.Revision = 1
+	observe(bad, false)
+	if e := s.ObserveManagementProcess(ctx, p.ID+1, observation); !errors.Is(e, ErrConflict) {
+		t.Fatal("cross project observation", e)
+	}
 	if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "account", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: p.ID, Role: "repository_analysis"}}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +98,21 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 		t.Fatal("stale lease", err)
 	}
 	checkUsage(1)
+	observe(observation, false)
+	observation.Lease = second.Lease
+	observation.Process.PID = 456
+	observation.Process.Session = "failed-thread"
+	observe(observation, true)
 	r.Lease = second.Lease
+	if e := s.FinishAnalysis(ctx, p.ID, r); !errors.Is(e, ErrConflict) {
+		t.Fatal("failure accepted while process active", e)
+	}
+	end := observation.Process.Started.Add(time.Second)
+	code := 15
+	observation.Process.Exited = &end
+	observation.Process.ExitCode = &code
+	observe(observation, true)
+
 	for range 2 {
 		if err = s.FinishAnalysis(ctx, p.ID, r); err != nil {
 			t.Fatal(err)
@@ -101,6 +132,13 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 	if err != nil || third == nil || !third.CaptureProfile {
 		t.Fatal(err)
 	}
+	observation.Lease = third.Lease
+	observation.Process.PID = 789
+	observation.Process.Session = "session-qa"
+	observation.Process.Exited = nil
+	observation.Process.ExitCode = nil
+	observation.Process.Output = &ModelOutput{Sequence: 1, Text: "Analyzing sources.\n"}
+	observe(observation, true)
 	fact := AnalysisFact{Kind: "start", Value: "invented command", Path: "README.md", Quote: "go run ./cmd/app"}
 	r = AnalysisResult{Task: task.ID, Lease: third.Lease, Analysis: &RepositoryAnalysis{Session: "session-qa", Facts: []AnalysisFact{fact}}}
 	if err = s.FinishAnalysis(ctx, p.ID, r); !errors.Is(err, ErrConflict) {
@@ -125,6 +163,18 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 		t.Fatal("incorrect native permission", err)
 	}
 	profile = StructuredCodexProfile()
+	if e := s.FinishAnalysis(ctx, p.ID, r); !errors.Is(e, ErrConflict) {
+		t.Fatal("success accepted while process active", e)
+	}
+	code = 0
+	observation.Process.Exited = &end
+	observation.Process.ExitCode = &code
+	observe(observation, true)
+	r.Analysis.Session = "wrong-thread"
+	if e := s.FinishAnalysis(ctx, p.ID, r); !errors.Is(e, ErrConflict) {
+		t.Fatal("wrong session", e)
+	}
+	r.Analysis.Session = "session-qa"
 	for range 2 {
 		if err = s.FinishAnalysis(ctx, p.ID, r); err != nil {
 			t.Fatal(err)
@@ -136,11 +186,16 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 		t.Fatal(string(raw), err)
 	}
 	var receipt struct {
-		Analysis RepositoryAnalysis `json:"analysis"`
+		Processes []ManagementProcess `json:"processes"`
+		Analysis  RepositoryAnalysis  `json:"analysis"`
 	}
 	if err = json.Unmarshal(raw, &receipt); err != nil || receipt.Analysis.Profile == nil || !validStructuredProfile(receipt.Analysis.Profile) {
 		t.Fatal("missing archived configuration", err)
 	}
+	if len(receipt.Processes) != 3 || receipt.Processes[0].Exited != nil || *receipt.Processes[1].ExitCode != 15 || receipt.Processes[2].Output.Text != "Analyzing sources.\n" {
+		t.Fatal("attempt history lost")
+	}
+	observe(observation, false)
 	r.Analysis.Profile = nil
 	if err = s.FinishAnalysis(ctx, p.ID, r); !errors.Is(err, ErrConflict) {
 		t.Fatal("replay removed archived permissions", err)

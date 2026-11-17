@@ -3009,3 +3009,24 @@ PostgreSQL 18／Docker 全包 322 项测试及子测试通过，零失败、零�
 最终 PostgreSQL 18／真实 Docker 全包 326 项测试及子测试通过，零失败、零跳过；报告为 share-process-final-regression.jsonl。回归覆盖计划与副本目标互斥、跨项目与租约拒绝、会话和退出绑定、改写及重复回报、接收方字段隔离、撤销后实际退出、名额归还以及过期重领保留两次尝试。Go 静态检查、TypeScript 和生产构建通过；真实原生回合、源端浏览器、接收方授权入口、SQLite、控制面重启及旧库迁移均已核对。证据位于 share_process_current、share_process_oldcontrol、share_process_oldworker，以及 management_process_current/share-migration-proof.json。
 
 采集仍为有界公开消息窗口；共享审核的 Daemon 崩溃补报与原会话恢复、其他独立角色及完整归档仍待补齐。既有外部条件及全路线最终验收保持待验收。
+
+上述共享资料审核实现与验收对应 ForgeOS 提交 8adf7eaf2c806dc86a3ea5d70d6967651dc9247f。
+
+### 专题 07、13、16 C.3 · 仓库分析进程与固定来源重试
+
+2026-11-18 在真实 PostgreSQL 18、Chrome 和独立 Codex Management 中验收。节点 qa-analysis-current；先由普通 Worker 完成本地仓库 HEAD 任务 #1，再从页面读取清单并点击“归纳入口文档”。固定提交 2c2f70f73a282218512a02dd2031cd6102bcaa72。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 页面派发归纳，核对原生子进程，再终止该进程 | 保留实际失败，不把退出当作报告成功 | PID 40788、Thread 01a1ebbb-1870-74a3-8431-9669c5c481e4，Codex 0.169.0-alpha.11.1，read-only／never；退出码 15，状态 FAILED、agent_run_failed，无 analysis。 |
+| 将原克隆推进到新提交，再从 Chrome 点击“重新归纳” | 沿用原清单来源，新增尝试，不覆盖失败 | 克隆新 HEAD 82c9e0d25e4833772f269495a1cb7abae2ffdc75 的替换标记未进入报告；第二次为 PID 1192、Thread 01a1ebbb-32d6-7c20-add9-48f590dd2ed3。 |
+| 第二次回合仍运行时重启控制面 | 原观察保留，结果与退出会话一致 | 重启后原 Thread 可查，随后退出码 0、DONE；用途、Go 技术栈、清单、启动及测试命令分别核对归档原文或清单摘要，来源 blob 与原提交一致。 |
+| 比对节点 SQLite、API 和 Chrome，再重启回读 | 两次进程都保留，成功公开消息一致 | 失败记录完全相同；成功窗口与 SQLite 相同，页面展开可读；重启后 analysis 和 processes 保持相同。 |
+| 旧控制面／新 Worker、新控制面／旧 Worker分别从页面派发并重启回读 | 原分析协议兼容，不补造进程 | Thread 01a1ebbb-a784-7e53-90af-a700776df1b2、01a1ebbb-a6e8-7601-8ade-d3c55362711c 均完成真实分析；页面可读来源与结果，无虚构进程。 |
+| 将真实计划审核与共享审核库从迁移 99 升至 100 | 既有历史完整可读 | 三版计划和两份副本的 ID、节点及完整进程 JSON 均未改变，Chrome 分别展开原会话和实际存在的输出。 |
+
+首次验收断言把包清单摘要也当作 Git 原文，错误拒绝了 go.mod 清单名称这一合法来源；按 basis 分别核对摘要与原文，并核对所有 blob 后通过。重启回读脚本首次遗漏“读取仓库清单”的页面操作，补齐后重读已有结果，没有重复派发模型回合。
+
+PostgreSQL 18／真实 Docker 全包 331 项测试及子测试通过，零失败、零跳过，报告 analysis-process-regression.jsonl。回归覆盖实际测试子进程的成功、非零退出、无效引文、旧协议，以及项目／租约／目标互斥、失败前必须退出、成功会话一致和过期／失败／重试三次历史。Go 静态检查、TypeScript 和生产构建通过。真实验收证据目录 analysis_process_current、analysis_process_oldcontrol、analysis_process_oldworker；旧库迁移证据为 management_process_current/analysis-migration-proof.json 和 share_process_current/analysis-migration-proof.json。
+
+本项保存有界公开消息及进程历史。初始化报告快照仍保存分析结果，进程历史从来源任务回读；完整会话归档、独立角色 Daemon 崩溃补报和恢复、其他角色采集、全路线最终验收及已列外部条件继续待完成。剩余 13–23 个工作包的粗估口径不因本运行时子项而缩减。

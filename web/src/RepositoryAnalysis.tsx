@@ -1,9 +1,10 @@
+import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState } from 'react'
 import { ApiError, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Fact = { kind: string; value: string; path: string; quote: string }
-type Analysis = { status: string; attempt: number; failure?: string; analysis?: {session_id: string; facts: Fact[]; profile?: StructuredProfile}
+type Analysis = { processes?: ReviewProcess[]; status: string; attempt: number; failure?: string; analysis?: {session_id: string; facts: Fact[]; profile?: StructuredProfile}
   truncated: number; omitted: number; sources: {path: string; blob: string; basis: string}[] }
 const sections = { profile: '项目用途', stack: '技术栈', dependency: '依赖', start: '启动命令', test: '测试命令' }
 
@@ -45,6 +46,7 @@ export function RepositoryAnalysis({task, request}: {task: number; request: ApiR
     {result?.status==='READY' && <p role="status">等待此项目的 Management Agent 领取。</p>}
     {result?.status==='RUNNING' && <p role="status">正在归纳固定提交的文档和包清单。</p>}
     {result?.status==='FAILED' && <p role="alert">{result.failure==='unverified_evidence' ? '归纳中的引用未通过原文核对。' : 'Agent 本次未返回可用报告。'}</p>}
+    <ManagementProcesses processes={result?.processes} title="Management 归纳进程"/>
     {result?.analysis && <>
       <p>Agent 会话 · <code>{result.analysis.session_id}</code></p>
       {result.analysis.profile && <RolePermissions role="Management" profile={result.analysis.profile}/>}

@@ -58,6 +58,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			var analysis *store.AnalysisJob
 			analysis, err = data.ClaimAnalysis(r.Context(), id, r.URL.Query().Get("supports_analysis_deadline") == "1")
 			if analysis != nil {
+				analysis.CaptureProcess = r.URL.Query().Get("supports_analysis_process") == "1"
 				job = &store.ManagementJob{RepositoryAnalysis: analysis}
 			}
 		}

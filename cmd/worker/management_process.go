@@ -12,8 +12,16 @@ import (
 )
 
 func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJob, prompt string, review *store.ManagementReview) (string, error) {
-	if !job.CaptureProcess {
-		return readOnlyJSONTurn(ctx, w.codex, reviewSchema, prompt, 12<<10, review)
+	target := store.ManagementProcessReport{TaskID: job.TaskID, Revision: job.Revision, Lease: job.Lease}
+	if job.Share != nil {
+		target.ShareID = job.Share.ID
+	}
+	return w.managementJSONTurn(ctx, job.CaptureProcess, target, reviewSchema, prompt, 12<<10, review)
+}
+
+func (w *worker) managementJSONTurn(ctx context.Context, capture bool, target store.ManagementProcessReport, contract, prompt string, limit int64, dest any) (string, error) {
+	if !capture {
+		return readOnlyJSONTurn(ctx, w.codex, contract, prompt, limit, dest)
 	}
 	version, err := readCodexVersion(w.codex)
 	if err != nil {
@@ -37,11 +45,8 @@ func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJ
 	recorder.journal = db
 	updates := make(chan struct{}, 1)
 	reporting, stop := context.WithCancel(context.WithValue(ctx, processUpdatesKey{}, updates))
-	key := sha256.Sum256([]byte(job.Lease))
-	target := store.ManagementProcessReport{TaskID: job.TaskID, Revision: job.Revision, Lease: job.Lease, Node: node}
-	if job.Share != nil {
-		target.ShareID = job.Share.ID
-	}
+	key := sha256.Sum256([]byte(target.Lease))
+	target.Node = node
 	report := func(call context.Context) error {
 		p, err := scanHarnessProcess(db.QueryRowContext(call, readHarnessProcess+" WHERE lease_hash=? ORDER BY instance DESC LIMIT 1", key[:]))
 		if err != nil {
@@ -75,11 +80,11 @@ func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJ
 			cancel()
 		}
 	}()
-	process := recorder.processLog(reporting, store.Job{LeaseToken: job.Lease, RecordModelOutput: true}, "codex", version)
-	session, turnErr := recordedJSONTurn(reporting, w.codex, reviewSchema, prompt, 12<<10, review, process)
+	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, "codex", version)
+	session, turnErr := recordedJSONTurn(reporting, w.codex, contract, prompt, limit, dest, process)
 	stop()
 	<-done
-	// Persist the actual exit before allowing its review to advance the plan.
+	// Persist the actual exit before allowing the role result to advance its source.
 	call, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = report(call)

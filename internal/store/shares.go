@@ -139,7 +139,7 @@ func (s *Store) ReviewShare(ctx context.Context, project, id int64, lease string
 	if !valid {
 		return ErrConflict
 	}
-	if err = verifyManagementProcess(ctx, tx, 0, 0, id, lease, review.SessionID); err != nil {
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{ShareID: id, Lease: lease}, review.SessionID); err != nil {
 		return err
 	}
 	if revoked {

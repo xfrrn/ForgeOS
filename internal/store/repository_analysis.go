@@ -14,6 +14,7 @@ import (
 )
 
 type AnalysisJob struct {
+	CaptureProcess bool                    `json:"capture_process,omitempty"`
 	CaptureProfile bool                    `json:"capture_profile,omitempty"`
 	LeaseUntil     *time.Time              `json:"lease_until,omitempty"`
 	Task           int64                   `json:"task_id"`
@@ -61,8 +62,9 @@ func (s *Store) RepositoryAnalysis(ctx context.Context, id int64) (json.RawMessa
 	var raw json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('status',CASE WHEN result IS NOT NULL THEN 'DONE' WHEN failure IS NOT NULL THEN 'FAILED'
 		WHEN lease_until>now() THEN 'RUNNING' ELSE 'READY' END,'attempt',attempt,'analysis',result,'failure',failure,'finished_at',finished_at,
-		'omitted',source->'omitted','truncated',source->'truncated','sources',COALESCE((SELECT jsonb_agg(d-'text') FROM jsonb_array_elements(source->'sources') d),'[]'::jsonb))
-		FROM repository_analyses WHERE task_id=$1`, id).Scan(&raw)
+		'processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.analysis_task=a.task_id),'[]'::jsonb),
+ 'omitted',source->'omitted','truncated',source->'truncated','sources',COALESCE((SELECT jsonb_agg(d-'text') FROM jsonb_array_elements(source->'sources') d),'[]'::jsonb))
+		FROM repository_analyses a WHERE task_id=$1`, id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -152,6 +154,13 @@ func (s *Store) FinishAnalysis(ctx context.Context, project int64, r AnalysisRes
 	}
 	if r.Analysis != nil && !r.Analysis.Valid(input) {
 		return ErrConflict
+	}
+	session := ""
+	if r.Analysis != nil {
+		session = r.Analysis.Session
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{AnalysisTask: r.Task, Lease: r.Lease}, session); err != nil {
+		return err
 	}
 	res, err := tx.ExecContext(ctx, `UPDATE repository_analyses SET result=$2::jsonb,failure=NULLIF($3,''),finished_at=clock_timestamp()
 		WHERE task_id=$1 AND lease_until>clock_timestamp()`, r.Task, report, r.Failure)

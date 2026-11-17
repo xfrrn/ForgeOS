@@ -21,7 +21,7 @@ func (w *worker) analyzeRepository(ctx context.Context, job store.AnalysisJob) e
 		"Prefer the README and specific guides. Inventory summaries list manifest names, direct dependencies and script entry points. Do not claim a command has passed or copy secrets. Omit unsupported facts; an empty list is allowed.\n" + string(src)
 	turn, cancel := managementTurn(ctx, job.LeaseUntil)
 	var a store.RepositoryAnalysis
-	session, err := readOnlyJSONTurn(turn, w.codex, repositoryAnalysisSchema, prompt, 96<<10, &a)
+	session, err := w.managementJSONTurn(turn, job.CaptureProcess, store.ManagementProcessReport{AnalysisTask: job.Task, Lease: job.Lease}, repositoryAnalysisSchema, prompt, 96<<10, &a)
 	cancel()
 	if ctx.Err() != nil {
 		return ctx.Err()

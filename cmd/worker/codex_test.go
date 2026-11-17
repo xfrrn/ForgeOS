@@ -266,11 +266,17 @@ func TestMain(m *testing.M) {
 					}
 					output = string(result)
 				}
+				if strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") {
+					output = `{"facts":[{"kind":"start","value":"go run ./cmd/app","path":"README.md","quote":"go run ./cmd/app"}]}`
+					if strings.Contains(string(body), "BAD_QUOTE") {
+						output = `{"facts":[{"kind":"start","value":"invented","path":"README.md","quote":"invented"}]}`
+					}
+				}
 				if os.WriteFile(os.Args[k+1], []byte(output), 0600) != nil {
 					os.Exit(3)
 				}
 				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
-				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") {
+				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") {
 					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
 					time.Sleep(500 * time.Millisecond)
 					if strings.Contains(string(body), "FAIL_PROCESS") {
