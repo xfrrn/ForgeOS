@@ -1,3 +1,4 @@
+import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import type { GlobalRulesRevision } from './GlobalRules'
 import { PlanEditor } from './PlanEditor'
@@ -56,7 +57,7 @@ type Issue = { title: string; number: number; body: string; url: string; reposit
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string }
-type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; trees?: { index: string; worktree: string }; management_advice?: Advice; withdrawn_at?: string; answer?: string; answered_by?: string; answered_at?: string }
+type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; trees?: { index: string; worktree: string }; management_processes?: ReviewProcess[]; management_advice?: Advice; withdrawn_at?: string; answer?: string; answered_by?: string; answered_at?: string }
 type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
   requires_code_review?: boolean
@@ -547,6 +548,7 @@ function Decision({ taskID, q, canAnswer, request, onAnswer }: { taskID: number;
       {q.trees && <><Fact label="检查点暂存区树" code>{q.trees.index}</Fact><Fact label="检查点工作树" code>{q.trees.worktree}</Fact></>}
       {q.answered_at && <Fact label="答复时间">{formatTime(q.answered_at)}</Fact>}</dl>
     {q.management_advice && <QuestionAdvice advice={q.management_advice}/>}
+    <ManagementProcesses processes={q.management_processes} title="Management 问题审阅进程"/>
     {q.withdrawn_at ? <p>执行已结束，问题已撤回。</p> : q.answer ? <p>{q.answered_by === 'management' ? 'Management' : 'Owner'} 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor={`answer-${q.id}`}>业务答复</label>
       <textarea id={`answer-${q.id}`} required value={answer} onChange={e => setAnswer(e.target.value)}/>

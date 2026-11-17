@@ -100,7 +100,7 @@ func TestManagementAdviceSendsFrozenQuestionEvidence(t *testing.T) {
 	w := worker{codex: os.Args[0]}
 	for _, evidence := range []json.RawMessage{nil, json.RawMessage(`{"global_rules":{"revision":1,"content":"Fallback"},"owner_clarifications":[{"answer":"Owner heading"}]}`)} {
 		q := store.QuestionAdviceJob{Question: "SIMULATED_QUESTION_CONTEXT", RuleContext: evidence, Sources: json.RawMessage(`[{"id":"owner-answer:7","text":"Owner heading"}]`)}
-		a, err := w.adviseOwner(context.Background(), q, "D2")
+		a, err := w.adviseOwner(context.Background(), store.ManagementJob{Question: &q, MinimumLevel: "D2"})
 		want := string(evidence)
 		if evidence == nil {
 			want = "no-context"
@@ -276,7 +276,7 @@ func TestMain(m *testing.M) {
 					os.Exit(3)
 				}
 				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
-				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") {
+				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") {
 					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
 					time.Sleep(500 * time.Millisecond)
 					if strings.Contains(string(body), "FAIL_PROCESS") {

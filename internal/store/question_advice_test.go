@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func checkAdviceBudget(t *testing.T, s *Store, want int) {
@@ -59,6 +60,21 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal(err)
 	}
 	checkAdviceBudget(t, s, 1)
+	observation := ManagementProcessReport{QuestionID: id, Lease: j.Lease, Node: "advice-node", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.2.3", Started: time.Now().UTC().Truncate(time.Second), Session: "expired-advice"}}
+	observe := func(want bool) {
+		t.Helper()
+		e := s.ObserveManagementProcess(ctx, project.ID, observation)
+		if (want && e != nil) || (!want && !errors.Is(e, ErrConflict)) {
+			t.Fatal("process observation", want, e)
+		}
+	}
+	observe(true)
+	observation.AnalysisTask = task
+	observe(false)
+	observation.AnalysisTask = 0
+	if e := s.ObserveManagementProcess(ctx, project.ID+1, observation); !errors.Is(e, ErrConflict) {
+		t.Fatal("cross project", e)
+	}
 	a := QuestionAdvice{Level: "D2", Rationale: "Owner selects the title.", Source: "question", Quote: "two unknown names", Session: "management-session"}
 	finish := func(pid int64, lease string) error { return s.CompleteQuestionAdvice(ctx, pid, id, lease, a) }
 	if !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
@@ -75,6 +91,12 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if retry == nil || !retry.CaptureProfile || retry.LeaseUntil == nil || retry.Lease == j.Lease || !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
 		t.Fatal("accepted superseded lease")
 	}
+	observe(false)
+	observation.Lease = retry.Lease
+	observation.Process.PID = 456
+	observation.Process.Session = "management-session"
+	observation.Process.Output = &ModelOutput{Sequence: 1, Text: "Reviewing question.\n"}
+	observe(true)
 	if _, err = s.db.ExecContext(ctx, `UPDATE question_advice_claims SET minimum_level='D3' WHERE question_id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +116,19 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal("incorrect native permission")
 	}
 	profile = StructuredCodexProfile()
+	if e := finish(project.ID, retry.Lease); !errors.Is(e, ErrConflict) {
+		t.Fatal("advice before actual exit", e)
+	}
+	end := observation.Process.Started.Add(time.Second)
+	code := 0
+	observation.Process.Exited = &end
+	observation.Process.ExitCode = &code
+	observe(true)
+	a.Session = "different-session"
+	if e := finish(project.ID, retry.Lease); !errors.Is(e, ErrConflict) {
+		t.Fatal("advice mismatched session", e)
+	}
+	a.Session = "management-session"
 	if err = finish(project.ID, retry.Lease); err != nil {
 		t.Fatal(err)
 	}
@@ -102,6 +137,15 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if err != nil || detail.Status != "WAITING_INPUT" || len(detail.Questions) != 1 || detail.Questions[0].Answer != "" || detail.Questions[0].ManagementAdvice == nil || detail.Questions[0].ManagementAdvice.At == nil {
 		t.Fatal(detail.Status, err)
 	}
+	records := detail.Questions[0].ManagementProcesses
+	if len(records) != 2 || records[0].Exited != nil || records[1].Output.Text != "Reviewing question.\n" {
+		t.Fatal("lost question process history", records)
+	}
+	page, e := s.PendingQuestions(ctx, 0)
+	if e != nil || !strings.Contains(string(page), "management-session") || !strings.Contains(string(page), "expired-advice") {
+		t.Fatal("pending page process history", e)
+	}
+	observe(false)
 	if p := detail.Questions[0].ManagementAdvice.Profile; p == nil || !validStructuredProfile(p) {
 		t.Fatal("missing archived permissions")
 	}
@@ -211,6 +255,13 @@ func TestManagementDecisionLookup(t *testing.T) {
 				}
 				return
 			}
+			observation := ManagementProcessReport{QuestionID: m.Question.ID, Lease: m.Lease, Node: "lookup-node", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.2.3", Session: a.Session, Started: time.Now().UTC().Truncate(time.Second)}}
+			if e := s.ObserveManagementProcess(ctx, pid, observation); e != nil {
+				t.Fatal(e)
+			}
+			if e := finish(); !errors.Is(e, ErrConflict) {
+				t.Fatal("lookup while native active", e)
+			}
 			if scenario == "owner answered" {
 				if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "advice", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: project.ID, Role: "question_advice"}}}}); err != nil {
 					t.Fatal(err)
@@ -220,10 +271,28 @@ func TestManagementDecisionLookup(t *testing.T) {
 				}
 				checkAdviceBudget(t, s, 1)
 				if !errors.Is(finish(), ErrConflict) {
+					t.Fatal("unfinished advice")
+				}
+				checkAdviceBudget(t, s, 1)
+				end := observation.Process.Started.Add(time.Second)
+				code := 0
+				observation.Process.Exited = &end
+				observation.Process.ExitCode = &code
+				if e := s.ObserveManagementProcess(ctx, pid, observation); e != nil {
+					t.Fatal("owner answer lost in-flight exit", e)
+				}
+				if !errors.Is(finish(), ErrConflict) {
 					t.Fatal("overwrote Owner")
 				}
 				checkAdviceBudget(t, s, 0)
 				return
+			}
+			end := observation.Process.Started.Add(time.Second)
+			code := 0
+			observation.Process.Exited = &end
+			observation.Process.ExitCode = &code
+			if e := s.ObserveManagementProcess(ctx, pid, observation); e != nil {
+				t.Fatal(e)
 			}
 			a.Quote = "Build receipt"
 			if !errors.Is(finish(), ErrConflict) {

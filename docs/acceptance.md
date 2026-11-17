@@ -3030,3 +3030,23 @@ PostgreSQL 18／Docker 全包 322 项测试及子测试通过，零失败、零�
 PostgreSQL 18／真实 Docker 全包 331 项测试及子测试通过，零失败、零跳过，报告 analysis-process-regression.jsonl。回归覆盖实际测试子进程的成功、非零退出、无效引文、旧协议，以及项目／租约／目标互斥、失败前必须退出、成功会话一致和过期／失败／重试三次历史。Go 静态检查、TypeScript 和生产构建通过。真实验收证据目录 analysis_process_current、analysis_process_oldcontrol、analysis_process_oldworker；旧库迁移证据为 management_process_current/analysis-migration-proof.json 和 share_process_current/analysis-migration-proof.json。
 
 本项保存有界公开消息及进程历史。初始化报告快照仍保存分析结果，进程历史从来源任务回读；完整会话归档、独立角色 Daemon 崩溃补报和恢复、其他角色采集、全路线最终验收及已列外部条件继续待完成。剩余 13–23 个工作包的粗估口径不因本运行时子项而缩减。
+
+上述仓库分析进程与固定来源重试对应 ForgeOS 提交 670e84fef48a9911c5fb61519fb0c2ac343ba616。
+
+### 专题 05、07、13、16 C.3 · 业务问题建议进程
+
+2026-11-18 在真实 PostgreSQL 18 和 Chrome 中，使用独立数据库还原既有真实候选 d689d8e011d2c9e1e49e93cfa632d31b132c2228 的待验收状态。通过 Owner API 在任务 #1 提出问题，再运行独立原生 Management 并从页面答复；本轮未修改或重复交付该候选。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 问题 #1 派发后核对原生进程，在回合中重启控制面 | 进程属于独立建议回合，最近观察可续接 | qa-advice-current、PID 38568、Thread 01a1ebc3-36bd-77d1-85da-f8d62f95e70c；read-only／never，Codex 0.169.0-alpha.11.1。重启后同一进程完成，退出码 0。 |
+| 读取 D2 建议、节点 SQLite 和待答页，再从 Chrome 答复 | 来源有效，进程、建议及人工答复分别保留 | 建议引用 requirement:1:body 中 Document the exact HTML title from docs/queue-preview/index.html；原生会话不同于实现会话，公开消息与 SQLite 完全一致；待答页和任务页可展开同一进程，Owner 答复后建议原样保留。 |
+| 问题 #2 的原生回合仍运行时从 Chrome 提交 Owner 答复 | 实际退出可回报，迟到建议不能覆盖 Owner | PID 43816、Thread 01a1ebc3-6c26-7f13-8cca-3fbeb1c39e20，实际退出码 0；无 management_advice，Owner 答复保持，完成回报后账号占用归零。 |
+| 问题 #3 确认原生子进程后直接终止，再从页面答复 | 失败不生成建议，实际失败和人工处理都可追溯 | PID 37696、Thread 01a1ebc4-3d63-71b1-a8db-9e1d7c15ead5，退出码 15；没有建议，Owner 答复成功。重启后失败进程和答复均相同。 |
+| 重启控制面回读问题 #1、#2 | 所有独立会话与各题答复归属不变 | Chrome 展开两条成功退出，核对原生会话和实际存在的公开输出；API 完整问题记录与重启前一致。 |
+| 旧控制面／新 Worker、新控制面／旧 Worker分别运行并从 Chrome 答复 | 保持旧建议协议，不伪造历史进程 | Thread 01a1ebc3-b9db-7aa1-b5e0-9a7eb283b3a0、01a1ebc3-b900-7cb3-b14d-e5b8e2ca6d01 均获得真实 D2 建议，答复独立，重启可读且无虚构进程。 |
+| 将上一项真实仓库分析库从迁移 100 升至 101 | 新问题关联不损伤分析尝试 | 两条进程的 ID、节点及完整 JSON 原样保留；Chrome 可展开退出码 15 的失败与退出码 0 的重试，分析结果完全相同。 |
+
+PostgreSQL 18／真实 Docker 全包 335 项测试及子测试通过，零失败、零跳过，报告 advice-process-regression.jsonl。回归包含实际测试子进程的成功／非零退出、旧协议，以及项目和目标互斥、过期重领历史、建议前退出和会话校验、待答页历史、D1 引用决定及 Owner 先答复时不能提前归还活动名额。Go 静态检查、TypeScript 和生产构建通过。证据目录 advice_process_current、advice_process_oldcontrol、advice_process_oldworker；迁移证据 analysis_process_current/advice-migration-proof.json。
+
+本次真实原生进程验收覆盖 D2 和 Owner 答复，D1 的新增进程门禁由数据库回归验证；原有 D1 在线引用验收见前文。异常回合没有建议完成回报，名额仍按原租约期限回收，不宣称已实现独立 Daemon 的失败补报或原会话恢复。采集为有界公开消息，其他独立角色、完整归档、全路线最终验收及已列外部条件保持待完成。

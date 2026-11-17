@@ -33,6 +33,9 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		if err == nil && job == nil && r.URL.Query().Get("supports_question_advice") == "1" {
 			job, err = data.ClaimQuestionAdvice(r.Context(), id, r.URL.Query().Get("supports_decision_lookups") == "1", r.URL.Query().Get("supports_question_deadline") == "1", r.URL.Query().Get("supports_question_context") == "1")
+			if job != nil {
+				job.CaptureProcess = r.URL.Query().Get("supports_question_process") == "1"
+			}
 		}
 		if err == nil && job == nil && capabilities.Shares {
 			job, err = data.ClaimShareReview(r.Context(), id, r.URL.Query().Get("supports_share_review_deadline") == "1")

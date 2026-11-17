@@ -137,6 +137,9 @@ func (s *Store) CompleteQuestionAdvice(ctx context.Context, project, id int64, l
 		}
 		return ErrConflict
 	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{QuestionID: id, Lease: lease}, a.Session); err != nil {
+		return err
+	}
 	if !current {
 		if closed {
 			if _, err = tx.ExecContext(ctx, `UPDATE question_advice_claims SET lease_until=clock_timestamp()

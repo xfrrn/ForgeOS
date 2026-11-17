@@ -16,6 +16,7 @@ type ManagementProcess struct {
 }
 
 type ManagementProcessReport struct {
+	QuestionID   int64          `json:"question_id,omitempty"`
 	AnalysisTask int64          `json:"analysis_task,omitempty"`
 	ShareID      int64          `json:"share_id,omitempty"`
 	TaskID       int64          `json:"task_id,omitempty"`
@@ -29,13 +30,14 @@ const planRevisionJSON = `(to_jsonb(r)-'review_lease') || jsonb_build_object('re
  COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id)
  FROM management_processes p WHERE p.task_id=r.task_id AND p.revision=r.revision),'[]'::jsonb))`
 
-const managementProcessTarget = `lease_hash=$1 AND ((task_id=$2 AND revision=$3) OR share_id=$4 OR analysis_task=$5)`
+const managementProcessTarget = `lease_hash=$1 AND ((task_id=$2 AND revision=$3) OR share_id=$4 OR analysis_task=$5 OR question_id=$6)`
 
 func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, report ManagementProcessReport) error {
 	p := report.Process
-	if !((report.AnalysisTask > 0 && report.ShareID == 0 && report.TaskID == 0 && report.Revision == 0) ||
-		(report.AnalysisTask == 0 && report.ShareID > 0 && report.TaskID == 0 && report.Revision == 0) ||
-		(report.AnalysisTask == 0 && report.ShareID == 0 && report.TaskID > 0 && report.Revision > 0)) {
+	if !((report.QuestionID > 0 && report.AnalysisTask == 0 && report.ShareID == 0 && report.TaskID == 0 && report.Revision == 0) ||
+		(report.QuestionID == 0 && report.AnalysisTask > 0 && report.ShareID == 0 && report.TaskID == 0 && report.Revision == 0) ||
+		(report.QuestionID == 0 && report.AnalysisTask == 0 && report.ShareID > 0 && report.TaskID == 0 && report.Revision == 0) ||
+		(report.QuestionID == 0 && report.AnalysisTask == 0 && report.ShareID == 0 && report.TaskID > 0 && report.Revision > 0)) {
 		return ErrConflict
 	}
 	if !p.Valid() || p.Harness != "codex" || p.HandoffFrom != "" || len(p.Tools) != 0 || p.ToolOutput != nil ||
@@ -49,7 +51,11 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	}
 	defer tx.Rollback()
 	var valid bool
-	if report.AnalysisTask != 0 {
+	if report.QuestionID != 0 {
+		err = tx.QueryRowContext(ctx, `SELECT q.management_advice IS NULL AND c.lease_until>clock_timestamp()
+ FROM decision_questions q JOIN work_items t ON t.id=q.task_id JOIN question_advice_claims c ON c.question_id=q.id
+ WHERE q.id=$1 AND t.project_id=$2 AND c.lease::text=$3 FOR UPDATE OF q,c`, report.QuestionID, project, report.Lease).Scan(&valid)
+	} else if report.AnalysisTask != 0 {
 		err = tx.QueryRowContext(ctx, `SELECT a.finished_at IS NULL AND a.lease_until>clock_timestamp() FROM repository_analyses a JOIN repository_inventories i USING(task_id) WHERE a.task_id=$1 AND i.project_id=$2 AND a.lease::text=$3 FOR UPDATE OF a`, report.AnalysisTask, project, report.Lease).Scan(&valid)
 	} else if report.ShareID == 0 {
 		err = tx.QueryRowContext(ctx, `SELECT r.review IS NULL AND r.review_until>clock_timestamp()
@@ -70,7 +76,7 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	var raw []byte
 	var node string
 	err = tx.QueryRowContext(ctx, `SELECT process,node FROM management_processes WHERE `+managementProcessTarget,
-		hash[:], report.TaskID, report.Revision, report.ShareID, report.AnalysisTask).Scan(&raw, &node)
+		hash[:], report.TaskID, report.Revision, report.ShareID, report.AnalysisTask, report.QuestionID).Scan(&raw, &node)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -94,10 +100,13 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	if report.AnalysisTask != 0 {
 		conflictTarget = "analysis_task,lease_hash"
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO management_processes(task_id,revision,lease_hash,node,process,share_id,analysis_task) VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,NULLIF($6,0),NULLIF($7,0))
+	if report.QuestionID != 0 {
+		conflictTarget = "question_id,lease_hash"
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO management_processes(task_id,revision,lease_hash,node,process,share_id,analysis_task,question_id) VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,NULLIF($6,0),NULLIF($7,0),NULLIF($8,0))
  ON CONFLICT(`+conflictTarget+`) DO UPDATE SET process=excluded.process,
  observed_at=CASE WHEN management_processes.process=excluded.process THEN management_processes.observed_at ELSE clock_timestamp() END`,
-		report.TaskID, report.Revision, hash[:], report.Node, string(raw), report.ShareID, report.AnalysisTask)
+		report.TaskID, report.Revision, hash[:], report.Node, string(raw), report.ShareID, report.AnalysisTask, report.QuestionID)
 	if err != nil {
 		return err
 	}
@@ -107,7 +116,7 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 func verifyManagementProcess(ctx context.Context, tx *sql.Tx, target ManagementProcessReport, session string) error {
 	hash := sha256.Sum256([]byte(target.Lease))
 	var raw []byte
-	err := tx.QueryRowContext(ctx, `SELECT process FROM management_processes WHERE `+managementProcessTarget, hash[:], target.TaskID, target.Revision, target.ShareID, target.AnalysisTask).Scan(&raw)
+	err := tx.QueryRowContext(ctx, `SELECT process FROM management_processes WHERE `+managementProcessTarget, hash[:], target.TaskID, target.Revision, target.ShareID, target.AnalysisTask, target.QuestionID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

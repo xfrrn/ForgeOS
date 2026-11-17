@@ -20,9 +20,13 @@ type QuestionRequest struct {
 	Evidence    string `json:"evidence"`
 }
 
+const questionProcessesJSON = `COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id)
+ FROM management_processes p WHERE p.question_id=q.id),'[]'::jsonb)`
+
 type DecisionQuestion struct {
-	ReferenceSnapshot   json.RawMessage `json:"reference_snapshot,omitempty"`
-	ReferenceDecisionID int64           `json:"reference_decision_id,omitempty"`
+	ManagementProcesses []ManagementProcess `json:"management_processes,omitempty"`
+	ReferenceSnapshot   json.RawMessage     `json:"reference_snapshot,omitempty"`
+	ReferenceDecisionID int64               `json:"reference_decision_id,omitempty"`
 	QuestionRequest
 	ManagementAdvice *QuestionAdvice `json:"management_advice,omitempty"`
 	ID               int64           `json:"id"`
@@ -41,6 +45,7 @@ func (s *Store) PendingQuestions(ctx context.Context, before int64) (json.RawMes
 	var page json.RawMessage
 	err := s.db.QueryRowContext(ctx, `WITH pending AS (
 		SELECT q.id,q.task_id,t.project_id,q.execution_id,q.commit_sha,q.question,q.evidence,q.checkpoint_sequence,q.management_advice,
+               `+questionProcessesJSON+` AS management_processes,
 		       t.spec->'issue'->>'repository' AS repository,t.spec->'issue'->>'title' AS title
 		FROM decision_questions q JOIN work_items t ON t.id=q.task_id
 		WHERE q.withdrawn_at IS NULL AND q.answer IS NULL AND t.status='WAITING_INPUT' AND ($1::bigint=0 OR q.id<$1)
