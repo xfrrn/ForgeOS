@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ApiError, Fact, Status, type ApiRequest } from './shared'
 
-type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[] }
-export type Plan = { revision: number; git_commit?: string; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
+export type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[]; context_refs?: string[] }
+export type Plan = { revision: number; minimum_level?: string; git_commit?: string; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 export type GoalChild = { id: number; key: string; status: string; plan_revision?: number }
 type Props = { taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
 
@@ -51,7 +51,8 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
             : <strong>{item.key} · {item.objective}</strong>}
           <dl><Fact label="范围">{item.scope}</Fact><Fact label="验收条件">{item.acceptance_criteria}</Fact>
             <Fact label="交付物">{item.deliverables}</Fact>
-            {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}</dl>
+            {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}
+            {item.context_refs?.length ? <Fact label="上下文引用">{item.context_refs.join('、')}</Fact> : null}</dl>
         </li>)}</ul>
       </div>)}
       {activate && plan.revision === latest?.revision && plan.revision !== active &&

@@ -1,3 +1,4 @@
+import { PlanEditor } from './PlanEditor'
 import GoalPlan, { type Plan, type GoalChild } from './GoalPlan'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, Fact, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
@@ -572,6 +573,14 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
         {(task.plan || planRevision) && <GoalPlan key={planRevision ?? 'latest'} taskID={task.id}
           selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}
           activate={task.status === 'PLANNING' ? activatePlan : undefined} disabled={loading || sendingCommand || Boolean(error)}/>}
+        {issue && task.kind === 'codex_issue' && !task.goal_id && <PlanEditor task={id} current={task.plan}
+          issueTitle={issue.title} docsOnly={task.spec?.validation === 'docs'} request={request} disabled={loading || sendingCommand || Boolean(error)}
+          canEdit={['READY', 'FAILED', 'WAITING_ACCEPTANCE', 'PLANNING', 'ACTIVE'].includes(task.status) && (!planRevision || task.plan?.revision === planRevision)}
+          onConflict={() => refresh()} onSaved={saved => {
+            refresh(`已发布计划修订 ${saved}。`)
+            location.hash = `/tasks/${id}/plans/${saved}`
+            onChanged()
+          }}/>}
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
           {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={`#/tasks/${f.task_id}/previews/${f.preview}/feedback`}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}

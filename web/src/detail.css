@@ -146,3 +146,6 @@
 .plan-revisions { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
 
 .notification-row { padding-block: 1rem; border-bottom: 1px solid var(--line); }
+
+.plan-editor .plan-stage, .plan-editor .plan-item { border-inline-start: 2px solid var(--line); padding-inline-start: 1rem; margin-block: 1rem; }
+.plan-editor legend { font-weight: 600; }
