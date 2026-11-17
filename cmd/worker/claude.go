@@ -106,6 +106,7 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 			IsError bool   `json:"is_error"`
 			Session string `json:"session_id"`
 			Result  string `json:"result"`
+			Errors  json.RawMessage `json:"errors"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &event) != nil {
 			return session, completed, errors.New("invalid Claude Code event")
@@ -124,6 +125,13 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 				return session, completed, err
 			}
 		case event.Type == "result":
+			if session == "" && !completed && nativeSessionID.MatchString(expected) && event.IsError && event.Subtype == "error_during_execution" {
+				var messages []string
+				if json.Unmarshal(event.Errors, &messages) == nil && len(messages) == 1 && messages[0] == "No conversation found with session ID: "+expected {
+					outcome, completed = errSessionMissing, true
+					continue
+				}
+			}
 			if completed || session == "" || session != event.Session {
 				return session, false, errors.New("mismatched Claude Code result")
 			}
@@ -156,7 +164,7 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 	stop := context.AfterFunc(ctx, func() { stream.Close() })
 	defer stop()
 	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool, process.question)
-	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) {
+	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) && !errors.Is(parseErr, errSessionMissing) {
 		stream.Close()
 		_ = cmd.Cancel()
 	}
@@ -166,6 +174,11 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 		return session, fmt.Errorf("record Claude process exit: %w", err)
 	case ctx.Err() != nil:
 		return session, ctx.Err()
+	case errors.Is(parseErr, errSessionMissing):
+		if session == "" && cmd.ProcessState.ExitCode() == 1 {
+			return "", errSessionMissing
+		}
+		return session, errors.New("inconsistent Claude Code resume result")
 	case errors.Is(parseErr, errTurnFailed):
 		return session, failedTurnExit(exit)
 	case parseErr != nil:

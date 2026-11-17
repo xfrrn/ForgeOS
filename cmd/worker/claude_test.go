@@ -142,3 +142,23 @@ func TestClaudeStreamRejectsWrongSessionAndStructuredFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeMissingSessionBindsRequestedID(t *testing.T) {
+	record := fmt.Sprintf(`{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["No conversation found with session ID: %s"]}`, testClaudeID)
+	init := fmt.Sprintf(`{"type":"system","subtype":"init","session_id":"%s"}`, testClaudeID)
+	for _, tc := range []struct {
+		stream, expected string
+		missing          bool
+	}{
+		{record, testClaudeID, true},
+		{record, "", false},
+		{record, "00000000-0000-0000-0000-000000000000", false},
+		{strings.Replace(record, "error_during_execution", "error", 1), testClaudeID, false},
+		{init + "\n" + record, testClaudeID, false},
+	} {
+		_, _, err := readClaudeEvents(strings.NewReader(tc.stream), tc.expected, func(string) error { return nil }, nil, nil)
+		if errors.Is(err, errSessionMissing) != tc.missing {
+			t.Fatalf("unexpected missing-session classification for %q: %v", tc.expected, err)
+		}
+	}
+}

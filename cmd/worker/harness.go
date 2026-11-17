@@ -18,6 +18,7 @@ type harnessAdapter interface {
 
 var errTurnInterrupted = errors.New("harness exited before the turn result")
 var errTurnFailed = errors.New("harness reported a failed turn")
+var errSessionMissing = errors.New("native harness could not find the requested session")
 
 func failedTurnExit(exit error) error {
 	if exit != nil {

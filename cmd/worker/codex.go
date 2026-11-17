@@ -180,6 +180,10 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 		args = append(args, "resume", resume)
 	}
 	cmd := exec.CommandContext(ctx, c.bin, append(args, "-")...)
+	var diagnostic bytes.Buffer
+	if resume != "" {
+		cmd.Stderr = &cappedLog{dest: &diagnostic, remaining: 4096}
+	}
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
 	cmd.Stdin = strings.NewReader(prompt)
 	stream, err := cmd.StdoutPipe()
@@ -193,10 +197,11 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 	defer closeOnCancel()
 
 	var session string
-	var complete, turnFailed, reportedError bool
+	var complete, turnFailed, reportedError, sawEvent bool
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	for scanner.Scan() {
+		sawEvent = true
 		var event struct {
 			Type     string `json:"type"`
 			ThreadID string `json:"thread_id"`
@@ -252,6 +257,8 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 		return session, ctx.Err()
 	case err != nil:
 		return session, err
+	case resume != "" && !sawEvent && cmd.ProcessState.ExitCode() == 1 && strings.HasSuffix("\n"+strings.TrimSpace(diagnostic.String()), "\nError: thread/resume: thread/resume failed: no rollout found for thread id "+resume+" (code -32600)"):
+		return "", errSessionMissing
 	case turnFailed:
 		return session, failedTurnExit(exit)
 	case exit != nil && !complete && !reportedError && nativeSessionID.MatchString(session):
