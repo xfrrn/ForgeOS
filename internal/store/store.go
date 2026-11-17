@@ -413,6 +413,7 @@ type Job struct {
 	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
 	RecordModelOutput   bool            `json:"record_model_output,omitempty"`
 	RecordToolOutput    bool            `json:"record_tool_output,omitempty"`
+	RecordToolStream    bool            `json:"record_tool_stream,omitempty"`
 	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
 	ReportLiveCILog     bool            `json:"report_live_ci_log,omitempty"`
 	ReportCICandidate   bool            `json:"report_ci_candidate,omitempty"`
@@ -794,6 +795,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.RecordToolActivity = j.RecordProcesses
 		j.RecordModelOutput = j.RecordProcesses
 		j.RecordToolOutput = j.RecordProcesses
+		j.RecordToolStream = j.RecordProcesses
 		j.ManageResources = registered != nil && caps.SupportsResources
 		j.ModelPause = j.SupportsCheckpoints && j.ManageResources && caps.SupportsModelPause && (j.Spec.Mode != "plan" || caps.SupportsPlannerPause)
 		j.RecoverPlannerPause = j.ModelPause && j.Spec.Mode == "plan"

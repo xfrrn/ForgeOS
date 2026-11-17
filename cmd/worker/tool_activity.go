@@ -10,6 +10,7 @@ import (
 type toolCall struct {
 	number int64
 	tool   string
+	stream *toolStream
 }
 
 type toolRecorder struct {
@@ -31,11 +32,18 @@ func (p *processLog) recordTool(id, name, phase, output string) error {
 		if !store.KnownTool(p.harness, name) {
 			return nil
 		}
-		call = toolCall{r.seq + 1, name}
+		call = toolCall{number: r.seq + 1, tool: name}
 	}
 	seq := r.seq + 1
 	var safe string
-	if p.toolOutput != nil && phase != "started" && output != "" {
+	if call.stream != nil {
+		if phase != "output" {
+			if err := call.stream.append(p, "", true); err != nil {
+				return err
+			}
+		}
+		safe = call.stream.text
+	} else if p.toolOutput != nil && phase != "started" && output != "" {
 		var err error
 		safe, err = p.redactOutput(p.toolOutput, "tool", output)
 		if err != nil {
@@ -55,7 +63,7 @@ func (p *processLog) recordTool(id, name, phase, output string) error {
 		 ON CONFLICT(instance) DO UPDATE SET seq=excluded.seq,call=excluded.call,tool=excluded.tool,text=excluded.text`, p.id, seq, call.number, call.tool, safe); err != nil {
 			return err
 		}
-		if err = p.saveOutputState(tx, "tool", p.toolOutput.privateKey); err != nil {
+		if err = p.saveOutputState(tx, "tool", p.toolKeyOpen()); err != nil {
 			return err
 		}
 	}
@@ -63,7 +71,7 @@ func (p *processLog) recordTool(id, name, phase, output string) error {
 		return err
 	}
 	r.seq = seq
-	if phase == "started" {
+	if phase == "started" || phase == "output" {
 		r.pending[id] = call
 	} else {
 		delete(r.pending, id)

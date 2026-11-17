@@ -23,7 +23,7 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	job, err := s.Claim(ctx, "node", t.TempDir(), true)
-	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput || !job.RecordToolOutput {
+	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput || !job.RecordToolOutput || !job.RecordToolStream {
 		t.Fatalf("expected live reporting job: %v", err)
 	}
 	now := time.Now().UTC()
@@ -65,8 +65,16 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		}
 		post(modified, job.LeaseToken, false)
 	}
-	p.Tools = append(p.Tools, ToolEvent{Seq: 2, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "completed"})
-	p.ToolOutput = &ToolOutput{Seq: 2, Call: 1, Tool: "command_execution", Text: "Command finished.\n"}
+	p.Tools = append(p.Tools, ToolEvent{Seq: 2, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "output"})
+	p.ToolOutput = &ToolOutput{Seq: 2, Call: 1, Tool: "command_execution", Text: "Command started.\n", Partial: true}
+	post(p, job.LeaseToken, true)
+	wrong := p
+	out := *p.ToolOutput
+	out.Partial = false
+	wrong.ToolOutput = &out
+	post(wrong, job.LeaseToken, false)
+	p.Tools = append(p.Tools, ToolEvent{Seq: 3, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "completed"})
+	p.ToolOutput = &ToolOutput{Seq: 3, Call: 1, Tool: "command_execution", Text: "Command finished.\n"}
 	post(p, job.LeaseToken, true)
 	for _, output := range []*ToolOutput{nil, {Seq: 2, Call: 1, Tool: "command_execution", Text: "rewritten\n"},
 		{Seq: 1, Call: 1, Tool: "command_execution", Text: "early\n"}, {Seq: 3, Call: 1, Tool: "command_execution", Text: "future\n"},

@@ -2921,3 +2921,25 @@ Claude 的首次验收脚本误把业务答复的成功状态码写成 204，接
 本项仅增加真实验收证据和文档；实现沿用 dbbc3d9，307 项 PostgreSQL/Docker 回归、静态检查及 Web 构建结果仍适用。分别核对原生会话文件中替代进程启动后的工具结果、SQLite 状态、Chrome 页面和最终回执。本地证据目录为 tool_output_appserverresume、tool_output_clauderecover，均记录 done、restarted_done、native_replacement_tail_verified 为 true。
 
 Claude 本项是业务问题检查点恢复，不代表活动工具强制中断或整机重启已经验收。增量输出、完整归档、其余角色输出及全路线最终验收仍待完成；外部设备、受限身份和独立审查者继续待验收。
+
+上述 App Server 与 Claude 恢复验收对应 ForgeOS 提交 80ecc0cc7c2b1300a82c38f761f7d6f89a8714f5。
+
+### 专题 07、13、16 C.3 · App Server 命令增量输出
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 先从本机原生 App Server 探测一次命令：打印首行、等待 12 秒、打印尾行 | 原生协议确实在命令完成前发送文本 | item/commandExecution/outputDelta 在 8.64 秒收到首行，20.82 秒才收到 item/completed。最初直接探测继承了宿主环境而无法创建执行进程；改为与正式 Worker 相同的环境白名单后跑通。 |
+| beta #207 写入四行合成夹具，再在单一前台命令中分块输出合成凭据和私钥，中间等待 45 秒；从 Chrome 查看并重启控制面 | 命令仍运行时看到安全片段，调用身份与窗口连续 | 原生 PID 38132、Thread 01a1eb7a-df6c-7611-9fe9-e89af4df017c；页面和 API 的调用 #524、事件 #526 带 partial=true，含 FIRST 与 [redacted]。重启后可回读。按原生 completed_at_ms 核对，首次页面观察早于命令完成 45.61 秒。 |
+| 命令完成后核对原生结果、节点窗口、最终回执，在 Chrome 验收并等待交付 | 原生包含真实合成样本，公开记录没有样本正文；收到完成事件后不再标为片段 | 最终调用仍为 #524、事件 #532，partial 缺省；FIRST 与 LAST 保留，分块 password 及 fake-stream 私钥正文被遮蔽，SQLite 与最终窗口一致。候选 f7b801048e93b371913b681ab3fcf5e00f4e0736 经 [PR #208](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/208) 合并为 207398f83e11403ca76c18918f7a60cb905fea74。Actions 44183858294 预设失败后同 SHA 重跑成功，两项必需检查 SUCCESS；任务 DONE、Issue CLOSED，重启可回读。 |
+| beta #209 在同一命令中读取合成私钥前五行并等待 120 秒；页面确认未完成片段后暂停，重启控制面与 Worker，再恢复 | 已记录片段保留为未完成，替代进程只读后半段时继承遮蔽状态 | Thread 01a1eb7d-5576-75d1-ab87-eaadc8980e33、执行 #1 与工作区不变；Worker 32440 → 35308，原生 PID 41856 → 38124。旧进程的 tool_output.partial=true 保留，后续原生结果没有开始标记却包含密钥尾段和结束标记，公开窗口持续遮蔽；SQLite 状态在结束标记后关闭。 |
+| #209 初次验收后，目标因 #207 交付而前进；从页面重新应用差异、验证并验收新 SHA | 严格分支保护阻止旧候选直接合并，新候选重新通过验证与验收 | 原候选 7a19ee165d68e946ce725afb52c0ce62f6945009、[PR #210](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/210) 即使 Actions 44184252347 重跑成功仍为 BEHIND。页面刷新关闭旧 PR，保留原执行，执行 #2 在新基线生成 8a86b8b46f3b8b67893a00fd56bedb3b4b1e4f34，单文件差异与九行夹具相符，验证通过后重新在 Chrome 验收。 |
+| 等待刷新候选交付，再重启页面查看原执行的两个进程 | 精确新候选交付，原暂停与替代进程证据不被新验证执行覆盖 | [PR #211](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/211) 合并为 0375dbcbce17814ca4b475229d20e1f44d488f08；Actions 44185263293 预设失败后同 SHA 重跑成功，两项必需检查 SUCCESS。任务 DONE、Issue CLOSED；重启后展开原执行，未完成片段和替代进程的完成输出仍可见。 |
+| 分别运行旧控制面／新 Worker、新控制面／旧 Worker，以及最终代码的只读 Planner | 旧协议不收到新状态；新 Planner 可采集增量，重启后历史正确 | 原生 Thread 分别为 01a1eb79-96c7-73c2-badb-78ce02552bb6、01a1eb7a-d873-7450-ba49-ad087c4164ce、01a1eb7d-7325-75d1-94cd-49f533021b00，均得到计划修订 1。两种混合版本只记录完成结果，没有 output 事件；新 Planner 的 SQLite 存在 output 事件。Chrome 重启回读均通过。 |
+
+首个夹具 beta #206 使用 [Console]::Write，被原生 PowerShell 受限语言模式拒绝；其错误输出不算成功的增量验收。改用允许的 Write-Output／Write-Host 在 #207 复验，没有放宽 Sandbox。#206 的原生进程已退出，验收脚本停止时尚未回报正式结果；已请求取消，节点没有可恢复的安全检查点，原租约至 2026-11-18 06:11:31 +08:00 才到期。该项保留待核销，之后须核对无活动进程并经 Owner abandon 入口结算；未验收、未交付，不能记为 DONE。
+
+刷新验收脚本首次尝试展开旧进程详情时，外层历史执行仍处于折叠状态，浏览器等待超时。修正为先展开原执行，再读取进程详情；沿用已经验证的新候选，没有重复刷新或创建第三次执行。
+
+回归覆盖完整行前不发布、跨块凭据与私钥、凭据状态继承、交错调用与延迟尾段、64 KiB 未完成行上限、8 KiB UTF-8 窗口、SQLite 重开、未完成开始标记后的替代进程遮蔽、无 opt-in 的旧协议，以及真正的子进程在命令完成前报告和拒绝异 Thread／Turn。PostgreSQL 回归验证 partial 与 output 事件绑定、拒绝冒充完成、最终输出连续性和过期租约。最终 PostgreSQL 18／Docker 全包 312 项测试及子测试通过，零失败、零跳过；Go 静态检查、TypeScript 和生产构建通过。
+
+本地证据在 tool_stream_v2_stream、tool_output_streamresume、tool_stream_compat_oldcontrol、tool_stream_compat_oldworker、tool_stream_final_compat_planner；前两项均有原生会话核对、DONE 和重启回读标记。增量窗口按完整行刷新，不是字节级直播；中断时未换行的原始片段不留存，超长行及无法确认边界的恢复会保守遮蔽到明确结束标记。Codex CLI 和 Claude 的其他增量接口、结构化工具结果、完整归档、启动阶段与独立角色输出仍待补齐；全路线最终验收及已列外部条件继续待验收。13–23 个剩余工作包的粗估口径不变。

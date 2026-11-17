@@ -72,6 +72,32 @@ func testAppServerProcess() int {
 				notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "inProgress"}})
 			}
 			_ = out.Encode(map[string]any{"id": req.ID, "result": map[string]any{"turn": map[string]string{"id": "turn-1"}}})
+			if strings.HasPrefix(prompt, "stream ") {
+				notify("item/started", map[string]any{"threadId": thread, "turnId": "turn-1", "item": map[string]string{"id": "tool-1", "type": "commandExecution"}})
+				id, turnID := thread, "turn-1"
+				if prompt == "stream foreign thread" {
+					id = "other"
+				}
+				if prompt == "stream foreign turn" {
+					turnID = "other"
+				}
+				for _, delta := range []string{"Early output\npass", "word=private-value\n"} {
+					notify("item/commandExecution/outputDelta", map[string]string{"threadId": id, "turnId": turnID, "itemId": "tool-1", "delta": delta})
+				}
+				if prompt == "stream live" {
+					deadline := time.Now().Add(10 * time.Second)
+					for {
+						if _, err := os.Stat(filepath.Join(cwd, "release")); err == nil {
+							break
+						}
+						if time.Now().After(deadline) {
+							return 18
+						}
+						time.Sleep(10 * time.Millisecond)
+					}
+				}
+				notify("item/completed", map[string]any{"threadId": thread, "turnId": "turn-1", "item": map[string]string{"id": "tool-1", "type": "commandExecution", "status": "completed", "aggregatedOutput": "Early output\npassword=private-value\n"}})
+			}
 			if strings.Contains(prompt, "interrupt") || prompt == "before turn" {
 				notify("item/started", map[string]any{"threadId": thread, "turnId": "turn-1", "item": map[string]string{"id": "tool-1", "type": "commandExecution"}})
 				continue
@@ -130,6 +156,62 @@ func testAppServerProcess() int {
 			return 8
 		}
 		_ = out.Encode(map[string]any{"id": req.ID, "result": result})
+	}
+}
+
+func TestAppServerCommandStreamBeforeCompletion(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"stream live", "stream foreign thread", "stream foreign turn"} {
+		t.Run(scenario, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			w := worker{repoRoot: root, workspaceRoot: root, token: "node"}
+			w.journal, err = w.openJournal(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.journal.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			adapter := codexCLI{bin: bin, sandbox: "read-only", appServer: true}
+			job := store.Job{RecordToolActivity: true, RecordToolOutput: true, RecordToolStream: true}
+			end := make(chan error, 1)
+			go func() {
+				_, err := adapter.runTurn(ctx, w.processLog(ctx, job, "codex", "1.2.3"), root, scenario, "")
+				end <- err
+			}()
+			if scenario == "stream live" {
+				deadline := time.Now().Add(8 * time.Second)
+				for {
+					p, err := scanHarnessProcess(w.journal.QueryRow(readHarnessProcess + " ORDER BY instance DESC LIMIT 1"))
+					if err == nil && p.ToolOutput != nil && strings.Contains(p.ToolOutput.Text, "[redacted]") {
+						if !p.Valid() || p.Exited != nil || !p.ToolOutput.Partial || p.ToolOutput.Text != "Early output\n[redacted]\n" {
+							t.Fatal(p)
+						}
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("no output before command completed", err)
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				if err := os.WriteFile(filepath.Join(root, "release"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runErr := <-end
+			if scenario == "stream live" {
+				p, err := scanHarnessProcess(w.journal.QueryRow(readHarnessProcess + " ORDER BY instance DESC LIMIT 1"))
+				if runErr != nil || err != nil || !p.Valid() || p.ToolOutput == nil || p.ToolOutput.Partial || p.Exited == nil {
+					t.Fatal(p, runErr, err)
+				}
+			} else if runErr == nil || !strings.Contains(runErr.Error(), "active turn") {
+				t.Fatal(runErr)
+			}
+		})
 	}
 }
 

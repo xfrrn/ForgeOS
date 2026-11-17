@@ -288,6 +288,16 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			continue
 		}
 		switch m.Method {
+		case "item/commandExecution/outputDelta":
+			var event struct {
+				ThreadID, TurnID, ItemID, Delta string
+			}
+			if json.Unmarshal(m.Params, &event) != nil || event.ThreadID != session || event.TurnID != turn.Turn.ID {
+				return session, errors.New("App Server output does not match the active turn")
+			}
+			if err = process.commandOutput(event.ItemID, event.Delta); err != nil {
+				return session, err
+			}
 		case "turn/started", "turn/completed", "item/started", "item/completed":
 			var event struct {
 				ThreadID string `json:"threadId"`

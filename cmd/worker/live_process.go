@@ -18,7 +18,9 @@ var readHarnessProcess = fmt.Sprintf(`SELECT instance,pid,harness,version,coales
  (SELECT json_group_array(json_object('seq',seq,'call',call,'tool',tool,'phase',phase,'at',at) ORDER BY seq)
   FROM (SELECT * FROM harness_tool_events e WHERE e.instance=p.instance ORDER BY seq DESC LIMIT %d)),
  (SELECT json_object('sequence',sequence,'text',text) FROM harness_model_output o WHERE o.instance=p.instance),
- (SELECT json_object('seq',seq,'call',call,'tool',tool,'text',text) FROM harness_tool_output o WHERE o.instance=p.instance)
+	(SELECT json_object('seq',seq,'call',call,'tool',tool,'text',text,'partial',json(CASE WHEN
+	 (SELECT phase FROM harness_tool_events e WHERE e.instance=o.instance AND e.seq=o.seq)='output' THEN 'true' ELSE 'false' END))
+	 FROM harness_tool_output o WHERE o.instance=p.instance)
  FROM harness_processes p`, store.ToolWindow)
 
 func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProcess, error) {

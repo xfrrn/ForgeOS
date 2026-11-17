@@ -18,11 +18,11 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     log_digest?: { bytes: number; sha256: string }
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
-type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'completed' | 'failed'; at: number }
-type HarnessProcess = { tool_output?: { seq: number; call: number; tool: string; text: string }; output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
+type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'output' | 'completed' | 'failed'; at: number }
+type HarnessProcess = { tool_output?: { seq: number; call: number; tool: string; text: string; partial?: boolean }; output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
 function ToolActivity({events}: {events?: ToolEvent[]}) {
   if (!events?.length) return null
-  const phases = {started: '开始', completed: '完成', failed: '失败'}
+  const phases = {started: '开始', output: '输出更新', completed: '完成', failed: '失败'}
   return <section><h5>工具调用</h5>
     {events[0].seq > 1 && <p>显示最近 {events.length} 条，共 {events[events.length - 1].seq} 条事件。</p>}
     <ol start={events[0].seq}>{events.map(e => <li key={e.seq}>
@@ -360,7 +360,7 @@ function ModelOutput({ output }: { output?: HarnessProcess['output'] }) {
 }
 
 function ToolOutput({ output }: { output?: HarnessProcess['tool_output'] }) {
-  return output ? <details><summary>最近完成的工具输出 · {output.tool} #{output.call}</summary>
+  return output ? <details><summary>{output.partial ? '工具输出片段（未收到完成结果）' : '最近完成的工具输出'} · {output.tool} #{output.call}</summary>
     <p>事件 #{output.seq}，保留该次输出最后 8 KiB，经脱敏后保存。</p><pre className="material-content">{output.text}</pre>
   </details> : null
 }

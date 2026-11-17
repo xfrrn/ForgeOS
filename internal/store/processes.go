@@ -13,10 +13,11 @@ type ModelOutput struct {
 }
 
 type ToolOutput struct {
-	Seq  int64  `json:"seq"`
-	Call int64  `json:"call"`
-	Tool string `json:"tool"`
-	Text string `json:"text"`
+	Partial bool   `json:"partial,omitempty"`
+	Seq     int64  `json:"seq"`
+	Call    int64  `json:"call"`
+	Tool    string `json:"tool"`
+	Text    string `json:"text"`
 }
 
 type HarnessProcess struct {
@@ -57,13 +58,14 @@ func (p HarnessProcess) validToolOutput() bool {
 		return true
 	}
 	if p.Session == "" || o.Call < 1 || o.Seq < o.Call || !KnownTool(p.Harness, o.Tool) || o.Text == "" ||
+		(o.Partial && (o.Tool != "command_execution" || o.Seq == o.Call)) ||
 		len(o.Text) > validation.LiveLogWindow || validation.DisplayLogTail([]byte(o.Text), nil) != o.Text ||
 		len(p.Tools) == 0 || o.Seq > p.Tools[len(p.Tools)-1].Seq {
 		return false
 	}
 	for _, e := range p.Tools {
 		if e.Seq == o.Seq {
-			return e.Call == o.Call && e.Tool == o.Tool && e.Phase != "started"
+			return e.Call == o.Call && e.Tool == o.Tool && e.Phase != "started" && o.Partial == (e.Phase == "output")
 		}
 	}
 	return o.Seq < p.Tools[0].Seq

@@ -23,6 +23,7 @@ type processLog struct {
 	question    *nativeQuestion
 	output      *modelOutput
 	toolOutput  *modelOutput
+	toolStream  bool
 }
 
 func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {
@@ -37,6 +38,7 @@ func (w *worker) processLog(ctx context.Context, job store.Job, harness, version
 	}
 	if job.RecordToolOutput && recorder != nil {
 		p.toolOutput = &modelOutput{secrets: outputSecrets(job.LeaseToken), credential: w.credential}
+		p.toolStream = job.RecordToolStream
 	}
 	return p
 }

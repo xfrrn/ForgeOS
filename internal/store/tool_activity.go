@@ -26,7 +26,8 @@ func (p HarnessProcess) validTools() bool {
 		return false
 	}
 	for i, e := range events {
-		if !KnownTool(p.Harness, e.Tool) || (e.Phase != "started" && e.Phase != "completed" && e.Phase != "failed") ||
+		if !KnownTool(p.Harness, e.Tool) || (e.Phase != "started" && e.Phase != "completed" && e.Phase != "failed" && e.Phase != "output") ||
+			(e.Phase == "output" && (e.Tool != "command_execution" || e.Call >= e.Seq)) ||
 			e.At < p.Started.Unix() || e.At > 253402300799 || (p.Exited != nil && e.At > p.Exited.Unix()) || e.Call < 1 || e.Call > e.Seq || (e.Phase == "started" && e.Call != e.Seq) || (i > 0 && e.Seq != events[i-1].Seq+1) {
 			return false
 		}

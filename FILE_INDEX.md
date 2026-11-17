@@ -8,7 +8,7 @@
 
 跟踪一次派发可依次查看 [HTTP 接口](cmd/controlplane/api.go)、[数据表](internal/store/001_initial.sql)、[状态和租约事务](internal/store/store.go)及 [Git 任务执行](cmd/worker/execute.go)。
 
-核对原生进度可查看[公开消息采集](cmd/worker/model_output.go)、[工具事件和结果采集](cmd/worker/tool_activity.go)、[节点进程回报](cmd/worker/live_process.go)和[控制面进程校验](internal/store/live_process.go)。
+核对原生进度可查看[公开消息采集](cmd/worker/model_output.go)、[工具事件和结果采集](cmd/worker/tool_activity.go)、[命令增量输出](cmd/worker/tool_stream.go)、[节点进程回报](cmd/worker/live_process.go)和[控制面进程校验](internal/store/live_process.go)。
 
 跟踪真实需求可查看 [GitHub Issue 接入](cmd/controlplane/github.go)、[Issue 快照与迁移](internal/store/002_local_issues.sql)、[Codex 调用与候选提交](cmd/worker/codex.go)及[本地验证](cmd/worker/validation.go)。
 
