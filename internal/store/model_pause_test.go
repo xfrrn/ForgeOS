@@ -79,7 +79,7 @@ func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 	must(s.ControlModel(ctx, id, 4, false))
 	conflict(s.ControlModel(ctx, id, 4, true))
 	trees := WorktreeTrees{Index: strings.Repeat("b", 40), Worktree: strings.Repeat("c", 40)}
-	poll := PausePoll{Lease: j.LeaseToken, Step: 1, Session: proc.Session, Trees: &trees}
+	poll := PausePoll{Lease: j.LeaseToken, Step: 1, Session: proc.Session, Trees: &trees, ResumeInstance: strings.Repeat("c", 64)}
 	_, err = s.PollModelPause(ctx, id, poll)
 	conflict(err)
 	phase.Release = true
@@ -112,6 +112,16 @@ func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 	if pause.Resumed == nil {
 		t.Fatal(pause)
 	}
+	_, err = s.PollModelPause(ctx, id, poll)
+	must(err)
+	competitor := poll
+	competitor.ResumeInstance = strings.Repeat("d", 64)
+	if _, err := s.PollModelPause(ctx, id, competitor); !errors.Is(err, ErrModelResumeClaimed) {
+		t.Fatalf("another process claimed the same resume: %v", err)
+	}
+	competitor.ResumeInstance = ""
+	_, err = s.PollModelPause(ctx, id, competitor)
+	conflict(err)
 	phase.Release = false
 	phase.Step++
 	ok, err = s.ReserveExecutionResource(ctx, id, phase)

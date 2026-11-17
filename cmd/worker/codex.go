@@ -345,7 +345,7 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 	return candidate, nil
 }
 
-func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, job store.Job, deadline time.Time, recovery *questionRecovery) store.Result {
+func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, job store.Job, deadline time.Time, recovery *checkpointRecovery) store.Result {
 	ctx, cancel := context.WithCancel(leaseCtx)
 	defer cancel()
 	activeTime := time.AfterFunc(time.Until(deadline), cancel)
@@ -361,7 +361,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		activeTime.Reset(remaining)
 	}
 	spec := job.Spec
-	budget := executionResources{worker: w, job: job}
+	budget := executionResources{worker: w, job: job, recovery: recovery}
 	validate := func(candidate, session string) (store.ValidationResult, error) {
 		if job.ReportCICandidate {
 			err := w.recordCICandidate(ctx, job, candidate, session)
@@ -495,9 +495,9 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				break
 			}
 			if job.ResumeQuestions && w.journal != nil && trees != nil {
-				saved := parkedQuestion{ReferenceDecisionID: question.ReferenceDecisionID, Job: job, Sequence: seq, Session: session, Question: question.Question, Evidence: question.Evidence,
+				saved := parkedCheckpoint{ReferenceDecisionID: question.ReferenceDecisionID, Job: job, Sequence: seq, Session: session, Question: question.Question, Evidence: question.Evidence,
 					Version: w.nativeVersion(job), GitDir: dir, Trees: *trees, Remaining: remaining, ResourceStep: budget.step}
-				if err = w.parkQuestion(ctx, saved); err != nil {
+				if err = w.saveParkedCheckpoint(ctx, saved); err != nil {
 					break
 				}
 				recovery.waiting = true

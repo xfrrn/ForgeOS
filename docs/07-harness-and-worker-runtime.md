@@ -96,6 +96,8 @@ Owner 可在导入 Issue 时提交 `{"validation":"auto","harness":"claude"}`，
 - 普通等待、回答和进程重启不自动创建新 Execution。
 - Session 丢失时用 Handoff Context 创建新 Session，并保留关联。
 
+只读 Planner 进入主动暂停前，Worker 将冻结的讨论、Thread、工作区身份、Git 树、剩余执行时间和资源阶段写入节点日志。原生规划恰好完成时也保存已验证的草案。原租约有效且节点身份和工作目录一致时，重启的 Worker 等待 Owner 恢复，核对版本和工作区后继续。并发接回时，控制面只允许一个进程领取本次恢复；Owner 在等待期间取消则直接结算任务。
+
 Codex 写入回合与只读 Planner 从 CLI 的 `thread.started` 获取 Thread ID。两者共用进程登记与退出回执，保留原生版本号、PID 和每轮实际会话。管理与审查角色的独立调用仍沿用各自的回执。
 
 已确认原生 Thread 的 Codex 进程异常退出、且事件流中没有终态或明确报错时，Worker 重新确认租约、工作区身份和起始提交，用相同权限执行一次 `codex exec resume <thread>`。写入回合保留未提交的编辑。只读规划还要求工作区干净，并清除上次生成的临时输出，重新验证恢复回合生成的结构化计划。

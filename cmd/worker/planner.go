@@ -25,10 +25,20 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		r.Error = "read-only structured planning is unavailable"
 		return r
 	}
-	identity, err := checkedWorktree(ctx, repo, workspace, spec.BaseCommit)
-	if err != nil {
-		r.Error = err.Error()
-		return r
+	var identity []byte
+	var err error
+	var saved *parkedCheckpoint
+	if budget.recovery != nil {
+		saved = budget.recovery.saved
+	}
+	if saved != nil {
+		identity, comments = saved.GitDir, saved.Planner.Comments
+	} else {
+		identity, err = checkedWorktree(ctx, repo, workspace, spec.BaseCommit)
+		if err != nil {
+			r.Error = err.Error()
+			return r
+		}
 	}
 	tmp, err := os.MkdirTemp("", "forgeos-planner-*")
 	if err != nil {
@@ -55,6 +65,16 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		"Give each work item a stable unique ASCII identifier, explicit scope, dependencies by key, verifiable acceptance criteria, deliverables and repository paths as context references. " +
 		"Use milestones for staged work. Do not implement changes, access credentials, contact other services or approve the plan.\nIssue JSON:\n" + string(source)
 	adapter := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexPlannerSandbox, options: []string{"--output-schema", schema, "--output-last-message", output}}
+	if job.RecoverPlannerPause && w.journal != nil {
+		budget.plannerCheckpoint = func(interrupted bool) (*pausedPlanner, error) {
+			c := &pausedPlanner{Comments: comments}
+			var err error
+			if !interrupted {
+				c.Finished, err = readPlannerOutput(output)
+			}
+			return c, err
+		}
+	}
 	r.SessionID, err = w.runModelTurn(ctx, budget, 0, "", spec.BaseCommit, identity, stopBudget, resumeBudget, func(turn context.Context, session string, resumed bool) (string, error) {
 		if resumed {
 			if err := preparePlannerResume(turn, workspace, output); err != nil {
@@ -67,7 +87,12 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		r.Error = err.Error()
 		return r
 	}
-	plan, err := readPlannerOutput(output)
+	var plan *store.Plan
+	if saved != nil && saved.Planner.Finished != nil {
+		plan = saved.Planner.Finished
+	} else {
+		plan, err = readPlannerOutput(output)
+	}
 	if err != nil {
 		r.Error = err.Error()
 		return r

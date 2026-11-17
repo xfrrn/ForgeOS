@@ -375,11 +375,11 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		}
 		var job store.Job
 		requested := time.Now()
-		var saved *parkedQuestion
+		var saved *parkedCheckpoint
 		if len(parked) > 0 {
 			id := parked[0]
 			parked = parked[1:]
-			saved, err = w.readParkedQuestion(ctx, id)
+			saved, err = w.readParkedCheckpoint(ctx, id)
 			if err != nil {
 				return err
 			}
@@ -388,7 +388,7 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 				continue
 			}
 			job = saved.Job
-			log.Printf("checking saved owner question for execution %d at checkpoint %d", job.ExecutionID, saved.Sequence)
+			log.Printf("checking saved checkpoint %d for execution %d", saved.Sequence, job.ExecutionID)
 		} else {
 			status, err := w.post(ctx, "/internal/claim?"+workerCapabilityQuery, claim, &job)
 			if status == http.StatusNoContent || temporary(status) {

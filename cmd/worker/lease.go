@@ -10,7 +10,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested time.Time, recovery *questionRecovery) store.Result {
+func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested time.Time, recovery *checkpointRecovery) store.Result {
 	if job.LeaseSeconds == 0 {
 		return w.executeAttempt(ctx, job, recovery)
 	}
@@ -19,24 +19,24 @@ func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested 
 	if !time.Now().Before(deadline) {
 		return failed("execution lease elapsed before work started", nil)
 	}
-	active, cancel := context.WithCancel(ctx)
+	active, cancel := context.WithCancelCause(ctx)
 	if job.ReportLiveProcess && w.journal != nil {
 		updates := make(chan struct{}, 1)
 		active = context.WithValue(active, processUpdatesKey{}, updates)
 		finished := make(chan struct{})
 		go func() { defer close(finished); w.reportProcesses(active, job, updates) }()
-		defer func() { cancel(); <-finished }()
+		defer func() { cancel(nil); <-finished }()
 	}
 	done := make(chan error, 1)
 	go func() {
 		err := w.renewWhileRunning(active, job, ttl, deadline)
 		if err != nil {
-			cancel()
+			cancel(err)
 		}
 		done <- err
 	}()
 	result := w.executeAttempt(active, job, recovery)
-	cancel()
+	cancel(nil)
 	if err := <-done; err != nil && result.ExitCode != 0 {
 		result.Error = err.Error()
 	}

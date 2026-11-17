@@ -83,14 +83,20 @@ func (s *Store) ControlModel(ctx context.Context, execution, instance int64, res
 }
 
 type PausePoll struct {
-	Lease   string         `json:"lease_token"`
-	Step    int64          `json:"step"`
-	Session string         `json:"session_id,omitempty"`
-	Trees   *WorktreeTrees `json:"trees,omitempty"`
+	Lease          string         `json:"lease_token"`
+	Step           int64          `json:"step"`
+	Session        string         `json:"session_id,omitempty"`
+	Trees          *WorktreeTrees `json:"trees,omitempty"`
+	ResumeInstance string         `json:"resume_instance,omitempty"`
 }
+
+var ErrModelResumeClaimed = errors.New("another worker process claimed this model resume")
 
 func (s *Store) PollModelPause(ctx context.Context, execution int64, input PausePoll) (*ModelPause, error) {
 	if input.Step < 1 || len(input.Lease) != 64 || (input.Trees == nil) != (input.Session == "") {
+		return nil, ErrConflict
+	}
+	if input.ResumeInstance != "" && (input.Trees == nil || len(input.ResumeInstance) != 64 || !validCommit(input.ResumeInstance)) {
 		return nil, ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -126,24 +132,28 @@ func (s *Store) PollModelPause(ctx context.Context, execution int64, input Pause
 		}
 		return nil, nil
 	}
-	var p ModelPause
-	if err = json.Unmarshal(raw, &p); err != nil {
+	var row struct {
+		ModelPause
+		ClaimRequired bool `json:"claim_required"`
+	}
+	if err = json.Unmarshal(raw, &row); err != nil {
 		return nil, err
 	}
+	p := &row.ModelPause
 	if trees := input.Trees; trees != nil {
 		if p.Session != input.Session || !validCommit(trees.Index) || !validCommit(trees.Worktree) || len(trees.Index) != len(trees.Worktree) {
 			return nil, ErrConflict
 		}
 		if p.Parked != nil {
-			if p.Index != trees.Index || p.Worktree != trees.Worktree {
+			if p.Index != trees.Index || p.Worktree != trees.Worktree || row.ClaimRequired != (input.ResumeInstance != "") {
 				return nil, ErrConflict
 			}
 		} else {
 			if state != "RUNNING" || kind != "" {
 				return nil, ErrConflict
 			}
-			err = tx.QueryRowContext(ctx, `UPDATE model_pauses SET parked_at=clock_timestamp(),index_tree=$3,worktree_tree=$4
-			WHERE execution_id=$1 AND resource_step=$2 RETURNING parked_at`, execution, input.Step, trees.Index, trees.Worktree).Scan(&p.Parked)
+			err = tx.QueryRowContext(ctx, `UPDATE model_pauses SET parked_at=clock_timestamp(),index_tree=$3,worktree_tree=$4,claim_required=$5
+			WHERE execution_id=$1 AND resource_step=$2 RETURNING parked_at`, execution, input.Step, trees.Index, trees.Worktree, input.ResumeInstance != "").Scan(&p.Parked)
 			if err != nil {
 				return nil, err
 			}
@@ -155,6 +165,18 @@ func (s *Store) PollModelPause(ctx context.Context, execution int64, input Pause
 				return nil, err
 			}
 		}
+		if p.Resumed != nil && input.ResumeInstance != "" {
+			claim := sha256.Sum256([]byte(input.ResumeInstance))
+			var instance int64
+			err = tx.QueryRowContext(ctx, `UPDATE model_pauses SET resume_claim=$3 WHERE execution_id=$1 AND resource_step=$2
+				AND (resume_claim IS NULL OR resume_claim=$3) RETURNING instance`, execution, input.Step, claim[:]).Scan(&instance)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrModelResumeClaimed
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	return &p, tx.Commit()
+	return p, tx.Commit()
 }

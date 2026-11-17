@@ -10,9 +10,11 @@ import (
 )
 
 type executionResources struct {
-	worker *worker
-	job    store.Job
-	step   int64
+	worker            *worker
+	job               store.Job
+	step              int64
+	recovery          *checkpointRecovery
+	plannerCheckpoint func(interrupted bool) (*pausedPlanner, error)
 }
 
 func (b *executionResources) request(ctx context.Context, kind string, release bool) error {

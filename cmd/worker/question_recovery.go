@@ -14,8 +14,8 @@ import (
 	"forgeos/internal/store"
 )
 
-// Written only after the native turn has exited and its checkpoint was acknowledged.
-type parkedQuestion struct {
+// Written after the native turn exits, before exposing its checkpoint for Owner input.
+type parkedCheckpoint struct {
 	Job                                  store.Job
 	Sequence                             int
 	Session, Question, Evidence, Version string
@@ -24,10 +24,16 @@ type parkedQuestion struct {
 	Remaining                            time.Duration
 	ReferenceDecisionID                  int64
 	ResourceStep                         int64
+	Planner                              *pausedPlanner `json:",omitempty"`
 }
 
-type questionRecovery struct {
-	saved                   *parkedQuestion
+type pausedPlanner struct {
+	Comments []store.CommentInput
+	Finished *store.Plan
+}
+
+type checkpointRecovery struct {
+	saved                   *parkedCheckpoint
 	waiting, leaveUnsettled bool
 }
 
@@ -38,7 +44,7 @@ func (w *worker) nativeVersion(job store.Job) string {
 	return w.codexVersion
 }
 
-func (w *worker) resumeOwnerQuestion(ctx context.Context, job store.Job, saved parkedQuestion, start string, recovery *questionRecovery, resumeBudget func(time.Duration)) (json.RawMessage, error) {
+func (w *worker) resumeOwnerQuestion(ctx context.Context, job store.Job, saved parkedCheckpoint, start string, recovery *checkpointRecovery, resumeBudget func(time.Duration)) (json.RawMessage, error) {
 	q := nativeQuestion{ReferenceDecisionID: saved.ReferenceDecisionID, Question: saved.Question, Evidence: saved.Evidence, requested: true}
 	answer, err := w.waitForOwner(ctx, job, saved.Sequence, saved.Session, q, &saved.Trees)
 	if err != nil {
@@ -61,16 +67,20 @@ func (w *worker) resumeOwnerQuestion(ctx context.Context, job store.Job, saved p
 	if err = w.verifyQuestionWorkspace(ctx, job, start, saved.GitDir, saved.Sequence, &saved.Trees); err != nil {
 		return nil, err
 	}
+	return answer, w.removeParkedCheckpoint(ctx, job)
+}
+
+func (w *worker) removeParkedCheckpoint(ctx context.Context, job store.Job) error {
 	key := sha256.Sum256([]byte(job.LeaseToken))
 	result, err := w.journal.ExecContext(ctx, `DELETE FROM parked_questions WHERE lease_hash=?`, key[:])
 	if err != nil {
-		return nil, err
+		return err
 	}
 	n, err := result.RowsAffected()
 	if err != nil || n != 1 {
-		return nil, errors.New("local checkpoint disappeared before resume")
+		return errors.New("local checkpoint disappeared before resume")
 	}
-	return answer, nil
+	return nil
 }
 
 func (w *worker) verifyQuestionWorkspace(ctx context.Context, job store.Job, start string, dir []byte, seq int, trees *store.WorktreeTrees) error {
@@ -90,7 +100,7 @@ func (w *worker) verifyQuestionWorkspace(ctx context.Context, job store.Job, sta
 	return nil
 }
 
-func (w *worker) parkQuestion(ctx context.Context, q parkedQuestion) error {
+func (w *worker) saveParkedCheckpoint(ctx context.Context, q parkedCheckpoint) error {
 	raw, err := json.Marshal(q)
 	if err != nil {
 		return err
@@ -100,7 +110,7 @@ func (w *worker) parkQuestion(ctx context.Context, q parkedQuestion) error {
 	return err
 }
 
-func (w *worker) readParkedQuestion(ctx context.Context, id int64) (*parkedQuestion, error) {
+func (w *worker) readParkedCheckpoint(ctx context.Context, id int64) (*parkedCheckpoint, error) {
 	var raw, key []byte
 	var workspace string
 	var taskID int64
@@ -112,16 +122,24 @@ func (w *worker) readParkedQuestion(ctx context.Context, id int64) (*parkedQuest
 	if err != nil {
 		return nil, err
 	}
-	var q parkedQuestion
+	var q parkedCheckpoint
 	if err = json.Unmarshal(raw, &q); err != nil {
 		return nil, err
 	}
 	digest := sha256.Sum256([]byte(q.Job.LeaseToken))
 	if !bytes.Equal(digest[:], key) || id != q.Job.ExecutionID || taskID != q.Job.TaskID || workspace != q.Job.Workspace || q.Job.Spec == nil || q.Job.LeaseSeconds <= 0 ||
-		q.Job.Kind != "codex_issue" || !q.Job.ResumeQuestions || q.Job.Spec.VerifyCommit != "" || q.Job.Spec.Mode == "plan" ||
+		q.Job.Kind != "codex_issue" || q.Job.Spec.VerifyCommit != "" ||
 		q.Remaining <= 0 || q.Remaining > 20*time.Minute || q.Session == "" || q.Sequence < 0 || len(q.GitDir) == 0 ||
 		q.ResourceStep < 0 || q.Job.ManageResources && q.ResourceStep == 0 {
 		return nil, fmt.Errorf("invalid stored checkpoint for execution %d", id)
+	}
+	if q.Planner != nil {
+		if q.Job.Spec.Mode != "plan" || !q.Job.RecoverPlannerPause || !q.Job.ModelPause || !q.Job.ManageResources || q.Sequence != 0 ||
+			(q.Planner.Finished != nil && q.Planner.Finished.Validate() != nil) {
+			return nil, fmt.Errorf("invalid stored planner checkpoint for execution %d", id)
+		}
+	} else if q.Job.Spec.Mode == "plan" || !q.Job.ResumeQuestions {
+		return nil, fmt.Errorf("invalid stored question checkpoint for execution %d", id)
 	}
 	return &q, nil
 }

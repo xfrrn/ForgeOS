@@ -107,7 +107,7 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 	return w.runAttempt(ctx, job, requested, nil)
 }
 
-func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.Time, saved *parkedQuestion) error {
+func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.Time, saved *parkedCheckpoint) error {
 	key := sha256.Sum256([]byte(job.LeaseToken))
 	var err error
 	if saved == nil {
@@ -117,7 +117,7 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 			return fmt.Errorf("record claim for execution %d: %w", job.ExecutionID, err)
 		}
 	}
-	recovery := questionRecovery{saved: saved, waiting: saved != nil, leaveUnsettled: saved != nil}
+	recovery := checkpointRecovery{saved: saved, waiting: saved != nil, leaveUnsettled: saved != nil}
 	result := w.executeWithLease(ctx, job, requested, &recovery)
 	if recovery.leaveUnsettled || recovery.waiting && ctx.Err() != nil {
 		log.Printf("execution %d left at recorded checkpoint: %s", job.ExecutionID, result.Error)

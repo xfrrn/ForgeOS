@@ -87,15 +87,15 @@ func TestRecoveredQuestionOnlySettlesAfterClaimingAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			q := parkedQuestion{Job: j, Question: "Which title?", Evidence: "No name selected", Version: "previous", Session: "original", GitDir: dir, Trees: trees, Remaining: time.Minute}
+			q := parkedCheckpoint{Job: j, Question: "Which title?", Evidence: "No name selected", Version: "previous", Session: "original", GitDir: dir, Trees: trees, Remaining: time.Minute}
 			if j.ManageResources {
 				q.Version = w.codexVersion
 				q.ResourceStep = 1
 			}
-			if err = w.parkQuestion(ctx, q); err != nil {
+			if err = w.saveParkedCheckpoint(ctx, q); err != nil {
 				t.Fatal(err)
 			}
-			saved, err := w.readParkedQuestion(ctx, j.ExecutionID)
+			saved, err := w.readParkedCheckpoint(ctx, j.ExecutionID)
 			if err != nil || saved == nil {
 				t.Fatal(err)
 			}

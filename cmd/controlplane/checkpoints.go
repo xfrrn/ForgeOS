@@ -39,6 +39,10 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 			return
 		}
 		p, err := data.PollModelPause(r.Context(), id, input)
+		if errors.Is(err, store.ErrModelResumeClaimed) {
+			problem(w, http.StatusPreconditionFailed, err.Error())
+			return
+		}
 		if err == nil && p == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return

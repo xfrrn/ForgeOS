@@ -26,10 +26,10 @@ func failed(message string, cause error) store.Result {
 }
 
 func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
-	return w.executeAttempt(ctx, job, &questionRecovery{})
+	return w.executeAttempt(ctx, job, &checkpointRecovery{})
 }
 
-func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *questionRecovery) store.Result {
+func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *checkpointRecovery) store.Result {
 	timeout := time.Minute
 	if job.Kind == "codex_issue" {
 		timeout = 20 * time.Minute
