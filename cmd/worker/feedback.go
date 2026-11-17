@@ -26,6 +26,10 @@ func (w *worker) classifyFeedback(ctx context.Context, job store.FeedbackJob) er
 		return nil
 	}
 	c.Session = session
+	if job.CaptureProfile {
+		profile := store.StructuredCodexProfile()
+		c.Profile = &profile
+	}
 	report := map[string]any{"id": job.ID, "lease": job.Lease, "classification": c}
 	for ctx.Err() == nil {
 		status, _ := w.post(ctx, "/internal/management/feedback/result", report, nil)

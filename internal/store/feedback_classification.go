@@ -13,17 +13,19 @@ import (
 )
 
 type FeedbackJob struct {
-	LeaseUntil *time.Time      `json:"lease_until,omitempty"`
-	ID         int64           `json:"id"`
-	Lease      string          `json:"lease"`
-	Source     json.RawMessage `json:"source"`
+	CaptureProfile bool            `json:"capture_profile,omitempty"`
+	LeaseUntil     *time.Time      `json:"lease_until,omitempty"`
+	ID             int64           `json:"id"`
+	Lease          string          `json:"lease"`
+	Source         json.RawMessage `json:"source"`
 }
 
 type FeedbackClassification struct {
-	Category  string `json:"category"`
-	Rationale string `json:"rationale"`
-	Evidence  string `json:"evidence"`
-	Session   string `json:"session_id"`
+	Profile   *AgentProfile `json:"profile,omitempty"`
+	Category  string        `json:"category"`
+	Rationale string        `json:"rationale"`
+	Evidence  string        `json:"evidence"`
+	Session   string        `json:"session_id"`
 }
 
 var feedbackCategories = []string{"acceptance", "bug", "ui_change", "requirement_change", "new_work_item", "blocked"}
@@ -49,11 +51,12 @@ func (s *Store) ClaimFeedback(ctx context.Context, project int64, supportsDeadli
 	if err != nil {
 		return nil, err
 	}
+	j.CaptureProfile = true
 	return &j, tx.Commit()
 }
 
 func (s *Store) ClassifyFeedback(ctx context.Context, project, id int64, lease string, c FeedbackClassification) error {
-	if !slices.Contains(feedbackCategories, c.Category) || !decisionText(c.Rationale) || !decisionText(c.Evidence) ||
+	if !validStructuredProfile(c.Profile) || !slices.Contains(feedbackCategories, c.Category) || !decisionText(c.Rationale) || !decisionText(c.Evidence) ||
 		c.Session == "" || len(c.Session) > 128 || strings.Trim(c.Session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" {
 		return ErrConflict
 	}

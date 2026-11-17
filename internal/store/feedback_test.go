@@ -194,7 +194,7 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatal("old worker received budgeted feedback", legacy, err)
 		}
 		next, err := s.ClaimFeedback(ctx, p.ID, true)
-		if err != nil || next == nil || next.Lease == j.Lease || next.LeaseUntil == nil {
+		if err != nil || next == nil || !next.CaptureProfile || next.Lease == j.Lease || next.LeaseUntil == nil {
 			t.Fatalf("renewal: %v %v", next, err)
 		}
 		invalid := c
@@ -206,6 +206,13 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatalf("wrong project result: %v", err)
 		}
 		usage(1)
+		profile := StructuredCodexProfile()
+		c.Profile = &profile
+		profile.Permission = "on-request"
+		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, c); !errors.Is(err, ErrConflict) {
+			t.Fatal("incorrect native permission", err)
+		}
+		profile = StructuredCodexProfile()
 		for range 2 {
 			if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, c); err != nil {
 				t.Fatal(err)
@@ -213,6 +220,19 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		}
 		invalid = c
 		usage(0)
+		invalid.Profile = nil
+		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(err, ErrConflict) {
+			t.Fatal("replay removed archived permissions", err)
+		}
+		var receipt FeedbackClassification
+		var raw []byte
+		if err = db.QueryRowContext(ctx, `SELECT classification FROM preview_feedback WHERE id=$1`, first).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		if err = json.Unmarshal(raw, &receipt); err != nil || receipt.Profile == nil || !validStructuredProfile(receipt.Profile) {
+			t.Fatal("missing archived configuration", err)
+		}
+		invalid = c
 		invalid.Category = "bug"
 		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(err, ErrConflict) {
 			t.Fatalf("changed classification: %v", err)

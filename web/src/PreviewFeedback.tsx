@@ -3,7 +3,9 @@ import { formatTime, type ApiRequest } from './shared'
 import { FeedbackRecordings } from './FeedbackRecordings'
 import { FeedbackScreenshots, type FeedbackArtifactReceipt } from './FeedbackScreenshots'
 
-type Note = { id: number; artifacts: FeedbackArtifactReceipt[]; created_at: string; state: string; work_item?: { id: number; number: number }; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string }; body: { path: string; note: string; element?: string; frames?: string[]; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
+import { RolePermissions, type StructuredProfile } from './RolePermissions'
+
+type Note = { id: number; artifacts: FeedbackArtifactReceipt[]; created_at: string; state: string; work_item?: { id: number; number: number }; requirement?: { revision: number; task_id: number }; review?: { decision: string; note: string }; question?: { id: number; question: string; answer?: string }; classification?: { category: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile }; body: { path: string; note: string; element?: string; frames?: string[]; canvas_point?: string; browser?: string; width?: number; height?: number; case_id?: string; plan_revision?: number } }
 const categories: Record<string, string> = { acceptance: '验收通过', bug: 'Bug', ui_change: 'UI 修改', requirement_change: '需求变更', new_work_item: '新工作项', blocked: '阻塞或澄清' }
 function FramePath({ frames }: { frames?: string[] }) {
   return frames?.length ? <div>所属 iframe（从外到内）<ol>{frames.map((frame, i) => <li key={i}><code>{frame}</code></li>)}</ol></div> : null
@@ -151,7 +153,8 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
           <a href={`#/tasks/${task}`}>在候选验收中引用</a>}
         {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
         {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
-          <p>Management 会话　<code>{f.classification.session_id}</code></p></details>}
+          <p>Management 会话　<code>{f.classification.session_id}</code></p>
+          {f.classification.profile && <RolePermissions role="Management" profile={f.classification.profile}/>}</details>}
         {f.work_item ? <a href={`#/tasks/${f.work_item.id}`}>查看独立工作项 T-{f.work_item.id} · Issue #{f.work_item.number}</a> :
           f.classification?.category === 'new_work_item' && (dispatching === f.id ?
             <form onSubmit={dispatch}><fieldset disabled={busy}><legend>按独立 Issue 派发</legend>
