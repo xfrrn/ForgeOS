@@ -292,6 +292,9 @@ var modelResumeClaimSchema string
 //go:embed 089_writer_checkpoint_handoffs.sql
 var writerCheckpointHandoffSchema string
 
+//go:embed 090_answered_question_handoffs.sql
+var answeredQuestionHandoffSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -374,6 +377,7 @@ type Job struct {
 	PlannerHandoff      bool            `json:"planner_handoff,omitempty"`
 	WriterHandoff       bool            `json:"writer_handoff,omitempty"`
 	CheckpointHandoff   bool            `json:"checkpoint_handoff,omitempty"`
+	QuestionHandoff     bool            `json:"question_handoff,omitempty"`
 	RecoverWriterPause  bool            `json:"recover_writer_pause,omitempty"`
 	ProjectID           int64           `json:"project_id,omitempty"`
 	DecisionLookups     bool            `json:"decision_lookups,omitempty"`
@@ -442,7 +446,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -768,6 +772,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.RecoverWriterPause = j.ModelPause && j.RuntimeQuestions
 		j.WriterHandoff = j.RecoverWriterPause && j.Spec.Mode != "plan"
 		j.CheckpointHandoff = j.WriterHandoff && j.DecisionProtocol == "1.0" && j.InstructionProtocol == "1.0"
+		j.QuestionHandoff = j.CheckpointHandoff && j.ResumeQuestions && j.CheckpointWorktrees
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
@@ -842,7 +847,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	var repo, worker, kind string
 	err = tx.QueryRowContext(ctx, `
 		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL,e.ci_pause_requested_at IS NOT NULL,COALESCE(e.ci_candidate,''),t.kind,EXISTS(SELECT 1 FROM model_pauses p WHERE p.execution_id=e.id AND p.resumed_at IS NULL),
-		    ARRAY(SELECT p.handoff_instance FROM model_pauses p WHERE p.execution_id=e.id AND p.handoff_session IS NOT NULL ORDER BY p.handoff_instance)
+		    ARRAY(SELECT h.handoff_instance FROM writer_handoff_sources h WHERE h.execution_id=e.id AND h.handoff_session IS NOT NULL ORDER BY h.handoff_instance)
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
 		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &ciPause, &ciCandidate, &kind, &modelPause, &handoffInstances)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -888,10 +893,10 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 			return ErrConflict
 		}
 		if issue.Mode != "plan" && result.Processes != nil {
-			var sourceInstance int64
+			var source *HarnessProcess
 			for _, p := range *result.Processes {
 				if p.HandoffFrom != "" {
-					if err := verifyWriterHandoff(ctx, tx, id, p, sourceInstance); err != nil {
+					if err := verifyWriterHandoff(ctx, tx, id, p, source); err != nil {
 						return err
 					}
 					if len(handoffInstances) > 0 && p.Instance == handoffInstances[0] {
@@ -899,7 +904,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 					}
 				}
 				if p.Session != "" {
-					sourceInstance = p.Instance
+					source = &p
 				}
 			}
 		}

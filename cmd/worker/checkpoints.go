@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -134,6 +135,15 @@ func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, sessi
 		return nil, errors.New("decision lookup unavailable")
 	}
 	input := store.CheckpointQuestion{ReferenceDecisionID: q.ReferenceDecisionID, Trees: trees, Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
+	if job.QuestionHandoff && w.journal != nil {
+		key := sha256.Sum256([]byte(job.LeaseToken))
+		err := w.journal.QueryRowContext(ctx, `SELECT instance FROM
+			(SELECT instance,session_id,exit_code FROM harness_processes WHERE lease_hash=? ORDER BY instance DESC LIMIT 1)
+			WHERE session_id=? AND exit_code=0`, key[:], session).Scan(&input.SourceInstance)
+		if err != nil {
+			return nil, fmt.Errorf("identify the process that asked at checkpoint %d: %w", seq, err)
+		}
+	}
 	path := fmt.Sprintf("/internal/executions/%d/checkpoint-question", job.ExecutionID)
 	switch job.DecisionProtocol {
 	case "1.0":

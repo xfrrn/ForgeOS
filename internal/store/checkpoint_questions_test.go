@@ -204,3 +204,80 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 		})
 	}
 }
+
+func TestAnsweredQuestionHandoff(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	conflict := func(err error) {
+		t.Helper()
+		if !errors.Is(err, ErrConflict) {
+			t.Fatalf("expected conflict, got %v", err)
+		}
+	}
+	must(s.Migrate(ctx))
+	root := t.TempDir()
+	project, err := s.CreateProject(ctx, root)
+	must(err)
+	base := strings.Repeat("a", 40)
+	task, err := s.ImportIssue(ctx, project.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 2, Number: 3}, BaseCommit: base, Validation: "docs"})
+	must(err)
+	job, err := s.Claim(ctx, "writer", root, true, true, true, true)
+	must(err)
+	if job == nil {
+		t.Fatal("no writer")
+	}
+	check := func(seq int, session string, links ...SessionHandoff) error {
+		_, err := s.WorkerCheckpoint(ctx, job.ExecutionID, CheckpointRequest{Lease: job.LeaseToken, Sequence: &seq, Session: session, Handoffs: links}, true)
+		return err
+	}
+	must(check(0, ""))
+	must(check(0, "first"))
+	seq := 0
+	q := CheckpointQuestion{Lease: job.LeaseToken, Sequence: &seq, Session: "first", Question: "Which heading?", Evidence: "Two choices",
+		Trees: &WorktreeTrees{Index: base, Worktree: strings.Repeat("b", 40)}, ResumeInstance: strings.Repeat("c", 64), SourceInstance: 3}
+	_, err = s.AskAtCheckpoint(ctx, job.ExecutionID, q)
+	must(err)
+	task, err = s.Task(ctx, task.ID)
+	must(err)
+	_, err = s.AnswerQuestion(ctx, task.ID, task.Questions[0].ID, "Harbor")
+	must(err)
+	link := SessionHandoff{From: "first", Session: "second", SourceInstance: 3, Instance: 5}
+	conflict(check(1, "second", link))
+	stale := q
+	stale.SourceInstance++
+	_, err = s.AskAtCheckpoint(ctx, job.ExecutionID, stale)
+	conflict(err)
+	answer, err := s.AskAtCheckpoint(ctx, job.ExecutionID, q)
+	must(err)
+	if answer != "Harbor" {
+		t.Fatal("lost claimed answer", answer)
+	}
+	must(check(1, ""))
+	wrong := link
+	wrong.SourceInstance++
+	conflict(check(1, "second", wrong))
+	conflict(check(1, "second"))
+	must(check(1, "second", link))
+	must(check(1, "second", link))
+	tx, err := s.db.BeginTx(ctx, nil)
+	must(err)
+	defer tx.Rollback()
+	proc := HarnessProcess{Instance: link.Instance, Session: link.Session, HandoffFrom: link.From}
+	exitCode := 1
+	source := HarnessProcess{Instance: link.SourceInstance, ExitCode: &exitCode}
+	conflict(verifyWriterHandoff(ctx, tx, job.ExecutionID, proc, &source))
+	exitCode = 0
+	must(verifyWriterHandoff(ctx, tx, job.ExecutionID, proc, &source))
+	must(tx.Rollback())
+	must(check(2, ""))
+	wrong = link
+	wrong.Session = "fork"
+	conflict(check(2, "fork", wrong))
+	conflict(s.Complete(ctx, job.ExecutionID, job.LeaseToken, Result{BaseCommit: base, ExitCode: 1, Error: "later failure", SessionID: "second"}))
+}

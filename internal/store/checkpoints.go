@@ -253,18 +253,31 @@ func recordCheckpointHandoff(ctx context.Context, tx *sql.Tx, id int64, seq int,
 		len(link.Session) > 128 || strings.Trim(link.Session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" {
 		return ErrConflict
 	}
-	var stored int
-	err := tx.QueryRowContext(ctx, `UPDATE model_pauses p SET handoff_session=$4,handoff_instance=$5,handoff_sequence=COALESCE(handoff_sequence,$6)
-		FROM executions e JOIN work_items t ON t.id=e.task_id
-		WHERE p.execution_id=$1 AND e.id=p.execution_id AND COALESCE(t.spec->>'mode','')<>'plan' AND p.instance=$2
-		AND p.session_id=$3 AND p.resumed_at IS NOT NULL AND (
-		    (p.handoff_session=$4 AND p.handoff_instance=$5 AND p.handoff_sequence<=$6)
-		    OR (p.handoff_session IS NULL AND NOT checkpoint_session_continues($1,$6,$4,$3)
-		       AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=e.id AND c.sequence=$6 AND c.session_id IS NULL AND c.at<=p.requested_at)
-		       AND NOT EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=e.id AND c.sequence>$6 AND c.at<=p.requested_at)))
-		RETURNING handoff_sequence`, id, link.SourceInstance, link.From, link.Session, link.Instance, seq).Scan(&stored)
+	var replay bool
+	var question sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT h.handoff_session IS NOT NULL,h.question_id FROM writer_handoff_sources h
+		JOIN executions e ON e.id=h.execution_id JOIN work_items t ON t.id=e.task_id
+		WHERE h.execution_id=$1 AND h.source_instance=$2 AND h.source_session=$3 AND COALESCE(t.spec->>'mode','')<>'plan'
+		AND ((h.handoff_session=$4 AND h.handoff_instance=$5 AND h.sequence<=$6)
+		 OR (h.handoff_session IS NULL AND h.sequence=$6 AND NOT checkpoint_session_continues($1,$6,$4,$3)
+		    AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence=$6 AND c.session_id IS NULL)
+		    AND NOT EXISTS(SELECT 1 FROM writer_handoff_sources used WHERE used.execution_id=$1 AND used.handoff_session IS NOT NULL
+		        AND (used.source_session=$3 OR used.handoff_session=$4 OR used.handoff_instance=$5))))
+		ORDER BY h.handoff_session IS NOT NULL DESC LIMIT 1`, id, link.SourceInstance, link.From, link.Session, link.Instance, seq).Scan(&replay, &question)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil || replay {
+		return err
+	}
+	if question.Valid {
+		_, err = tx.ExecContext(ctx, `UPDATE checkpoint_resumes SET handoff_session=$2,handoff_instance=$3 WHERE question_id=$1`, question.Int64, link.Session, link.Instance)
+	} else {
+		_, err = tx.ExecContext(ctx, `UPDATE model_pauses SET handoff_session=$3,handoff_instance=$4,handoff_sequence=$5
+			WHERE execution_id=$1 AND instance=$2`, id, link.SourceInstance, link.Session, link.Instance, seq)
+	}
 	var constraint *pq.Error
-	if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &constraint) && constraint.Code == "23505") {
+	if errors.As(err, &constraint) && constraint.Code == "23505" {
 		return ErrConflict
 	}
 	return err

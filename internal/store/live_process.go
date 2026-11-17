@@ -19,13 +19,21 @@ type ProcessReport struct {
 	Process    HarnessProcess `json:"process"`
 }
 
-func verifyWriterHandoff(ctx context.Context, tx *sql.Tx, execution int64, p HarnessProcess, sourceInstance int64) error {
+func verifyWriterHandoff(ctx context.Context, tx *sql.Tx, execution int64, p HarnessProcess, source *HarnessProcess) error {
+	var sourceInstance int64
+	if source != nil {
+		sourceInstance = source.Instance
+	}
 	var allowed bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM model_pauses pause
-		WHERE pause.execution_id=$1 AND pause.session_id=$2 AND pause.instance<$3 AND ($4::bigint=0 OR pause.instance=$4) AND pause.resumed_at IS NOT NULL
-		AND (pause.handoff_session IS NULL OR (pause.handoff_session=$5 AND pause.handoff_instance=$3))
-		AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.at<=pause.requested_at))`,
-		execution, p.HandoffFrom, p.Instance, sourceInstance, p.Session).Scan(&allowed)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM writer_handoff_sources h
+		WHERE h.execution_id=$1 AND h.source_session=$2 AND h.source_instance<$3 AND ($4::bigint=0 OR h.source_instance=$4)
+		AND (h.question_id IS NULL OR $6)
+		AND ((h.handoff_session=$5 AND h.handoff_instance=$3)
+		 OR (h.handoff_session IS NULL AND (h.question_id IS NULL OR EXISTS(
+		    SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence=h.sequence AND c.session_id IS NULL))
+		    AND NOT EXISTS(SELECT 1 FROM writer_handoff_sources used WHERE used.execution_id=$1 AND used.handoff_session IS NOT NULL
+		        AND (used.source_session=$2 OR used.handoff_session=$5 OR used.handoff_instance=$3)))))`,
+		execution, p.HandoffFrom, p.Instance, sourceInstance, p.Session, source == nil || (source.ExitCode != nil && *source.ExitCode == 0)).Scan(&allowed)
 	if err == nil && !allowed {
 		return ErrConflict
 	}
@@ -66,7 +74,7 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 		return err
 	}
 	if !planner && p.HandoffFrom != "" {
-		if err := verifyWriterHandoff(ctx, tx, execution, p, 0); err != nil {
+		if err := verifyWriterHandoff(ctx, tx, execution, p, nil); err != nil {
 			return err
 		}
 	}

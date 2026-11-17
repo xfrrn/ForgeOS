@@ -434,6 +434,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	}
 	var dir []byte
 	var ownerReply json.RawMessage
+	var answeredTrees *store.WorktreeTrees
 	seq := 0
 	if saved := recovery.saved; saved != nil {
 		dir = saved.GitDir
@@ -448,6 +449,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			ownerReply, err = w.resumeOwnerQuestion(ctx, job, *saved, start, recovery, resumeBudget)
 			seq = saved.Sequence + 1
 			if err == nil {
+				answeredTrees = &saved.Trees
 				batch, err = w.checkpoint(ctx, job, seq, "")
 			}
 		}
@@ -490,9 +492,15 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			var checkpoint *writerCheckpoint
 			if resumed != nil {
 				checkpoint = &writerCheckpoint{sequence: seq, trees: *resumed}
+			} else if job.QuestionHandoff && answeredTrees != nil {
+				if err := w.verifyQuestionWorkspace(turn, job, start, dir, seq-1, answeredTrees); err != nil {
+					return previous, err
+				}
+				checkpoint = &writerCheckpoint{sequence: seq, trees: *answeredTrees}
 			}
 			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
 		})
+		answeredTrees = nil
 		if session != "" {
 			result.SessionID = session
 		}
@@ -530,6 +538,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				}
 				recovery.waiting = true
 				ownerReply, err = w.resumeOwnerQuestion(ctx, job, saved, start, recovery, resumeBudget)
+				answeredTrees = trees
 			} else {
 				ownerReply, err = w.waitForOwner(ctx, job, seq, session, *question, trees)
 				if err == nil {

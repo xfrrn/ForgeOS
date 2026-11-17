@@ -122,6 +122,7 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 }
 
 type CheckpointQuestion struct {
+	SourceInstance      int64          `json:"source_instance,omitempty"`
 	ReferenceDecisionID int64          `json:"reference_decision_id,omitempty"`
 	ResumeInstance      string         `json:"resume_instance,omitempty"`
 	Trees               *WorktreeTrees `json:"trees,omitempty"`
@@ -154,6 +155,9 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 		}
 	}
 	var trees any
+	if r.SourceInstance < 0 || (r.SourceInstance != 0 && r.ResumeInstance == "") {
+		return "", ErrConflict
+	}
 	if r.ResumeInstance != "" && (r.Trees == nil || len(r.ResumeInstance) != 64 || !validCommit(r.ResumeInstance)) {
 		return "", ErrConflict
 	}
@@ -207,10 +211,10 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	var answer string
 	var same, fenced bool
 	var id int64
-	err = tx.QueryRowContext(ctx, `SELECT q.id,COALESCE(answer,''),COALESCE(reference_decision_id,0)=$6 AND question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb, cr.question_id IS NOT NULL
+	err = tx.QueryRowContext(ctx, `SELECT q.id,COALESCE(answer,''),COALESCE(reference_decision_id,0)=$6 AND question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb AND COALESCE(cr.source_instance,0)=$7, cr.question_id IS NOT NULL
 		FROM decision_questions q LEFT JOIN checkpoint_resumes cr ON cr.question_id=q.id
 		WHERE execution_id=$1 AND checkpoint_sequence=$2 AND withdrawn_at IS NULL`,
-		execution, *r.Sequence, r.Question, r.Evidence, trees, r.ReferenceDecisionID).Scan(&id, &answer, &same, &fenced)
+		execution, *r.Sequence, r.Question, r.Evidence, trees, r.ReferenceDecisionID, r.SourceInstance).Scan(&id, &answer, &same, &fenced)
 	if err == nil {
 		if !same || fenced != (r.ResumeInstance != "") {
 			return "", ErrConflict
@@ -243,7 +247,7 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 		return "", err
 	}
 	if r.ResumeInstance != "" {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO checkpoint_resumes(question_id) VALUES($1)`, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO checkpoint_resumes(question_id,source_instance) VALUES($1,NULLIF($2::bigint,0))`, id, r.SourceInstance); err != nil {
 			return "", err
 		}
 	}
