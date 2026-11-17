@@ -27,6 +27,11 @@ func testClaudeProcess() int {
 		return 2
 	}
 	fmt.Printf(`{"type":"system","subtype":"init","session_id":"%s"}`+"\n", testClaudeID)
+	if string(body) == "SIMULATED_PUBLIC_OUTPUT" {
+		fmt.Printf(`{"type":"assistant","session_id":"%s","message":{"content":[{"type":"thinking","thinking":"private-thought"},{"type":"text","text":"Reading the guide.\npassword=private-value"}]}}`+"\n", testClaudeID)
+		fmt.Printf(`{"type":"result","subtype":"success","session_id":"%s"}`+"\n", testClaudeID)
+		return 0
+	}
 	if strings.Contains(string(body), "TERMINAL_FAILURE") {
 		fmt.Printf(`{"type":"result","subtype":"error","is_error":true,"session_id":"%s"}`+"\n", testClaudeID)
 		if strings.Contains(string(body), "ZERO_EXIT") {

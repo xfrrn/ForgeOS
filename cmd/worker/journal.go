@@ -93,6 +93,9 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		instance INTEGER NOT NULL REFERENCES harness_processes(instance), seq INTEGER NOT NULL, call INTEGER NOT NULL,
 		tool TEXT NOT NULL, phase TEXT NOT NULL, at INTEGER NOT NULL DEFAULT (unixepoch()), PRIMARY KEY(instance,seq)
 	);
+	CREATE TABLE IF NOT EXISTS harness_model_output (
+		instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance), sequence INTEGER NOT NULL, text TEXT NOT NULL
+	);
 	CREATE TABLE IF NOT EXISTS ci_uploads (
 		lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), run_id TEXT NOT NULL,
 		file TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, retry_at INTEGER NOT NULL DEFAULT 0,

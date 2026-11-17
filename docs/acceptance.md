@@ -2827,3 +2827,28 @@ PostgreSQL 18 与 Docker 全包 Go 回归 287 项测试及子测试通过，零�
 新增控制面回归覆盖真实 Git 仓库和 PostgreSQL：PR base SHA 保持旧值、目标 ref 身份不符、目标未前进、关闭旧 PR 期间目标再次前进、从已关闭 PR 重试及重放无远端副作用。最初测试夹具把普通 Issue 的 pull_request 序列化为 null，被严格身份校验拒绝；改为与实际普通 Issue 一样省略该字段后通过。临时恢复使用 PR base SHA 的错误实现时，新增测试失败，恢复修复后复测。
 
 本项 PostgreSQL 18 与 Docker 全包回归 292 项测试及子测试通过，零失败、零跳过；Go 静态检查及 git diff --check 通过。本次未改 Web 代码，沿用上一实现提交的 TypeScript 与生产构建结果。全路线最终回归尚未执行，外部设备、受限 GitHub 身份、独立审查者及其余已列缺口继续待验收。
+
+上述实际换基修复对应 ForgeOS 提交 `51a440d38d10221003094a16793e5a560509dcc0`。
+
+### 专题 07、13、16 C.3 · 模型公开消息的运行中查看与归档
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在 beta #183 的 Codex CLI 原生回合输出公开进度和合成凭据行；在有界本地等待期间打开 Chrome，再重启控制面 | 原生进程仍在运行时显示脱敏消息，身份和序号可追溯；重启保留 | PID 35292、会话 `01a1eb29-7ab8-7723-a416-d4627ad37d44` 的公开消息从原生记录核对。Chrome 显示 ForgeOS public progress cli，合成凭据行显示 [redacted]；SQLite 与最终进程记录逐字段一致。结束时记录 2 段，候选 `546995460bd0d730cb0b0464adb9b1ad72349bf3` 通过文档验证及页面验收。 |
+| 等待 Codex CLI 候选的受保护交付，结束后重启工作台回读 | 必需检查成功，精确候选合并并关闭 Issue，历史输出不变 | [PR #184](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/184) 合并为 `ddcdc8e76ba77e603d520bb4115f609c55612fa8`。[Actions 44168310584](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44168310584) 首次仅预设步骤失败，同一 SHA 重跑成功；acceptance-check 和 forgeos/local-ci 均 SUCCESS。任务 DONE、Issue CLOSED，重启后 Chrome 可回读原输出。 |
+| 在 beta #185 的 Codex App Server 原生回合输出公开进度和合成凭据行；在有界本地等待期间打开 Chrome，再重启控制面 | 原生进程仍在运行时显示脱敏消息，身份和序号可追溯；重启保留 | PID 38080、会话 `01a1eb2d-5a5b-7242-a414-88d80ccf83d3` 的公开消息从原生记录核对。Chrome 显示 ForgeOS public progress appserver，合成凭据行显示 [redacted]；SQLite 与最终进程记录逐字段一致。结束时记录 2 段，候选 `a8e56ace64626921d814233d986a20bc9dbcfcc8` 通过文档验证及页面验收。 |
+| 等待 Codex App Server 候选的受保护交付，结束后重启工作台回读 | 必需检查成功，精确候选合并并关闭 Issue，历史输出不变 | [PR #186](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/186) 合并为 `ed7cf6e2c6b5d099793ac3ddb5dd71b1d234bfed`。[Actions 44169059857](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44169059857) 首次仅预设步骤失败，同一 SHA 重跑成功；acceptance-check 和 forgeos/local-ci 均 SUCCESS。任务 DONE、Issue CLOSED，重启后 Chrome 可回读原输出。 |
+| 在 beta #187 的 Claude Code 原生回合输出公开进度和合成凭据行；在有界本地等待期间打开 Chrome，再重启控制面 | 原生进程仍在运行时显示脱敏消息，身份和序号可追溯；重启保留 | 需求修订 2、执行 2。PID 21072、会话 `2e2ca36c-ced9-4cac-8136-e292b562dcef` 的公开消息从原生记录核对。Chrome 显示 ForgeOS public progress claude，合成凭据行显示 [redacted]；SQLite 与最终进程记录逐字段一致。结束时记录 4 段，候选 `740d521f19444c956443d3f928cba1f36a842e43` 通过文档验证及页面验收。 |
+| 等待 Claude Code 候选的受保护交付，结束后重启工作台回读 | 必需检查成功，精确候选合并并关闭 Issue，历史输出不变 | [PR #188](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/188) 合并为 `e1b0a41f1fe9fc0125ba69e749d090477a825805`。[Actions 44171222556](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44171222556) 首次仅预设步骤失败，同一 SHA 重跑成功；acceptance-check 和 forgeos/local-ci 均 SUCCESS。任务 DONE、Issue CLOSED，重启后 Chrome 可回读原输出。 |
+| 在 beta #189 的 Codex CLI（最终回执连续性复验） 原生回合输出公开进度和合成凭据行；在有界本地等待期间打开 Chrome，再重启控制面 | 原生进程仍在运行时显示脱敏消息，身份和序号可追溯；重启保留 | PID 35332、会话 `01a1eb3e-9c88-73e0-9938-9ca5766db3a6` 的公开消息从原生记录核对。Chrome 显示 ForgeOS public progress clifinal，合成凭据行显示 [redacted]；SQLite 与最终进程记录逐字段一致。结束时记录 2 段，候选 `e4bd4eece8fefb607da70b8709a7a98906572e44` 通过文档验证及页面验收。 |
+| 等待 Codex CLI（最终回执连续性复验） 候选的受保护交付，结束后重启工作台回读 | 必需检查成功，精确候选合并并关闭 Issue，历史输出不变 | [PR #190](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/190) 合并为 `64fd9bbbadcc05b50ca5ae387260b80b77f0b468`。[Actions 44172358355](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44172358355) 首次仅预设步骤失败，同一 SHA 重跑成功；acceptance-check 和 forgeos/local-ci 均 SUCCESS。任务 DONE、Issue CLOSED，重启后 Chrome 可回读原输出。 |
+| 用 旧控制面／新 Worker 只读规划 beta #2，再重启并打开任务历史 | 保留协议实际收集的数据，规划结果和输出可分别追溯 | 会话 `01a1eb2f-f180-7282-b14a-38b0291654f8` 生成计划修订 1。原生规划成功，未采集输出时不新增该字段；重启后 Chrome 不显示虚构消息。 |
+| 用 新控制面／旧 Worker 只读规划 beta #2，再重启并打开任务历史 | 保留协议实际收集的数据，规划结果和输出可分别追溯 | 会话 `01a1eb30-d867-7ec1-a744-1487a279823f` 生成计划修订 1。原生规划成功，未采集输出时不新增该字段；重启后 Chrome 不显示虚构消息。 |
+| 用 新控制面／新 Worker 只读规划 beta #2，再重启并打开任务历史 | 保留协议实际收集的数据，规划结果和输出可分别追溯 | 会话 `01a1eb31-fe7b-7a30-bba5-8b3449890ad2` 生成计划修订 1。归档公开输出，SQLite 与进程记录一致，Chrome 可展开回读。 |
+
+
+Claude 初轮把“公开进度消息”理解成对外消息发送，拒绝该部分并继续编辑；这次未计为运行中验收通过。验收脚本退出时中断了尚未回报的 Worker，原生进程已退出但执行仍 RUNNING。核对节点记录后，在隔离验收库加速该租约到期，使用正式 Owner abandon 入口保留失败执行；随后真实修订 GitHub Issue，明确为自身响应文本与本地有界等待，通过需求采用入口切换到修订 2。新执行完成上表全部检查，未伪造模型消息或完成回执。重试时按执行编号选择对应节点日志，保留首轮日志。
+
+数据库回归覆盖输出序号回退、同序号改写、退出后改写、过期租约及最终回执夹带执行租约的拒绝，并验证最终回执不得删除或同序号改写已上报输出，以及合法最终输出的幂等保存。beta #189 另行从运行中上报、控制面重启到最终回执和真实交付复验该连续性检查。节点测试覆盖三种适配器的公开消息、排除思考块和工具参数、敏感环境值、凭据轮换、跨消息私钥遮蔽、UTF-8 窗口及 SQLite 重开。临时关闭采集时，三种适配器回归均失败；恢复后复测通过。
+
+PostgreSQL 18 与 Docker 全包回归 298 项测试及子测试通过，零失败、零跳过；Go 静态检查、TypeScript 与生产构建通过。模型公开消息仅完成实时输出工作包的一部分，工具正文、内置验证与启动阶段继续待补齐。13–23 个剩余工作包的粗估口径不变，全路线最终验收及已列外部条件仍待完成。

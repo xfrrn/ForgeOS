@@ -151,6 +151,13 @@ func TestMain(m *testing.M) {
 	}
 	body, err := io.ReadAll(os.Stdin)
 	args := strings.Join(os.Args[1:], " ")
+	if string(body) == "SIMULATED_PUBLIC_OUTPUT" {
+		fmt.Println(`{"type":"thread.started","thread_id":"public-output-thread"}`)
+		fmt.Println(`{"type":"item.completed","item":{"type":"reasoning","text":"private-thought"}}`)
+		fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reading the guide.\npassword=private-value"}}`)
+		fmt.Println(`{"type":"turn.completed"}`)
+		os.Exit(0)
+	}
 	if strings.Contains(string(body), "SIMULATED_CODEX_RECOVERY") {
 		const thread = "a7090935-460b-4930-8484-0f2008435a45"
 		resume := slices.Contains(os.Args, "resume")

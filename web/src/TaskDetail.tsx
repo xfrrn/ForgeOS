@@ -19,7 +19,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'completed' | 'failed'; at: number }
-type HarnessProcess = { tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
+type HarnessProcess = { output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
 function ToolActivity({events}: {events?: ToolEvent[]}) {
   if (!events?.length) return null
   const phases = {started: '开始', completed: '完成', failed: '失败'}
@@ -353,6 +353,12 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
   </section>
 }
 
+function ModelOutput({ output }: { output?: HarnessProcess['output'] }) {
+  return output ? <details><summary>模型公开消息 · 已记录 {output.sequence} 段</summary>
+    <p>最近 8 KiB，经脱敏后保存。随完整消息更新。</p><pre className="material-content">{output.text}</pre>
+  </details> : null
+}
+
 function Execution({ attempt, task, latest, request, refresh }: { attempt: Attempt; task: Task; latest: boolean; request: ApiRequest; refresh: (message: string) => void }) {
   const observed = attempt.observed_process
   const result = attempt.result
@@ -399,7 +405,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         {observed.session_id && <Fact label="原生会话" code>{observed.session_id}</Fact>}
         {observed.handoff_from && <Fact label="交接来源会话" code>{observed.handoff_from}</Fact>}
         {observed.exited_at && <><Fact label="退出时间">{formatTime(observed.exited_at)}</Fact><Fact label="进程退出码" code>{observed.exit_code}</Fact></>}
-      </dl><ToolActivity events={observed.tools}/></section>}
+      </dl><ToolActivity events={observed.tools}/><ModelOutput output={observed.output}/></section>}
     {result?.processes && result.processes.length > 0 && <details>
       <summary>Harness 进程记录（{result.processes.length}）</summary>
       {result.processes.map(p => <div key={p.instance}><dl className="detail-facts">
@@ -410,7 +416,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         <Fact label="进程退出码" code>{p.exit_code}</Fact>
         {p.session_id && <Fact label="原生会话" code>{p.session_id}</Fact>}
         {p.handoff_from && <Fact label="交接来源会话" code>{p.handoff_from}</Fact>}
-      </dl><ToolActivity events={p.tools}/></div>)}
+      </dl><ToolActivity events={p.tools}/><ModelOutput output={p.output}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
     {!!attempt.model_pauses?.length && <details><summary>模型暂停记录（{attempt.model_pauses.length}）</summary>

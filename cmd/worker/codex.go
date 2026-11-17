@@ -233,13 +233,16 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 				err = process.session(session)
 			}
 		case "item.started", "item.completed":
-			if process.question != nil && session != "" && event.Type == "item.completed" {
+			if session != "" && !complete && event.Type == "item.completed" {
 				var message struct{ Item struct{ Type, Text string } }
 				if json.Unmarshal(scanner.Bytes(), &message) == nil && message.Item.Type == "agent_message" {
-					process.question.read(message.Item.Text)
+					if process.question != nil {
+						process.question.read(message.Item.Text)
+					}
+					err = process.modelMessage(message.Item.Text)
 				}
 			}
-			if session != "" && process.tools != nil {
+			if err == nil && session != "" && process.tools != nil {
 				err = process.codexTool(event.Type, scanner.Bytes())
 			}
 		case "turn.completed":

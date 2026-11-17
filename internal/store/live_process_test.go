@@ -23,7 +23,7 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	job, err := s.Claim(ctx, "node", t.TempDir(), true)
-	if err != nil || job == nil || !job.ReportLiveProcess {
+	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput {
 		t.Fatalf("expected live reporting job: %v", err)
 	}
 	now := time.Now().UTC()
@@ -38,6 +38,16 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 	post(p, strings.Repeat("z", 64), false)
 	post(p, job.LeaseToken, true)
 	p.Session = "thread-a"
+	post(p, job.LeaseToken, true)
+	p.Output = &ModelOutput{Sequence: 1, Text: "Reading the guide.\n"}
+	post(p, job.LeaseToken, true)
+	for _, output := range []*ModelOutput{nil, {Sequence: 0, Text: "bad\n"}, {Sequence: 1, Text: "altered\n"},
+		{Sequence: 2, Text: "token=secret\n"}, {Sequence: 2, Text: job.LeaseToken + "\n"}, {Sequence: 2, Text: "incomplete"}} {
+		bad := p
+		bad.Output = output
+		post(bad, job.LeaseToken, false)
+	}
+	p.Output = &ModelOutput{Sequence: 2, Text: "Reading the guide.\nReady to edit.\n"}
 	post(p, job.LeaseToken, true)
 	first := ToolEvent{Seq: 1, Call: 1, At: now.Unix(), Tool: "command_execution", Phase: "started"}
 	p.Tools = []ToolEvent{first}
@@ -76,6 +86,9 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 	closed.ExitCode = &code
 	post(closed, job.LeaseToken, true)
 	post(closed, job.LeaseToken, true)
+	changed = closed
+	changed.Output = &ModelOutput{Sequence: 3, Text: "Changed after exit.\n"}
+	post(changed, job.LeaseToken, false)
 	post(p, job.LeaseToken, false)
 	p.Instance++
 	p.PID++
@@ -86,11 +99,65 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	observed := view.Execution.ObservedProcess
-	if observed == nil || observed.PID != p.PID || observed.Exited != nil || observed.ObservedAt.IsZero() {
+	if observed == nil || observed.PID != p.PID || observed.Exited != nil || observed.ObservedAt.IsZero() || observed.Output == nil || *observed.Output != *p.Output {
 		t.Fatal(observed)
 	}
 	if _, err = s.db.ExecContext(ctx, "UPDATE executions SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1", job.ExecutionID); err != nil {
 		t.Fatal(err)
 	}
 	post(p, job.LeaseToken, false)
+}
+
+func TestFinalProcessOutputRejectsLeaseAndPreservesHistory(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, sha := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 1, Number: 1}, BaseCommit: base, Validation: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := s.Claim(ctx, "node", t.TempDir(), true)
+	if err != nil || j == nil {
+		t.Fatal(j, err)
+	}
+	at, zero := time.Now().UTC(), 0
+	h := ProcessHistory{{Instance: 1, PID: 7, Harness: "codex", Version: "1.2.3", Session: "thread", Started: at, Exited: &at, ExitCode: &zero, Output: &ModelOutput{Sequence: 1, Text: j.LeaseToken + "\n"}}}
+	r := Result{Commit: sha, BaseCommit: base, SessionID: "thread", Harness: "codex", HarnessVersion: "1.2.3", Processes: &h, Validation: &ValidationResult{Commit: sha, Profile: "docs"}}
+	if !h.matches(r) {
+		t.Fatal("fixture must otherwise be a valid final report")
+	}
+	if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, r); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted lease in final output", err)
+	}
+	h[0].Output = &ModelOutput{Sequence: 1, Text: "[redacted]\nFinished the guide.\n"}
+	observed := h[0]
+	observed.Exited, observed.ExitCode = nil, nil
+	if err = s.ObserveProcess(ctx, j.ExecutionID, ProcessReport{LeaseToken: j.LeaseToken, Process: observed}); err != nil {
+		t.Fatal(err)
+	}
+	for _, output := range []*ModelOutput{nil, {Sequence: 1, Text: "Rewritten final message.\n"}} {
+		bad := r
+		processes := append(ProcessHistory(nil), h...)
+		processes[0].Output = output
+		bad.Processes = &processes
+		if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, bad); !errors.Is(err, ErrConflict) {
+			t.Fatal("rewrote observed output in final result", err)
+		}
+	}
+	for range 2 {
+		if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Task(ctx, task.ID)
+	if err != nil || got.Execution.Result.Processes == nil || (*got.Execution.Result.Processes)[0].Output == nil || *(*got.Execution.Result.Processes)[0].Output != *h[0].Output {
+		t.Fatal(got, err)
+	}
 }

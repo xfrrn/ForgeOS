@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -30,13 +29,7 @@ func (w *worker) watchCILog(parent context.Context, job store.Job, commit string
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		path := fmt.Sprintf("/internal/executions/%d/ci-log", job.ExecutionID)
-		secrets := []string{job.LeaseToken}
-		for _, entry := range os.Environ() {
-			key, value, _ := strings.Cut(entry, "=")
-			if secretVariable.MatchString(key) && value != "" {
-				secrets = append(secrets, value)
-			}
-		}
+		secrets := outputSecrets(job.LeaseToken)
 		var sent *ciLogFile
 		size := -1
 		for {

@@ -90,8 +90,13 @@ func testAppServerProcess() int {
 			case "missing turn":
 				turn = ""
 			}
+			message := `{"forgeos_question":"Which heading?","evidence":"No heading selected."}`
+			if prompt == "SIMULATED_PUBLIC_OUTPUT" {
+				notify("item/completed", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{"id": "thought", "type": "reasoning", "text": "private-thought"}})
+				message = "Reading the guide.\npassword=private-value"
+			}
 			notify("item/completed", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{
-				"id": "message-1", "type": "agentMessage", "text": `{"forgeos_question":"Which heading?","evidence":"No heading selected."}`}})
+				"id": "message-1", "type": "agentMessage", "text": message}})
 			status := "completed"
 			if prompt == "failed" {
 				status = "failed"

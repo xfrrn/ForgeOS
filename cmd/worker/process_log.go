@@ -21,6 +21,7 @@ type processLog struct {
 	id          int64
 	tools       *toolRecorder
 	question    *nativeQuestion
+	output      *modelOutput
 }
 
 func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {
@@ -29,7 +30,11 @@ func (w *worker) processLog(ctx context.Context, job store.Job, harness, version
 	if job.RecordToolActivity && w.journal != nil {
 		recorder = &toolRecorder{pending: make(map[string]toolCall)}
 	}
-	return processLog{tools: recorder, updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
+	p := processLog{tools: recorder, updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
+	if job.RecordModelOutput && w.journal != nil {
+		p.output = &modelOutput{secrets: outputSecrets(job.LeaseToken), credential: w.credential}
+	}
+	return p
 }
 
 func (p *processLog) notify() {

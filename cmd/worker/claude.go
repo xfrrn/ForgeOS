@@ -101,11 +101,11 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 	var outcome error
 	for scanner.Scan() {
 		var event struct {
-			Type    string `json:"type"`
-			Subtype string `json:"subtype"`
-			IsError bool   `json:"is_error"`
-			Session string `json:"session_id"`
-			Result  string `json:"result"`
+			Type    string          `json:"type"`
+			Subtype string          `json:"subtype"`
+			IsError bool            `json:"is_error"`
+			Session string          `json:"session_id"`
+			Result  string          `json:"result"`
 			Errors  json.RawMessage `json:"errors"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &event) != nil {
@@ -163,7 +163,7 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 	}
 	stop := context.AfterFunc(ctx, func() { stream.Close() })
 	defer stop()
-	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool, process.question)
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeActivity, process.question)
 	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) && !errors.Is(parseErr, errSessionMissing) {
 		stream.Close()
 		_ = cmd.Cancel()

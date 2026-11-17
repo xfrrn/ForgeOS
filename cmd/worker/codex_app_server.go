@@ -328,6 +328,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			}
 			if m.Method == "item/completed" && event.Item.Type == "agentMessage" {
 				last = event.Item.Text
+				if err = process.modelMessage(last); err != nil {
+					return session, err
+				}
 				if process.question != nil {
 					process.question.read(last)
 				}

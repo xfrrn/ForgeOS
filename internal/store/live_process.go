@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"forgeos/internal/validation"
 )
 
 type ObservedProcess struct {
@@ -45,6 +47,13 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 	if p.Instance != last.Instance {
 		return p.Instance > last.Instance
 	}
+	if last.Output != nil && (p.Output == nil || p.Output.Sequence < last.Output.Sequence ||
+		(p.Output.Sequence == last.Output.Sequence && *p.Output != *last.Output)) {
+		return false
+	}
+	if last.Exited != nil && ((p.Output == nil) != (last.Output == nil) || (p.Output != nil && *p.Output != *last.Output)) {
+		return false
+	}
 	if !p.toolsFollow(last) || p.PID != last.PID || p.Harness != last.Harness || p.Version != last.Version || !p.Started.Equal(last.Started) || (last.Session != "" && (p.Session != last.Session || p.HandoffFrom != last.HandoffFrom)) {
 		return false
 	}
@@ -54,6 +63,9 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 func (s *Store) ObserveProcess(ctx context.Context, execution int64, report ProcessReport) error {
 	p := report.Process
 	if !p.Valid() || len(report.LeaseToken) != 64 {
+		return ErrConflict
+	}
+	if p.Output != nil && validation.DisplayLogTail([]byte(p.Output.Text), []string{report.LeaseToken}) != p.Output.Text {
 		return ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

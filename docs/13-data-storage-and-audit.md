@@ -40,6 +40,8 @@ ORDER BY p.instance;
 
 从 `GET /tasks/{id}` 的执行结果读取 `processes`；也可在工作台展开对应执行下的“Harness 进程记录”。PID 的含义限定在回执中的执行节点。进程实例号和 Session 分别记录，同一 Session 可以经历多个 PID。没有采集进程数据的历史结果仍按原样展示。普通模型任务运行期间，Owner 可从同一接口的 `attempts[].observed_process` 或工作台查看节点最近上报的 PID、原生 Session 和控制面接收时间。节点本地恢复日志保留进程记录，执行结束后完整记录随最终回执归档。Codex 的每一轮记录其实际 Thread；成功回执的 Session 对应最后完成的进程。版本取自该节点所运行的 `codex --version`，保留预发布标记。
 
+公开模型消息的脱敏窗口保存在 Worker SQLite 的 `harness_model_output(instance, sequence, text)`，每个进程最多 8 KiB。控制面在 `observed_process.output` 和最终 `result.processes[].output` 保存对应序号和正文；原始消息不写入这张节点表。输出包含候选任务的内容，因此仍按原执行的 Owner 访问边界读取。没有该字段的旧记录保持原状。该窗口用于回看最近进度，不是完整会话转录或任务成功凭据。
+
 在执行节点的 SQLite 中，按实例号查询完整工具事件。两个终端或会话的相同序号须结合节点与进程实例识别。
 
 ```sql

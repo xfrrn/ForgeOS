@@ -3,22 +3,34 @@ package store
 import (
 	"strings"
 	"time"
+
+	"forgeos/internal/validation"
 )
 
+type ModelOutput struct {
+	Sequence int64  `json:"sequence"`
+	Text     string `json:"text"`
+}
+
 type HarnessProcess struct {
-	Instance    int64       `json:"instance"`
-	PID         int         `json:"pid"`
-	Harness     string      `json:"harness"`
-	Version     string      `json:"version"`
-	Session     string      `json:"session_id,omitempty"`
-	HandoffFrom string      `json:"handoff_from,omitempty"`
-	Started     time.Time   `json:"started_at"`
-	Exited      *time.Time  `json:"exited_at,omitempty"`
-	ExitCode    *int        `json:"exit_code"`
-	Tools       []ToolEvent `json:"tools,omitempty"`
+	Instance    int64        `json:"instance"`
+	PID         int          `json:"pid"`
+	Harness     string       `json:"harness"`
+	Version     string       `json:"version"`
+	Session     string       `json:"session_id,omitempty"`
+	HandoffFrom string       `json:"handoff_from,omitempty"`
+	Started     time.Time    `json:"started_at"`
+	Exited      *time.Time   `json:"exited_at,omitempty"`
+	ExitCode    *int         `json:"exit_code"`
+	Tools       []ToolEvent  `json:"tools,omitempty"`
+	Output      *ModelOutput `json:"output,omitempty"`
 }
 
 func (p HarnessProcess) Valid() bool {
+	if p.Output != nil && (p.Session == "" || p.Output.Sequence <= 0 || p.Output.Text == "" || len(p.Output.Text) > validation.LiveLogWindow ||
+		validation.DisplayLogTail([]byte(p.Output.Text), nil) != p.Output.Text) {
+		return false
+	}
 	if p.HandoffFrom != "" && (p.Session == "" || p.HandoffFrom == p.Session || len(p.HandoffFrom) > 128 ||
 		strings.Trim(p.HandoffFrom, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "") {
 		return false

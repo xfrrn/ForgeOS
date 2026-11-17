@@ -411,6 +411,7 @@ type Job struct {
 	GlobalRules         json.RawMessage `json:"global_rules,omitempty"`
 	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
 	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
+	RecordModelOutput   bool            `json:"record_model_output,omitempty"`
 	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
 	ReportLiveCILog     bool            `json:"report_live_ci_log,omitempty"`
 	ReportCICandidate   bool            `json:"report_ci_candidate,omitempty"`
@@ -790,6 +791,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.RecordProcesses = j.Spec.VerifyCommit == ""
 		j.ReportLiveProcess = j.RecordProcesses
 		j.RecordToolActivity = j.RecordProcesses
+		j.RecordModelOutput = j.RecordProcesses
 		j.ManageResources = registered != nil && caps.SupportsResources
 		j.ModelPause = j.SupportsCheckpoints && j.ManageResources && caps.SupportsModelPause && (j.Spec.Mode != "plan" || caps.SupportsPlannerPause)
 		j.RecoverPlannerPause = j.ModelPause && j.Spec.Mode == "plan"
@@ -869,13 +871,13 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	var abandoned, usesCheckpoints, sourceClosed, ownerCancel, ciPause, modelPause bool
 	var handoffInstances pq.Int64Array
 	var ciCandidate string
-	var expectedHash, stored, spec []byte
+	var expectedHash, stored, spec, observed []byte
 	var repo, worker, kind string
 	err = tx.QueryRowContext(ctx, `
 		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL,e.ci_pause_requested_at IS NOT NULL,COALESCE(e.ci_candidate,''),t.kind,EXISTS(SELECT 1 FROM model_pauses p WHERE p.execution_id=e.id AND p.resumed_at IS NULL),
-		    ARRAY(SELECT h.handoff_instance FROM writer_handoff_sources h WHERE h.execution_id=e.id AND h.handoff_session IS NOT NULL ORDER BY h.handoff_instance)
+		    ARRAY(SELECT h.handoff_instance FROM writer_handoff_sources h WHERE h.execution_id=e.id AND h.handoff_session IS NOT NULL ORDER BY h.handoff_instance),e.observed_process
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &ciPause, &ciCandidate, &kind, &modelPause, &handoffInstances)
+		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &ciPause, &ciCandidate, &kind, &modelPause, &handoffInstances, &observed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -895,6 +897,33 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 			return ErrConflict
 		}
 		return nil
+	}
+	if result.Processes != nil {
+		for _, p := range *result.Processes {
+			if p.Output != nil && validation.DisplayLogTail([]byte(p.Output.Text), []string{token}) != p.Output.Text {
+				return ErrConflict
+			}
+		}
+	}
+	if len(observed) != 0 {
+		var last HarnessProcess
+		if err = json.Unmarshal(observed, &last); err != nil {
+			return err
+		}
+		if last.Output != nil {
+			matched := false
+			if result.Processes != nil {
+				for _, p := range *result.Processes {
+					if p.Instance == last.Instance && p.follows(last) {
+						matched = true
+						break
+					}
+				}
+			}
+			if !matched {
+				return ErrConflict
+			}
+		}
 	}
 	if kind == "environment_check" {
 		expected, err := startupSpec(ctx, tx, taskID)
