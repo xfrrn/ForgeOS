@@ -6,6 +6,28 @@ export type Plan = { revision: number; minimum_level?: string; git_commit?: stri
 export type GoalChild = { id: number; key: string; status: string; plan_revision?: number }
 type Props = { taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
 
+function PlanArchive({taskID, plan, request, disabled}: Pick<Props, 'taskID' | 'request' | 'disabled'> & {plan: Plan}) {
+  const [receipt, setReceipt] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const sha = plan.git_commit || receipt
+  if (sha) return <p>计划归档提交 <code>{sha}</code></p>
+  async function archive() {
+    setBusy(true)
+    setError('')
+    try {
+      const saved = await request<Plan>(`/tasks/${taskID}/plans/${plan.revision}/archive`, {method: 'POST'})
+      setReceipt(saved.git_commit ?? '')
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.status === 409
+        ? '归档冲突，请核对项目克隆、固定基线和此修订的 Git 引用。'
+        : cause instanceof ApiError ? cause.message : '未确认归档结果，可重试此修订。')
+    } finally { setBusy(false) }
+  }
+  return <div><button className="button" disabled={disabled || busy} onClick={() => void archive()}>将修订 {plan.revision} 归档到 Git</button>
+    {error && <p role="alert">{error}</p>}</div>
+}
+
 export default function GoalPlan({taskID, selected, latest, active, items, request, activate, disabled}: Props) {
   const [archived, setArchived] = useState<Plan>()
   const [error, setError] = useState('')
@@ -37,7 +59,7 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
     {historical && error ? <p role="alert">{error}</p> : !plan ? <p role="status">正在读取计划修订…</p> : <>
       {shown === active ? <p>当前生效版本</p> : shown === latest?.revision ? <p>尚未生效</p> : <p>历史修订</p>}
       <p>{plan.plan.objective}</p>
-      {plan.git_commit && <p>计划归档提交 <code>{plan.git_commit}</code></p>}
+      <PlanArchive key={plan.revision} taskID={taskID} plan={plan} request={request} disabled={disabled}/>
       {plan.review && <div><h3>Management 审核 · {plan.review.effective_level}</h3>
         <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[plan.review.verdict] ?? plan.review.verdict}</Fact>
           <Fact label="理由">{plan.review.rationale}</Fact><Fact label="依据">{plan.review.evidence}</Fact>
