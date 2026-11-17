@@ -15,12 +15,13 @@ import (
 )
 
 type TestPlanJob struct {
-	ID         int64             `json:"id"`
-	Execution  int64             `json:"execution_id"`
-	Lease      string            `json:"lease"`
-	LeaseUntil *time.Time        `json:"lease_until,omitempty"`
-	Source     acceptance.Source `json:"source"`
-	Plan       *acceptance.Plan  `json:"plan,omitempty"`
+	ID             int64             `json:"id"`
+	Execution      int64             `json:"execution_id"`
+	Lease          string            `json:"lease"`
+	LeaseUntil     *time.Time        `json:"lease_until,omitempty"`
+	Source         acceptance.Source `json:"source"`
+	Plan           *acceptance.Plan  `json:"plan,omitempty"`
+	CaptureProfile bool              `json:"capture_profile,omitempty"`
 }
 
 type TestPlanOutcome struct {
@@ -29,6 +30,7 @@ type TestPlanOutcome struct {
 	Failed   bool                 `json:"failed,omitempty"`
 	Plan     *acceptance.Plan     `json:"plan,omitempty"`
 	Coverage *acceptance.Coverage `json:"coverage,omitempty"`
+	Profile  *AgentProfile        `json:"profile,omitempty"`
 }
 
 func (s *Store) RequestTestPlan(ctx context.Context, root string, task, execution int64, commit string, previous int, criteria []string) (json.RawMessage, error) {
@@ -116,7 +118,9 @@ func (s *Store) RequestTestPlan(ctx context.Context, root string, task, executio
 
 func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revision int) (json.RawMessage, error) {
 	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r)||CASE WHEN p.source ? 'candidate_context'
+	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r)||COALESCE((
+		SELECT jsonb_object_agg(CASE role WHEN 'test' THEN 'test_profile' ELSE 'management_profile' END,profile)
+		FROM candidate_test_plan_jobs WHERE plan_id=r.id AND profile IS NOT NULL),'{}'::jsonb)||CASE WHEN p.source ? 'candidate_context'
 		THEN jsonb_build_object('candidate_context',p.source->'candidate_context') ELSE '{}'::jsonb END||jsonb_build_object('case_results',COALESCE(
 		(SELECT jsonb_agg(to_jsonb(c) ORDER BY c.case_id,c.attempt) FROM candidate_test_case_results c WHERE c.plan_id=r.id),'[]'))
 		FROM candidate_test_plan_status r JOIN candidate_test_plans p USING(id) WHERE r.task_id=$1 AND r.execution_id=$2 AND ($3=0 OR r.revision=$3) ORDER BY r.revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
@@ -170,12 +174,13 @@ func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, s
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
+	j.CaptureProfile = true
 	return &j, nil
 }
 
 func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, out TestPlanOutcome) error {
 	wantPlan := role == "test"
-	if (role != "management" && !wantPlan) || (out.Plan != nil) != (!out.Failed && wantPlan) || (out.Coverage != nil) != (!out.Failed && !wantPlan) {
+	if !validStructuredProfile(out.Profile) || (out.Failed && out.Profile != nil) || (role != "management" && !wantPlan) || (out.Plan != nil) != (!out.Failed && wantPlan) || (out.Coverage != nil) != (!out.Failed && !wantPlan) {
 		return ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -184,6 +189,7 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 	}
 	defer tx.Rollback()
 	var srcJSON, planJSON, stored []byte
+	var storedProfile []byte
 	var dev string
 	var active, complete, failed bool
 	// Read the latest revision in a fresh snapshot after serializing with revision creation and acceptance.
@@ -197,9 +203,9 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		return err
 	}
 	err = tx.QueryRowContext(ctx, `SELECT p.source,(SELECT outcome FROM candidate_test_plan_jobs WHERE plan_id=p.id AND role='test'),
-		COALESCE(e.session_id,''),j.outcome,j.completed_at IS NOT NULL,j.failed,(j.lease_until>now() AND `+currentTestPlan+`)
+		COALESCE(e.session_id,''),j.outcome,j.profile,j.completed_at IS NOT NULL,j.failed,(j.lease_until>now() AND `+currentTestPlan+`)
 		FROM candidate_test_plan_jobs j JOIN candidate_test_plans p ON j.plan_id=p.id JOIN work_items t ON t.id=p.task_id
-		LEFT JOIN execution_candidate_identity e ON e.id=candidate_implementation_execution(p.execution_id) WHERE p.id=$1 AND t.id=$2 AND j.role=$3 AND j.lease::text=$4 FOR UPDATE OF j`, out.ID, taskID, role, out.Lease).Scan(&srcJSON, &planJSON, &dev, &stored, &complete, &failed, &active)
+		LEFT JOIN execution_candidate_identity e ON e.id=candidate_implementation_execution(p.execution_id) WHERE p.id=$1 AND t.id=$2 AND j.role=$3 AND j.lease::text=$4 FOR UPDATE OF j`, out.ID, taskID, role, out.Lease).Scan(&srcJSON, &planJSON, &dev, &stored, &storedProfile, &complete, &failed, &active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
@@ -247,9 +253,17 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		}
 		body = string(doc)
 	}
+	var profile any
+	if out.Profile != nil {
+		doc, err := json.Marshal(out.Profile)
+		if err != nil {
+			return err
+		}
+		profile = string(doc)
+	}
 	if complete {
 		var same bool
-		err = tx.QueryRowContext(ctx, `SELECT $1::jsonb IS NOT DISTINCT FROM $2::jsonb`, body, nullableJSON(stored)).Scan(&same)
+		err = tx.QueryRowContext(ctx, `SELECT ($1::jsonb IS NOT DISTINCT FROM $2::jsonb) AND ($3::jsonb IS NOT DISTINCT FROM $4::jsonb)`, body, nullableJSON(stored), profile, nullableJSON(storedProfile)).Scan(&same)
 		if err != nil {
 			return err
 		}
@@ -258,7 +272,7 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		}
 		return ErrConflict
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE candidate_test_plan_jobs SET outcome=$3,failed=$4,completed_at=now() WHERE plan_id=$1 AND role=$2`, out.ID, role, body, out.Failed)
+	_, err = tx.ExecContext(ctx, `UPDATE candidate_test_plan_jobs SET outcome=$3,failed=$4,completed_at=now(),profile=$5 WHERE plan_id=$1 AND role=$2`, out.ID, role, body, out.Failed, profile)
 	var pe *pq.Error
 	if errors.As(err, &pe) && pe.Code == "23505" {
 		return ErrConflict

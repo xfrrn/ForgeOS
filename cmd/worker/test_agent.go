@@ -56,6 +56,9 @@ func (w *worker) finishTestJob(ctx context.Context, job store.TestPlanJob, manag
 	if err != nil {
 		log.Printf("test plan job %d: %v", job.ID, err)
 		out.Failed = true
+	} else if job.CaptureProfile {
+		profile := store.StructuredCodexProfile()
+		out.Profile = &profile
 	}
 	for ctx.Err() == nil {
 		status, _ := w.post(ctx, path, out, nil)

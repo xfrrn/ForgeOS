@@ -2,9 +2,11 @@ import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvi
 import { useEffect, useState } from 'react'
 import type { ApiRequest } from './shared'
 import { CaseEvidence, resultLabels, type CaseAttempt } from './CaseEvidence'
+import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Case = { id: string; criterion_id: string; playbook_id: string; objective: string; environment: string; tester: string; preconditions: string; steps: string[]; expected_result: string; evidence: string[] }
 type Receipt = {
+  test_profile?: StructuredProfile; management_profile?: StructuredProfile
   candidate_context?: CandidateContext
   execution_state: string; case_results: CaseAttempt[]
   revision: number; state: string; basis: { candidate_context_sha256?: string; criteria: { id: string; text: string }[] }
@@ -59,6 +61,7 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
         {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="测试计划使用的候选依据" digest={receipt.basis.candidate_context_sha256}/>}
         <dl>{receipt.basis.criteria.map(c => <div key={c.id}><dt>{c.id}</dt><dd>{c.text || '业务预期待澄清'}</dd></div>)}</dl>
         {receipt.plan && <><p>Test Agent 会话 <code>{receipt.plan.session_id}</code></p>
+          {receipt.test_profile && <RolePermissions role="Test Agent" profile={receipt.test_profile}/>}
           <ol>{receipt.plan.cases.map(c => {
             const history = receipt.case_results.filter(r => r.case_id === c.id)
             return <li key={c.id}><strong>{c.id} · {c.objective}</strong><p>{c.criterion_id} · {c.playbook_id} · {c.environment} · {c.tester === 'human' ? '人工' : 'Runner'} · {resultLabels[history.at(-1)?.body.result ?? 'pending']}</p>
@@ -69,6 +72,7 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
             </li>})}</ol>
           {receipt.plan.clarifications.map((q, i) => <p key={i}>待澄清 · {q.criterion_id} · {q.question}</p>)}</>}
         {receipt.coverage && <><h4>Management 覆盖审查</h4><p><code>{receipt.coverage.session_id}</code></p>
+          {receipt.management_profile && <RolePermissions role="Management" profile={receipt.management_profile}/>}
           <p>计划 SHA-256　<code>{receipt.coverage.plan_sha256}</code></p>
           <ul>{receipt.coverage.items.map(i => <li key={i.criterion_id}>{i.criterion_id} · {labels[i.state] ?? i.state} · {i.case_ids.join(', ')}<p>{i.rationale}</p></li>)}</ul></>}
       </>}

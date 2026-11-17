@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -170,6 +171,16 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	plan, err := j.Source.Basis.Bind("tester", j.Source.Library, d)
 	must(err)
 	r := store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Plan: &plan}
+	profile := store.StructuredCodexProfile()
+	if !j.CaptureProfile {
+		t.Fatal("missing profile negotiation")
+	}
+	if published {
+		r.Profile = &profile
+		profile.Permission = "on-request"
+		conflict(data.FinishTestPlan(ctx, project.ID, "test", r))
+		profile.Permission = store.CodexApproval
+	}
 	conflict(data.FinishTestPlan(ctx, project.ID+1, "test", r))
 	conflict(data.FinishTestPlan(ctx, project.ID, "management", r))
 	originalBasis := plan.Basis.CandidateContextSHA
@@ -181,6 +192,13 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	plan.Session = "tester"
 	must(data.FinishTestPlan(ctx, project.ID, "test", r))
 	must(data.FinishTestPlan(ctx, project.ID, "test", r))
+	savedProfile := r.Profile
+	r.Profile = &profile
+	if published {
+		r.Profile = nil
+	}
+	conflict(data.FinishTestPlan(ctx, project.ID, "test", r))
+	r.Profile = savedProfile
 	conflict(approve())
 	if published {
 		legacy, err := data.ClaimTestPlan(ctx, project.ID, "management", true, false)
@@ -196,6 +214,15 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	coverage, err := j.Plan.Coverage("manager", []acceptance.CoverageItem{{Criterion: "requirement/1", Cases: []string{"TC-001"}, State: "covered", Rationale: "File lines can be verified."}})
 	must(err)
 	v := store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Coverage: &coverage}
+	if !j.CaptureProfile {
+		t.Fatal("missing coverage profile negotiation")
+	}
+	if published {
+		v.Profile = &profile
+		profile.DisabledFeatures = nil
+		conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
+		profile = store.StructuredCodexProfile()
+	}
 	original := coverage.Digest
 	coverage.Digest = sha
 	conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
@@ -205,6 +232,34 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	coverage.Session = "manager"
 	must(data.FinishTestPlan(ctx, project.ID, "management", v))
 	must(data.FinishTestPlan(ctx, project.ID, "management", v))
+	v.Profile = &profile
+	if published {
+		v.Profile = nil
+	}
+	conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
+	receipt, err := data.TestPlanReceipt(ctx, task.ID, execution, 2)
+	must(err)
+	var fields map[string]json.RawMessage
+	must(json.Unmarshal(receipt, &fields))
+	for _, key := range []string{"test_profile", "management_profile"} {
+		if (fields[key] != nil) != published {
+			t.Fatalf("unexpected %s in receipt", key)
+		}
+		if published {
+			var actual store.AgentProfile
+			must(json.Unmarshal(fields[key], &actual))
+			if !reflect.DeepEqual(actual, profile) {
+				t.Fatalf("incorrect %s", key)
+			}
+		}
+	}
+	var receivedPlan acceptance.Plan
+	must(json.Unmarshal(fields["plan"], &receivedPlan))
+	receivedCoverage, err := receivedPlan.Coverage(coverage.Session, coverage.Items)
+	must(err)
+	if receivedCoverage.Digest != original {
+		t.Fatal("profile changed fixed plan digest")
+	}
 	conflict(approve())
 	caseResult := store.TestCaseResult{Execution: execution, Revision: 2, Commit: sha, PlanDigest: original, Case: "TC-001", Result: "blocked", Operations: []string{"Open guide.md"}, Actual: "No review account available", Evidence: []string{"Test fixture observation"}}
 	record := func(tester, actor string) error {
