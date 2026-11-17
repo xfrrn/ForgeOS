@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
@@ -57,7 +59,35 @@ func watchDocuments(ctx context.Context, data *store.Store, root string) {
 	}
 }
 
-func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner string) {
+func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner string, workers *workerRegistry) {
+	registerProjectRead(mux, "documents", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+		params := r.URL.Query()
+		query, commit := strings.TrimSpace(params.Get("q")), params.Get("commit")
+		if query == "" || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) || (params.Has("commit") && !gitCommit.MatchString(commit)) {
+			problem(w, 400, "provide a document query and, optionally, a full commit SHA")
+			return
+		}
+		p, err := data.Project(r.Context(), project)
+		if err != nil {
+			respond(w, 0, nil, err)
+			return
+		}
+		repo, err := localrepo.ResolveRepo(r.Context(), root, p.Path)
+		if err != nil {
+			problem(w, 409, "registered repository unavailable")
+			return
+		}
+		result, err := localrepo.SearchDocuments(r.Context(), repo, commit, query)
+		if err != nil {
+			problem(w, 422, "cannot search the requested repository revision")
+			return
+		}
+		writeJSON(w, 200, struct {
+			Project int64  `json:"project_id"`
+			Status  string `json:"status"`
+			localrepo.DocumentSearch
+		}{project, "committed", result})
+	})
 	const path = "/projects/{id}/document-changes"
 	list := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)

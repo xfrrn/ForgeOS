@@ -108,6 +108,14 @@ Owner 用 `GET /projects/{id}/decisions` 查询，项目节点用 `GET /internal
 
 可通过受控 API 或 MCP 暴露。
 
+### 查询固定 Git 版本的工程文档
+
+Owner 使用 `GET /projects/{id}/documents?q=<文本>`，节点使用 `GET /internal/projects/{id}/documents?q=<文本>`。缺少该项目授权的节点返回 403。默认在请求开始时固定登记仓库的 HEAD，也可传入 `commit=<完整 SHA>` 查询当前 HEAD 或其祖先，例如工作项记录的基础提交。无效 SHA 返回 400，已无法从当前 HEAD 追溯的版本返回 422。
+
+查询在已提交的 UTF-8 文档中按字面量匹配，忽略大小写，最多 512 字节。范围与文档变化监测一致，涵盖 README 等工程指南及 Markdown、AsciiDoc、reStructuredText 和 docs 目录下的文本。结果按路径排序，每份文档给出首次命中的片段，最多返回 30 份。`more=true` 时可细化查询。
+
+响应包含项目、`status=committed`、实际提交 SHA 和提交时间。每个命中项给出路径、Git blob、引句片段和从文件开头算起的字节位置 `[start_byte,end_byte)`。`excerpt_start_byte` 标明片段起点。Agent 可用 `git show <commit>:<path>` 读取同一份完整原文。尚未提交的修改和符号链接不参与检索。
+
 ### 查询工作项的任务上下文与依赖
 
 项目节点用 `GET /internal/projects/{project}/tasks/{task}/context`，Owner 用 `GET /projects/{project}/tasks/{task}/context`。一次查询返回同一数据库快照中的工作项状态、固定基础提交、执行配置 Git blob、工作项自己的 Issue 规格及其绑定的来源需求。子任务的 `issue` 描述本项工作，`requirement.issue` 保存来源 Issue 在该需求修订时的原文。

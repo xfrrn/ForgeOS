@@ -69,7 +69,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	registerCheckpoints(mux, data, owner, workers)
 	registerHistory(mux, data, owner, workers)
 	registerRepositoryInventory(mux, data, root, owner)
-	registerDocumentChanges(mux, data, root, owner)
+	registerDocumentChanges(mux, data, root, owner, workers)
 	registerInitializationReports(mux, data, owner)
 	registerValidationPlan(mux, data, root, owner, workers)
 	registerCIFiles(mux, data, owner, workers)
