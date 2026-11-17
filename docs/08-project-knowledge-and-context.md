@@ -98,6 +98,14 @@ Owner 用 `GET /projects/{id}/decisions` 查询，项目节点用 `GET /internal
 
 可通过受控 API 或 MCP 暴露。
 
+### 查询工作项的任务上下文与依赖
+
+项目节点用 `GET /internal/projects/{project}/tasks/{task}/context`，Owner 用 `GET /projects/{project}/tasks/{task}/context`。一次查询返回同一数据库快照中的工作项状态、固定基础提交、执行配置 Git blob、工作项自己的 Issue 规格及其绑定的来源需求。子任务的 `issue` 描述本项工作，`requirement.issue` 保存来源 Issue 在该需求修订时的原文。
+
+子任务的 `plan` 取其绑定修订；Goal 本身的 `plan` 取最新修订。两者的 `active_revision` 均指 Goal 当前生效的版本。通过 `plan_key` 可在原计划找到子任务的范围、验收条件与上下文引用。`dependencies` 列出当前直接前置任务的 ID、key、状态及已记录的 PR 地址、合并 SHA。已移除工作项的原依赖仍可在绑定计划正文中追溯。独立任务没有前置项时返回空数组，缺失的需求或计划返回 null。
+
+节点需持有该项目的显式授权。没有项目权限返回 403；路径中的项目与任务不匹配返回 404。
+
 ### 已实现的项目历史查询
 
 Owner 通过 `GET /projects/{id}/history` 检索某一项目。按项目授权的节点使用 `GET /internal/projects/{id}/history`。两者支持相同的查询参数。

@@ -31,6 +31,15 @@ func registerHistory(mux *http.ServeMux, data *store.Store, owner string, worker
 		respond(w, http.StatusOK, rows, err)
 	}
 	registerProjectRead(mux, "history", owner, workers, search)
+	registerProjectRead(mux, "tasks/{task}/context", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+		task, err := strconv.ParseInt(r.PathValue("task"), 10, 64)
+		if err != nil || task < 1 {
+			problem(w, http.StatusBadRequest, "invalid context task ID")
+			return
+		}
+		result, err := data.TaskContext(r.Context(), project, task)
+		respond(w, http.StatusOK, result, err)
+	})
 }
 
 func registerProjectRead(mux *http.ServeMux, resource, owner string, workers *workerRegistry, read func(http.ResponseWriter, *http.Request, int64)) {

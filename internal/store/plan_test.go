@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -244,5 +245,22 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	parent, err := s.Task(ctx, task.ID)
 	if err != nil || parent.Status != "DONE" || parent.Events[len(parent.Events)-1].Type != "goal_delivered" {
 		t.Fatalf("parent completion: %v %v", parent, err)
+	}
+	raw, err := s.TaskContext(ctx, p.ID, secondJob.TaskID)
+	var contextView struct {
+		Plan         PlanRevision
+		Requirement  RequirementRevision
+		Dependencies []struct {
+			Key      string
+			MergeSHA string `json:"merge_sha"`
+		}
+	}
+	if err != nil || json.Unmarshal(raw, &contextView) != nil || contextView.Plan.Revision != 3 ||
+		contextView.Requirement.TaskID != task.ID || contextView.Requirement.Revision != 1 ||
+		len(contextView.Dependencies) != 1 || contextView.Dependencies[0].Key != "a" || contextView.Dependencies[0].MergeSHA != merged {
+		t.Fatalf("child context lost its frozen sources or merged prerequisite: %s %v", raw, err)
+	}
+	if _, err := s.TaskContext(ctx, p.ID+1, secondJob.TaskID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("returned another project's task context: %v", err)
 	}
 }

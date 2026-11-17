@@ -22,6 +22,11 @@ func TestProjectHistoryAuthorizesBeforeSearch(t *testing.T) {
 		{"legacy", "/internal/projects/2/history", 403},
 		{"scoped", "/projects/2/history", 401},
 		{"scoped", "/internal/projects/2/history?source=all", 400},
+		{"unknown", "/internal/projects/2/tasks/3/context", 401},
+		{"scoped", "/internal/projects/4/tasks/3/context", 403},
+		{"legacy", "/internal/projects/2/tasks/3/context", 403},
+		{"scoped", "/projects/2/tasks/3/context", 401},
+		{"scoped", "/internal/projects/2/tasks/0/context", 400},
 	} {
 		r := httptest.NewRequest(http.MethodGet, tc.path, nil)
 		r.Header.Set("Authorization", "Bearer "+tc.token)
