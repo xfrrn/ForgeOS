@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 
 	"github.com/lib/pq"
@@ -56,9 +57,11 @@ func (s *Store) DraftShare(ctx context.Context, project int64, d ShareDraft) (js
 	return s.ShareReceipt(ctx, project, id)
 }
 
+const shareReceiptJSON = `to_jsonb(s) || jsonb_build_object('review_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.share_id=s.id),'[]'::jsonb))`
+
 func (s *Store) ShareReceipt(ctx context.Context, project, id int64) (json.RawMessage, error) {
 	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(s) FROM knowledge_share_receipts s WHERE project_id=$1 AND id=$2`, project, id).Scan(&doc)
+	err := s.db.QueryRowContext(ctx, `SELECT `+shareReceiptJSON+` FROM knowledge_share_receipts s WHERE project_id=$1 AND id=$2`, project, id).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -70,9 +73,9 @@ func (s *Store) OutgoingShares(ctx context.Context, project, before int64) (json
 		return nil, err
 	}
 	var page json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY id DESC),'[]') FROM
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(`+shareReceiptJSON+` ORDER BY id DESC),'[]') FROM
 		(SELECT * FROM knowledge_share_receipts WHERE project_id=$1 AND ($2::bigint=0 OR id<$2)
-		 ORDER BY id DESC LIMIT 30) r`, project, before).Scan(&page)
+		 ORDER BY id DESC LIMIT 30) s`, project, before).Scan(&page)
 	return page, err
 }
 
@@ -108,26 +111,55 @@ func (s *Store) ReviewShare(ctx context.Context, project, id int64, lease string
 		return err
 	}
 	review.EffectiveLevel = "D3"
-	doc, err := json.Marshal(review)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	var found int64
-	err = s.db.QueryRowContext(ctx, `UPDATE knowledge_shares SET review=$4::jsonb,reviewed_at=COALESCE(reviewed_at,now())
-		WHERE project_id=$1 AND id=$2 AND review_lease::text=$3
-		AND (review=$4::jsonb OR (review IS NULL AND review_until>clock_timestamp() AND revoked_at IS NULL))
-		RETURNING id`, project, id, lease, string(doc)).Scan(&found)
+	defer tx.Rollback()
+	var stored []byte
+	var valid, revoked bool
+	err = tx.QueryRowContext(ctx, `SELECT review,review_until>clock_timestamp(),revoked_at IS NOT NULL FROM knowledge_shares
+ WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 FOR UPDATE`, project, id, lease).Scan(&stored, &valid, &revoked)
 	if errors.Is(err, sql.ErrNoRows) {
-		// A revoked copy cannot be published. Its returning worker has finished using the account.
-		_, err = s.db.ExecContext(ctx, `UPDATE knowledge_shares SET review_until=clock_timestamp()
-			WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 AND review IS NULL AND revoked_at IS NOT NULL
-			AND review_until>clock_timestamp()`, project, id, lease)
-		if err != nil {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if stored != nil {
+		var previous ManagementReview
+		if err = json.Unmarshal(stored, &previous); err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(previous, review) {
+			return ErrConflict
+		}
+		return nil
+	}
+	if !valid {
+		return ErrConflict
+	}
+	if err = verifyManagementProcess(ctx, tx, 0, 0, id, lease, review.SessionID); err != nil {
+		return err
+	}
+	if revoked {
+		// A completed revoked review returns its account slot without publishing anything.
+		if _, err = tx.ExecContext(ctx, "UPDATE knowledge_shares SET review_until=clock_timestamp() WHERE id=$1", id); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
 			return err
 		}
 		return ErrConflict
 	}
-	return err
+	doc, err := json.Marshal(review)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE knowledge_shares SET review=$2::jsonb,reviewed_at=now() WHERE id=$1", id, string(doc)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetSharePublished(ctx context.Context, project, id int64, digest string, publish bool) (json.RawMessage, error) {

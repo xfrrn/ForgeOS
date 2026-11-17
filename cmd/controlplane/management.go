@@ -36,6 +36,9 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		}
 		if err == nil && job == nil && capabilities.Shares {
 			job, err = data.ClaimShareReview(r.Context(), id, r.URL.Query().Get("supports_share_review_deadline") == "1")
+			if job != nil && r.URL.Query().Get("supports_share_review_process") == "1" {
+				job.CaptureProcess = true
+			}
 		}
 		if err == nil && job == nil && capabilities.TestPlans {
 			var plan *store.TestPlanJob

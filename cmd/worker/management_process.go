@@ -11,8 +11,8 @@ import (
 	"forgeos/internal/store"
 )
 
-func (w *worker) planReviewTurn(ctx context.Context, job store.ManagementJob, prompt string, review *store.ManagementReview) (string, error) {
-	if !job.CaptureProcess || job.Share != nil {
+func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJob, prompt string, review *store.ManagementReview) (string, error) {
+	if !job.CaptureProcess {
 		return readOnlyJSONTurn(ctx, w.codex, reviewSchema, prompt, 12<<10, review)
 	}
 	version, err := readCodexVersion(w.codex)
@@ -38,12 +38,18 @@ func (w *worker) planReviewTurn(ctx context.Context, job store.ManagementJob, pr
 	updates := make(chan struct{}, 1)
 	reporting, stop := context.WithCancel(context.WithValue(ctx, processUpdatesKey{}, updates))
 	key := sha256.Sum256([]byte(job.Lease))
+	target := store.ManagementProcessReport{TaskID: job.TaskID, Revision: job.Revision, Lease: job.Lease, Node: node}
+	if job.Share != nil {
+		target.ShareID = job.Share.ID
+	}
 	report := func(call context.Context) error {
 		p, err := scanHarnessProcess(db.QueryRowContext(call, readHarnessProcess+" WHERE lease_hash=? ORDER BY instance DESC LIMIT 1", key[:]))
 		if err != nil {
 			return err
 		}
-		status, err := w.post(call, "/internal/management/process", store.ManagementProcessReport{TaskID: job.TaskID, Revision: job.Revision, Lease: job.Lease, Node: node, Process: p}, nil)
+		report := target
+		report.Process = p
+		status, err := w.post(call, "/internal/management/process", report, nil)
 		if err != nil {
 			return err
 		}

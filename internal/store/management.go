@@ -180,7 +180,7 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	if !valid {
 		return ErrConflict
 	}
-	if err = verifyManagementProcess(ctx, tx, id, revision, lease, review.SessionID); err != nil {
+	if err = verifyManagementProcess(ctx, tx, id, revision, 0, lease, review.SessionID); err != nil {
 		return err
 	}
 	doc, err := json.Marshal(review)

@@ -2988,3 +2988,24 @@ Claude 本项是业务问题检查点恢复，不代表活动工具强制中断�
 PostgreSQL 18／Docker 全包 322 项测试及子测试通过，零失败、零跳过；随后新增的 Management HTTP 角色鉴权、未知字段、多 JSON 及超限正文专项通过。测试包含真实测试子进程的运行中消息、成功及非零退出、脱敏、旧组件无采集，以及 PostgreSQL 项目／修订／租约绑定、重放、改写拒绝、会话一致性、过期重领保留两次尝试。Go 静态检查、TypeScript 和生产构建通过。证据目录 management_process_current、management_process_oldcontrol、management_process_oldworker；回归报告 management-process-regression.jsonl。
 
 本项覆盖独立计划审核的进程和公开消息观察，不等同于其 Daemon 崩溃恢复、完整会话归档或其他独立角色已验收。原生 MCP 服务在正式 Worker 中仍被禁用，结构化 MCP 结果的真实验收依赖服务授权接入；没有为取证放宽现有工具权限。全路线其他工作及已列外部条件继续待完成。
+
+上述独立 Management 计划审核实现与验收对应 ForgeOS 提交 492f1d9991ba4f720be0684b8b34a8e038dba494。
+
+### 专题 07、08、13、16 C.3 · 共享资料审核进程
+
+2026-11-18 从 Chrome 的固定资料修订起草两份脱敏副本，在专用来源项目运行真实 Management。接收方节点只授权项目 #2，来源项目为 #1。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 页面起草副本 #1，等待审核进程，核对原生参数并在回合中重启控制面 | 只读权限不变，运行观察和最终回执连续 | qa-share-current、PID 13540、Thread 01a1ebae-c3fd-7a90-afca-465e9c727964，read-only／never，Codex 0.169.0-alpha.11.1。重启保留原 Thread；成功退出、D3／approve，公开输出与 SQLite 相同。 |
+| 在来源页发布该副本，用只授权接收项目的节点读取，再从来源页撤销 | 只发布审核过的副本，私有进程不随之披露 | 接收方仅获得 id、title、content、digest、published_at；无原资料中的客户标识及原生会话。撤销后接收列表为空，来源审核与进程保留。 |
+| 创建副本 #2，原生回合仍运行时从 Chrome 撤销 | 已占名额保留到实际结束；不发布已撤销内容 | PID 47168、Thread 01a1ebb0-328d-7862-a56e-7ed7249670b5；撤销前后 reserved 均为 1。退出码 0、退出回报保留，完成回报后名额归零，副本仍 revoked、无 review，接收方为空。 |
+| 重启后打开两份副本及来源列表，使用接收方节点访问来源记录 | 来源历史可读，接收方被隔离 | 两份页面进程与 API 一致；来源列表含对应历史。接收方读取来源回执及列表为 401，读取未授权项目内部经验为 403。 |
+| 旧控制面／新 Worker、新控制面／旧 Worker分别审核并重启回读 | 兼容旧协议，不补造进程 | Thread 01a1ebb0-8138-7ac3-80ee-7e42ea54bccb、01a1ebb0-7ef8-7903-b890-39ffcd1a1a0b 均完成审核，页面没有虚构进程，原审核保持可读。 |
+| 将上一项真实计划审核库从迁移 98 升至 99，并从 Chrome 回读修订 1–3 | 共享存储扩展不破坏已有计划进程 | 原三条 ID、节点、完整进程 JSON 均与迁移前相同；两个成功回合和退出码 15 的失败回合都可展开，原生会话与实际输出保持一致。 |
+
+首次接收方请求使用旧式无项目读取授权的节点令牌，按规则返回 403；为验收配置只授权项目 #2 的具名节点后，从已发布副本继续，没有重复审核或重新创建副本。新增回归的首次失败来自测试解码结构遗漏 review_processes 的 JSON 标记，修正测试后重跑。
+
+最终 PostgreSQL 18／真实 Docker 全包 326 项测试及子测试通过，零失败、零跳过；报告为 share-process-final-regression.jsonl。回归覆盖计划与副本目标互斥、跨项目与租约拒绝、会话和退出绑定、改写及重复回报、接收方字段隔离、撤销后实际退出、名额归还以及过期重领保留两次尝试。Go 静态检查、TypeScript 和生产构建通过；真实原生回合、源端浏览器、接收方授权入口、SQLite、控制面重启及旧库迁移均已核对。证据位于 share_process_current、share_process_oldcontrol、share_process_oldworker，以及 management_process_current/share-migration-proof.json。
+
+采集仍为有界公开消息窗口；共享审核的 Daemon 崩溃补报与原会话恢复、其他独立角色及完整归档仍待补齐。既有外部条件及全路线最终验收保持待验收。

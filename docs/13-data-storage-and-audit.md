@@ -51,9 +51,9 @@ SELECT seq, call, tool, phase, datetime(at, 'unixepoch') AS observed_utc
 FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 ```
 
-### Management 计划审核日志
+### Management 计划与共享审核日志
 
-控制面的 plan_review_processes 按任务、计划修订和租约 SHA-256 保存各次审核的节点身份、最近进程窗口及接收时间；API 不暴露租约摘要。当前计划和历史修订均通过 review_processes 回读，失败、过期或被新修订替代的尝试仍保留。公开消息沿用节点 harness_model_output 的 8 KiB 脱敏窗口，控制面拒绝旧序号、同序号改写、节点或进程身份替换及退出后修改。
+控制面的 management_processes 按任务与计划修订，或共享副本 ID，加租约 SHA-256 保存各次审核的节点身份、最近进程窗口及接收时间；API 不暴露租约摘要。当前计划、历史修订以及来源项目的共享回执均通过 review_processes 回读，失败、过期或被新修订替代的尝试仍保留。迁移 099 将原 plan_review_processes 更名并加入互斥的副本身份，已有记录原样保留。共享副本接收方不能读取该私有历史。公开消息沿用节点 harness_model_output 的 8 KiB 脱敏窗口，控制面拒绝旧序号、同序号改写、节点或进程身份替换及退出后修改。
 
 独立 Management 的 SQLite 与同机普通 Worker 分开，均遵循 FORGEOS_WORKER_STATE_DIR 的私有目录要求。原生退出先记入 SQLite，再上报控制面；控制面不可达且最终回执未确认时不会提交审核结论。该角色尚无 Daemon 重启后的自动补报及原会话恢复，节点记录可用于核对。
 
