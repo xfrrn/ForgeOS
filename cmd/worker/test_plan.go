@@ -42,7 +42,7 @@ func generateTestPlan(ctx context.Context, req testPlanRequest) (acceptance.Plan
 
 func testPlanRules(src acceptance.Source) string {
 	return "The assigned candidate is " + src.Basis.Decision.Commit + " and its comparison base is " + src.Basis.Decision.Base + ". Planned checkouts, diffs and evidence refer to those SHAs. candidate_context.implementation_commit identifies the earlier implementation that supplied the rules. It can serve as a historical comparison only.\n" +
-		"Use candidate_context as evidence for the assigned criteria. Apply explicit current Owner requirements and acceptance feedback first, applicable project decisions second and global defaults last. Include applicable exact values from those sources in the comparison steps. The candidate diff alone cannot establish an expected value or authorize changes.\n"
+		"Use candidate_context as evidence for the assigned criteria. Apply explicit current Owner requirements and acceptance feedback first, including owner_clarifications still in effect, applicable project decisions second and global defaults last. Include applicable exact values from those sources in the comparison steps. The candidate diff alone cannot establish an expected value or authorize changes.\n"
 }
 
 func planFromSource(ctx context.Context, src acceptance.Source) (acceptance.Plan, error) {

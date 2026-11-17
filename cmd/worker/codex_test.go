@@ -22,6 +22,7 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 		job.GoalContext = evidence
 		if evidence != nil {
 			job.GlobalRules = json.RawMessage(`{"revision":1,"content":"Default heading"}`)
+			job.OwnerClarifications = json.RawMessage(`[{"id":7,"execution_id":2,"question":"Which title?","answer":"Harbor"}]`)
 		}
 		prompt, err := issuePrompt(job, "Keep the heading", nil, nil)
 		if err != nil || strings.Contains(prompt, job.LeaseToken) {
@@ -33,9 +34,11 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 			Rules    json.RawMessage `json:"global_rules"`
 			Goal     json.RawMessage `json:"goal_context"`
 			Feedback string          `json:"acceptance_feedback"`
+			Answers  json.RawMessage `json:"prior_owner_clarifications"`
 		}
 		if !found || json.Unmarshal([]byte(payload), &source) != nil || source.Issue != job.Spec.Issue ||
-			string(source.Rules) != string(job.GlobalRules) || string(source.Goal) != string(evidence) || source.Feedback != "Keep the heading" {
+			string(source.Rules) != string(job.GlobalRules) || string(source.Goal) != string(evidence) || source.Feedback != "Keep the heading" ||
+			string(source.Answers) != string(job.OwnerClarifications) {
 			t.Fatalf("incorrect sources: %s", payload)
 		}
 	}

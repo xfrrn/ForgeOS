@@ -37,6 +37,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		if !decode(w, r, &input) {
 			return
 		}
+		input.Capabilities.SupportsReworkAnswers = input.Capabilities.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"
 		if !input.Valid() {
 			problem(w, 400, "invalid Worker identity, platform or capacity")
 			return
@@ -250,6 +251,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			problem(w, http.StatusForbidden, "claim does not match the authenticated Worker")
 			return
 		}
+		input.SupportsReworkAnswers = input.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"
 		job, err := data.ClaimForProjects(r.Context(), input.Worker, input.WorkspaceRoot, grant.projects, input.WorkerCapabilities)
 		if job == nil && err == nil {
 			w.WriteHeader(http.StatusNoContent)

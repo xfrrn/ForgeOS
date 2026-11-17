@@ -291,7 +291,8 @@ func (w *worker) run(ctx context.Context) error {
 		Slots: w.slots, ModelSlots: w.modelSlots, CISlots: w.ciSlots, Capabilities: caps}
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
-			status, err := w.post(ctx, "/internal/workers/heartbeat", h, nil)
+			// Query negotiation also works with older control planes that reject unknown JSON fields.
+			status, err := w.post(ctx, "/internal/workers/heartbeat?supports_rework_answers=1", h, nil)
 			if err == nil && status == http.StatusNoContent {
 				return nil
 			}
@@ -356,7 +357,7 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		}
 		var job store.Job
 		requested := time.Now()
-		status, err := w.post(ctx, "/internal/claim", claim, &job)
+		status, err := w.post(ctx, "/internal/claim?supports_rework_answers=1", claim, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			<-occupied
 			if status != http.StatusNoContent && ctx.Err() == nil {

@@ -33,6 +33,7 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
   global_rules?: GlobalRulesRevision
+  owner_clarifications?: CandidateContext['owner_clarifications']
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
   observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
   ci_candidate?: string; ci_pause_requested_at?: string
@@ -318,6 +319,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {attempt.status === 'RUNNING' && <Fact label="租约">{attempt.lease_expired ? '已过期 · 等待核对' : formatTime(attempt.lease_until)}</Fact>}
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
+    {!!attempt.owner_clarifications?.length && <CandidateRuleEvidence context={{owner_clarifications:attempt.owner_clarifications}} title="返工时沿用的 Owner 答复"/>}
     {attempt.global_rules && <details><summary>领取时的全局默认规则 · 修订 {attempt.global_rules.revision}</summary>
       <p>{attempt.global_rules.published_by} · {formatTime(attempt.global_rules.published_at)}</p>
       <pre className="material-content">{attempt.global_rules.content}</pre><p>SHA-256 · <code>{attempt.global_rules.content_sha256}</code></p>

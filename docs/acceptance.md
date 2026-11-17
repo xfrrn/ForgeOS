@@ -10,7 +10,7 @@
 | 二 · 验证、页面验收与退回 | alpha 任务 3 重复导入不变。在 Chrome 打开候选差异，退回 `93a7c42e`，真实 Codex 在新工作区补写示例，生成 `785df9cf`。两个候选各有对应 SHA 的 docs 验证。旧批准返回 409，新批准在页面返回 ACCEPTED。 | 通过。两次按 Owner 身份的页面操作均由 Playwright 执行。 |
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
-| 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。beta #94 和 #96 在实现回合提问，重启控制面并答复后从同一原生会话交付。 | 跨操作的角色与决策分级，以及在同一个双子项 Goal 中串联运行中提问和退回重做，仍待验收。 |
+| 三 · 决策、事件与恢复 | 子项 15 在验收边界提出业务问题 1，状态变为 WAITING_INPUT。重报只保留一个问题，直接批准返回 409。重启控制面后 Worker 回答返回 401。在 Chrome 以 Owner 回答后，恢复原执行 11、Session `01a1e315-16d2-7f31-8de3-7485865d1c95`、候选 `68d6097a` 和 WAITING_ACCEPTANCE。beta #94 和 #96 在实现回合提问，重启控制面并答复后从同一原生会话交付。 | beta #98 在同一个双子项 Goal 中通过运行中提问、原会话恢复、退回重做及父 Issue 关闭的阶段验收。跨操作的角色与决策分级仍待验收。 |
 | 三 · 审查、验证规则与验收方法 | alpha #10 经独立审查后交付。beta #12 经风险分级后交付。Goal 34 的 Management 审核将子项提升至 V4。beta #17 从全局方法生成测试计划、澄清并复审，两项用例实测通过后交付。 | 通过上述候选场景。预览和反馈见下一行。 |
 | 三 · 预览、批注与知识 | Chrome、Caddy 双向 TLS、DOM 与 Canvas 批注、六类反馈、阻塞澄清、从反馈退回修订及新候选批准均已实测。beta #19 还验证了从反馈修订需求、采用和再次执行。项目知识的来源、决策索引和审核后的共享副本见专题 08。 | 外部设备与 tailnet、真实提供方投递待验收。动态 local-mock 应用的工作台交互和双向 TLS 网关已实测。扩展原生录屏已验收。已从扩展采集候选视口，在工作台遮挡、标注并归档。React 与 Vue 的同源 iframe 批注已实测。独立新工作项已从反馈 #2 实测到 beta PR #21 合并。 |
 | 四 · 多项目授权与密钥 | 节点按项目和环境读取 OpenBao 状态。Broker 在执行租约、用途、版本和 TTL 满足时分发一次性包装响应；脱敏共享和密钥恢复也已实测。 | 生产专用操作、执行资源调度和跨节点恢复见专题 07、09、14。 |
@@ -1866,3 +1866,18 @@ CI 恢复后的候选会话与规则追溯对应提交 `80ef8450e93df5ffee7980f5
 交付完成后分别重启控制面，在 Chrome 任务详情核对提问节点、提问和答复时间、基础提交、检查点及 Owner 原文。两项的待答队列均已清空。检查点 0、1 绑定同一 Session，检查点 2 没有待处理输入。两个执行均使用节点配额，三次资源申请依次为首轮实现、答复后实现和 CI，最终全部释放。
 
 在独立 PostgreSQL 18 上启用真实 Docker，执行 `go test -p 1 -timeout 30m -count=1 -json ./...`，196 个测试及子测试通过，零跳过。Go vet 和 Web 生产构建通过。
+
+原生实现回合提问和恢复对应 ForgeOS 提交 `eed7fde5ed1073822a58f0533a2f5270738ddfbc`。
+
+### 阶段三 · 有依赖的两个子项、运行中答复、退回重做和父 Issue 关闭
+
+从私有 beta 的 Issue #98 建立 D2 Goal，显式激活包含 index 和 reference 的计划。在同一项目的正式 Worker、真实 PostgreSQL、Docker、Chrome 和 GitHub 上完成以下操作。验收使用 Owner 测试身份。[父 Issue 与交付回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/98)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 激活计划，派发 index，按 SHA 批准第一份手册并读取父 Issue | 首项 READY，后项 BLOCKED。首个 PR 合并后父 Issue 保持开放 | index 只增加指定的单行 H1，候选 `b9eceb666819a91f8efe9915e8beef9b3cc71129`，合并为 `005e1861f46e375e1e3f48c84beba9e932767300`。GitHub 返回父 Issue OPEN。[首个子 PR #99](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/99) |
+| 派发 reference，等待模型提问，重启控制面，在 Chrome 填入业务标题 | 使用前项合并版本作为基础。原会话继续完成候选 | 检查点 0 的基础 SHA 等于首项合并 SHA。执行 2 的 Codex 会话 `01a1e802-5b32-7573-a9fb-ea573b7f853d` 生成候选 `1c0ad3812afbc75ec44e1df252e513ae79492376`。Git 文件的 H1 为 Owner 指定的 `Field 1bb662cc`，包含到已交付索引的相对链接。本地验证通过。 |
+| 在 Chrome 退回候选，要求保留标题和链接、补一句离线说明；重启并用新版本领取 | 旧 Worker 不能领取需要历史答复的返工。新执行保留答复来源和本次退回意见，以新会话修订 | 旧能力领取返回 204。执行 3 使用新会话 `01a1e805-066d-7683-82fb-b8e7ab2eb919`，只改动 reference 文件，保留批准的 H1 和链接，补入 `The guide is available offline.`。候选 `3ac077607ff55490526b48411aa2a8246e36ce68` 重新通过本地验证，业务问题总数仍为 1。Chrome 可查到沿用的原执行 2 和答复。 |
+| 由独立 Reviewer 审查返工候选，再从工作台批准并检查收尾 | Reviewer 看到与实现执行相同的答复和退回意见。两个子项完成后父 Goal 才可关闭 | Claude Code 审查会话 `84fdca33-9fff-454e-b6a5-da995a15b986` 对同一候选返回零项发现。两个 PR 的 `acceptance-check` 与 `forgeos/local-ci` 均成功，第二项合并为 `323fd788d959674abbc3692900e47d7c06a542eb`，父 Goal 为 DONE，GitHub 父 Issue 为 CLOSED。[第二个子 PR #100](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/100) · [两个子项的关闭回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/98#issuecomment-6939813159) |
+
+使用 PostgreSQL 18 与真实 Docker 运行全量 Go 回归，197 个测试及子测试通过，零跳过。另以 PostgreSQL 测试连续两次退回、验收时的答复、旧 Worker 能力及不同需求版本的隔离。Go vet 和 Web 生产构建通过。

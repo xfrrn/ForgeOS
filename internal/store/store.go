@@ -224,6 +224,9 @@ var resumedCandidateIdentitySchema string
 //go:embed 067_checkpoint_questions.sql
 var checkpointQuestionSchema string
 
+//go:embed 068_rework_questions.sql
+var reworkQuestionSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -258,6 +261,7 @@ type Task struct {
 }
 
 type Execution struct {
+	OwnerClarifications    json.RawMessage  `json:"owner_clarifications,omitempty"`
 	GlobalRules            *json.RawMessage `json:"global_rules,omitempty"`
 	DecisionContext        *json.RawMessage `json:"decision_context,omitempty"`
 	ObservedProcess        *ObservedProcess `json:"observed_process,omitempty"`
@@ -295,6 +299,7 @@ type Event struct {
 }
 
 type Job struct {
+	OwnerClarifications json.RawMessage `json:"owner_clarifications,omitempty"`
 	GlobalRules         json.RawMessage `json:"global_rules,omitempty"`
 	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
 	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
@@ -354,7 +359,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -409,7 +414,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, p.requires_code_review, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
-		        'id', e.id,'uses_checkpoints',e.uses_checkpoints, 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
+		        'id', e.id,'uses_checkpoints',e.uses_checkpoints,'owner_clarifications',inherited_owner_answers(e.id), 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
 		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,'global_rules',to_jsonb(gr),
@@ -585,11 +590,12 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($7 OR COALESCE(candidate.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		  AND ($8 OR candidate.spec->>'validation' IS DISTINCT FROM 'auto')
 		  AND ($4 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
+		  AND ($12 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM rework_question_ids(candidate.id,candidate.requirement_id)))
 		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND (running.status = 'RUNNING' OR running.waiting_execution_id IS NOT NULL))
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -612,11 +618,12 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($7 OR COALESCE(w.spec->>'validation','') NOT IN ('V1','V2','V3','V4'))
 		            AND ($8 OR w.spec->>'validation' IS DISTINCT FROM 'auto')
 		            AND ($5 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
+		            AND ($12 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM rework_question_ids(w.id,w.requirement_id)))
 		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND (status = 'RUNNING' OR waiting_execution_id IS NOT NULL))
-		RETURNING id, kind, spec, goal_id IS NOT NULL, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.ExecutionID)
+		RETURNING id, kind, spec, goal_id IS NOT NULL, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -680,6 +687,17 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		return nil, err
 	}
 	j.GlobalRules = rules
+	if j.Rework != nil && j.Spec.VerifyCommit == "" {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO execution_question_context(execution_id,question_id)
+			SELECT e.id,q.id FROM executions e CROSS JOIN LATERAL rework_question_ids(e.task_id,e.requirement_id) q(id) WHERE e.id=$1`, j.ExecutionID); err != nil {
+			return nil, err
+		}
+		var answers []byte
+		if err = tx.QueryRowContext(ctx, "SELECT inherited_owner_answers($1)", j.ExecutionID).Scan(&answers); err != nil {
+			return nil, err
+		}
+		j.OwnerClarifications = answers
+	}
 	if _, err = tx.ExecContext(ctx, `
 		INSERT INTO task_events(task_id, execution_id, type) VALUES ($1, $2, 'execution_claimed')`, j.TaskID, j.ExecutionID); err != nil {
 		return nil, err
