@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 
@@ -10,10 +12,11 @@ import (
 )
 
 type ModelBudget struct {
-	Name    string   `json:"name"`
-	Harness string   `json:"harness"`
-	Slots   int      `json:"slots"`
-	Workers []string `json:"workers"`
+	Name             string   `json:"name"`
+	Harness          string   `json:"harness"`
+	Slots            int      `json:"slots"`
+	Workers          []string `json:"workers"`
+	ReviewerProjects []int64  `json:"reviewer_projects,omitempty"`
 }
 
 var budgetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
@@ -24,12 +27,19 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	}
 	names := map[string]bool{}
 	members := map[[2]string]bool{}
+	reviewers := map[int64]bool{}
 	for _, b := range budgets {
 		if !budgetName.MatchString(b.Name) || names[b.Name] || (b.Harness != "codex" && b.Harness != "claude") ||
-			b.Slots < 1 || b.Slots > 2147483647 || len(b.Workers) == 0 {
+			b.Slots < 1 || b.Slots > 2147483647 || len(b.Workers)+len(b.ReviewerProjects) == 0 {
 			return ErrConflict
 		}
 		names[b.Name] = true
+		for _, project := range b.ReviewerProjects {
+			if project < 1 || b.Harness != "claude" || reviewers[project] {
+				return ErrConflict
+			}
+			reviewers[project] = true
+		}
 		for _, w := range b.Workers {
 			key := [2]string{w, b.Harness}
 			if strings.TrimSpace(w) == "" || strings.ContainsAny(w, "\x00\r\n") || len(w) > 128 || members[key] {
@@ -48,7 +58,8 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 		return err
 	}
 	for _, b := range budgets {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO model_budgets(name,harness,slots,workers) VALUES ($1,$2,$3,$4)`, b.Name, b.Harness, b.Slots, pq.Array(b.Workers)); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO model_budgets(name,harness,slots,workers,reviewer_projects)
+			VALUES ($1,$2,$3,COALESCE($4::text[],'{}'),COALESCE($5::bigint[],'{}'))`, b.Name, b.Harness, b.Slots, pq.Array(b.Workers), pq.Array(b.ReviewerProjects)); err != nil {
 			return err
 		}
 	}
@@ -61,11 +72,36 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	if err != nil {
 		return err
 	}
+	_, err = tx.ExecContext(ctx, `UPDATE code_reviews r SET model_budget=b.name FROM work_items t,model_budgets b
+		WHERE t.id=r.task_id AND t.project_id=ANY(b.reviewer_projects) AND r.model_budget IS NULL AND r.report IS NULL
+		AND r.failed_at IS NULL AND r.lease_until>clock_timestamp()`)
+	if err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// Execution workers match by node ID. Reviewers match by their authorized project.
+func modelSlot(ctx context.Context, tx *sql.Tx, harness, worker string, reviewerProject int64) (sql.NullString, bool, error) {
+	var pool sql.NullString
+	var slots, used int
+	err := tx.QueryRowContext(ctx, `SELECT name,slots FROM model_budgets WHERE harness=$1
+		AND ($2=ANY(workers) OR $3=ANY(reviewer_projects)) FOR UPDATE`, harness, worker, reviewerProject).Scan(&pool, &slots)
+	if errors.Is(err, sql.ErrNoRows) {
+		return pool, true, nil
+	}
+	if err != nil {
+		return pool, false, err
+	}
+	// The previous holder can commit while this transaction waits on the account row.
+	err = tx.QueryRowContext(ctx, `SELECT reserved FROM model_budget_usage WHERE name=$1`, pool.String).Scan(&used)
+	return pool, used < slots, err
 }
 
 func (s *Store) ModelBudgets(ctx context.Context) (json.RawMessage, error) {
 	var raw json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(b) ORDER BY name),'[]') FROM model_budget_usage b`).Scan(&raw)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(
+		CASE WHEN cardinality(reviewer_projects)=0 THEN to_jsonb(b)-'reviewer_projects' ELSE to_jsonb(b) END ORDER BY name
+	),'[]') FROM model_budget_usage b`).Scan(&raw)
 	return raw, err
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"forgeos/internal/review"
 	"github.com/lib/pq"
@@ -21,6 +22,7 @@ type ReviewJob struct {
 	Commit           string          `json:"commit"`
 	Requirement      string          `json:"requirement"`
 	Lease            string          `json:"lease"`
+	LeaseUntil       *time.Time      `json:"lease_until,omitempty"`
 }
 
 func (s *Store) SetCodeReviewPolicy(ctx context.Context, id int64, required bool) error {
@@ -65,12 +67,16 @@ func (s *Store) RequestCodeReview(ctx context.Context, task, execution int64, co
 	return tx.Commit()
 }
 
-func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsContext bool) (*ReviewJob, error) {
+func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsContext, supportsDeadline bool) (*ReviewJob, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
+	pool, available, err := modelSlot(ctx, tx, "claude", "", project)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		return nil, err
+	}
 	_, err = tx.ExecContext(ctx, queueReview+` AND t.project_id=$1 AND p.requires_code_review
 		AND NOT EXISTS(SELECT 1 FROM code_reviews r WHERE r.execution_id=e.id) ORDER BY t.id LIMIT 1
 		ON CONFLICT DO NOTHING`, project)
@@ -85,9 +91,10 @@ func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsCont
 		WHERE p.id=$1 AND ($2 OR c.context IS NULL) AND t.status IN ('WAITING_ACCEPTANCE','WAITING_INPUT') AND r.report IS NULL AND r.failed_at IS NULL
 		AND NOT EXISTS(SELECT 1 FROM executions e WHERE e.task_id=t.id AND e.id>r.execution_id)
 		AND (r.lease_until IS NULL OR r.lease_until<=now()) ORDER BY r.requested_at,r.execution_id LIMIT 1 FOR UPDATE OF r SKIP LOCKED)
-		UPDATE code_reviews r SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes', candidate_context=n.context FROM next n
-		WHERE r.execution_id=n.execution_id RETURNING r.task_id,r.execution_id,n.path,r.base_commit,r.commit_sha,r.requirement,r.lease,r.candidate_context`, project, supportsContext).
-		Scan(&j.TaskID, &j.ExecutionID, &j.Repo, &j.Base, &j.Commit, &j.Requirement, &j.Lease, &snapshot)
+		UPDATE code_reviews r SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes', model_budget=$3, candidate_context=n.context FROM next n
+		WHERE r.execution_id=n.execution_id RETURNING r.task_id,r.execution_id,n.path,r.base_commit,r.commit_sha,r.requirement,r.lease,r.candidate_context,
+		CASE WHEN $4 THEN r.lease_until END`, project, supportsContext, pool, supportsDeadline).
+		Scan(&j.TaskID, &j.ExecutionID, &j.Repo, &j.Base, &j.Commit, &j.Requirement, &j.Lease, &snapshot, &j.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}

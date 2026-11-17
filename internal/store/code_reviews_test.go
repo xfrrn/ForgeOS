@@ -58,7 +58,7 @@ func TestCodeReviewGate(t *testing.T) {
 	conflict(s.RequestCodeReview(ctx, task.ID, ex, base))
 	claim := func(projectID int64) *ReviewJob {
 		t.Helper()
-		j, err := s.ClaimCodeReview(ctx, projectID, false)
+		j, err := s.ClaimCodeReview(ctx, projectID, false, false)
 		must(err)
 		return j
 	}
@@ -69,6 +69,28 @@ func TestCodeReviewGate(t *testing.T) {
 	if j == nil || j.ExecutionID != ex || j.Commit != commit || !strings.Contains(j.Requirement, "below the limit") || claim(project.ID) != nil {
 		t.Fatal("missing or duplicated review lease")
 	}
+	budget := ModelBudget{Name: "review-account", Harness: "claude", Slots: 1, Workers: []string{"dev-claude"}, ReviewerProjects: []int64{project.ID}}
+	must(s.SetModelBudgets(ctx, []ModelBudget{budget}))
+	other, err := s.CreateProject(ctx, t.TempDir())
+	must(err)
+	_, err = s.ImportIssue(ctx, other.ID, IssueSpec{Issue: Issue{RepositoryID: 9, ID: 10, Number: 1}, Harness: "claude", BaseCommit: base, Validation: "docs"})
+	must(err)
+	caps := WorkerCapabilities{SupportsClaude: true, SupportsResources: true}
+	must(s.RecordHeartbeat(ctx, WorkerHeartbeat{Worker: "dev-claude", OS: "linux", Arch: "amd64", CPUs: 1, Slots: 1, ModelSlots: 1, CISlots: 1, Capabilities: caps}))
+	dev, err := s.ClaimForProjects(ctx, "dev-claude", t.TempDir(), []int64{other.ID}, caps)
+	must(err)
+	if dev == nil {
+		t.Fatal("Claude job missing")
+	}
+	phase := func(step int64, release, want bool) {
+		t.Helper()
+		ok, err := s.ReserveExecutionResource(ctx, dev.ExecutionID, ResourceRequest{Lease: dev.LeaseToken, Step: step, Kind: "model", Release: release})
+		must(err)
+		if ok != want {
+			t.Fatalf("model reservation %d: got %t", step, ok)
+		}
+	}
+	phase(1, false, false)
 	must(s.FailCodeReview(ctx, project.ID, ex, j.Lease))
 	checkState("failed")
 	if claim(project.ID) != nil {
@@ -77,11 +99,32 @@ func TestCodeReviewGate(t *testing.T) {
 	conflict(approve())
 	must(s.RequestCodeReview(ctx, task.ID, ex, commit))
 	checkState("pending")
-	retry := claim(project.ID)
-	if retry == nil || retry.Lease == j.Lease {
+	phase(1, false, true)
+	if blocked, err := s.ClaimCodeReview(ctx, project.ID, false, true); err != nil || blocked != nil {
+		t.Fatal("shared account exceeded", err)
+	}
+	phase(1, true, true)
+	if claim(project.ID) != nil {
+		t.Fatal("reviewer without deadline support claimed budgeted job")
+	}
+	retry, err := s.ClaimCodeReview(ctx, project.ID, false, true)
+	must(err)
+	if retry == nil || retry.Lease == j.Lease || retry.LeaseUntil == nil {
 		t.Fatal("missing new lease")
 	}
 	conflict(s.FailCodeReview(ctx, project.ID, ex, j.Lease))
+	phase(2, false, false)
+	_, err = s.db.ExecContext(ctx, `UPDATE code_reviews SET lease_until=now()-interval '1 second' WHERE execution_id=$1`, ex)
+	must(err)
+	conflict(s.FailCodeReview(ctx, project.ID, ex, retry.Lease))
+	phase(2, false, true)
+	phase(2, true, true)
+	replaced, err := s.ClaimCodeReview(ctx, project.ID, false, true)
+	must(err)
+	if replaced == nil || replaced.Lease == retry.Lease {
+		t.Fatal("expired review did not receive a fresh lease")
+	}
+	retry = replaced
 	report := review.Report{Base: base, Commit: commit, Session: "dev-session", Summary: "Review complete.", Findings: []review.Finding{{ID: "R1", EvidenceVerified: false}}}
 	complete := func(projectID int64, lease string) error {
 		return s.CompleteCodeReview(ctx, projectID, ex, lease, report)
@@ -92,6 +135,8 @@ func TestCodeReviewGate(t *testing.T) {
 	conflict(complete(project.ID, j.Lease))
 	must(complete(project.ID, retry.Lease))
 	must(complete(project.ID, retry.Lease))
+	phase(3, false, true)
+	phase(3, true, true)
 	report.Summary = "Modified"
 	checkState("needs_check")
 	conflict(complete(project.ID, retry.Lease))
@@ -144,12 +189,12 @@ func TestReviewerUsesTheCandidatesOriginalRules(t *testing.T) {
 	_, err = s.PublishGlobalRules(ctx, 1, "Later title")
 	must(err)
 	must(s.RequestCodeReview(ctx, task.ID, second, sha))
-	j, err := s.ClaimCodeReview(ctx, p.ID, false)
+	j, err := s.ClaimCodeReview(ctx, p.ID, false, false)
 	must(err)
 	if j != nil {
 		t.Fatal("legacy reviewer received rules it cannot use")
 	}
-	j, err = s.ClaimCodeReview(ctx, p.ID, true)
+	j, err = s.ClaimCodeReview(ctx, p.ID, true, false)
 	must(err)
 	if j == nil {
 		t.Fatal("compatible reviewer did not receive candidate")

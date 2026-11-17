@@ -84,20 +84,10 @@ func (s *Store) ReserveExecutionResource(ctx context.Context, execution int64, r
 			return false, nil
 		}
 		if r.Kind == "model" {
-			var slots int
-			err = tx.QueryRowContext(ctx, `SELECT name, slots FROM model_budgets WHERE harness=$1 AND $2=ANY(workers) FOR UPDATE`, harness, worker).Scan(&pool, &slots)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			var available bool
+			pool, available, err = modelSlot(ctx, tx, harness, worker, 0)
+			if err != nil || !available {
 				return false, err
-			}
-			if pool.Valid {
-				// Read occupancy in a fresh snapshot after the account row lock.
-				err = tx.QueryRowContext(ctx, `SELECT reserved FROM model_budget_usage WHERE name=$1`, pool.String).Scan(&used)
-				if err != nil {
-					return false, err
-				}
-				if used >= slots {
-					return false, nil
-				}
 			}
 		}
 		step, kind = r.Step, r.Kind

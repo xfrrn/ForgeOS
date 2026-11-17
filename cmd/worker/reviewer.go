@@ -12,7 +12,7 @@ import (
 func (w *worker) runReviewer(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ReviewJob
-		status, err := w.post(ctx, "/internal/reviewer/claim", map[string]bool{"supports_candidate_context": true}, &job)
+		status, err := w.post(ctx, "/internal/reviewer/claim?supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue
@@ -20,7 +20,15 @@ func (w *worker) runReviewer(ctx context.Context) error {
 		if err != nil || status != http.StatusOK || job.ExecutionID < 1 || job.Lease == "" {
 			return fmt.Errorf("invalid reviewer claim (HTTP %d)", status)
 		}
-		report, err := reviewCandidate(ctx, candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement, CandidateContext: job.CandidateContext})
+		turn := ctx
+		var stop context.CancelFunc
+		if job.LeaseUntil != nil {
+			turn, stop = context.WithDeadline(ctx, *job.LeaseUntil)
+		}
+		report, err := reviewCandidate(turn, candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement, CandidateContext: job.CandidateContext})
+		if stop != nil {
+			stop()
+		}
 		if ctx.Err() != nil {
 			return nil
 		}

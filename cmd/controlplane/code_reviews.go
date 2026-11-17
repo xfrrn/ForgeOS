@@ -78,7 +78,7 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 		if r.ContentLength != 0 && !decode(w, r, &input) {
 			return
 		}
-		job, err := data.ClaimCodeReview(r.Context(), project, input.SupportsContext)
+		job, err := data.ClaimCodeReview(r.Context(), project, input.SupportsContext, r.URL.Query().Get("supports_budget_deadline") == "1")
 		if err == nil && job == nil {
 			w.WriteHeader(204)
 			return

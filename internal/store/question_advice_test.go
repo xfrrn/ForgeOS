@@ -236,7 +236,7 @@ func TestManagementDecisionLookup(t *testing.T) {
 			if err = s.RequestCodeReview(ctx, task.ID, j.ExecutionID, sha); err != nil {
 				t.Fatal(err)
 			}
-			reviewer, err := s.ClaimCodeReview(ctx, pid, true)
+			reviewer, err := s.ClaimCodeReview(ctx, pid, true, false)
 			if err != nil || reviewer == nil {
 				t.Fatal(reviewer, err)
 			}

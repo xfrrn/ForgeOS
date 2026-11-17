@@ -135,12 +135,12 @@ func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
 		complete("")
 	}
 	must(s.RequestCodeReview(ctx, task.ID, job.ExecutionID, commit))
-	claimed, err := s.ClaimCodeReview(ctx, project.ID, false)
+	claimed, err := s.ClaimCodeReview(ctx, project.ID, false, false)
 	must(err)
 	if claimed != nil {
 		t.Fatal("legacy reviewer took refreshed context")
 	}
-	claimed, err = s.ClaimCodeReview(ctx, project.ID, true)
+	claimed, err = s.ClaimCodeReview(ctx, project.ID, true, false)
 	must(err)
 	if claimed == nil {
 		t.Fatal("missing refreshed review")
