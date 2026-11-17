@@ -54,6 +54,12 @@ Owner 可在工作台的“待答问题”跨项目查看处于 WAITING_INPUT �
 
 Owner 的 `GET /tasks/decision-questions` 按问题编号倒序返回最多 20 项，使用 `next_before` 作为下一页的 `before` 参数。批量操作沿用每题的 `POST /tasks/{id}/questions/{question}/answer` 与验收检查点。
 
+### Owner 审批中心
+
+打开工作台的“审批中心”，可跨项目查看规划中的 Goal 最新修订、待确认且仍有效的项目决策，以及 Management 已同意、等待 Owner 发布的脱敏共享副本。可按操作筛选。计划行显示修订及决策等级，共享行显示来源修订、接收项目和副本 SHA-256。进入对应记录核对依据，并在原详情页批准、拒绝或发布。刷新列表后，已处理的记录离开队列。
+
+Owner 接口 `GET /tasks/approvals` 每页最多返回 30 项，按操作分组、同组按记录编号倒序排列。`kind` 可选 `plan`、`decision` 或 `share`；读下一页时沿用原筛选，把 `next_before` 原样传给 `before`。候选代码的人工验收继续从“验收队列”进入。
+
 ## 5. Agent 内部通信
 
 内部协议建议统一 JSON Schema，消息类型包括：
