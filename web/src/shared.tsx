@@ -51,9 +51,10 @@ export class ApiError extends Error {
 export function requestWith(token: string, onUnauthorized: () => void): ApiRequest {
   return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
     const materialPath = /^\/projects\/[1-9]\d*\/materials(?:\?[^#]*|\/[^/?#\\]+(?:\?revision=[1-9]\d*|\/revisions\/[1-9]\d*\/curation)?)?$/.test(path)
+    const eventCurationPath = /^\/projects\/[1-9]\d*\/tasks\/[1-9]\d*\/events\/[1-9]\d*\/curation$/.test(path)
     const decisionPath = /^\/projects\/[1-9]\d*\/decisions(?:\?[^#]*|\/[1-9]\d*(?:\/(?:status|curation))?)?$/.test(path)
     const sharePath = /^\/projects\/[1-9]\d*\/(?:shares(?:\/[1-9]\d*(?:\/publication)?)?|shared-experience)(?:\?before=[1-9]\d*)?$/.test(path)
-    if (!sharePath && !decisionPath && !materialPath && path !== '/workers' && !/^\/executions\/[1-9]\d*\/(?:cancel|pause-ci|resume-ci)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
+    if (!eventCurationPath && !sharePath && !decisionPath && !materialPath && path !== '/workers' && !/^\/executions\/[1-9]\d*\/(?:cancel|pause-ci|resume-ci)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + token)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')

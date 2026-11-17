@@ -102,7 +102,7 @@ const curationReceipt = `SELECT jsonb_build_object('id',c.id,'revision',s.revisi
 		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at,
 		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
 		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
-		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id))
+		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id,'event_id',c.event_id,'source',CASE WHEN c.event_id IS NOT NULL THEN s.source END,'delivery',s.delivery))
 		FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id WHERE c.project_id=$1`
 
 func (s *Store) MaterialCuration(ctx context.Context, project int64, key string, revision int) (json.RawMessage, error) {
@@ -111,6 +111,10 @@ func (s *Store) MaterialCuration(ctx context.Context, project int64, key string,
 
 func (s *Store) DecisionCuration(ctx context.Context, project, decision int64) (json.RawMessage, error) {
 	return readCurationReceipt(s.db.QueryRowContext(ctx, curationReceipt+" AND c.decision_id=$2", project, decision))
+}
+
+func (s *Store) EventCuration(ctx context.Context, project, task, event int64) (json.RawMessage, error) {
+	return readCurationReceipt(s.db.QueryRowContext(ctx, curationReceipt+" AND c.event_id=$2 AND EXISTS (SELECT 1 FROM task_events e WHERE e.id=c.event_id AND e.task_id=$3)", project, event, task))
 }
 
 func readCurationReceipt(row *sql.Row) (json.RawMessage, error) {
@@ -128,7 +132,7 @@ func (s *Store) ProjectExperience(ctx context.Context, project, before int64) (j
 	}
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(jsonb_strip_nulls(to_jsonb(a)) ORDER BY id DESC),'[]') FROM (
-		SELECT c.id,c.key,c.decision_id,s.revision,s.title,s.source,s.kind,s.receipt_path,s.content_sha256,c.extraction->'facts' AS facts,c.reviewed_at
+		SELECT c.id,c.key,c.decision_id,c.event_id,s.revision,s.title,s.source,s.kind,s.receipt_path,s.content_sha256,c.extraction->'facts' AS facts,c.reviewed_at
 		FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id
 		WHERE c.project_id=$1 AND ($2::bigint=0 OR c.id<$2) AND c.review->>'verdict'='approve' AND c.review->>'level'='D1'
 		AND s.is_current

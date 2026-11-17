@@ -1,4 +1,5 @@
 import { PlanEditor } from './PlanEditor'
+import { KnowledgeCuration } from './KnowledgeCuration'
 import GoalPlan, { type Plan, type GoalChild } from './GoalPlan'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, Fact, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
@@ -626,7 +627,8 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
         <section className="panel detail-card"><h2><Icon name="History" size={18} />任务时间线</h2>
           <ol className="detail-timeline">{[...task.events].reverse().map(event =>
             <li key={event.id}><strong>{events[event.type] || event.type}</strong>
-              <div><time dateTime={event.at}>{formatTime(event.at)}</time>{event.execution_id != null && <span> · 执行 #{event.execution_id}</span>}</div></li>)}</ol>
+              <div><time dateTime={event.at}>{formatTime(event.at)}</time>{event.execution_id != null && <span> · 执行 #{event.execution_id}</span>}</div>
+              {event.type === 'pr_merged' && <KnowledgeCuration project={task.project_id} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}/curation`} request={request}/>}</li>)}</ol>
           {!task.events.length && <p className="detail-empty-text">暂无事件。</p>}</section>
       </aside>
     </div>
