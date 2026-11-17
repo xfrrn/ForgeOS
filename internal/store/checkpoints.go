@@ -37,9 +37,13 @@ type OwnerInstruction struct {
 	Body string `json:"body"`
 }
 
+func (input OwnerInstruction) Valid() bool {
+	return len(input.Key) > 0 && len(input.Key) <= 64 && strings.Trim(input.Key, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == "" &&
+		strings.TrimSpace(input.Body) != "" && !strings.ContainsRune(input.Body, 0) && len(input.Body) <= 4096
+}
+
 func (s *Store) QueueInstruction(ctx context.Context, id int64, seq int, input OwnerInstruction) error {
-	if seq < 0 || seq > 2147483646 || len(input.Key) == 0 || len(input.Key) > 64 || strings.Trim(input.Key, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" ||
-		strings.TrimSpace(input.Body) == "" || strings.ContainsRune(input.Body, 0) || len(input.Body) > 4096 {
+	if seq < 0 || seq > 2147483646 || !input.Valid() {
 		return ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -92,9 +96,11 @@ func (s *Store) QueueInstruction(ctx context.Context, id int64, seq int, input O
 
 type CheckpointPage struct {
 	Checkpoint
-	Comments          []CommentInput  `json:"comments"`
-	OwnerInstructions json.RawMessage `json:"owner_instructions,omitempty"`
-	More              bool            `json:"more"`
+	TaskID            int64             `json:"-"`
+	Commands          []json.RawMessage `json:"commands,omitempty"`
+	Comments          []CommentInput    `json:"comments"`
+	OwnerInstructions json.RawMessage   `json:"owner_instructions,omitempty"`
+	More              bool              `json:"more"`
 }
 
 func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq int, after int64, session string, supportsQueue bool) (CheckpointPage, error) {
@@ -109,9 +115,9 @@ func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq 
 	defer tx.Rollback()
 	var digest []byte
 	var source int64
-	err = tx.QueryRowContext(ctx, `SELECT e.lease_hash,COALESCE(t.goal_id,t.id) FROM executions e JOIN work_items t ON t.id=e.task_id
+	err = tx.QueryRowContext(ctx, `SELECT e.lease_hash,COALESCE(t.goal_id,t.id),t.id FROM executions e JOIN work_items t ON t.id=e.task_id
 		WHERE e.id=$1 AND e.uses_checkpoints AND t.kind='codex_issue' AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.owner_cancel_requested_at IS NULL AND e.ci_pause_requested_at IS NULL
-		AND e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>now() FOR UPDATE OF e,t`, id).Scan(&digest, &source)
+		AND e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>now() FOR UPDATE OF e,t`, id).Scan(&digest, &source, &page.TaskID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return page, ErrConflict
 	}

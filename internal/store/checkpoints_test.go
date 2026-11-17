@@ -63,6 +63,14 @@ func TestOwnerQueueBindsInstructionsToTheNextTurn(t *testing.T) {
 	conflict(err)
 	page, err := cp(1, "", true)
 	must(err)
+	commands, err := s.InstructionMessages(ctx, task.ID, j.ExecutionID, 1)
+	must(err)
+	if len(commands) != 8 || !strings.Contains(string(commands[7]), `"body":"use subtitle 7"`) {
+		t.Fatal("missing ordered Owner command", commands)
+	}
+	if _, err := s.InstructionMessages(ctx, task.ID+1, j.ExecutionID, 1); !errors.Is(err, ErrNotFound) {
+		t.Fatal("command visible under different task", err)
+	}
 	var items []OwnerInstruction
 	must(json.Unmarshal(page.OwnerInstructions, &items))
 	if len(items) != 8 || items[7].Key != "7" || len(page.Comments) != 0 {

@@ -2362,6 +2362,8 @@ ForgeOS 实现及验收提交 `5f8a4ebbcd08d082ffe7bbba030a851b25fe91d0`。
 
 ### 专题 06、07、16 · Ubuntu Worker 取消同一进程组的工具
 
+ForgeOS 修复及验收提交 `75391e5294f49cf609008663fd665c2a4be77bfa`。
+
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
 | 用 Ubuntu 的非 root systemd Worker 导入私有 beta #132。在工具进入有时限的等待后，从 Chrome 取消任务，再核对 Linux 进程和下一任务 | 回报 CANCELLED 时，等待工具也应停止 | 修复前，适配器 PID 3871，工具 PID 3872，进程组 3773。任务已取消，工具仍处于睡眠态 S。下一任务已完成。 |
@@ -2372,3 +2374,13 @@ ForgeOS 实现及验收提交 `5f8a4ebbcd08d082ffe7bbba030a851b25fe91d0`。
 systemd、Worker、GitHub 来源、Chrome 操作及 Linux 工具进程均为真实环境。Linux 回合使用有时限的本地测试程序，以便分别复现适配器退出和工具继续运行。专用账号登录供应方后的实测仍待验收。
 
 Windows 的 PostgreSQL 18 和 Docker 全包回归通过 239 项 Go 测试及子测试，零跳过。`go vet ./...` 通过。
+
+### 专题 05、06、16 B.3 · ACP 将 Owner 指令送入下一原生回合
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在 alpha #32 和 beta #135 的实现回合运行期间从 Chrome 排入不同的副标题，重启控制面，再次提交原请求和冲突请求 | 原请求可安全重放，变更同键正文被拒；接收节点只处理绑定本次执行的指令 | 原请求 204，冲突 409，节点调用 Owner 写入口 401。两任务的检查点 1 各有一条 COMMAND，检查点 0 和 2 均为空。跨任务或不存在的检查点返回 404，节点读 Owner 接口为 401。 |
+| 从工作台打开“查看指令消息”，对比原生会话输入、候选文件、会话与检查点；重启后再查 | 消息 ID、收件人、指令正文和实际生效的副标题一致，同一会话继续执行 | Codex 收到 `EXEC-1-CHECKPOINT-1-COMMAND-17e9c721-21f3-4122-bd99-d5ada17a6066`，候选中有 H2 “Harbor 4adbd1c6”。Claude 收到 `EXEC-1-CHECKPOINT-1-COMMAND-1a591f37-95f4-459c-a28a-712b0bd65f31`，候选中有 H2 “Harbor a1b64757”。两份原生输入均包含该次消息 ID 与指令；浏览器编号与其一致。两个节点分别为 question-codex、question-claude，两次重启回读均一致。 |
+| 批准各自的固定候选，核对必需 CI 和交付，再用新接口回读两个早期任务 | 两个项目独立合并；历史队列的原文和目标继续可查 | alpha 候选 `94b69e2bab668617f5b4a3d9375e86aa514c3721` 合并为 `1d5829fb2f05ef95575cc153950a2c30476edc18`；beta 候选 `fb127e1304de3523cbff8e30ef3d7ab8a4c91e9f` 合并为 `11b38381531c3fdb2eaae43b195abcf7875d3e73`。两项必需 CI 重跑通过，Issue 均关闭。早期 alpha #30、beta #121 的请求原文和节点均可回读。[alpha PR #33](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/33) · [alpha CI](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/44088504983) · [beta PR #136](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/136) · [beta CI](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44088725108) |
+
+PostgreSQL 18、Docker 回归通过 240 项 Go 测试及子测试，零跳过。已验证篡改来源、收件人、Goal 或正文以及遗漏消息会被拒绝。Go vet 与生产 Web 构建通过。

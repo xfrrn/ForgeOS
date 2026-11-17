@@ -41,6 +41,20 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		rows, err := data.Checkpoints(r.Context(), id, execution)
 		respond(w, http.StatusOK, rows, err)
 	}))
+	mux.HandleFunc("GET /tasks/{id}/executions/{execution}/checkpoints/{sequence}/messages", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		task, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		execution, err := strconv.ParseInt(r.PathValue("execution"), 10, 64)
+		seq, seqErr := strconv.ParseInt(r.PathValue("sequence"), 10, 32)
+		if err != nil || execution < 1 || seqErr != nil || seq < 0 {
+			problem(w, http.StatusBadRequest, "provide an execution and a receiving checkpoint")
+			return
+		}
+		messages, err := data.InstructionMessages(r.Context(), task, execution, int(seq))
+		respond(w, http.StatusOK, messages, err)
+	}))
 	workers.handle(mux, "POST /internal/executions/{id}/checkpoint-question", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -91,6 +105,9 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		if input.Session != "" {
 			respond(w, http.StatusNoContent, nil, err)
 			return
+		}
+		if err == nil && len(page.OwnerInstructions) > 0 && r.URL.Query().Get("commands") == "1.0" {
+			page.Commands, err = data.InstructionMessages(r.Context(), page.TaskID, id, *input.Sequence)
 		}
 		respond(w, http.StatusOK, page, err)
 	}))

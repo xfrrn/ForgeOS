@@ -230,6 +230,26 @@ function QueueInstruction({ attempt, sequence, request, refresh }: { attempt: nu
   </form>
 }
 
+type InstructionMessage = { message_id: string; to: { id: string }; timestamp: string }
+
+function CheckpointCommands({ path, request }: { path: string; request: ApiRequest }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState<InstructionMessage[]>()
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    setError(false)
+    request<InstructionMessage[]>(path, { signal: controller.signal })
+      .then(rows => { if (!controller.signal.aborted) setMessages(rows) })
+      .catch(() => { if (!controller.signal.aborted) setError(true) })
+    return () => controller.abort()
+  }, [open, path, request])
+  return <div><button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起指令消息' : '查看指令消息'}</button>
+    {open && (error ? <p role="alert">无法读取指令消息。</p> : messages === undefined ? <p>正在读取…</p> :
+      <ol>{messages.map(m => <li key={m.message_id}><code>{m.message_id}</code> · 发往 {m.to.id} · {formatTime(m.timestamp)}</li>)}</ol>)}</div>
+}
+
 function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: Attempt; request: ApiRequest }) {
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<Checkpoint[]>([])
@@ -250,7 +270,8 @@ function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: At
         {row.session_id && <Fact label="处理会话" code>{row.session_id}</Fact>}</dl>
       {row.next_instructions?.length ? <div><strong>发往检查点 {row.sequence + 1} 的 Owner 指令</strong>
         <ol>{row.next_instructions.map(item => <li key={item.key}>{item.body}</li>)}</ol>
-        <p>{rows.find(item => item.sequence === row.sequence + 1)?.session_id ? '下一回合已确认处理' : attempt.status === 'RUNNING' ? '等待回合确认' : '执行结束，未收到处理回执'}</p></div> : null}
+        <p>{rows.find(item => item.sequence === row.sequence + 1)?.session_id ? '下一回合已确认处理' : attempt.status === 'RUNNING' ? '等待回合确认' : '执行结束，未收到处理回执'}</p>
+        {rows.some(item => item.sequence === row.sequence + 1) && <CheckpointCommands path={`/tasks/${task.id}/executions/${attempt.id}/checkpoints/${row.sequence + 1}/messages`} request={request}/>}</div> : null}
     </li>)}</ol>)}</div>
 }
 

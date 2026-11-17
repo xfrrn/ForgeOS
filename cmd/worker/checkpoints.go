@@ -34,9 +34,17 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 	}
 
 	var after int64
+	path := fmt.Sprintf("/internal/executions/%d/checkpoints?queue_next=1", job.ExecutionID)
+	switch job.InstructionProtocol {
+	case "1.0":
+		path += "&commands=1.0"
+	case "":
+	default:
+		return batch, errors.New("unsupported checkpoint command protocol")
+	}
 	for ctx.Err() == nil {
 		var page store.CheckpointPage
-		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/checkpoints?queue_next=1", job.ExecutionID), map[string]any{
+		status, err := w.post(ctx, path, map[string]any{
 			"lease_token": job.LeaseToken, "sequence": seq, "after": after, "session_id": session}, &page)
 		if temporary(status) {
 			wait(ctx)
@@ -53,6 +61,12 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 		}
 		if after == 0 {
 			batch.OwnerInstructions = page.OwnerInstructions
+			if job.InstructionProtocol == "1.0" {
+				batch.OwnerInstructions, err = checkpointCommands(page, job, w.id)
+				if err != nil {
+					return batch, err
+				}
+			}
 		}
 		batch.Comments = append(batch.Comments, page.Comments...)
 		if !page.More {

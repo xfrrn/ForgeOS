@@ -10,9 +10,13 @@ import (
 	"forgeos/schemas"
 )
 
-func checkpointAnswer(raw []json.RawMessage, workerID string, job store.Job, sequence int, q nativeQuestion) (json.RawMessage, error) {
-	if len(raw) != 2 || job.ProjectID <= 0 || job.Spec == nil {
-		return nil, errors.New("expected a checkpoint decision request and response")
+func readScopedMessage(encoded json.RawMessage, job store.Job) (schemas.AgentMessage, error) {
+	var m schemas.AgentMessage
+	if err := schemas.ValidateAgentMessage(encoded); err != nil {
+		return m, fmt.Errorf("invalid checkpoint message: %w", err)
+	}
+	if err := json.Unmarshal(encoded, &m); err != nil {
+		return m, err
 	}
 	var goal *string
 	if len(job.GoalContext) > 0 {
@@ -20,24 +24,29 @@ func checkpointAnswer(raw []json.RawMessage, workerID string, job store.Job, seq
 			ID int64 `json:"goal_id"`
 		}
 		if err := json.Unmarshal(job.GoalContext, &context); err != nil || context.ID <= 0 {
-			return nil, errors.New("invalid goal in decision message scope")
+			return m, errors.New("invalid goal in checkpoint message scope")
 		}
 		id := fmt.Sprintf("GOAL-%d", context.ID)
 		goal = &id
 	}
+	if job.ProjectID <= 0 || m.Project != fmt.Sprintf("PROJECT-%d", job.ProjectID) || m.WorkItem == nil || *m.WorkItem != fmt.Sprintf("WORK-%d", job.TaskID) ||
+		m.Execution == nil || *m.Execution != fmt.Sprintf("EXEC-%d", job.ExecutionID) || (goal == nil) != (m.Goal == nil) || goal != nil && *goal != *m.Goal {
+		return m, errors.New("checkpoint message belongs to another task or execution")
+	}
+	return m, nil
+}
+
+func checkpointAnswer(raw []json.RawMessage, workerID string, job store.Job, sequence int, q nativeQuestion) (json.RawMessage, error) {
+	if len(raw) != 2 || job.ProjectID <= 0 || job.Spec == nil {
+		return nil, errors.New("expected a checkpoint decision request and response")
+	}
 	var pair [2]schemas.AgentMessage
 	for i, encoded := range raw {
-		if err := schemas.ValidateAgentMessage(encoded); err != nil {
-			return nil, fmt.Errorf("invalid checkpoint decision message: %w", err)
-		}
-		m := &pair[i]
-		if err := json.Unmarshal(encoded, m); err != nil {
+		message, err := readScopedMessage(encoded, job)
+		if err != nil {
 			return nil, err
 		}
-		if m.Project != fmt.Sprintf("PROJECT-%d", job.ProjectID) || m.WorkItem == nil || *m.WorkItem != fmt.Sprintf("WORK-%d", job.TaskID) ||
-			m.Execution == nil || *m.Execution != fmt.Sprintf("EXEC-%d", job.ExecutionID) || (goal == nil) != (m.Goal == nil) || goal != nil && *goal != *m.Goal {
-			return nil, errors.New("decision message belongs to another task or execution")
-		}
+		pair[i] = message
 	}
 	request, response := pair[0], pair[1]
 	owner := schemas.Actor{Type: "owner", ID: "owner"}

@@ -360,6 +360,7 @@ type Job struct {
 	ProjectID           int64           `json:"project_id,omitempty"`
 	DecisionLookups     bool            `json:"decision_lookups,omitempty"`
 	DecisionProtocol    string          `json:"decision_protocol,omitempty"`
+	InstructionProtocol string          `json:"instruction_protocol,omitempty"`
 	CheckpointWorktrees bool            `json:"checkpoint_worktrees,omitempty"`
 	ResumeQuestions     bool            `json:"resume_questions,omitempty"`
 	OwnerClarifications json.RawMessage `json:"owner_clarifications,omitempty"`
@@ -731,6 +732,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		if j.RuntimeQuestions {
 			j.ProjectID = projectID
 			j.DecisionProtocol = "1.0"
+			j.InstructionProtocol = "1.0"
 			j.DecisionLookups = true
 		}
 		j.RecordProcesses = j.Spec.VerifyCommit == ""

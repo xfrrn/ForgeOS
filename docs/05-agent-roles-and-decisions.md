@@ -114,3 +114,11 @@ Owner 可用 `GET /tasks/{id}/questions/{question}/messages` 回读原生实现�
 - 禁止操作。
 
 临时指令仅作用于指定任务范围，不自动变成长期项目规则。
+
+### 下一回合的 Owner 指令
+
+支持 ACP 指令的控制面在实现任务的领取回执中返回 `instruction_protocol: "1.0"`。Worker 读取接收检查点时请求 `commands=1.0`。每条已冻结的指令对应一条 COMMAND，动作是 `queue_next`，接收方是本次执行节点。消息时间取该批检查点建立的时间，幂等键由执行号、接收检查点和原指令键确定。普通 Issue 评论继续作为讨论上下文进入回合。
+
+Worker 逐条校验消息格式、任务范围、接收方、Owner 身份、顺序、原文及幂等键。原生回合取得原指令和对应的 `message_id`、`correlation_id`。声明 1.0 后，缺少或不匹配的消息会中止本回合。早期控制面签发的任务沿用原指令格式。
+
+在任务页的“查看执行检查点”中，打开某批指令的“查看指令消息”可核对编号、节点和时间。Owner 接口为 `GET /tasks/{id}/executions/{execution}/checkpoints/{sequence}/messages`，其中 sequence 是接收指令的检查点。尚未建立的检查点返回 404，已建立但没有指令时返回空数组。历史批次可以用同一接口从原始队列回读消息表示；旧 Worker 实际收到的仍是当时的协议格式。
