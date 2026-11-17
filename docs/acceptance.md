@@ -4,6 +4,8 @@
 
 ## 剩余范围估算（2026-11-17）
 
+目前粗估还余 **15–25 个工作包**，另有三项外部验收。下表是起始估算，各次扣减和验收依据列在表后。
+
 四个阶段均有真实运行记录。空库派发、单项目交付、带依赖的双子项 Goal、两个项目分别交付的操作、结果与提交列在下面两张表中。截至 `30515200fcfede6f692292d0c3ec49b15ee55ace`，按可以分别开发、复验和提交的工作粗估，余下约 20–30 项。各项规模不同；同一场景同时验证多个专题时只计一次。
 
 | 剩余范围 | 粗估项数 | 完成时须取得的证据 |
@@ -2348,6 +2350,8 @@ ForgeOS 验收提交 `b5c6217c65e59613b4112e191afd4d0f4b4f351c`。
 
 ### 专题 05、07、16 B.1 · 普通 Worker 角色配置 v1
 
+ForgeOS 实现及验收提交 `5f8a4ebbcd08d082ffe7bbba030a851b25fe91d0`。
+
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
 | 启动已安装 Codex 与 Claude 的普通 Worker，在 Chrome 打开“执行节点”，读取同一节点的 API。用 beta #19 启动 Planner，核对本次 Worktree 中运行的原生进程参数 | UI、API 与 Planner 实际使用的权限及沙箱一致 | 页面显示三个角色配置。Codex Planner PID 25040 使用 read-only 和 never，任务进入 PLANNING。控制面重启后配置相同；同一节点换成旧 Worker 后，旧心跳撤下配置。 |
@@ -2355,3 +2359,16 @@ ForgeOS 验收提交 `b5c6217c65e59613b4112e191afd4d0f4b4f351c`。
 | 批准 Codex 的固定候选，等待必需 CI 并回读 GitHub；重启控制面 | 交付使用批准的 SHA，节点角色配置可回读 | 必需检查按验收工作流首轮失败、重跑通过。PR #134 已合并为 `3839cde3cb4514141b02cedc766ee68900741dd3`，Issue #133 已关闭，任务 DONE。控制面重启后三种配置与原心跳相同。[PR #134](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/134) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44086353069) |
 
 先前以已有 #19 测试 Claude 实现，回报“相对基础提交没有变更”，该次没有生成候选。上表的实现验收使用明确要求新增文件的 #133。带 PostgreSQL 18 和 Docker 的回归通过 239 项 Go 测试及子测试，零跳过。`go vet ./...` 与 Web 构建通过。
+
+### 专题 06、07、16 · Ubuntu Worker 取消同一进程组的工具
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 用 Ubuntu 的非 root systemd Worker 导入私有 beta #132。在工具进入有时限的等待后，从 Chrome 取消任务，再核对 Linux 进程和下一任务 | 回报 CANCELLED 时，等待工具也应停止 | 修复前，适配器 PID 3871，工具 PID 3872，进程组 3773。任务已取消，工具仍处于睡眠态 S。下一任务已完成。 |
+| 使用修复后的 Worker 重跑同一路径，按父 PID 和进程组核对，再从控制面查询后续 HEAD 任务 | 取消仅作用于本回合，Worker 继续派发 | 适配器 PID 4144，工具 PID 4145，进程组 4144。取消回执出现时该工具的 /proc 记录已消失。任务没有候选或交付；下一任务完成，返回 HEAD `3839cde3cb4514141b02cedc766ee68900741dd3`。 |
+| 以专用 Linux 用户分别从两种适配器的回合入口取消，检查真实子进程 | 相同的中断规则适用于两种适配器 | 修复前 Codex 与 Claude 两例均失败；修复后连续三轮共六例均通过。 |
+| 在 Windows 用真实 Codex 和 beta #132 从 Chrome 复跑同一取消入口 | 原生模型与前台工具退出、后续任务可运行 | PID 39984 与工具 PID 14628 均已退出，任务 CANCELLED，后续 HEAD 任务 DONE，重启后仍能回查取消事件。 |
+
+systemd、Worker、GitHub 来源、Chrome 操作及 Linux 工具进程均为真实环境。Linux 回合使用有时限的本地测试程序，以便分别复现适配器退出和工具继续运行。专用账号登录供应方后的实测仍待验收。
+
+Windows 的 PostgreSQL 18 和 Docker 全包回归通过 239 项 Go 测试及子测试，零跳过。`go vet ./...` 通过。

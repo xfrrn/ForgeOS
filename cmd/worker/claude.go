@@ -158,7 +158,7 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeTool, process.question)
 	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) {
 		stream.Close()
-		_ = cmd.Process.Kill()
+		_ = cmd.Cancel()
 	}
 	exit, err := process.wait(cmd)
 	switch {

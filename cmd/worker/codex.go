@@ -241,7 +241,7 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 	}
 	if err != nil {
 		stream.Close()
-		_ = cmd.Process.Kill()
+		_ = cmd.Cancel()
 	}
 	exit, journalErr := process.wait(cmd)
 	if journalErr != nil {

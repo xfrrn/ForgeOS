@@ -38,6 +38,7 @@ func (p *processLog) notify() {
 	}
 }
 func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
+	configureHarnessCancellation(cmd)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start harness process: %w", err)
 	}
@@ -51,7 +52,7 @@ func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
 	}
 	if err != nil {
 		stream.Close()
-		_ = cmd.Process.Kill()
+		_ = cmd.Cancel()
 		_ = cmd.Wait()
 		return fmt.Errorf("record harness process: %w", err)
 	}
