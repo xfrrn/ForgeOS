@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"forgeos/internal/store"
 )
@@ -18,7 +17,7 @@ func (w *worker) classifyFeedback(ctx context.Context, job store.FeedbackJob) er
 		"Use acceptance for explicit verification of expected behavior, bug for a defect against an established expectation, ui_change for a presentation or interaction adjustment, " +
 		"requirement_change for changed business rules or scope, new_work_item for independent new work, and blocked for ambiguity or missing prerequisites. " +
 		"Cite a short verbatim substring of feedback.note in evidence. Explain the category briefly in the author's language. Classification alone never approves a candidate.\n"
-	turn, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	turn, cancel := managementTurn(ctx, job.LeaseUntil)
 	var c store.FeedbackClassification
 	session, err := readOnlyJSONTurn(turn, w.codex, feedbackSchema, prompt+string(job.Source), 12<<10, &c)
 	cancel()

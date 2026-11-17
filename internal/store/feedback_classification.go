@@ -7,14 +7,16 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 )
 
 type FeedbackJob struct {
-	ID     int64           `json:"id"`
-	Lease  string          `json:"lease"`
-	Source json.RawMessage `json:"source"`
+	LeaseUntil *time.Time      `json:"lease_until,omitempty"`
+	ID         int64           `json:"id"`
+	Lease      string          `json:"lease"`
+	Source     json.RawMessage `json:"source"`
 }
 
 type FeedbackClassification struct {
@@ -26,20 +28,28 @@ type FeedbackClassification struct {
 
 var feedbackCategories = []string{"acceptance", "bug", "ui_change", "requirement_change", "new_work_item", "blocked"}
 
-func (s *Store) ClaimFeedback(ctx context.Context, project int64) (*FeedbackJob, error) {
+func (s *Store) ClaimFeedback(ctx context.Context, project int64, supportsDeadline bool) (*FeedbackJob, error) {
 	var j FeedbackJob
-	err := s.db.QueryRowContext(ctx, `WITH next AS (
+	tx, pool, err := s.beginManagementClaim(ctx, project, "feedback_classification", supportsDeadline)
+	if tx == nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	err = tx.QueryRowContext(ctx, `WITH next AS (
       SELECT f.id,jsonb_build_object('feedback', f.body - 'request_id',
           'case', (SELECT c FROM candidate_test_plan_receipts plan CROSS JOIN LATERAL jsonb_array_elements(plan.plan->'cases') c
                    WHERE plan.id=f.plan_id AND c->>'id'=f.body->>'case_id')) AS source
       FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id WHERE p.project_id=$1
-      AND f.classified_at IS NULL AND (f.review_until IS NULL OR f.review_until<=now()) ORDER BY f.id LIMIT 1 FOR UPDATE OF f SKIP LOCKED)
-      UPDATE preview_feedback f SET review_lease=gen_random_uuid(),review_until=now()+interval '6 minutes' FROM next
-      WHERE f.id=next.id RETURNING f.id,f.review_lease,next.source`, project).Scan(&j.ID, &j.Lease, &j.Source)
+      AND f.classified_at IS NULL AND (f.review_until IS NULL OR f.review_until<=clock_timestamp()) ORDER BY f.id LIMIT 1 FOR UPDATE OF f SKIP LOCKED)
+      UPDATE preview_feedback f SET review_lease=gen_random_uuid(),review_until=clock_timestamp()+interval '6 minutes',model_budget=$2 FROM next
+      WHERE f.id=next.id RETURNING f.id,f.review_lease,next.source,CASE WHEN $3 THEN f.review_until END`, project, pool, supportsDeadline).Scan(&j.ID, &j.Lease, &j.Source, &j.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return &j, err
+	if err != nil {
+		return nil, err
+	}
+	return &j, tx.Commit()
 }
 
 func (s *Store) ClassifyFeedback(ctx context.Context, project, id int64, lease string, c FeedbackClassification) error {
@@ -59,7 +69,7 @@ func (s *Store) ClassifyFeedback(ctx context.Context, project, id int64, lease s
 	var task, execution int64
 	err = tx.QueryRowContext(ctx, `UPDATE preview_feedback f SET classification=$4::jsonb,classified_at=now()
         FROM static_preview_receipts p JOIN executions e ON e.id=p.execution_id
-        WHERE f.id=$1 AND f.preview_id=p.id AND p.project_id=$2 AND f.review_lease::text=$3 AND f.review_until>now()
+        WHERE f.id=$1 AND f.preview_id=p.id AND p.project_id=$2 AND f.review_lease::text=$3 AND f.review_until>clock_timestamp()
         AND f.classified_at IS NULL AND strpos(f.body->>'note',$5)>0 AND COALESCE(e.result->>'session_id','')<>$6
         RETURNING p.task_id,p.execution_id`, id, project, lease, string(doc), c.Evidence, c.Session).Scan(&task, &execution)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -156,7 +156,7 @@ func TestAcceptanceToDelivery(t *testing.T) {
 		request.FeedbackID = fid
 		request.Evidence = "Which example is required?"
 		post(questions, "owner", request, 409)
-		j, err := data.ClaimFeedback(ctx, project.ID)
+		j, err := data.ClaimFeedback(ctx, project.ID, true)
 		if err != nil || j == nil {
 			t.Fatalf("claim: %v", err)
 		}

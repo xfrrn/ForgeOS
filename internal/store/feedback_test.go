@@ -161,14 +161,25 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		}
 	})
 	t.Run("management lease and provenance", func(t *testing.T) {
-		if j, err := s.ClaimFeedback(ctx, p.ID+1); err != nil || j != nil {
+		if j, err := s.ClaimFeedback(ctx, p.ID+1, true); err != nil || j != nil {
 			t.Fatalf("other project: %v %v", j, err)
 		}
-		j, err := s.ClaimFeedback(ctx, p.ID)
-		if err != nil || j == nil || j.ID != first {
+		j, err := s.ClaimFeedback(ctx, p.ID, false)
+		if err != nil || j == nil || j.ID != first || j.LeaseUntil != nil {
 			t.Fatalf("claim: %v %v", j, err)
 		}
-		if second, err := s.ClaimFeedback(ctx, p.ID); err != nil || second != nil {
+		if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "feedback", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{Project: p.ID, Role: "feedback_classification"}}}}); err != nil {
+			t.Fatal(err)
+		}
+		usage := func(want int) {
+			t.Helper()
+			var n int
+			if err := db.QueryRowContext(ctx, `SELECT reserved FROM model_budget_usage WHERE name='feedback'`).Scan(&n); err != nil || n != want {
+				t.Fatalf("reserved %d, expected %d: %v", n, want, err)
+			}
+		}
+		usage(1)
+		if second, err := s.ClaimFeedback(ctx, p.ID, true); err != nil || second != nil {
 			t.Fatalf("duplicate claim: %v %v", second, err)
 		}
 		c := FeedbackClassification{Category: "acceptance", Rationale: "The observer verified the displayed count.", Evidence: "Observed the count.", Session: "qa-triage"}
@@ -178,8 +189,12 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if err = s.ClassifyFeedback(ctx, p.ID, first, j.Lease, c); !errors.Is(err, ErrConflict) {
 			t.Fatalf("expired result: %v", err)
 		}
-		next, err := s.ClaimFeedback(ctx, p.ID)
-		if err != nil || next == nil || next.Lease == j.Lease {
+		usage(0)
+		if legacy, err := s.ClaimFeedback(ctx, p.ID, false); err != nil || legacy != nil {
+			t.Fatal("old worker received budgeted feedback", legacy, err)
+		}
+		next, err := s.ClaimFeedback(ctx, p.ID, true)
+		if err != nil || next == nil || next.Lease == j.Lease || next.LeaseUntil == nil {
 			t.Fatalf("renewal: %v %v", next, err)
 		}
 		invalid := c
@@ -190,12 +205,14 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if err = s.ClassifyFeedback(ctx, p.ID+1, first, next.Lease, c); !errors.Is(err, ErrConflict) {
 			t.Fatalf("wrong project result: %v", err)
 		}
+		usage(1)
 		for range 2 {
 			if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, c); err != nil {
 				t.Fatal(err)
 			}
 		}
 		invalid = c
+		usage(0)
 		invalid.Category = "bug"
 		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(err, ErrConflict) {
 			t.Fatalf("changed classification: %v", err)
@@ -219,7 +236,7 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatal(err)
 		}
 		source.FeedbackID = id
-		j, err := s.ClaimFeedback(ctx, p.ID)
+		j, err := s.ClaimFeedback(ctx, p.ID, true)
 		if err != nil || j == nil || j.ID != id {
 			t.Fatal(j, err)
 		}

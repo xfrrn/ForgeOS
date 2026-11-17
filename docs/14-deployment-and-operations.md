@@ -165,6 +165,8 @@ Test Agent 生成候选测试计划和 Management 审核该计划的覆盖率都
 
 仓库归纳任务从固定的仓库清单读取资料。将 `{"project_id":7,"role":"repository_analysis"}` 加入 Codex 预算后，Management Worker 取得名额才开始分析。成功报告或失败回执都会释放名额；中断且没有回报的分析保留占用至租约到期。重新领取时再次检查当前配置。
 
+预览反馈分类使用预览所在项目的预算。将 `{"project_id":7,"role":"feedback_classification"}` 加入 Codex 的 `agent_roles`。名额满时，新观察仍可提交，状态为待审核。Management 的有效分类回报释放名额，Owner 随后可在验收决定中引用对应反馈。
+
 ### 测量队列与事件读取
 
 在恢复出的隔离数据库上启动正式控制面和 Worker，将 Worker 指向验收克隆。选择一个已有事件的终态任务，并取要参与派发的项目 ID。下面的命令会真实创建 27 个 Git HEAD 任务。Owner 身份从环境变量 `FORGEOS_OWNER_TOKEN` 读取。

@@ -50,7 +50,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 			roles[member] = true
 		}
 		for _, member := range b.AgentRoles {
-			if b.Harness != "codex" || member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review", "repository_analysis"}, member.Role) || roles[member] {
+			if b.Harness != "codex" || member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review", "repository_analysis", "feedback_classification"}, member.Role) || roles[member] {
 				return ErrConflict
 			}
 			roles[member] = true
@@ -136,7 +136,27 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	if err != nil {
 		return err
 	}
+	_, err = tx.ExecContext(ctx, `UPDATE preview_feedback f SET model_budget=b.name FROM static_preview_receipts p,model_budgets b
+		WHERE f.preview_id=p.id AND f.model_budget IS NULL AND f.classified_at IS NULL AND f.review_until>clock_timestamp()
+		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',p.project_id,'role','feedback_classification'))`)
+	if err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// A nil transaction means the worker must wait. The caller records its lease before committing.
+func (s *Store) beginManagementClaim(ctx context.Context, project int64, role string, supportsDeadline bool) (*sql.Tx, sql.NullString, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, sql.NullString{}, err
+	}
+	pool, available, err := modelSlot(ctx, tx, "codex", "", role, project)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		tx.Rollback()
+		return nil, pool, err
+	}
+	return tx, pool, nil
 }
 
 // Execution workers match by node ID. Independent roles match by project and task.

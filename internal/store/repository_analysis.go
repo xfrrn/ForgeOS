@@ -85,15 +85,11 @@ func (s *Store) RetryAnalysis(ctx context.Context, id int64, attempt int) error 
 func (s *Store) ClaimAnalysis(ctx context.Context, project int64, supportsDeadline bool) (*AnalysisJob, error) {
 	var j AnalysisJob
 	var raw []byte
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+	tx, pool, err := s.beginManagementClaim(ctx, project, "repository_analysis", supportsDeadline)
+	if tx == nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "codex", "", "repository_analysis", project)
-	if err != nil || !available || (pool.Valid && !supportsDeadline) {
-		return nil, err
-	}
 	err = tx.QueryRowContext(ctx, `WITH next AS (SELECT a.task_id FROM repository_analyses a JOIN repository_inventories i USING(task_id)
 		WHERE i.project_id=$1 AND a.result IS NULL AND a.failure IS NULL AND (a.lease_until IS NULL OR a.lease_until<=clock_timestamp())
 		ORDER BY a.task_id LIMIT 1 FOR UPDATE OF a SKIP LOCKED)

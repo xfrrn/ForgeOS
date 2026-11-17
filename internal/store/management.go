@@ -63,15 +63,11 @@ func (s *Store) SetPlanMinimum(ctx context.Context, id int64, revision int, leve
 func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDeadline bool) (*ManagementJob, error) {
 	var job ManagementJob
 	var spec, plan []byte
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+	tx, pool, err := s.beginManagementClaim(ctx, projectID, "plan_review", supportsDeadline)
+	if tx == nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "codex", "", "plan_review", projectID)
-	if err != nil || !available || (pool.Valid && !supportsDeadline) {
-		return nil, err
-	}
 	err = tx.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT t.id,t.project_id,t.spec,r.revision FROM work_items t
 		JOIN plan_revisions r ON r.task_id=t.id WHERE t.project_id=$1 AND t.status='PLANNING'

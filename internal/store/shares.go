@@ -79,15 +79,11 @@ func (s *Store) OutgoingShares(ctx context.Context, project, before int64) (json
 func (s *Store) ClaimShareReview(ctx context.Context, project int64, supportsDeadline bool) (*ManagementJob, error) {
 	job := ManagementJob{ProjectID: project, MinimumLevel: "D3", Share: &ShareReviewInput{}}
 	d := job.Share
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+	tx, pool, err := s.beginManagementClaim(ctx, project, "share_review", supportsDeadline)
+	if tx == nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "codex", "", "share_review", project)
-	if err != nil || !available || (pool.Valid && !supportsDeadline) {
-		return nil, err
-	}
 	err = tx.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT id FROM knowledge_shares WHERE project_id=$1 AND review IS NULL AND revoked_at IS NULL
 		AND (review_until IS NULL OR review_until<=clock_timestamp()) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
