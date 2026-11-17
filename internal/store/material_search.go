@@ -118,7 +118,7 @@ func (s *Store) hybridMaterials(ctx context.Context, project int64, kind, query 
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	v, err := s.embeddings.queryVector(ctx, query)
+	v, err := s.embeddings.textVector(ctx, query)
 	if err != nil {
 		return nil, err
 	}

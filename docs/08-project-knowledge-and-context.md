@@ -183,6 +183,10 @@ Management、Planner、Development、Review、Test、Operations 获取不同上�
 
 Owner 可读取 `GET /projects/{id}/materials/{key}/revisions/{revision}/curation`，核对提取与审核时间、两次会话及固定资料摘要。Owner 的 `GET /projects/{id}/experience` 与项目节点的 `GET /internal/projects/{id}/experience` 返回可用的项目经验，每页最多 30 条，以最后一项 ID 作为 `before` 读取下一页。[角色启动方法](local-development.md#启动知识提取角色)
 
+在项目资料页的“已审核项目经验”输入问题，或向同一经验接口提交 `q`（最多 512 字节）。搜索以单条事实为单位返回前 30 项，不能与浏览游标 `before` 合用。控制面先限定项目、当前有效来源及 Management 批准的 D1 经验，再以标题、事实陈述和原文引句检索。启用上述推理服务后，陈述和引句还会参与语义排序。
+
+每个结果包含事实编号、陈述、原文引句、固定修订、摘要和审核时间。`[start_char,end_char)` 是引句在固定来源正文内的 Unicode 字符位置，分段文档以该段开头为零。Owner 可用 `receipt_path` 打开原提取及审核回执。来源被更新或决定失效后，后续查询只返回仍然有效的经验，历史回执仍可回读。
+
 在“项目接入 → 项目资料”选择“记住一条项目经验”，填写标题、来源与观察原文，提交记忆请求。工作台为草稿生成可重复使用的资料标识。保存回执丢失时可直接重试；后续补充或更正可在同一标识下编辑新修订。通过类型“Owner 记忆请求”可筛选这些来源。Curator 和 Management 按固定修订提取、审核，Owner 可在“知识提取与审核”追溯结果。
 
 ### 从已确认决策提取经验

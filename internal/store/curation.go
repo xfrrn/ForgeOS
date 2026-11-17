@@ -149,10 +149,8 @@ func (s *Store) ProjectExperience(ctx context.Context, project, before int64) (j
 	}
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(jsonb_strip_nulls(to_jsonb(a)) ORDER BY id DESC),'[]') FROM (
-		SELECT c.id,c.key,c.decision_id,c.event_id,s.revision,s.title,s.source,s.kind,s.receipt_path,s.content_sha256,c.extraction->'facts' AS facts,c.reviewed_at
-		FROM material_curations c JOIN curation_sources s ON s.curation_id=c.id
-		WHERE c.project_id=$1 AND ($2::bigint=0 OR c.id<$2) AND c.review->>'verdict'='approve' AND c.review->>'level'='D1'
-		AND s.is_current
-		ORDER BY c.id DESC LIMIT 30) a`, project, before).Scan(&doc)
+		SELECT id,key,decision_id,event_id,revision,title,source,kind,receipt_path,content_sha256,facts,reviewed_at
+		FROM current_project_experience WHERE project_id=$1 AND ($2::bigint=0 OR id<$2)
+		ORDER BY id DESC LIMIT 30) a`, project, before).Scan(&doc)
 	return doc, err
 }

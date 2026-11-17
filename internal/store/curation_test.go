@@ -127,6 +127,25 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	if err := s.RecordExtraction(ctx, p.ID, job.ID, job.Lease, out); err != nil {
 		t.Fatal(err)
 	}
+	type citation struct {
+		ID    int64
+		Fact  int `json:"fact_number"`
+		Quote string
+		Start int `json:"start_char"`
+		End   int `json:"end_char"`
+	}
+	search := func() []citation {
+		t.Helper()
+		raw, err := s.SearchExperience(ctx, p.ID, "offset 274")
+		var hits []citation
+		if err != nil || json.Unmarshal(raw, &hits) != nil {
+			t.Fatal(string(raw), err)
+		}
+		return hits
+	}
+	if hits := search(); len(hits) != 0 {
+		t.Fatal("unreviewed observation is searchable", hits)
+	}
 	j, err := s.ClaimCuration(ctx, p.ID, true, false)
 	if err != nil || j == nil {
 		t.Fatal(j, err)
@@ -136,6 +155,10 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	}
 	if hits, err := s.ProjectExperience(ctx, p.ID, 0); err != nil || !strings.Contains(string(hits), "confirmed_decision") {
 		t.Fatal(string(hits), err)
+	}
+	hits := search()
+	if len(hits) != 1 || hits[0].ID != job.ID || hits[0].Fact != 1 || hits[0].Quote != out.Facts[0].Quote || string([]rune(src.Content)[hits[0].Start:hits[0].End]) != hits[0].Quote {
+		t.Fatal("invalid decision citation", hits)
 	}
 	before, err := s.DecisionCuration(ctx, p.ID, d.ID)
 	if err != nil {
@@ -153,6 +176,9 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	}
 	if hits, err := s.ProjectExperience(ctx, p.ID, 0); err != nil || string(hits) != "[]" {
 		t.Fatal(string(hits), err)
+	}
+	if hits := search(); len(hits) != 0 {
+		t.Fatal("superseded observation is searchable", hits)
 	}
 	if after, err := s.DecisionCuration(ctx, p.ID, d.ID); err != nil || string(before) != string(after) {
 		t.Fatal("lost historical review", err)

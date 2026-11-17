@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"forgeos/internal/store"
 )
@@ -98,6 +99,16 @@ func registerCurationReads(mux *http.ServeMux, data *store.Store, owner string, 
 		respond(w, 200, out, err)
 	}))
 	registerProjectRead(mux, "experience", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+		query := strings.TrimSpace(r.URL.Query().Get("q"))
+		if query != "" {
+			if len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) || r.URL.Query().Has("before") {
+				problem(w, http.StatusBadRequest, "invalid experience search query or cursor")
+				return
+			}
+			out, err := data.SearchExperience(r.Context(), project, query)
+			respond(w, http.StatusOK, out, err)
+			return
+		}
 		var before int64
 		if r.URL.Query().Has("before") {
 			var err error

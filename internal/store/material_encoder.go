@@ -100,24 +100,32 @@ func (e *materialEncoder) encode(ctx context.Context, inputs []string) ([][]floa
 	return vectors, nil
 }
 
-func (e *materialEncoder) queryVector(ctx context.Context, query string) ([]float32, error) {
-	text := []rune(query)
+func (e *materialEncoder) textVector(ctx context.Context, input string) ([]float32, error) {
+	text := []rune(input)
 	passages := materialPassages(text)
 	inputs := make([]string, len(passages))
 	for i, p := range passages {
 		inputs[i] = string(text[p.Start:p.End])
 	}
-	vectors, err := e.encode(ctx, inputs)
-	if err != nil {
-		return nil, err
-	}
-	if len(vectors) == 1 {
-		return vectors[0], nil
-	}
-	mean := make([]float32, len(vectors[0]))
-	for _, v := range vectors {
-		for i, x := range v {
-			mean[i] += x / float32(len(vectors))
+	var mean []float32
+	for start := 0; start < len(inputs); start += 16 {
+		vectors, err := e.encode(ctx, inputs[start:min(start+16, len(inputs))])
+		if err != nil {
+			return nil, err
+		}
+		if len(inputs) == 1 {
+			return vectors[0], nil
+		}
+		if start == 0 {
+			mean = make([]float32, len(vectors[0]))
+		}
+		for _, v := range vectors {
+			if len(v) != len(mean) {
+				return nil, errors.New("material encoder changed dimensions within one text")
+			}
+			for i, x := range v {
+				mean[i] += x / float32(len(inputs))
+			}
 		}
 	}
 	for _, x := range mean {
