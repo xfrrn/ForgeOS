@@ -255,7 +255,7 @@ func TestMigrateAndResumeDelivery(t *testing.T) {
 	if hits, err := s.SearchHistory(ctx, 1, first.TaskID, "merge", ""); err != nil || len(hits) != 0 {
 		t.Fatalf("waiting PR entered merged project history: %v %v", hits, err)
 	}
-	if job, err := s.ClaimCuration(ctx, 1, false); err != nil || job != nil {
+	if job, err := s.ClaimCuration(ctx, 1, false, false); err != nil || job != nil {
 		t.Fatal("waiting PR queued", job, err)
 	}
 	if d, err := s.ClaimDelivery(ctx, 1); err != nil || d != nil {
@@ -291,7 +291,7 @@ func TestMigrateAndResumeDelivery(t *testing.T) {
 		t.Fatalf("missing recorded PR merge: %v %v", hits, err)
 	}
 	merged := claim()
-	job, err := s.ClaimCuration(ctx, 1, false)
+	job, err := s.ClaimCuration(ctx, 1, false, false)
 	if err != nil || job == nil || !strings.Contains(string(job.Material), persisted.MergeSHA) {
 		t.Fatal(job, err)
 	}
@@ -320,7 +320,7 @@ func TestMigrateAndResumeDelivery(t *testing.T) {
 	if after, err := s.EventCuration(ctx, 1, first.TaskID, hits[0].Version); err != nil || string(after) != string(before) {
 		t.Fatal("changed after delivery", err)
 	}
-	if next, err := s.ClaimCuration(ctx, 1, false); err != nil || next != nil {
+	if next, err := s.ClaimCuration(ctx, 1, false, false); err != nil || next != nil {
 		t.Fatal("duplicate merge", next, err)
 	}
 	final, err := New(db).Task(ctx, first.TaskID)

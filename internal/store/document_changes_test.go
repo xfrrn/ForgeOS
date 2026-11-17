@@ -57,7 +57,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	git("add", ".")
 	git("commit", "-qm", "Baseline")
 	observe()
-	if j, err := s.ClaimCuration(ctx, p.ID, false); err != nil || j != nil {
+	if j, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || j != nil {
 		t.Fatal(j, err)
 	}
 	write("docs/recovery.md", "Observed offset 418.")
@@ -68,7 +68,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	git("commit", "-qm", "Add repository guides")
 	write("docs/recovery.md", "uncommitted draft")
 	observe()
-	j, err := s.ClaimCuration(ctx, p.ID, false)
+	j, err := s.ClaimCuration(ctx, p.ID, false, false)
 	if err != nil || j == nil {
 		t.Fatal(j, err)
 	}
@@ -79,7 +79,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	if err := json.Unmarshal(j.Material, &src); err != nil || src.Kind != "repository_document" || src.Content != "Observed offset 418." {
 		t.Fatal(string(j.Material), err)
 	}
-	if j, err := s.ClaimCuration(ctx, p.ID, false); err != nil || j != nil {
+	if j, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || j != nil {
 		t.Fatal("duplicate or unreadable source queued", j, err)
 	}
 	if _, err := s.DocumentCuration(ctx, p.ID+1, src.Revision); !errors.Is(err, ErrNotFound) {

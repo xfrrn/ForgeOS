@@ -10,7 +10,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 1. Codex App Server 0.169.0-alpha.11.1 已实测 stdio 初始化、只读 Thread、Turn 事件、新进程恢复与中断。正式 Worker 在 beta #35 使用 CLI 的 `exec resume`，写入和只读规划均在适配器丢失终态后恢复原 Thread 与沙箱。独立探针已核对单次 accept 的实际输出，同一会话再次运行相同命令仍须审批。decline 和 cancel 均阻止标记脚本执行，后者中断回合。正式 Worker 接入和其他版本兼容性待测。
 2. Claude Code 2.1.310 已在 Windows 真实验证 Headless Session Resume、问题答复和权限拒绝。正式 Worker 已交付私有 beta 的 Issue #22，任务页关联原生会话、版本和候选。beta #29 已从正式 Worker 实测 Claude 适配器丢失终态后退出，使用另一进程恢复原生会话和原工作区并完成交付。beta #105 已验证 Daemon 在业务问题检查点退出后的原会话恢复和交付。Linux 服务身份、运行中的原生模型进程被强制终止后的恢复仍待验收。
-3. 两个 Windows 普通 Worker 已在同一 Codex 登录下实测共享 1 个并发名额，含等待、控制面重启和两项目交付。独立 Reviewer 已与普通 Claude 开发节点共用 1 个名额，并在控制面重启后回报固定候选。候选 Test Agent 和 Management 覆盖审核也已在同一 Codex 预算内实测修订争用、重启和归还名额。Linux 专用用户登录复用、供应方实际限流和其余独立角色预算待验收。
+3. 两个 Windows 普通 Worker 已在同一 Codex 登录下实测共享 1 个并发名额，含等待、控制面重启和两项目交付。独立 Reviewer 已与普通 Claude 开发节点共用 1 个名额，并在控制面重启后回报固定候选。候选 Test Agent 和 Management 覆盖审核也已在同一 Codex 预算内实测修订争用、重启和归还名额。知识提取和审核也已实测共享名额，两份资料的提取与审核经独立原生会话完成。Linux 专用用户登录复用、供应方实际限流和其余 Management 任务的预算待验收。
 4. Ubuntu systemd 的非 root 身份、HOME、PATH、回环代理例外、工作区与重启已验收。专用用户下的模型登录复用和经代理的真实模型请求待测。
 5. 本次实测使用已登录的 GitHub CLI 账号。GitHub App 或细粒度 Token 所需的最小权限，以及要求第二位维护者批准 PR 时的交付行为，仍待实测。2026-11-17 查询两个验收仓库的协作者均只有 xfrrn，Owner 确认暂无独立审查账号及受限凭据，两项保持待验收。
 6. 已在私有 beta 仓库验证 GitHub Commit Status 的成功、失败、并发重报和丢失确认后的恢复。将 `forgeos/local-ci` 临时设为必需检查后，真实 PR 已与 Actions 一同通过并合并。使用当前 GitHub CLI 身份，GitHub App 最小授权仍见 A.5。

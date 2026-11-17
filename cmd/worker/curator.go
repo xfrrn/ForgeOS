@@ -17,7 +17,7 @@ const extractionSchema = `{"type":"object","additionalProperties":false,"require
 func (w *worker) runCurator(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.CurationJob
-		status, err := w.post(ctx, "/internal/curator/claim", struct{}{}, &job)
+		status, err := w.post(ctx, "/internal/curator/claim?supports_budget_deadline=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {
 			wait(ctx)
 			continue
@@ -36,7 +36,11 @@ func (w *worker) runCurator(ctx context.Context) error {
 }
 
 func (w *worker) curate(ctx context.Context, job store.CurationJob, review bool) error {
-	turn, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	deadline := time.Now().Add(5 * time.Minute)
+	if job.LeaseUntil != nil && job.LeaseUntil.Before(deadline) {
+		deadline = *job.LeaseUntil
+	}
+	turn, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	var err error
 	var path string

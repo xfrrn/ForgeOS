@@ -8,6 +8,78 @@ import (
 	"testing"
 )
 
+func TestCurationAccountAcrossExtractionAndReview(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(s.Migrate(ctx))
+	p, err := s.CreateProject(ctx, "budget")
+	must(err)
+	for _, key := range []string{"first", "second"} {
+		_, err = s.SaveMaterial(ctx, p.ID, key, MaterialInput{Kind: "material", Title: key, Source: "run", Content: "Offset 274."})
+		must(err)
+	}
+	claim := func(review, deadline bool) *CurationJob {
+		t.Helper()
+		job, err := s.ClaimCuration(ctx, p.ID, review, deadline)
+		must(err)
+		return job
+	}
+	first := claim(false, false)
+	if first == nil || first.LeaseUntil != nil {
+		t.Fatal("legacy unbudgeted job", first)
+	}
+	pool := ModelBudget{Name: "knowledge", Harness: "codex", Slots: 1, AgentRoles: []ModelBudgetRole{{p.ID, "curator"}, {p.ID, "curation_review"}}}
+	must(s.SetModelBudgets(ctx, []ModelBudget{pool}))
+	other := pool
+	other.Name = "other"
+	if err := s.SetModelBudgets(ctx, []ModelBudget{pool, other}); !errors.Is(err, ErrConflict) {
+		t.Fatal("duplicate role", err)
+	}
+	if claim(false, true) != nil {
+		t.Fatal("first configuration lost the running extraction")
+	}
+	out := Extraction{Session: "curator", Facts: []KnowledgeFact{{Statement: "Checkpoint offset", Quote: "274"}}}
+	must(s.RecordExtraction(ctx, p.ID, first.ID, first.Lease, out))
+	if claim(true, false) != nil {
+		t.Fatal("legacy client acquired a budgeted review")
+	}
+	review := claim(true, true)
+	if review == nil || review.LeaseUntil == nil {
+		t.Fatal("budgeted review", review)
+	}
+	must(s.RecordExtraction(ctx, p.ID, first.ID, first.Lease, out))
+	if claim(false, true) != nil {
+		t.Fatal("replayed extraction released the ongoing review")
+	}
+	_, err = s.db.ExecContext(ctx, "UPDATE material_curations SET review_until=now() WHERE id=$1", review.ID)
+	must(err)
+	second := claim(false, true)
+	if second == nil || second.ID == first.ID || second.LeaseUntil == nil || claim(true, true) != nil {
+		t.Fatal("extraction after review expiry", second)
+	}
+	must(s.RecordExtraction(ctx, p.ID, second.ID, second.Lease, Extraction{Session: "empty", Facts: []KnowledgeFact{}}))
+	retry := claim(true, true)
+	if retry == nil || retry.ID != review.ID || retry.Lease == review.Lease {
+		t.Fatal("expired review was not reassigned", retry)
+	}
+	r := ManagementReview{Level: "D1", Verdict: "approve", SessionID: "review", Rationale: "observed", Evidence: "274"}
+	if err = s.ReviewCuration(ctx, p.ID, review.ID, review.Lease, r); !errors.Is(err, ErrConflict) {
+		t.Fatal("expired receipt", err)
+	}
+	must(s.ReviewCuration(ctx, p.ID, retry.ID, retry.Lease, r))
+	var reserved int
+	must(s.db.QueryRowContext(ctx, "SELECT reserved FROM model_budget_usage WHERE name='knowledge'").Scan(&reserved))
+	if reserved != 0 || claim(true, true) != nil {
+		t.Fatal("completed review or empty extraction still pending", reserved)
+	}
+}
+
 func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
@@ -33,7 +105,7 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	job, err := s.ClaimCuration(ctx, p.ID, false)
+	job, err := s.ClaimCuration(ctx, p.ID, false, false)
 	if err != nil || job == nil {
 		t.Fatal(job, err)
 	}
@@ -44,7 +116,7 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	if json.Unmarshal(job.Material, &src) != nil || src.Kind != "confirmed_decision" || src.Revision < 1 || !strings.Contains(src.Content, proposal.Statement) || !strings.Contains(src.Content, proposal.Validity) {
 		t.Fatal(string(job.Material))
 	}
-	if next, err := s.ClaimCuration(ctx, p.ID, false); err != nil || next != nil {
+	if next, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || next != nil {
 		t.Fatal("duplicate confirmation queued", err)
 	}
 	out := Extraction{"curator", []KnowledgeFact{{"The queue resumed at the saved offset during rehearsal.", "offset 275"}}}
@@ -55,7 +127,7 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	if err := s.RecordExtraction(ctx, p.ID, job.ID, job.Lease, out); err != nil {
 		t.Fatal(err)
 	}
-	j, err := s.ClaimCuration(ctx, p.ID, true)
+	j, err := s.ClaimCuration(ctx, p.ID, true, false)
 	if err != nil || j == nil {
 		t.Fatal(j, err)
 	}
@@ -88,7 +160,7 @@ func TestConfirmedDecisionExperienceFollowsCurrentAuthority(t *testing.T) {
 	if _, err := s.DecisionCuration(ctx, p.ID+1, d.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("foreign receipt", err)
 	}
-	if next, err := s.ClaimCuration(ctx, p.ID, false); err != nil || next == nil || next.ID == job.ID {
+	if next, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || next == nil || next.ID == job.ID {
 		t.Fatal(next, err)
 	}
 }
@@ -109,7 +181,7 @@ func TestOwnerMemoryIsOnePrivateCurationSourceOnRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	job, err := s.ClaimCuration(ctx, p.ID, false)
+	job, err := s.ClaimCuration(ctx, p.ID, false, false)
 	if err != nil || job == nil {
 		t.Fatal(job, err)
 	}
@@ -120,7 +192,7 @@ func TestOwnerMemoryIsOnePrivateCurationSourceOnRetry(t *testing.T) {
 	if err := json.Unmarshal(job.Material, &source); err != nil || source.Revision != 1 || source.MaterialInput != m {
 		t.Fatal(source, err)
 	}
-	if next, err := s.ClaimCuration(ctx, p.ID, false); err != nil || next != nil {
+	if next, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || next != nil {
 		t.Fatal(next, err)
 	}
 	if list, err := s.ProjectExperience(ctx, p.ID, 0); err != nil || string(list) != "[]" {
@@ -147,14 +219,14 @@ func TestCurationDecisionRequiresEscalatedReview(t *testing.T) {
 			if _, err := s.SaveMaterial(ctx, project.ID, tc.level, source); err != nil {
 				t.Fatal(err)
 			}
-			job, err := s.ClaimCuration(ctx, project.ID, false)
+			job, err := s.ClaimCuration(ctx, project.ID, false, false)
 			if err != nil || job == nil {
 				t.Fatal(job, err)
 			}
 			if err := s.RecordExtraction(ctx, project.ID, job.ID, job.Lease, Extraction{"extract", []KnowledgeFact{{"Proposed cap.", source.Content}}}); err != nil {
 				t.Fatal(err)
 			}
-			review, err := s.ClaimCuration(ctx, project.ID, true)
+			review, err := s.ClaimCuration(ctx, project.ID, true, false)
 			if err != nil || review == nil {
 				t.Fatal(review, err)
 			}
@@ -189,17 +261,17 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	first, err := s.ClaimCuration(ctx, p.ID, false)
+	first, err := s.ClaimCuration(ctx, p.ID, false, false)
 	if err != nil || first == nil {
 		t.Fatal(first, err)
 	}
-	if j, err := s.ClaimCuration(ctx, p.ID, false); err != nil || j != nil {
+	if j, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || j != nil {
 		t.Fatal("duplicate claim", j, err)
 	}
 	if _, err = s.db.ExecContext(ctx, "UPDATE material_curations SET extraction_until=now() WHERE id=$1", first.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := s.ClaimCuration(ctx, p.ID, false)
+	job, err := s.ClaimCuration(ctx, p.ID, false, false)
 	if err != nil || job == nil || job.Lease == first.Lease {
 		t.Fatal(job, err)
 	}
@@ -220,7 +292,7 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	j, err := s.ClaimCuration(ctx, p.ID, true)
+	j, err := s.ClaimCuration(ctx, p.ID, true, false)
 	if err != nil || j == nil || j.Extraction.Session != out.Session {
 		t.Fatal(j, err)
 	}
@@ -285,14 +357,14 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 	if _, err = s.SaveMaterial(ctx, p.ID, "queue", input); err != nil {
 		t.Fatal(err)
 	}
-	next, err := s.ClaimCuration(ctx, p.ID, false)
+	next, err := s.ClaimCuration(ctx, p.ID, false, false)
 	if err != nil || next == nil || next.ID == job.ID {
 		t.Fatal(next, err)
 	}
 	if err = s.RecordExtraction(ctx, p.ID, next.ID, next.Lease, Extraction{Session: "curator-2", Facts: []KnowledgeFact{}}); err != nil {
 		t.Fatal(err)
 	}
-	if j, err := s.ClaimCuration(ctx, p.ID, true); err != nil || j != nil {
+	if j, err := s.ClaimCuration(ctx, p.ID, true, false); err != nil || j != nil {
 		t.Fatal("empty extraction scheduled", j, err)
 	}
 	raw, err := s.MaterialCuration(ctx, p.ID, "queue", 1)

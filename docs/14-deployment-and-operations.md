@@ -151,6 +151,14 @@ Test Agent 生成候选测试计划和 Management 审核该计划的覆盖率都
 
 角色在取得名额后领取六分钟租约；工作台“执行节点”显示 Test Agent、覆盖审核及其共享占用。Owner 在旧回合运行时修订测试计划，新版等待旧回合交回结果或租约到期。旧回合收到 409 后释放名额，旧结果不能推进新版。此配置用于候选测试计划的两种任务。其他 Management 任务的预算另记。
 
+知识提取和知识审核也使用 Codex。在同一预算的 `agent_roles` 中分别加入项目的 `curator` 和 `curation_review`，可与执行节点、候选测试角色共用名额。
+
+```json
+[{"name":"knowledge","harness":"codex","slots":1,"agent_roles":[{"project_id":7,"role":"curator"},{"project_id":7,"role":"curation_review"}]}]
+```
+
+每次提取或审核分别领取六分钟租约。已完成提取的材料在等待审核期间释放名额；审核领取时按当时的配置重新申请。原生回合最长五分钟，也受控制面签发的租约截止时间限制。若回报丢失或角色退出，占用保留至有效回报或租约过期。旧 Worker 可继续处理未配置预算的知识任务。
+
 ### 测量队列与事件读取
 
 在恢复出的隔离数据库上启动正式控制面和 Worker，将 Worker 指向验收克隆。选择一个已有事件的终态任务，并取要参与派发的项目 ID。下面的命令会真实创建 27 个 Git HEAD 任务。Owner 身份从环境变量 `FORGEOS_OWNER_TOKEN` 读取。

@@ -12,15 +12,16 @@ import (
 )
 
 type ModelBudget struct {
-	Name             string         `json:"name"`
-	Harness          string         `json:"harness"`
-	Slots            int            `json:"slots"`
-	Workers          []string       `json:"workers"`
-	ReviewerProjects []int64        `json:"reviewer_projects,omitempty"`
-	TestPlanRoles    []TestPlanRole `json:"test_plan_roles,omitempty"`
+	Name             string            `json:"name"`
+	Harness          string            `json:"harness"`
+	Slots            int               `json:"slots"`
+	Workers          []string          `json:"workers"`
+	ReviewerProjects []int64           `json:"reviewer_projects,omitempty"`
+	TestPlanRoles    []ModelBudgetRole `json:"test_plan_roles,omitempty"`
+	AgentRoles       []ModelBudgetRole `json:"agent_roles,omitempty"`
 }
 
-type TestPlanRole struct {
+type ModelBudgetRole struct {
 	Project int64  `json:"project_id"`
 	Role    string `json:"role"`
 }
@@ -34,18 +35,24 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	names := map[string]bool{}
 	members := map[[2]string]bool{}
 	reviewers := map[int64]bool{}
-	planRoles := map[TestPlanRole]bool{}
+	roles := map[ModelBudgetRole]bool{}
 	for _, b := range budgets {
 		if !budgetName.MatchString(b.Name) || names[b.Name] || (b.Harness != "codex" && b.Harness != "claude") ||
-			b.Slots < 1 || b.Slots > 2147483647 || len(b.Workers)+len(b.ReviewerProjects)+len(b.TestPlanRoles) == 0 {
+			b.Slots < 1 || b.Slots > 2147483647 || len(b.Workers)+len(b.ReviewerProjects)+len(b.TestPlanRoles)+len(b.AgentRoles) == 0 {
 			return ErrConflict
 		}
 		names[b.Name] = true
 		for _, member := range b.TestPlanRoles {
-			if b.Harness != "codex" || member.Project < 1 || (member.Role != "test" && member.Role != "management") || planRoles[member] {
+			if b.Harness != "codex" || member.Project < 1 || (member.Role != "test" && member.Role != "management") || roles[member] {
 				return ErrConflict
 			}
-			planRoles[member] = true
+			roles[member] = true
+		}
+		for _, member := range b.AgentRoles {
+			if b.Harness != "codex" || member.Project < 1 || (member.Role != "curator" && member.Role != "curation_review") || roles[member] {
+				return ErrConflict
+			}
+			roles[member] = true
 		}
 		for _, project := range b.ReviewerProjects {
 			if project < 1 || b.Harness != "claude" || reviewers[project] {
@@ -71,12 +78,12 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 		return err
 	}
 	for _, b := range budgets {
-		roles, err := json.Marshal(b.TestPlanRoles)
+		members, err := json.Marshal(b)
 		if err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO model_budgets(name,harness,slots,workers,reviewer_projects,test_plan_roles)
-			VALUES ($1,$2,$3,COALESCE($4::text[],'{}'),COALESCE($5::bigint[],'{}'),COALESCE(NULLIF($6::jsonb,'null'),'[]'))`, b.Name, b.Harness, b.Slots, pq.Array(b.Workers), pq.Array(b.ReviewerProjects), string(roles)); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO model_budgets(name,harness,slots,workers,reviewer_projects,test_plan_roles,agent_roles)
+			VALUES ($1,$2,$3,COALESCE($4::text[],'{}'),COALESCE($5::bigint[],'{}'),COALESCE($6::jsonb->'test_plan_roles','[]'),COALESCE($6::jsonb->'agent_roles','[]'))`, b.Name, b.Harness, b.Slots, pq.Array(b.Workers), pq.Array(b.ReviewerProjects), string(members)); err != nil {
 			return err
 		}
 	}
@@ -102,16 +109,24 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	if err != nil {
 		return err
 	}
+	_, err = tx.ExecContext(ctx, `UPDATE material_curations c SET model_budget=b.name FROM model_budgets b
+		WHERE c.model_budget IS NULL AND c.review IS NULL AND
+		CASE WHEN c.extraction IS NULL THEN c.extraction_until ELSE c.review_until END >clock_timestamp()
+		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',c.project_id,
+			'role',CASE WHEN c.extraction IS NULL THEN 'curator' ELSE 'curation_review' END))`)
+	if err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
-// Execution workers match by node ID. Reviewers match by their authorized project.
+// Execution workers match by node ID. Independent roles match by project and task.
 func modelSlot(ctx context.Context, tx *sql.Tx, harness, worker, role string, project int64) (sql.NullString, bool, error) {
 	var pool sql.NullString
 	var slots, used int
 	err := tx.QueryRowContext(ctx, `SELECT name,slots FROM model_budgets WHERE harness=$1
 		AND ($2=ANY(workers) OR ($3::text='reviewer' AND $4::bigint=ANY(reviewer_projects))
-			OR test_plan_roles @> jsonb_build_array(jsonb_build_object('role',$3::text,'project_id',$4::bigint))) FOR UPDATE`, harness, worker, role, project).Scan(&pool, &slots)
+			OR (test_plan_roles || agent_roles) @> jsonb_build_array(jsonb_build_object('role',$3::text,'project_id',$4::bigint))) FOR UPDATE`, harness, worker, role, project).Scan(&pool, &slots)
 	if errors.Is(err, sql.ErrNoRows) {
 		return pool, true, nil
 	}
@@ -127,7 +142,8 @@ func (s *Store) ModelBudgets(ctx context.Context) (json.RawMessage, error) {
 	var raw json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(
 		to_jsonb(b) - CASE WHEN cardinality(reviewer_projects)=0 THEN 'reviewer_projects' ELSE '' END
-		- CASE WHEN test_plan_roles='[]' THEN 'test_plan_roles' ELSE '' END ORDER BY name
+		- CASE WHEN test_plan_roles='[]' THEN 'test_plan_roles' ELSE '' END
+		- CASE WHEN agent_roles='[]' THEN 'agent_roles' ELSE '' END ORDER BY name
 	),'[]') FROM model_budget_usage b`).Scan(&raw)
 	return raw, err
 }

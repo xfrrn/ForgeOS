@@ -109,7 +109,7 @@ func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 		return err
 	}
 	conflict(approve())
-	pool := store.ModelBudget{Name: "tests", Harness: "codex", Slots: 1, TestPlanRoles: []store.TestPlanRole{{Project: project.ID, Role: "test"}, {Project: project.ID, Role: "management"}}}
+	pool := store.ModelBudget{Name: "tests", Harness: "codex", Slots: 1, TestPlanRoles: []store.ModelBudgetRole{{Project: project.ID, Role: "test"}, {Project: project.ID, Role: "management"}}}
 	// Configure after the first claim to exercise an upgrade with an in-flight turn.
 	claim := func(role string) *store.TestPlanJob {
 		t.Helper()

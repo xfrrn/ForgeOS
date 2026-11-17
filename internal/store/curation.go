@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 )
 
 type KnowledgeFact struct {
@@ -21,23 +22,36 @@ type Extraction struct {
 type CurationJob struct {
 	ID         int64           `json:"id"`
 	Lease      string          `json:"lease"`
+	LeaseUntil *time.Time      `json:"lease_until,omitempty"`
 	Material   json.RawMessage `json:"material"`
 	Extraction *Extraction     `json:"extraction,omitempty"`
 }
 
-func (s *Store) ClaimCuration(ctx context.Context, project int64, review bool) (*CurationJob, error) {
+func (s *Store) ClaimCuration(ctx context.Context, project int64, review, supportsDeadline bool) (*CurationJob, error) {
+	role := "curator"
 	pending, lease, until := "extraction IS NULL", "extraction_lease", "extraction_until"
 	if review {
+		role = "curation_review"
 		pending, lease, until = "extraction IS NOT NULL AND jsonb_array_length(extraction->'facts')>0 AND review IS NULL", "review_lease", "review_until"
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	pool, available, err := modelSlot(ctx, tx, "codex", "", role, project)
+	if err != nil || !available || (pool.Valid && !supportsDeadline) {
+		return nil, err
 	}
 	var job CurationJob
 	var extraction []byte
-	err := s.db.QueryRowContext(ctx, `WITH candidate AS (
+	err = tx.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT id FROM material_curations WHERE project_id=$1 AND `+pending+` AND (`+until+` IS NULL OR `+until+`<=now())
 		ORDER BY `+until+` NULLS FIRST,id LIMIT 1 FOR UPDATE SKIP LOCKED)
-		UPDATE material_curations c SET `+lease+`=gen_random_uuid(),`+until+`=now()+interval '6 minutes'
+		UPDATE material_curations c SET `+lease+`=gen_random_uuid(),`+until+`=clock_timestamp()+interval '6 minutes',model_budget=$2
 		FROM candidate,curation_sources s WHERE c.id=candidate.id AND s.curation_id=c.id
-		RETURNING c.id,c.`+lease+`,jsonb_strip_nulls(to_jsonb(s)-'curation_id'-'receipt_path'-'is_current'),c.extraction`, project).Scan(&job.ID, &job.Lease, &job.Material, &extraction)
+		RETURNING c.id,c.`+lease+`,jsonb_strip_nulls(to_jsonb(s)-'curation_id'-'receipt_path'-'is_current'),c.extraction,
+		CASE WHEN $3 THEN c.`+until+` END`, project, pool, supportsDeadline).Scan(&job.ID, &job.Lease, &job.Material, &extraction, &job.LeaseUntil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -48,6 +62,9 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review bool) (
 		if err = json.Unmarshal(extraction, &job.Extraction); err != nil {
 			return nil, err
 		}
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
 	}
 	return &job, nil
 }

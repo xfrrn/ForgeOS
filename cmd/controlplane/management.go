@@ -56,7 +56,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			}
 		}
 		if err == nil && job == nil && r.URL.Query().Get("supports_curation") == "1" {
-			c, claimErr := data.ClaimCuration(r.Context(), id, true)
+			c, claimErr := data.ClaimCuration(r.Context(), id, true, r.URL.Query().Get("supports_budget_deadline") == "1")
 			err = claimErr
 			if c != nil {
 				job = &store.ManagementJob{Curation: c}
