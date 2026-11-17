@@ -2890,7 +2890,7 @@ PostgreSQL 18 与 Docker 全包回归 298 项测试及子测试通过，零失�
 
 回归验证三适配器工具正文、排除参数和图片、失败调用输出、敏感环境值、节点凭据轮换、跨工具调用的分段私钥、UTF-8 窗口、事件滚动及 SQLite 重开。控制面测试覆盖工具和调用身份、序号回退、同序号修改、执行租约泄露及最终回执删除／覆盖拒绝。原 16 KiB HTTP 上限不能容纳合法窗口的 JSON 转义结果；新增真实路由测试用两个 8 KiB HTML 字符窗口验证成功上报、幂等重放、改写拒绝和超限拒绝。
 
-PostgreSQL 18 与 Docker 全包 307 项测试及子测试通过，零失败、零跳过；复查发现最初实现会在新调用时清除私钥状态，新增分段读取回归先失败；移除该重置后复测和全包回归通过。beta #198 又从真实 Claude 的两次 Read 分段返回核对：第一段有开始标记且无结束标记，第二段含结束标记；节点与最终输出均遮蔽第二段合成密钥。Go 静态检查、TypeScript 和生产构建通过。仅最近完成且有正文的工具结果进入本窗口；工具执行中的增量输出、Codex MCP 等结构化工具结果、完整工具归档、启动阶段及其他独立角色输出仍待补齐。SQLite 重开及替换脱敏器后的跨段遮蔽已回归；Codex 原生进程在两段读取之间重启的完整场景见后续记录；其他适配器的同类故障点仍待实测。全路线最终验收和已列外部条件继续待验收。
+PostgreSQL 18 与 Docker 全包 307 项测试及子测试通过，零失败、零跳过；复查发现最初实现会在新调用时清除私钥状态，新增分段读取回归先失败；移除该重置后复测和全包回归通过。beta #198 又从真实 Claude 的两次 Read 分段返回核对：第一段有开始标记且无结束标记，第二段含结束标记；节点与最终输出均遮蔽第二段合成密钥。Go 静态检查、TypeScript 和生产构建通过。仅最近完成且有正文的工具结果进入本窗口；工具执行中的增量输出、Codex MCP 等结构化工具结果、完整工具归档、启动阶段及其他独立角色输出仍待补齐。SQLite 重开及替换脱敏器后的跨段遮蔽已回归；Codex 原生进程在两段读取之间重启的完整场景见后续记录；App Server 和 Claude 的恢复场景见后续记录。全路线最终验收和已列外部条件继续待验收。
 
 上述工具输出实现对应 ForgeOS 提交 dbbc3d9e75e5ed8ce6a36ec049bd52b44c18d4d7。
 
@@ -2903,4 +2903,21 @@ PostgreSQL 18 与 Docker 全包 307 项测试及子测试通过，零失败、�
 | 核对恢复后实际原生工具结果和节点窗口 | 第二段无需再次包含开始标记，也持续遮蔽到结束标记 | 按替代进程启动时间筛选原生 item_completed：后续结果没有 BEGIN PRIVATE KEY，却包含 fake-key-second 与结束标记。最终窗口中该合成正文被 [redacted] 替换，结束标记后普通文本保留，SQLite 状态变为 false。 |
 | 验收精确候选并等待交付，重启后回读两个进程 | 候选通过检查、合并并关闭 Issue，历史保留 | 候选 149e6c58d2d0eea8ed75dd3dbe88d04277fb4e68 由 [PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/201) 合并为 ad201df73c0828524c8f19f35d646ba48d506233；Actions 44179576877 预设失败后同 SHA 重跑成功，两项检查 SUCCESS。任务 DONE、Issue CLOSED，Chrome 回读同一份进程输出。 |
 
-本项未修改实现，沿用 dbbc3d9 的 307 项 PostgreSQL/Docker 回归、静态检查及 Web 构建。仅新增真实入口验收和文档。其他适配器在相同分段故障点的实测、增量输出、完整工具归档，以及全路线剩余项目继续待验收；未把 Worker 重启等同于整机重启。
+本项未修改实现，沿用 dbbc3d9 的 307 项 PostgreSQL/Docker 回归、静态检查及 Web 构建。仅新增真实入口验收和文档。App Server 和 Claude 的后续恢复实测见下文；增量输出、完整工具归档，以及全路线剩余项目继续待验收；未把 Worker 重启等同于整机重启。
+
+上述 Codex CLI 恢复验收对应 ForgeOS 提交 00379260780c5b9df2aea10336f4c545460f0c90。
+
+### 专题 07、13 · App Server 与 Claude 恢复后的工具脱敏
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| beta #202 的 App Server 读取合成私钥前五行，在有界等待期间从 Chrome 暂停，重启控制面和 Worker，再恢复 | 原执行和 Thread 继续；新进程只读后半段时仍遮蔽 | 执行 #1、Thread 01a1eb68-e3c3-7603-a12d-0a2deb5e2513 保持不变，原生 PID 40728 → 42796，Worker 39052 → 49128。替代进程的原生结果无开始标记、含合成密钥尾段与结束标记；SQLite 恢复遮蔽状态，公开窗口没有密钥正文，状态在结束标记后关闭。 |
+| 在 Chrome 验收 #202 的单文件候选，再等待受保护交付与重启回读 | 固定候选检查成功并交付；两个进程的输出保留 | 候选 6fe950f8c71fc78619ff0c8b0551b48e4bd4ec11 经 [PR #203](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/203) 合并为 6f165a18dc607fb5096b3c0c4f6dbeb2b0bd3f65。Actions 44180356441 预设失败后同 SHA 重跑成功；acceptance-check 与 forgeos/local-ci 均 SUCCESS。任务 DONE、Issue CLOSED，重启后历史一致。 |
+| beta #204 的原生 Claude 写入九行夹具、只读前五行，提出是否加脚注的业务问题；在 WAITING_INPUT 重启控制面和 Worker，Chrome 答复不加脚注且仅续读后四行 | 检查点、Owner 答复、工作区及 Session 连续；替代进程继承遮蔽状态 | 执行 #1、Session c862106e-b547-4edd-88a0-455a1d975f4c 不变，原生 PID 22560 → 34260，Worker 35516 → 12044。替代进程唯一 Read 结果无开始标记、含合成密钥尾段和结束标记；公开窗口遮蔽该正文，普通尾部文本保留，SQLite 私钥状态由 true 转 false。 |
+| 核对 Claude 精确候选，在 Chrome 验收并完成交付，再重启回读 | 九行夹具未被答复后的回合修改，历史与最终回执一致 | 候选 ac031e6ae6bfff5ed8f98092356e5e02b574027f 经 [PR #205](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/205) 合并为 b8cc1907c16022e45e348557c9e989d532ea00d9。Actions 44181570854 预设失败后同 SHA 重跑成功，两项必需检查 SUCCESS；任务 DONE、Issue CLOSED，Chrome 重启回读保留两个 PID 的输出。 |
+
+Claude 的首次验收脚本误把业务答复的成功状态码写成 204，接口实际按合同返回 200；答复已成功入库。核对数据库、节点日志和原 API 地址的 SQLite 后，修正脚本并从原执行继续，没有重复导入 Issue、重复提交答复或创建新执行。原生首回合一次 Write 失败后重试成功，失败事件仍在历史内。
+
+本项仅增加真实验收证据和文档；实现沿用 dbbc3d9，307 项 PostgreSQL/Docker 回归、静态检查及 Web 构建结果仍适用。分别核对原生会话文件中替代进程启动后的工具结果、SQLite 状态、Chrome 页面和最终回执。本地证据目录为 tool_output_appserverresume、tool_output_clauderecover，均记录 done、restarted_done、native_replacement_tail_verified 为 true。
+
+Claude 本项是业务问题检查点恢复，不代表活动工具强制中断或整机重启已经验收。增量输出、完整归档、其余角色输出及全路线最终验收仍待完成；外部设备、受限身份和独立审查者继续待验收。

@@ -42,7 +42,7 @@ ORDER BY p.instance;
 
 公开模型消息的脱敏窗口保存在 Worker SQLite 的 `harness_model_output(instance, sequence, text)`，每个进程最多 8 KiB。控制面在 `observed_process.output` 和最终 `result.processes[].output` 保存对应序号和正文；原始消息不写入这张节点表。输出包含候选任务的内容，因此仍按原执行的 Owner 访问边界读取。没有该字段的旧记录保持原状。该窗口用于回看最近进度，不是完整会话转录或任务成功凭据。
 
-完成工具的脱敏窗口位于 harness_tool_output(instance, seq, call, tool, text)，每个进程最多 8 KiB；通过 observed_process.tool_output 和 result.processes[].tool_output 回读。对应事件仍保存在 harness_tool_events。harness_output_redaction 按租约摘要和 model/tool 类别记录未结束的私钥块状态，不保存密钥正文；该状态与脱敏输出在同一 SQLite 事务内提交。beta #200 已验证 Worker 重启后从该状态继续遮蔽 Codex 工具结果。窗口只保存最近一次有正文的结果，完整工具输出的归档和到期清理继续待补齐。
+完成工具的脱敏窗口位于 harness_tool_output(instance, seq, call, tool, text)，每个进程最多 8 KiB；通过 observed_process.tool_output 和 result.processes[].tool_output 回读。对应事件仍保存在 harness_tool_events。harness_output_redaction 按租约摘要和 model/tool 类别记录未结束的私钥块状态，不保存密钥正文；该状态与脱敏输出在同一 SQLite 事务内提交。beta #200、#202 已验证 Worker 重启后从该状态继续遮蔽 Codex CLI 和 App Server 工具结果；beta #204 验证 Claude 在业务问题检查点重启、答复后同会话续读时继承该状态。窗口只保存最近一次有正文的结果，完整工具输出的归档和到期清理继续待补齐。
 
 在执行节点的 SQLite 中，按实例号查询完整工具事件。两个终端或会话的相同序号须结合节点与进程实例识别。
 
