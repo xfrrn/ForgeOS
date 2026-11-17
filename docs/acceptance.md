@@ -2131,3 +2131,20 @@ PostgreSQL 和 Docker 均启用时，Go 全包回归共 229 项测试及子测�
 | queue-replay-c7219e | `1f8033e9b78584beeacc9c23a7b5ed54685dad88c4257edf66766f4015258d2e` | `01a1e8ff-8cec-7a70-9b89-8c66be6931e5` | `01a1e8ff-bbdc-7b83-84a9-7d0c90f10155` |
 
 首次全包回归指向已关闭的旧测试库端口，连接被拒绝。改用本次真实验收所用的独立 PostgreSQL 18 实例，在新的隔离 schema 中重跑全部包，启用 Docker 后 231 项 Go 测试及子测试通过，零跳过。Go vet 和 Web 生产构建通过。
+
+知识提取和审核的共享名额对应 ForgeOS 提交 `4ae0fae3ff39c7cab0043c92fb3b17d59feda169`。
+
+### 专题 07、16 · 从执行节点核对适配器的版本与操作
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 启动装有两种 CLI 的 Windows Worker，读取版本、Owner API，在 Chrome 打开执行节点并派发 Git HEAD | 版本与原生可执行文件一致，显示当前适配器能够执行的操作，节点能正常领取任务 | 基线节点只显示两个支持标志。更新后的节点 `adapter-qa-d68369` 显示 Codex `0.169.0-alpha.11.1`、Claude Code `2.1.310`；两项均报告 probe、start、resume、events。任务 2 完成并返回仓库 HEAD `65d40b2a22dcec366c5146ed5924c607b09f7cbd`。 |
+| 重启控制面；用同一节点身份移除 Claude 配置、切换到旧 Worker，再将新 Worker 指向旧控制面 | 持久记录可读，停用的适配器及时消失，新旧节点均能登记 | 重启后完整报告一致。移除 Claude 后只剩 Codex。旧 Worker 的下一次心跳清除旧探测报告并保留原能力字段；旧控制面接受新 Worker 心跳。HTTP 回归另验证不一致或未知的操作返回 400，保留此前报告。 |
+| 导入两个私有仓库中的文档 Issue；首次模型回合向 Owner 提问，在等待时重启控制面，经 Chrome 答复并检查两次进程回执 | 下一回合使用同一 Session；进程版本匹配心跳，事件和候选都能回查 | 下表两个执行各有两个不同的 PID，各自共用同一原生会话。Git 对象中仅指定文件发生变化，H1 与各自 Owner 答复逐字相同。 |
+
+| 入口 | 会话、进程及工具事件条数 | 验收候选与交付 |
+| --- | --- | --- |
+| alpha #26 · Codex | `01a1e914-fe04-77d1-8d9c-91093ee75d2e`，PID 37992、43640，分别记录 0、8 条工具事件 | 候选 `d05878b7ebe296240ac796e6eaa06951a390004a`，合并 `e5fa4a03de6d6839118e5fa513db1c084298553d`。[PR #27](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/27) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/44066658220) |
+| beta #117 · Claude Code | `d9afedc9-bea3-4bad-ac7a-03e2bd293a52`，PID 11044、36456，分别记录 12、2 条工具事件 | 候选 `ae076c7b347cd3e782af5d458ea6a163934c8370`，合并 `70f6e6136cdacd6b20ae7e515bae5d33a7433d64`。[PR #118](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/118) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44066462156) |
+
+alpha 首次导入选择了 auto。原生会话恢复成功，但固定基线缺少 validation.yaml，候选 `97b9413e9a07fc6a5ad673e17e43073c248a2de7` 在本地得到 CONFIG_FAILURE。保留该记录后，在新的隔离 schema 用 alpha 的 docs 配置重新导入同一 Issue。两仓均核对了必需检查的预设首次失败步骤，重跑通过后合并。启用 PostgreSQL 18 和 Docker 的全包回归共 232 项 Go 测试及子测试通过，零跳过。Go vet 与 Web 生产构建通过。

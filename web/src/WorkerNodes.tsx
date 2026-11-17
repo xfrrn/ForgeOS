@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
+type Adapter = { version: string; operations: string[] }
 type Node = { worker: string; os: string; arch: string; cpus: number; slots: number; reserved: number
   model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
-  last_seen: string; online: boolean; capabilities: Record<string, boolean> }
+  last_seen: string; online: boolean; capabilities: Record<string, unknown> & { adapters?: Record<string, Adapter> } }
 
 type ModelBudget = { name: string; harness: string; slots: number; reserved: number; workers: string[]; reviewer_projects?: number[]; test_plan_roles?: {project_id: number; role: 'test' | 'management'}[]; agent_roles?: {project_id: number; role: 'curator' | 'curation_review'}[] }
 
 const capabilities: Record<string, string> = { supports_startup: '本地环境启动', supports_codex: 'Codex', supports_claude: 'Claude Code', supports_planner: '规划', supports_global_rules: '全局默认规则',
   supports_checkpoints: '检查点', supports_rework: '退回修订', supports_validation: '候选验证', supports_declared_checks: '项目检查', supports_risk_policy: '按风险选级' }
+const operations: Record<string, string> = { probe: '探测', start: '启动', resume: '恢复会话', events: '读取事件' }
 
 export function WorkerNodes({ request }: { request: ApiRequest }) {
   const [nodes, setNodes] = useState<Node[]>([])
@@ -42,5 +44,7 @@ export function WorkerNodes({ request }: { request: ApiRequest }) {
       <p>已占名额 {n.reserved} / {n.slots}</p><p>最近心跳　<time dateTime={n.last_seen}>{formatTime(n.last_seen)}</time></p>
       {n.model_slots && n.ci_slots && <p>模型名额 {n.model_reserved} / {n.model_slots} · CI 名额 {n.ci_reserved} / {n.ci_slots}</p>}
       <p>{['Git HEAD', ...Object.entries(capabilities).filter(([key]) => n.capabilities[key]).map(([, label]) => label)].join(' · ')}</p>
+      {Object.entries(n.capabilities.adapters ?? {}).map(([name, probe]) =>
+        <p key={name}>{capabilities[`supports_${name}`] ?? name} {probe.version} · {probe.operations.map(op => operations[op] ?? op).join('、')}</p>)}
     </article>)}</section>
 }

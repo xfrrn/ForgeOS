@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,25 @@ import (
 	"forgeos/internal/store"
 )
 
-func findCodex(configured string) (string, bool, error) {
+// Match whole option names in the CLI's option declarations.
+func hasCLIOptions(help []byte, required ...string) bool {
+	options := make(map[string]bool)
+	for _, line := range strings.Split(string(help), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || !strings.HasPrefix(fields[0], "-") {
+			continue
+		}
+		for _, field := range fields {
+			if !strings.HasPrefix(field, "-") {
+				break
+			}
+			options[strings.TrimSuffix(field, ",")] = true
+		}
+	}
+	return !slices.ContainsFunc(required, func(flag string) bool { return !options[flag] })
+}
+
+func findCodex(configured string, implementation bool) (string, bool, error) {
 	name := configured
 	if name == "" {
 		name = "codex"
@@ -35,13 +54,24 @@ func findCodex(configured string) (string, bool, error) {
 		cmd := exec.CommandContext(ctx, bin, "exec", "--help")
 		cmd.Env = harnessEnv()
 		help, err := cmd.Output()
-		if err == nil && bytes.Contains(help, []byte("--ignore-user-config")) && bytes.Contains(help, []byte("--ignore-rules")) {
-			planner := bytes.Contains(help, []byte("--output-schema")) && bytes.Contains(help, []byte("--output-last-message")) && bytes.Contains(help, []byte("read-only"))
-			return bin, planner, nil
+		if err == nil && hasCLIOptions(help, "--ignore-user-config", "--ignore-rules") {
+			planner := hasCLIOptions(help, "--output-schema", "--output-last-message") && bytes.Contains(help, []byte("read-only"))
+			if !implementation {
+				return bin, planner, nil
+			}
+			resume := exec.CommandContext(ctx, bin, "exec", "resume", "--help")
+			resume.Env = harnessEnv()
+			if usage, err := resume.Output(); err == nil && bytes.Contains(usage, []byte("codex exec resume")) && bytes.Contains(usage, []byte("SESSION_ID")) &&
+				hasCLIOptions(help, "--disable", "--sandbox", "--json", "-C") && bytes.Contains(help, []byte("workspace-write")) {
+				return bin, planner, nil
+			}
 		}
 	}
 	if configured != "" {
-		return "", false, errors.New("FORGEOS_CODEX_BIN must identify a local Codex executable supporting exec --ignore-user-config and --ignore-rules")
+		if !implementation {
+			return "", false, errors.New("configured Codex must support exec with isolated settings")
+		}
+		return "", false, errors.New("configured Codex must support sandboxed JSON exec, isolated settings and session resume")
 	}
 	return "", false, nil
 }

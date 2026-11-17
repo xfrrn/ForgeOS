@@ -16,6 +16,13 @@ import (
 	"forgeos/internal/store"
 )
 
+func TestProbeCLIOptionDeclarations(t *testing.T) {
+	help := []byte("  -p, --print   Start a turn\n      --resume-file <path>   Used in place of --resume\n      --json\n")
+	if !hasCLIOptions(help, "-p", "--print", "--json") || hasCLIOptions(help, "--resume") {
+		t.Fatal("probe mixed an option prefix or description with a supported option")
+	}
+}
+
 func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) {
 	job := store.Job{Spec: &store.IssueSpec{Issue: store.Issue{Title: "Assigned file"}}, LeaseToken: "private-lease-token"}
 	for _, evidence := range []json.RawMessage{nil, json.RawMessage(`{"plan_revision":2,"dependencies":[{"key":"guide"}]}`)} {

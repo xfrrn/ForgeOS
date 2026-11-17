@@ -48,6 +48,12 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		input.Capabilities.SupportsReworkAnswers = input.Capabilities.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"
+		if raw := r.URL.Query().Get("adapter_probe"); raw != "" {
+			if len(raw) > 2048 || json.Unmarshal([]byte(raw), &input.Adapters) != nil || input.Adapters == nil {
+				problem(w, 400, "invalid adapter probe")
+				return
+			}
+		}
 		if !input.Valid() {
 			problem(w, 400, "invalid Worker identity, platform or capacity")
 			return

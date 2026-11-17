@@ -105,7 +105,7 @@ func fromEnv(role string) (*worker, error) {
 		if strings.TrimSpace(w.token) == "" {
 			return nil, fmt.Errorf("set the dedicated %s token", role)
 		}
-		w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
+		w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"), false)
 		if err != nil {
 			return nil, err
 		}
@@ -156,7 +156,7 @@ func fromEnv(role string) (*worker, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
+	w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"), true)
 	if err != nil {
 		return nil, err
 	}
@@ -289,10 +289,21 @@ func (w *worker) run(ctx context.Context) error {
 	}
 	h := store.WorkerHeartbeat{Worker: w.id, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: runtime.NumCPU(),
 		Slots: w.slots, ModelSlots: w.modelSlots, CISlots: w.ciSlots, Capabilities: caps}
+	adapters := map[string]store.AdapterProbe{}
+	for name, version := range map[string]string{"codex": w.codexVersion, "claude": w.claude.version} {
+		if version != "" {
+			adapters[name] = store.AdapterProbe{Version: version, Operations: []string{"probe", "start", "resume", "events"}}
+		}
+	}
+	probe, err := json.Marshal(adapters)
+	if err != nil {
+		return err
+	}
+	// Old control planes accept the same heartbeat body and ignore the extra query field.
+	heartbeat := "/internal/workers/heartbeat?supports_rework_answers=1&adapter_probe=" + url.QueryEscape(string(probe))
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
-			// Query negotiation also works with older control planes that reject unknown JSON fields.
-			status, err := w.post(ctx, "/internal/workers/heartbeat?supports_rework_answers=1", h, nil)
+			status, err := w.post(ctx, heartbeat, h, nil)
 			if err == nil && status == http.StatusNoContent {
 				return nil
 			}

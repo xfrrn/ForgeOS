@@ -60,7 +60,7 @@ func planFromSource(ctx context.Context, src acceptance.Source) (acceptance.Plan
 }
 
 func testPlanTurn(ctx context.Context, contract, prompt string, input, output any) (string, error) {
-	bin, structured, err := findCodex(os.Getenv("FORGEOS_CODEX_BIN"))
+	bin, structured, err := findCodex(os.Getenv("FORGEOS_CODEX_BIN"), false)
 	if err != nil {
 		return "", err
 	}

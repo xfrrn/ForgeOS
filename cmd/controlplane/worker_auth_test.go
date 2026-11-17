@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -95,6 +96,30 @@ func TestWorkerProjectGrants(t *testing.T) {
 	h.Worker = "A"
 	post("owner", "/internal/workers/heartbeat", h, 401)
 	post("alpha", "/internal/workers/heartbeat", h, 204)
+	pathProbe := "/internal/workers/heartbeat?adapter_probe=" + url.QueryEscape(`{"codex":{"version":"0.169.0-alpha.11.1","operations":["start","resume","events"]}}`)
+	post("alpha", pathProbe, h, 400)
+	h.Capabilities.SupportsCodex = true
+	post("alpha", pathProbe, h, 204)
+	checkProbe := func(want bool) {
+		t.Helper()
+		rows, err := s.WorkerNodes(ctx)
+		var nodes []struct {
+			Capabilities struct{ Adapters map[string]store.AdapterProbe }
+		}
+		if err != nil || json.Unmarshal(rows, &nodes) != nil || len(nodes) != 1 {
+			t.Fatal("read adapter report", err)
+		}
+		probe, found := nodes[0].Capabilities.Adapters["codex"]
+		if found != want || found && (probe.Version != "0.169.0-alpha.11.1" || len(probe.Operations) != 3) {
+			t.Fatal("unexpected adapter report", probe)
+		}
+	}
+	checkProbe(true)
+	post("alpha", "/internal/workers/heartbeat?adapter_probe="+url.QueryEscape(`{"codex":{"version":"0.169.0","operations":["fork"]}}`), h, 400)
+	checkProbe(true)
+	h.Capabilities.SupportsCodex = false
+	post("alpha", "/internal/workers/heartbeat", h, 204)
+	checkProbe(false)
 	h.CPUs = 0
 	post("alpha", "/internal/workers/heartbeat", h, 400)
 	post("alpha", "/internal/claim", req, 403)

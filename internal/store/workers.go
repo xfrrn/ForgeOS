@@ -110,19 +110,49 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 }
 
 type WorkerHeartbeat struct {
-	Worker       string             `json:"worker"`
-	OS           string             `json:"os"`
-	Arch         string             `json:"arch"`
-	CPUs         int                `json:"cpus"`
-	Slots        int                `json:"slots"`
-	ModelSlots   int                `json:"model_slots,omitempty"`
-	CISlots      int                `json:"ci_slots,omitempty"`
-	Capabilities WorkerCapabilities `json:"capabilities"`
+	Worker       string                  `json:"worker"`
+	OS           string                  `json:"os"`
+	Arch         string                  `json:"arch"`
+	CPUs         int                     `json:"cpus"`
+	Slots        int                     `json:"slots"`
+	ModelSlots   int                     `json:"model_slots,omitempty"`
+	CISlots      int                     `json:"ci_slots,omitempty"`
+	Capabilities WorkerCapabilities      `json:"capabilities"`
+	Adapters     map[string]AdapterProbe `json:"-"`
+}
+
+type AdapterProbe struct {
+	Version    string   `json:"version"`
+	Operations []string `json:"operations"`
 }
 
 var platformName = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 
 func (h WorkerHeartbeat) Valid() bool {
+	if h.Adapters != nil {
+		_, codex := h.Adapters["codex"]
+		_, claude := h.Adapters["claude"]
+		if codex != h.Capabilities.SupportsCodex || claude != h.Capabilities.SupportsClaude {
+			return false
+		}
+		for name, probe := range h.Adapters {
+			if !ValidHarnessVersion(name, probe.Version) || len(probe.Operations) == 0 {
+				return false
+			}
+			seen := make(map[string]bool)
+			for _, op := range probe.Operations {
+				switch op {
+				case "probe", "start", "resume", "events":
+				default:
+					return false
+				}
+				if seen[op] {
+					return false
+				}
+				seen[op] = true
+			}
+		}
+	}
 	return h.Capabilities.StartupIntegratedProject >= 0 && (h.Capabilities.StartupIntegratedProject == 0 || h.Capabilities.SupportsStartup) &&
 		strings.TrimSpace(h.Worker) != "" && len(h.Worker) <= 128 && !strings.ContainsAny(h.Worker, "\x00\r\n") &&
 		platformName.MatchString(h.OS) && platformName.MatchString(h.Arch) &&
@@ -135,7 +165,10 @@ func (s *Store) RecordHeartbeat(ctx context.Context, h WorkerHeartbeat) error {
 	if !h.Valid() {
 		return ErrConflict
 	}
-	caps, err := json.Marshal(h.Capabilities)
+	caps, err := json.Marshal(struct {
+		WorkerCapabilities
+		Adapters map[string]AdapterProbe `json:"adapters,omitempty"`
+	}{h.Capabilities, h.Adapters})
 	if err != nil {
 		return err
 	}

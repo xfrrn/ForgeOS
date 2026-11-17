@@ -42,8 +42,9 @@ func findClaude(configured string) (claudeCLI, error) {
 		return cmd.Output()
 	}
 	help, err := command("--help")
-	if err != nil || !bytes.Contains(help, []byte("--restricted")) || !bytes.Contains(help, []byte("--safe-mode")) {
-		return claudeCLI{}, errors.New("Claude Code must support --restricted and --safe-mode")
+	if err != nil || !hasCLIOptions(help, "--restricted", "--safe-mode", "--strict-mcp-config", "--no-chrome", "--disable-slash-commands",
+		"--permission-mode", "--tools", "--verbose", "--output-format", "--print", "--resume") || !bytes.Contains(help, []byte("stream-json")) {
+		return claudeCLI{}, errors.New("configured Claude Code must support restricted headless turns, stream-json events and session resume")
 	}
 	out, err := command("--version")
 	version := claudeVersion.FindStringSubmatch(strings.TrimSpace(string(out)))
