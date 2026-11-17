@@ -82,11 +82,11 @@ func (q *nativeQuestion) read(message string) {
 	}
 }
 
-func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, session string, q nativeQuestion) (json.RawMessage, error) {
+func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, session string, q nativeQuestion, trees *store.WorktreeTrees) (json.RawMessage, error) {
 	if strings.TrimSpace(q.Question) == "" || strings.TrimSpace(q.Evidence) == "" || len(q.Question) > 4096 || len(q.Evidence) > 4096 {
 		return nil, errors.New("invalid business question from harness")
 	}
-	input := store.CheckpointQuestion{Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
+	input := store.CheckpointQuestion{Trees: trees, Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
 	for ctx.Err() == nil {
 		var reply struct {
 			Answer *string `json:"answer"`

@@ -55,7 +55,7 @@ func TestOnlyFinalMessageCanRequestOwnerDecision(t *testing.T) {
 		t.Fatal("reused earlier assistant text", q)
 	}
 	q.read(`{"forgeos_question":"Which title?","evidence":24}`)
-	if _, err := (&worker{}).waitForOwner(context.Background(), store.Job{}, 0, "native", q); !q.requested || err == nil {
+	if _, err := (&worker{}).waitForOwner(context.Background(), store.Job{}, 0, "native", q, nil); !q.requested || err == nil {
 		t.Fatal("accepted malformed question", q)
 	}
 }

@@ -22,15 +22,16 @@ type QuestionRequest struct {
 
 type DecisionQuestion struct {
 	QuestionRequest
-	ID           int64      `json:"id"`
-	PlanRevision int        `json:"plan_revision"`
-	Sequence     *int       `json:"checkpoint_sequence,omitempty"`
-	WithdrawnAt  *time.Time `json:"withdrawn_at,omitempty"`
-	Requester    string     `json:"requester"`
-	At           time.Time  `json:"at"`
-	Answer       string     `json:"answer,omitempty"`
-	AnsweredBy   string     `json:"answered_by,omitempty"`
-	AnsweredAt   *time.Time `json:"answered_at,omitempty"`
+	ID           int64          `json:"id"`
+	PlanRevision int            `json:"plan_revision"`
+	Sequence     *int           `json:"checkpoint_sequence,omitempty"`
+	Trees        *WorktreeTrees `json:"trees,omitempty"`
+	WithdrawnAt  *time.Time     `json:"withdrawn_at,omitempty"`
+	Requester    string         `json:"requester"`
+	At           time.Time      `json:"at"`
+	Answer       string         `json:"answer,omitempty"`
+	AnsweredBy   string         `json:"answered_by,omitempty"`
+	AnsweredAt   *time.Time     `json:"answered_at,omitempty"`
 }
 
 func (s *Store) PendingQuestions(ctx context.Context, before int64) (json.RawMessage, error) {
@@ -118,16 +119,33 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 }
 
 type CheckpointQuestion struct {
-	Lease    string `json:"lease_token"`
-	Sequence *int   `json:"sequence"`
-	Session  string `json:"session_id"`
-	Question string `json:"question"`
-	Evidence string `json:"evidence"`
+	Trees    *WorktreeTrees `json:"trees,omitempty"`
+	Lease    string         `json:"lease_token"`
+	Sequence *int           `json:"sequence"`
+	Session  string         `json:"session_id"`
+	Question string         `json:"question"`
+	Evidence string         `json:"evidence"`
+}
+
+type WorktreeTrees struct {
+	Index    string `json:"index"`
+	Worktree string `json:"worktree"`
 }
 
 func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r CheckpointQuestion) (string, error) {
 	if r.Sequence == nil || *r.Sequence < 0 || int64(*r.Sequence) > 2147483647 || len(r.Lease) != 64 || r.Session == "" || len(r.Session) > 128 || !decisionText(r.Question) || !decisionText(r.Evidence) {
 		return "", ErrConflict
+	}
+	var trees any
+	if r.Trees != nil {
+		if !validCommit(r.Trees.Index) || !validCommit(r.Trees.Worktree) || len(r.Trees.Index) != len(r.Trees.Worktree) {
+			return "", ErrConflict
+		}
+		encoded, err := json.Marshal(r.Trees)
+		if err != nil {
+			return "", err
+		}
+		trees = string(encoded)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -151,6 +169,9 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	if err != nil {
 		return "", err
 	}
+	if r.Trees != nil && len(r.Trees.Index) != len(base) {
+		return "", ErrConflict
+	}
 	// Read the latest checkpoint after acquiring the same execution lock used to advance it.
 	var current bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM
@@ -165,8 +186,9 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	}
 	var answer string
 	var same bool
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(answer,''),question=$3 AND evidence=$4 FROM decision_questions
- WHERE execution_id=$1 AND checkpoint_sequence=$2 AND withdrawn_at IS NULL`, execution, *r.Sequence, r.Question, r.Evidence).Scan(&answer, &same)
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(answer,''),question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb
+		FROM decision_questions WHERE execution_id=$1 AND checkpoint_sequence=$2 AND withdrawn_at IS NULL`,
+		execution, *r.Sequence, r.Question, r.Evidence, trees).Scan(&answer, &same)
 	if err == nil {
 		if !same {
 			return "", ErrConflict
@@ -180,8 +202,8 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 		return "", ErrConflict
 	}
 	var id int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester,checkpoint_sequence)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, task, execution, revision, base, "checkpoint:"+strconv.Itoa(*r.Sequence), r.Question, r.Evidence, requester, *r.Sequence).Scan(&id)
+	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester,checkpoint_sequence,trees)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, task, execution, revision, base, "checkpoint:"+strconv.Itoa(*r.Sequence), r.Question, r.Evidence, requester, *r.Sequence, trees).Scan(&id)
 	if err != nil {
 		return "", err
 	}

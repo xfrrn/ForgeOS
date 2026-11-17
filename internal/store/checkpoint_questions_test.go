@@ -36,6 +36,9 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 			}
 			seq := 0
 			r := CheckpointQuestion{Lease: j.LeaseToken, Sequence: &seq, Session: "native", Question: "Which name?", Evidence: "Two names are still proposed."}
+			if end == "answer" {
+				r.Trees = &WorktreeTrees{Index: strings.Repeat("c", 40), Worktree: strings.Repeat("d", 40)}
+			}
 			check := func(seq int, session string) error {
 				_, err := s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session)
 				return err
@@ -60,6 +63,11 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 				}
 			}
 			wrong = r
+			wrong.Trees = &WorktreeTrees{Index: spec.BaseCommit, Worktree: spec.BaseCommit}
+			if _, err = s.AskAtCheckpoint(ctx, j.ExecutionID, wrong); !errors.Is(err, ErrConflict) {
+				t.Fatal("rewrote checkpoint trees", err)
+			}
+			wrong = r
 			wrong.Question = "Different?"
 			if _, err = s.AskAtCheckpoint(ctx, j.ExecutionID, wrong); !errors.Is(err, ErrConflict) {
 				t.Fatal("rewrote pending question", err)
@@ -75,6 +83,10 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 				t.Fatal(task, err)
 			}
 			id := task.Questions[0].ID
+			stored := task.Questions[0].Trees
+			if (stored == nil) != (r.Trees == nil) || stored != nil && *stored != *r.Trees {
+				t.Fatalf("stored checkpoint trees = %v, want %v", stored, r.Trees)
+			}
 			if other, err := s.Claim(ctx, "other", root, true, true, true, true); err != nil || other != nil {
 				t.Fatal("released the writer", other, err)
 			}

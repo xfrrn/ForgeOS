@@ -1906,3 +1906,16 @@ CI 恢复后的候选会话与规则追溯对应提交 `80ef8450e93df5ffee7980f5
 | 重启隔离控制面，再读任务、验收记录和候选身份 | 维护者可追溯旧候选、原会话和新验证。等待 Owner 验收 | 原候选 SHA 与原 Session 均命中退回记录，新候选与新 Session 通过检查。重启后状态为 WAITING_ACCEPTANCE；本次在还原副本上验证到此，未触发远端交付。 |
 
 真实 PostgreSQL 18 与 Docker 全量回归共 197 个测试及子测试通过，零跳过。Go vet 通过。
+
+上述仅验证候选退回后的会话门禁对应 ForgeOS 提交 `d10793fab91e7c4df74c793b5f3cac940c242c3c`。
+
+### 专题 07 · 等待业务答复期间的工作区变化
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 导入 beta #101，让原生 Codex 就手册标题向 Owner 提问。在 Chrome 打开任务详情，核对暂存区与工作区的树 SHA。往该执行的工作区添加一个未跟踪的验收文件，再从问题队列答复 | Worker 在启动下一回合前识别变化，保留工作区供核对 | 执行 1 的两棵树均为 `c68e2773d836b722a40cd7a0f7205a0e5644c33e`。答复后状态为 FAILED，错误指出检查点 0 的工作区或暂存区发生变化。原文件仍在。仅一个已退出进程（PID 29988），无候选、CI 或交付记录。 |
+| 从原任务重试，在新工作区收到业务问题，答复后继续执行并验收 | 沿用第二次执行自己的 Session，候选只包含指定标题，检查通过后合并并关闭来源 Issue | 执行 2 的进程 2948 和 35260 共用原生 Session `01a1e83f-147d-78b3-99d2-ab475b228a09`。候选 `e6f4426715cbbe934cc007da083a3a5b06b737e4` 只增加 `docs/owner-tree-checkpoint.md`，标题为 `Harbor b1a2b1a3`。Docker 验证通过，远端必需的 Actions 检查重跑通过，`forgeos/local-ci` 成功。PR 合并 SHA 为 `57b1405ca3807227a8e518f69554dcaf1c55d834`，Issue 已关闭。 |
+
+[Issue #101](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/101) · [PR #102](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/102) · [Actions 两次运行](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44033567538)
+
+本次 PostgreSQL 18 和 Docker 全量回归 198 个测试及子测试通过，零跳过。Go vet 和 Web 构建通过。Git 回归核对了暂存、删除、忽略、未跟踪、相同大小和修改时间的文件，计算前后真实 index 字节一致。此场景中 Worker 持续运行；节点重启后的会话恢复继续待验收。

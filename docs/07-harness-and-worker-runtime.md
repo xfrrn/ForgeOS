@@ -140,6 +140,8 @@ Codex 从 `item.started` 和 `item.completed` 识别命令执行、文件修改�
 
 Worker 已支持执行结果断线缓冲和重启补报。查询本机领取记录、未确认结果和冲突回执的方法见[Worker 执行恢复日志](13-data-storage-and-audit.md#worker-执行恢复日志)。
 
+实现回合等待业务答复时，Worker 随问题登记暂存区和工作区两棵 Git 树的 SHA。工作区树包含 Git 会暂存的新增、修改和删除。Owner 可从任务详情核对两者。答复后，Worker 在原租约和工作区中重新计算这两个 SHA；任一变化都会使该次执行失败，保留工作区供核对。Owner 可从失败执行重试，取得新的工作区。
+
 - Harness 进程崩溃：尝试恢复原 Session；
 - Daemon 重启：恢复执行记录、Worktree 和事件；
 - 服务器重启：检查工作区、租约、Session；

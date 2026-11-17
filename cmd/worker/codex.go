@@ -427,12 +427,24 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 		ownerReply = nil
 		if question != nil && question.requested {
+			var trees *store.WorktreeTrees
+			if job.CheckpointWorktrees {
+				if err = w.confirmRecovery(ctx, job, start, dir); err != nil {
+					break
+				}
+				snapshot, captureErr := checkpointTrees(ctx, workspace)
+				if captureErr != nil {
+					err = fmt.Errorf("capture worktree at checkpoint %d: %w", seq, captureErr)
+					break
+				}
+				trees = &snapshot
+			}
 			remaining := time.Until(deadline)
 			if remaining <= 0 || !activeTime.Stop() {
 				err = context.DeadlineExceeded
 				break
 			}
-			ownerReply, err = w.waitForOwner(ctx, job, seq, session, *question)
+			ownerReply, err = w.waitForOwner(ctx, job, seq, session, *question, trees)
 			if err != nil {
 				break
 			}
@@ -440,6 +452,17 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			activeTime.Reset(remaining)
 			if err = w.confirmRecovery(ctx, job, start, dir); err != nil {
 				break
+			}
+			if trees != nil {
+				current, captureErr := checkpointTrees(ctx, workspace)
+				if captureErr != nil {
+					err = fmt.Errorf("verify worktree at checkpoint %d: %w", seq, captureErr)
+					break
+				}
+				if current != *trees {
+					err = fmt.Errorf("worktree or index changed while waiting for Owner at checkpoint %d", seq)
+					break
+				}
 			}
 		}
 		comments, err = w.checkpoint(ctx, job, seq+1, "")
