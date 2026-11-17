@@ -368,6 +368,7 @@ type Event struct {
 type Job struct {
 	ModelPause          bool            `json:"model_pause,omitempty"`
 	RecoverPlannerPause bool            `json:"recover_planner_pause,omitempty"`
+	PlannerHandoff      bool            `json:"planner_handoff,omitempty"`
 	RecoverWriterPause  bool            `json:"recover_writer_pause,omitempty"`
 	ProjectID           int64           `json:"project_id,omitempty"`
 	DecisionLookups     bool            `json:"decision_lookups,omitempty"`
@@ -758,6 +759,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.ManageResources = registered != nil && caps.SupportsResources
 		j.ModelPause = j.SupportsCheckpoints && j.ManageResources && caps.SupportsModelPause && (j.Spec.Mode != "plan" || caps.SupportsPlannerPause)
 		j.RecoverPlannerPause = j.ModelPause && j.Spec.Mode == "plan"
+		j.PlannerHandoff = j.SupportsCheckpoints && j.Spec.Mode == "plan"
 		j.RecoverWriterPause = j.ModelPause && j.RuntimeQuestions
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1

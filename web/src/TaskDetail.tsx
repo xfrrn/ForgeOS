@@ -19,7 +19,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'completed' | 'failed'; at: number }
-type HarnessProcess = { tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; started_at: string; exited_at: string; exit_code: number }
+type HarnessProcess = { tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
 function ToolActivity({events}: {events?: ToolEvent[]}) {
   if (!events?.length) return null
   const phases = {started: '开始', completed: '完成', failed: '失败'}
@@ -393,6 +393,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         <Fact label="Harness 版本">{observed.harness} {observed.version}</Fact>
         <Fact label="开始时间">{formatTime(observed.started_at)}</Fact>
         {observed.session_id && <Fact label="原生会话" code>{observed.session_id}</Fact>}
+        {observed.handoff_from && <Fact label="交接来源会话" code>{observed.handoff_from}</Fact>}
         {observed.exited_at && <><Fact label="退出时间">{formatTime(observed.exited_at)}</Fact><Fact label="进程退出码" code>{observed.exit_code}</Fact></>}
       </dl><ToolActivity events={observed.tools}/></section>}
     {result?.processes && result.processes.length > 0 && <details>
@@ -404,6 +405,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         <Fact label="退出时间">{formatTime(p.exited_at)}</Fact>
         <Fact label="进程退出码" code>{p.exit_code}</Fact>
         {p.session_id && <Fact label="原生会话" code>{p.session_id}</Fact>}
+        {p.handoff_from && <Fact label="交接来源会话" code>{p.handoff_from}</Fact>}
       </dl><ToolActivity events={p.tools}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}

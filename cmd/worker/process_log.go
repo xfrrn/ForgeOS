@@ -12,14 +12,15 @@ import (
 )
 
 type processLog struct {
-	db       *sql.DB
-	lease    [32]byte
-	harness  string
-	version  string
-	updates  chan struct{}
-	id       int64
-	tools    *toolRecorder
-	question *nativeQuestion
+	handoffFrom string
+	db          *sql.DB
+	lease       [32]byte
+	harness     string
+	version     string
+	updates     chan struct{}
+	id          int64
+	tools       *toolRecorder
+	question    *nativeQuestion
 }
 
 func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {
@@ -63,6 +64,14 @@ func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
 func (p *processLog) session(session string) error {
 	if p.db == nil {
 		return nil
+	}
+	if p.handoffFrom != "" {
+		if session == p.handoffFrom {
+			return fmt.Errorf("handoff returned the missing session")
+		}
+		if _, err := p.db.Exec("INSERT INTO harness_session_handoffs(instance,previous_session) VALUES(?,?) ON CONFLICT(instance) DO NOTHING", p.id, p.handoffFrom); err != nil {
+			return err
+		}
 	}
 	_, err := p.db.Exec("UPDATE harness_processes SET session_id=? WHERE instance=?", session, p.id)
 	if err == nil {

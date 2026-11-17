@@ -59,3 +59,27 @@ func TestCodexProcessHistoryAcrossThreads(t *testing.T) {
 		t.Fatal("accepted an invalid CLI version")
 	}
 }
+
+func TestPlannerHandoffBindsBothThreadsToOneExecution(t *testing.T) {
+	one, zero := 1, 0
+	now := time.Now().UTC()
+	r := Result{Harness: "codex", HarnessVersion: "0.169.0-alpha.11.1", SessionID: "new", ExitCode: 1, Error: "later failure"}
+	first := HarnessProcess{Instance: 1, PID: 10, Harness: r.Harness, Version: r.HarnessVersion, Session: "original", Started: now, Exited: &now, ExitCode: &one}
+	missing, next := first, first
+	missing.Instance, missing.PID, missing.Session = 2, 11, ""
+	next.Instance, next.PID, next.Session, next.HandoffFrom, next.ExitCode = 3, 12, "new", "original", &zero
+	h := ProcessHistory{first, missing, next}
+	r.Processes = &h
+	if !(IssueSpec{Mode: "plan"}).accepts(r) || (IssueSpec{}).accepts(r) {
+		t.Fatal("handoff scope or history rejected incorrectly")
+	}
+	h[2].HandoffFrom = "unrelated"
+	if h.matches(r) {
+		t.Fatal("accepted an unrelated source thread")
+	}
+	h[2].HandoffFrom = first.Session
+	h[1].ExitCode = &zero
+	if h.matches(r) {
+		t.Fatal("accepted a handoff without a failed resume")
+	}
+}

@@ -23,7 +23,7 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 	if p.Instance != last.Instance {
 		return p.Instance > last.Instance
 	}
-	if !p.toolsFollow(last) || p.PID != last.PID || p.Harness != last.Harness || p.Version != last.Version || !p.Started.Equal(last.Started) || (last.Session != "" && p.Session != last.Session) {
+	if !p.toolsFollow(last) || p.PID != last.PID || p.Harness != last.Harness || p.Version != last.Version || !p.Started.Equal(last.Started) || (last.Session != "" && (p.Session != last.Session || p.HandoffFrom != last.HandoffFrom)) {
 		return false
 	}
 	return last.Exited == nil || (p.Exited != nil && p.Exited.Equal(*last.Exited) && *p.ExitCode == *last.ExitCode)
@@ -43,7 +43,8 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 	var previous []byte
 	err = tx.QueryRowContext(ctx, `SELECT e.observed_process FROM executions e JOIN work_items t ON t.id=e.task_id
  WHERE e.id=$1 AND e.lease_hash=$2 AND e.result IS NULL AND e.abandoned_at IS NULL AND (t.status='RUNNING' OR (t.waiting_execution_id=e.id AND $4))
- AND t.spec IS NOT NULL AND COALESCE(t.spec->>'verify_commit','')='' AND COALESCE(NULLIF(t.spec->>'harness',''),'codex')=$3 FOR UPDATE OF e`, execution, hash[:], p.Harness, p.Exited != nil).Scan(&previous)
+ AND t.spec IS NOT NULL AND COALESCE(t.spec->>'verify_commit','')='' AND COALESCE(NULLIF(t.spec->>'harness',''),'codex')=$3
+ AND ($5='' OR t.spec->>'mode'='plan') FOR UPDATE OF e`, execution, hash[:], p.Harness, p.Exited != nil, p.HandoffFrom).Scan(&previous)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
