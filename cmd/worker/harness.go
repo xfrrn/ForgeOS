@@ -27,7 +27,7 @@ func failedTurnExit(exit error) error {
 	return errTurnFailed
 }
 
-func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job store.Job, prompt, previous, base string, identity []byte, question *nativeQuestion, plannerOutput string) (string, error) {
+func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job store.Job, prompt, previous, base string, identity []byte, question *nativeQuestion, plannerOutput string, writerTrees *store.WorktreeTrees) (string, error) {
 	name, version := adapter.identity()
 	run := func(prompt, session, handoffFrom string) (string, error) {
 		process := w.processLog(ctx, job, name, version)
@@ -47,11 +47,13 @@ func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job sto
 		}
 		return nil
 	}
+	var startedSession bool
 	runSession := func(input, previous, from string) (string, error) {
 		session, err := run(input, previous, from)
 		if session == "" {
 			return previous, err
 		}
+		startedSession = true
 		if !errors.Is(err, errTurnInterrupted) || ctx.Err() != nil {
 			return session, err
 		}
@@ -62,13 +64,23 @@ func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job sto
 		return session, err
 	}
 	session, err := runSession(prompt, previous, "")
-	if !errors.Is(err, errSessionMissing) || !job.PlannerHandoff || plannerOutput == "" || !nativeSessionID.MatchString(session) || ctx.Err() != nil {
+	if !errors.Is(err, errSessionMissing) || !nativeSessionID.MatchString(session) || ctx.Err() != nil {
 		return session, err
 	}
-	if err := checkWorkspace(); err != nil {
+	var input string
+	switch {
+	case job.PlannerHandoff && plannerOutput != "":
+		err = checkWorkspace()
+		input = fmt.Sprintf("The original read-only planning thread %s is unavailable. Continue execution %d at its frozen commit %s. Repeat discovery in this clean checkout and produce the requested plan using the original scope and discussion below.\n", session, job.ExecutionID, base)
+	case job.WriterHandoff && writerTrees != nil && name == "codex" && previous == session && !startedSession:
+		err = w.verifyQuestionWorkspace(ctx, job, base, identity, 0, writerTrees)
+		input = fmt.Sprintf("The original implementation thread %s is unavailable. The Owner resumed execution %d at checkpoint 0. The checkout starts at %s and preserves the paused index tree %s and worktree tree %s. Inspect the current files and staged and unstaged changes before acting. Preserve completed edits. Do not repeat earlier actions, migrations or deployments. If an effect cannot be verified locally, ask the Owner at the turn boundary. Finish only the remaining work within the frozen requirements below.\n", session, job.ExecutionID, base, writerTrees.Index, writerTrees.Worktree)
+	default:
 		return session, err
 	}
-	input := fmt.Sprintf("The original read-only planning thread %s is unavailable. Continue execution %d at its frozen commit %s. Repeat discovery in this clean checkout and produce the requested plan using the original scope and discussion below.\n", session, job.ExecutionID, base)
+	if err != nil {
+		return session, err
+	}
 	next, err := runSession(input+prompt, "", session)
 	if next == "" {
 		return session, err

@@ -75,13 +75,13 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 			return err
 		}
 	}
-	r.SessionID, err = w.runModelTurn(ctx, budget, 0, "", spec.BaseCommit, identity, stopBudget, resumeBudget, func(turn context.Context, session string, resumed bool) (string, error) {
-		if resumed {
+	r.SessionID, err = w.runModelTurn(ctx, budget, 0, "", spec.BaseCommit, identity, stopBudget, resumeBudget, func(turn context.Context, session string, resumed *store.WorktreeTrees) (string, error) {
+		if resumed != nil {
 			if err := preparePlannerResume(turn, workspace, output); err != nil {
 				return session, err
 			}
 		}
-		return w.runJobTurn(turn, adapter, job, prompt, session, spec.BaseCommit, identity, nil, output)
+		return w.runJobTurn(turn, adapter, job, prompt, session, spec.BaseCommit, identity, nil, output, nil)
 	})
 	if err != nil {
 		r.Error = err.Error()

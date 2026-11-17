@@ -66,6 +66,8 @@ func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 		t.Fatal("missing negotiated model control")
 	}
 	id := j.ExecutionID
+	_, err = s.ReadCheckpoint(ctx, id, j.LeaseToken, 0, 0, "", false)
+	must(err)
 	phase := ResourceRequest{Kind: "model", Step: 1, Lease: j.LeaseToken}
 	ok, err := s.ReserveExecutionResource(ctx, id, phase)
 	must(err)
@@ -143,6 +145,15 @@ func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 	}
 	proc.Instance++
 	proc.PID++
+	proc.HandoffFrom, proc.Session = "unrelated", "thread-2"
+	conflict(s.ObserveProcess(ctx, id, ProcessReport{LeaseToken: j.LeaseToken, Process: proc}))
+	proc.HandoffFrom = "thread-1"
+	receiptTx, err := s.db.BeginTx(ctx, nil)
+	must(err)
+	defer receiptTx.Rollback()
+	conflict(verifyWriterHandoff(ctx, receiptTx, id, proc, 3))
+	must(verifyWriterHandoff(ctx, receiptTx, id, proc, 4))
+	must(receiptTx.Rollback())
 	must(s.ObserveProcess(ctx, id, ProcessReport{LeaseToken: j.LeaseToken, Process: proc}))
 	must(s.ControlModel(ctx, id, proc.Instance, false))
 	tx, err = s.Task(ctx, task.ID)

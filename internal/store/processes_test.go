@@ -70,8 +70,8 @@ func TestPlannerHandoffBindsBothThreadsToOneExecution(t *testing.T) {
 	next.Instance, next.PID, next.Session, next.HandoffFrom, next.ExitCode = 3, 12, "new", "original", &zero
 	h := ProcessHistory{first, missing, next}
 	r.Processes = &h
-	if !(IssueSpec{Mode: "plan"}).accepts(r) || (IssueSpec{}).accepts(r) {
-		t.Fatal("handoff scope or history rejected incorrectly")
+	if !(IssueSpec{Mode: "plan"}).accepts(r) || !(IssueSpec{}).accepts(r) {
+		t.Fatal("valid handoff history rejected")
 	}
 	h[2].HandoffFrom = "unrelated"
 	if h.matches(r) {

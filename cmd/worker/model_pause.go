@@ -47,8 +47,7 @@ func (w *worker) pollModelPause(ctx context.Context, job store.Job, input store.
 }
 
 func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequence int, session, base string, identity []byte,
-	stopClock func() time.Duration, resumeClock func(time.Duration), run func(context.Context, string, bool) (string, error)) (string, error) {
-	resuming := false
+	stopClock func() time.Duration, resumeClock func(time.Duration), run func(context.Context, string, *store.WorktreeTrees) (string, error)) (string, error) {
 	var resumeTrees *store.WorktreeTrees
 	if b.capturePause != nil && b.recovery.saved != nil && (b.recovery.saved.Planner != nil || b.recovery.saved.Writer != nil) {
 		q := b.recovery.saved
@@ -64,13 +63,13 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 		if (q.Planner != nil && q.Planner.Finished != nil) || (q.Writer != nil && q.Writer.Finished) {
 			return q.Session, w.verifyQuestionWorkspace(ctx, b.job, base, identity, sequence, &q.Trees)
 		}
-		session, resuming, resumeTrees = q.Session, true, &q.Trees
+		session, resumeTrees = q.Session, &q.Trees
 	}
 	for {
 		interrupted := false
 		next, err := withResource(ctx, b, "model", func() (string, error) {
 			if !b.job.ModelPause {
-				return run(ctx, session, false)
+				return run(ctx, session, nil)
 			}
 			if resumeTrees != nil {
 				if err := w.verifyQuestionWorkspace(ctx, b.job, base, identity, sequence, resumeTrees); err != nil {
@@ -94,7 +93,7 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 					}
 				}
 			}()
-			got, turnErr := run(turn, session, resuming)
+			got, turnErr := run(turn, session, resumeTrees)
 			cancel(nil)
 			<-done
 			interrupted = context.Cause(turn) == stop && errors.Is(turnErr, context.Canceled)
@@ -143,7 +142,7 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 			return next, w.verifyQuestionWorkspace(ctx, b.job, base, identity, sequence, &trees)
 		}
 		resumeTrees = &trees
-		session, resuming = next, true
+		session = next
 	}
 }
 

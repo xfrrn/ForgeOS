@@ -369,6 +369,7 @@ type Job struct {
 	ModelPause          bool            `json:"model_pause,omitempty"`
 	RecoverPlannerPause bool            `json:"recover_planner_pause,omitempty"`
 	PlannerHandoff      bool            `json:"planner_handoff,omitempty"`
+	WriterHandoff       bool            `json:"writer_handoff,omitempty"`
 	RecoverWriterPause  bool            `json:"recover_writer_pause,omitempty"`
 	ProjectID           int64           `json:"project_id,omitempty"`
 	DecisionLookups     bool            `json:"decision_lookups,omitempty"`
@@ -761,6 +762,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.RecoverPlannerPause = j.ModelPause && j.Spec.Mode == "plan"
 		j.PlannerHandoff = j.SupportsCheckpoints && j.Spec.Mode == "plan"
 		j.RecoverWriterPause = j.ModelPause && j.RuntimeQuestions
+		j.WriterHandoff = j.RecoverWriterPause && j.Spec.Mode != "plan" && j.Spec.Harness != "claude"
 		var review []byte
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
 			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
@@ -877,6 +879,19 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		}
 		if !issue.accepts(result) || (ciCandidate != "" && result.Commit != "" && result.Commit != ciCandidate) {
 			return ErrConflict
+		}
+		if issue.Mode != "plan" && result.Processes != nil {
+			var sourceInstance int64
+			for _, p := range *result.Processes {
+				if p.HandoffFrom != "" {
+					if err := verifyWriterHandoff(ctx, tx, id, p, sourceInstance); err != nil {
+						return err
+					}
+				}
+				if p.Session != "" {
+					sourceInstance = p.Instance
+				}
+			}
 		}
 		if v := result.Validation; v != nil && v.Run != nil && (v.Run.ExecutionID != id || v.Run.Runner != worker) {
 			return ErrConflict

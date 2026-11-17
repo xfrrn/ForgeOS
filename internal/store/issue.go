@@ -239,13 +239,6 @@ func (spec IssueSpec) accepts(r Result) bool {
 	if r.Processes != nil && !r.Processes.matches(r) {
 		return false
 	}
-	if r.Processes != nil && spec.Mode != "plan" {
-		for _, p := range *r.Processes {
-			if p.HandoffFrom != "" {
-				return false
-			}
-		}
-	}
 	if (r.Harness == "") != (r.HarnessVersion == "") || (r.Harness != "" && !ValidHarnessVersion(r.Harness, r.HarnessVersion)) {
 		return false
 	}

@@ -19,6 +19,19 @@ type ProcessReport struct {
 	Process    HarnessProcess `json:"process"`
 }
 
+func verifyWriterHandoff(ctx context.Context, tx *sql.Tx, execution int64, p HarnessProcess, sourceInstance int64) error {
+	var allowed bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM model_pauses pause
+		WHERE pause.execution_id=$1 AND pause.session_id=$2 AND pause.instance<$3 AND ($4::bigint=0 OR pause.instance=$4) AND pause.resumed_at IS NOT NULL
+		AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence=0 AND c.at<=pause.requested_at)
+		AND NOT EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence>0 AND c.at<=pause.requested_at))`,
+		execution, p.HandoffFrom, p.Instance, sourceInstance).Scan(&allowed)
+	if err == nil && !allowed {
+		return ErrConflict
+	}
+	return err
+}
+
 func (p HarnessProcess) follows(last HarnessProcess) bool {
 	if p.Instance != last.Instance {
 		return p.Instance > last.Instance
@@ -41,15 +54,21 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 	defer tx.Rollback()
 	hash := sha256.Sum256([]byte(report.LeaseToken))
 	var previous []byte
-	err = tx.QueryRowContext(ctx, `SELECT e.observed_process FROM executions e JOIN work_items t ON t.id=e.task_id
+	var planner bool
+	err = tx.QueryRowContext(ctx, `SELECT e.observed_process,COALESCE(t.spec->>'mode','')='plan' FROM executions e JOIN work_items t ON t.id=e.task_id
  WHERE e.id=$1 AND e.lease_hash=$2 AND e.result IS NULL AND e.abandoned_at IS NULL AND (t.status='RUNNING' OR (t.waiting_execution_id=e.id AND $4))
  AND t.spec IS NOT NULL AND COALESCE(t.spec->>'verify_commit','')='' AND COALESCE(NULLIF(t.spec->>'harness',''),'codex')=$3
- AND ($5='' OR t.spec->>'mode'='plan') FOR UPDATE OF e`, execution, hash[:], p.Harness, p.Exited != nil, p.HandoffFrom).Scan(&previous)
+ FOR UPDATE OF e`, execution, hash[:], p.Harness, p.Exited != nil).Scan(&previous, &planner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
 	if err != nil {
 		return err
+	}
+	if !planner && p.HandoffFrom != "" {
+		if err := verifyWriterHandoff(ctx, tx, execution, p, 0); err != nil {
+			return err
+		}
 	}
 	if len(previous) > 0 {
 		var last HarnessProcess

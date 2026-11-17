@@ -477,17 +477,21 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				return nil
 			}
 		}
-		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed bool) (string, error) {
+		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed *store.WorktreeTrees) (string, error) {
 			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox}
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version
 				adapter = w.claude
 			}
 			turnPrompt := prompt
-			if resumed {
+			if resumed != nil {
 				turnPrompt = "The Owner resumed this interrupted turn. Inspect existing changes and finish only the remaining authorized work.\n" + prompt
 			}
-			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "")
+			// Later checkpoints also depend on earlier instructions and answers in the original session.
+			if seq != 0 {
+				resumed = nil
+			}
+			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", resumed)
 		})
 		if session != "" {
 			result.SessionID = session
