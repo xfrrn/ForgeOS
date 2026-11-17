@@ -98,7 +98,10 @@ func (s *Store) RequestTestPlan(ctx context.Context, root string, task, executio
 			return nil, ErrConflict
 		}
 		_, err = tx.ExecContext(ctx, `WITH p AS (INSERT INTO candidate_test_plans(execution_id,task_id,revision,requested_criteria,source)
-			VALUES($1,$2,$3,$4,$5) RETURNING id) INSERT INTO candidate_test_plan_jobs(plan_id,role) SELECT id,'test' FROM p`, execution, task, previous+1, string(extra), string(doc))
+			SELECT $1,$2,$3,$4,CASE WHEN rules IS NULL THEN $5::jsonb ELSE
+				$5::jsonb || jsonb_build_object('candidate_context',rules,'basis',($5::jsonb->'basis') ||
+					jsonb_build_object('candidate_context_sha256',encode(sha256(convert_to(rules::text,'UTF8')),'hex'))) END
+			FROM review_rules_for_execution($1) rules RETURNING id) INSERT INTO candidate_test_plan_jobs(plan_id,role) SELECT id,'test' FROM p`, execution, task, previous+1, string(extra), string(doc))
 		if err != nil {
 			return nil, err
 		}
@@ -111,9 +114,10 @@ func (s *Store) RequestTestPlan(ctx context.Context, root string, task, executio
 
 func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revision int) (json.RawMessage, error) {
 	var doc json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r)||jsonb_build_object('case_results',COALESCE(
+	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r)||CASE WHEN p.source ? 'candidate_context'
+		THEN jsonb_build_object('candidate_context',p.source->'candidate_context') ELSE '{}'::jsonb END||jsonb_build_object('case_results',COALESCE(
 		(SELECT jsonb_agg(to_jsonb(c) ORDER BY c.case_id,c.attempt) FROM candidate_test_case_results c WHERE c.plan_id=r.id),'[]'))
-		FROM candidate_test_plan_status r WHERE task_id=$1 AND execution_id=$2 AND ($3=0 OR revision=$3) ORDER BY revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
+		FROM candidate_test_plan_status r JOIN candidate_test_plans p USING(id) WHERE r.task_id=$1 AND r.execution_id=$2 AND ($3=0 OR r.revision=$3) ORDER BY r.revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -124,16 +128,16 @@ func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revi
 const currentTestPlan = `t.status='WAITING_ACCEPTANCE' AND p.revision=(SELECT max(revision) FROM candidate_test_plans WHERE execution_id=p.execution_id)
 	AND p.execution_id=(SELECT max(id) FROM executions WHERE task_id=t.id)`
 
-func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string) (*TestPlanJob, error) {
+func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, supportsContext bool) (*TestPlanJob, error) {
 	var j TestPlanJob
 	var src, plan []byte
 	err := s.db.QueryRowContext(ctx, `WITH picked AS (
 		SELECT p.id,p.execution_id,p.source,(SELECT outcome FROM candidate_test_plan_jobs WHERE plan_id=p.id AND role='test') AS plan
 		FROM candidate_test_plan_jobs j JOIN candidate_test_plans p ON p.id=j.plan_id JOIN work_items t ON t.id=p.task_id
-		WHERE t.project_id=$1 AND j.role=$2 AND j.completed_at IS NULL AND (j.lease_until IS NULL OR j.lease_until<=now())
+		WHERE t.project_id=$1 AND j.role=$2 AND ($3 OR NOT (p.source ? 'candidate_context')) AND j.completed_at IS NULL AND (j.lease_until IS NULL OR j.lease_until<=now())
 		AND `+currentTestPlan+` ORDER BY p.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED)
 		UPDATE candidate_test_plan_jobs j SET lease=gen_random_uuid(),lease_until=now()+interval '6 minutes' FROM picked
-		WHERE j.plan_id=picked.id AND j.role=$2 RETURNING picked.id,picked.execution_id,j.lease,picked.source,picked.plan`, project, role).Scan(&j.ID, &j.Execution, &j.Lease, &src, &plan)
+		WHERE j.plan_id=picked.id AND j.role=$2 RETURNING picked.id,picked.execution_id,j.lease,picked.source,picked.plan`, project, role, supportsContext).Scan(&j.ID, &j.Execution, &j.Lease, &src, &plan)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

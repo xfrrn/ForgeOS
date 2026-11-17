@@ -84,6 +84,10 @@ Test Agent 在独立只读会话中读取固定差异、基础规则、验收标
 
 控制面配置 `FORGEOS_TEST_AGENT_PROJECT_ID`、`FORGEOS_TEST_AGENT_TOKEN`，以及同一项目的 Management 身份。Test Agent 节点设置回环 API 地址和专用令牌，运行 `worker test-agent`；Management 节点运行 `worker management`。两者使用独立只读会话和凭据，控制面提供已冻结的输入。
 
+新申请的计划修订会保存候选实现所用的全局规则、有效项目决策和 Owner 退回意见。换基候选通过交付记录追溯原实现。当存在这些依据时，Test Agent 和 Management 领取须带查询参数 `supports_candidate_context=1`。两者取得相同的 `source.candidate_context`，用例的比较步骤可以据此写出明确的预期取值。覆盖审查仍逐项核对用例与证据。
+
+在工作台的“查看测试计划”展开“测试计划使用的候选依据”，可以核对原文及整份依据的 SHA-256。`basis.candidate_context_sha256` 取 PostgreSQL 中该 JSONB 的文本表示按 UTF-8 编码后的摘要，并参与计划摘要校验。没有候选规则的任务仍可由旧节点领取。升级前归档的计划保留原依据，申请新修订时会使用该候选可追溯的规则。
+
 在任务详情展开最新的已验证候选，打开“查看测试计划”。可以逐行补充验收标准，也可直接点击“生成测试计划”。任务绑定的原始需求始终参与生成。控制面归档该候选的基础、差异、仓库规则、方法库及标准。Test Agent 完成计划后，Management 会自动领取覆盖审查。页面按修订展示来源、用例、环境、步骤、计划采集的证据、澄清问题和覆盖结论。
 
 Owner 接口 `POST /tasks/{id}/test-plans` 接受 `execution_id`、`commit`、`previous_revision` 及可选的 `criteria`。首次提交使用 0。同一请求重试返回原修订；需要重试失败作业或提供澄清时，以当前修订号申请新版本。按 `GET /tasks/{id}/test-plans?execution_id=…&revision=…` 读取历史，省略 revision 返回最新版本。请求计划后，当前修订的覆盖审查必须通过才能批准候选；退回候选仍可用。工作台上的“待执行”表示计划尚未提供用例运行证据。

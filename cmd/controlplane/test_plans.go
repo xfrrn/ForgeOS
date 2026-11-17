@@ -91,7 +91,7 @@ func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manag
 		return errors.New("set FORGEOS_TEST_AGENT_PROJECT_ID and a distinct FORGEOS_TEST_AGENT_TOKEN")
 	}
 	mux.HandleFunc("POST /internal/test-agent/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
-		job, err := data.ClaimTestPlan(r.Context(), project, "test")
+		job, err := data.ClaimTestPlan(r.Context(), project, "test", r.URL.Query().Get("supports_candidate_context") == "1")
 		if job == nil && err == nil {
 			w.WriteHeader(204)
 			return

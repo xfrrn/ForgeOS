@@ -229,7 +229,7 @@ func (w *worker) post(ctx context.Context, path string, body any, out any) (int,
 	if out != nil && resp.StatusCode == http.StatusOK {
 		maxJob := int64(2 << 20)
 		switch out.(type) {
-		case *store.Job, *store.ReviewJob:
+		case *store.Job, *store.ReviewJob, *store.TestPlanJob, *store.ManagementJob:
 			// A 16 KiB plan can cite hundreds of decisions with separately bounded text.
 			maxJob = 32 << 20
 		}

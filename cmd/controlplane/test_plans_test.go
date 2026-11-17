@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +16,11 @@ import (
 )
 
 func TestCandidatePlanRolesAndRevisions(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) { testCandidatePlanRoles(t, false) })
+	t.Run("published rules", func(t *testing.T) { testCandidatePlanRoles(t, true) })
+}
+
+func testCandidatePlanRoles(t *testing.T, published bool) {
 	ctx := context.Background()
 	root, repo, base := issueTestRepo(t)
 	data := store.New(testdb.Open(t))
@@ -43,12 +49,21 @@ func TestCandidatePlanRolesAndRevisions(t *testing.T) {
 	must(err)
 	task, err := data.ImportIssue(ctx, project.ID, store.IssueSpec{Issue: store.Issue{RepositoryID: 99, ID: 1, Number: 1, Title: "Read the guide."}, BaseCommit: base, Validation: "docs"})
 	must(err)
-	dev, err := data.Claim(ctx, "development", t.TempDir(), true)
+	var revision json.RawMessage
+	if published {
+		revision, err = data.PublishGlobalRules(ctx, 0, "Review headings")
+		must(err)
+	}
+	dev, err := data.ClaimForProjects(ctx, "development", t.TempDir(), []int64{project.ID}, store.WorkerCapabilities{SupportsCodex: true, SupportsGlobalRules: true})
 	must(err)
 	if dev == nil {
 		t.Fatal("missing development job")
 	}
 	must(data.Complete(ctx, dev.ExecutionID, dev.LeaseToken, store.Result{BaseCommit: base, Commit: sha, SessionID: "dev", Validation: &store.ValidationResult{Profile: "docs", Commit: sha}}))
+	if published {
+		_, err = data.PublishGlobalRules(ctx, 1, "Future headings")
+		must(err)
+	}
 	request := func(previous int, criteria []string) error {
 		_, err := data.RequestTestPlan(ctx, root, task.ID, dev.ExecutionID, sha, previous, criteria)
 		return err
@@ -63,15 +78,38 @@ func TestCandidatePlanRolesAndRevisions(t *testing.T) {
 	conflict(approve())
 	claim := func(role string) *store.TestPlanJob {
 		t.Helper()
-		j, err := data.ClaimTestPlan(ctx, project.ID, role)
+		if published {
+			legacy, err := data.ClaimTestPlan(ctx, project.ID, role, false)
+			must(err)
+			if legacy != nil {
+				t.Fatal("legacy role received candidate context", role)
+			}
+		}
+		j, err := data.ClaimTestPlan(ctx, project.ID, role, published)
 		must(err)
 		if j == nil {
 			t.Fatal("no job", role)
 		}
+		if !published {
+			if j.Source.CandidateContext != nil || j.Source.Basis.CandidateContextSHA != "" {
+				t.Fatal("unexpected rules for legacy role")
+			}
+			return j
+		}
+		var rules struct {
+			Global json.RawMessage `json:"global_rules"`
+		}
+		must(json.Unmarshal(j.Source.CandidateContext, &rules))
+		if string(rules.Global) != string(revision) {
+			t.Fatal("missing implementation rules", role)
+		}
+		if len(j.Source.Basis.CandidateContextSHA) != 64 || strings.Contains(string(j.Source.CandidateContext), "Future headings") {
+			t.Fatal("incorrect rule basis", role)
+		}
 		return j
 	}
 	old := claim("test")
-	j, err := data.ClaimTestPlan(ctx, project.ID, "test")
+	j, err := data.ClaimTestPlan(ctx, project.ID, "test", true)
 	must(err)
 	if j != nil {
 		t.Fatal("concurrent lease")
@@ -85,6 +123,10 @@ func TestCandidatePlanRolesAndRevisions(t *testing.T) {
 	r := store.TestPlanOutcome{ID: j.ID, Lease: j.Lease, Plan: &plan}
 	conflict(data.FinishTestPlan(ctx, project.ID+1, "test", r))
 	conflict(data.FinishTestPlan(ctx, project.ID, "management", r))
+	originalBasis := plan.Basis.CandidateContextSHA
+	plan.Basis.CandidateContextSHA = strings.Repeat("0", 64)
+	conflict(data.FinishTestPlan(ctx, project.ID, "test", r))
+	plan.Basis.CandidateContextSHA = originalBasis
 	plan.Session = "dev"
 	conflict(data.FinishTestPlan(ctx, project.ID, "test", r))
 	plan.Session = "tester"

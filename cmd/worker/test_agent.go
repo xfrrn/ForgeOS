@@ -11,7 +11,7 @@ import (
 func (w *worker) runTestAgent(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.TestPlanJob
-		status, err := w.post(ctx, "/internal/test-agent/claim", struct{}{}, &job)
+		status, err := w.post(ctx, "/internal/test-agent/claim?supports_candidate_context=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {
 			wait(ctx)
 			continue

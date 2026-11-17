@@ -1,3 +1,4 @@
+import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import type { GlobalRulesRevision } from './GlobalRules'
 import { PlanEditor } from './PlanEditor'
 import { KnowledgeCuration } from './KnowledgeCuration'
@@ -223,7 +224,7 @@ function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: At
 }
 
 type ReviewReceipt = {
-  candidate_context?: {implementation_execution_id?: number; implementation_commit?: string; global_rules?: GlobalRulesRevision; decisions?: Attempt['decision_context']; acceptance_feedback?: {execution_id: number; commit: string; note: string; actor: string}}
+  candidate_context?: CandidateContext
   base_commit: string; commit_sha: string; owner_note?: string; owner_checked_at?: string
   report: { session_id: string; summary: string; findings: { id: string; severity: string; file: string; side: string
     line: number; evidence: string; evidence_verified: boolean; blocking: boolean; confidence: number; description: string; recommendation: string }[] }
@@ -273,13 +274,7 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
     {open && receipt && <>
       <dl className="detail-facts"><Fact label="审查会话" code>{receipt.report.session_id}</Fact>
         <Fact label="基础 SHA" code>{receipt.base_commit}</Fact><Fact label="候选 SHA" code>{receipt.commit_sha}</Fact></dl>
-      {receipt.candidate_context && <details><summary>审查使用的候选依据</summary>
-        {receipt.candidate_context.implementation_execution_id && <p>原实现执行 #{receipt.candidate_context.implementation_execution_id} · <code>{receipt.candidate_context.implementation_commit}</code></p>}
-        {receipt.candidate_context.acceptance_feedback && <p>退回执行 #{receipt.candidate_context.acceptance_feedback.execution_id} · {receipt.candidate_context.acceptance_feedback.note}</p>}
-        {receipt.candidate_context.decisions?.map(d => <p key={d.id}><a href={'#' + d.ref}>决策 #{d.id}</a> · {d.statement} · {d.validity}</p>)}
-        {receipt.candidate_context.global_rules && <><p>全局规则修订 {receipt.candidate_context.global_rules.revision} · <code>{receipt.candidate_context.global_rules.content_sha256}</code></p>
-          <pre className="material-content">{receipt.candidate_context.global_rules.content}</pre></>}
-      </details>}
+      {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="审查使用的候选依据"/>}
       <p>{receipt.report.summary}</p>
       {receipt.report.findings.length === 0 ? <p>未报告发现。</p> : <ol>{receipt.report.findings.map(f => <li key={f.id}>
         <strong>{f.id} · {f.severity}{f.blocking && ' · 阻塞'}</strong>

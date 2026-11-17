@@ -19,9 +19,10 @@ type Criterion struct {
 }
 
 type Basis struct {
-	Decision   validation.Decision `json:"decision"`
-	LibrarySHA string              `json:"library_sha256"`
-	Criteria   []Criterion         `json:"criteria"`
+	CandidateContextSHA string              `json:"candidate_context_sha256,omitempty"`
+	Decision            validation.Decision `json:"decision"`
+	LibrarySHA          string              `json:"library_sha256"`
+	Criteria            []Criterion         `json:"criteria"`
 }
 
 func NewBasis(d validation.Decision, lib schemas.PlaybookLibrary, criteria []string) (Basis, error) {

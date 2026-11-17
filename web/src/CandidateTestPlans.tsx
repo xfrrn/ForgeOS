@@ -1,11 +1,13 @@
+import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import { useEffect, useState } from 'react'
 import type { ApiRequest } from './shared'
 import { CaseEvidence, resultLabels, type CaseAttempt } from './CaseEvidence'
 
 type Case = { id: string; criterion_id: string; playbook_id: string; objective: string; environment: string; tester: string; preconditions: string; steps: string[]; expected_result: string; evidence: string[] }
 type Receipt = {
+  candidate_context?: CandidateContext
   execution_state: string; case_results: CaseAttempt[]
-  revision: number; state: string; basis: { criteria: { id: string; text: string }[] }
+  revision: number; state: string; basis: { candidate_context_sha256?: string; criteria: { id: string; text: string }[] }
   plan?: { session_id: string; cases: Case[]; clarifications: { criterion_id: string; question: string }[] }
   coverage?: { session_id: string; plan_sha256: string; items: { criterion_id: string; case_ids: string[]; state: string; rationale: string }[] }
 }
@@ -53,7 +55,9 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
     {open && <>
       {latest > 1 && <div className="detail-actions"><button className="button" disabled={selected <= 1} onClick={() => setRevision(selected - 1)}>上一版测试计划</button>
         <span>修订 {selected}</span><button className="button" disabled={selected >= latest} onClick={() => setRevision(selected + 1)}>下一版测试计划</button></div>}
-      {receipt && <><dl>{receipt.basis.criteria.map(c => <div key={c.id}><dt>{c.id}</dt><dd>{c.text || '业务预期待澄清'}</dd></div>)}</dl>
+      {receipt && <>
+        {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="测试计划使用的候选依据" digest={receipt.basis.candidate_context_sha256}/>}
+        <dl>{receipt.basis.criteria.map(c => <div key={c.id}><dt>{c.id}</dt><dd>{c.text || '业务预期待澄清'}</dd></div>)}</dl>
         {receipt.plan && <><p>Test Agent 会话 <code>{receipt.plan.session_id}</code></p>
           <ol>{receipt.plan.cases.map(c => {
             const history = receipt.case_results.filter(r => r.case_id === c.id)

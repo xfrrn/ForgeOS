@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"context"
+	"encoding/json"
 
 	"forgeos/internal/localrepo"
 	"forgeos/internal/validation"
@@ -9,10 +10,11 @@ import (
 )
 
 type Source struct {
-	Basis     Basis                   `json:"basis"`
-	Library   schemas.PlaybookLibrary `json:"library"`
-	Diff      string                  `json:"diff"`
-	Truncated bool                    `json:"diff_truncated"`
+	CandidateContext json.RawMessage         `json:"candidate_context,omitempty"`
+	Basis            Basis                   `json:"basis"`
+	Library          schemas.PlaybookLibrary `json:"library"`
+	Diff             string                  `json:"diff"`
+	Truncated        bool                    `json:"diff_truncated"`
 }
 
 func ReadSource(ctx context.Context, root, project, base, commit string, policy validation.Policy, criteria []string) (Source, error) {
