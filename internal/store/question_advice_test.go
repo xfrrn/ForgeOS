@@ -72,7 +72,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal(err)
 	}
 	retry := claim(project.ID)
-	if retry == nil || retry.LeaseUntil == nil || retry.Lease == j.Lease || !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
+	if retry == nil || !retry.CaptureProfile || retry.LeaseUntil == nil || retry.Lease == j.Lease || !errors.Is(finish(project.ID, j.Lease), ErrConflict) {
 		t.Fatal("accepted superseded lease")
 	}
 	if _, err = s.db.ExecContext(ctx, `UPDATE question_advice_claims SET minimum_level='D3' WHERE question_id=$1`, id); err != nil {
@@ -87,6 +87,13 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 		t.Fatal("accepted D3 recommendation")
 	}
 	a.Suggestion = ""
+	profile := StructuredCodexProfile()
+	a.Profile = &profile
+	profile.Permission = "on-request"
+	if !errors.Is(finish(project.ID, retry.Lease), ErrConflict) {
+		t.Fatal("incorrect native permission")
+	}
+	profile = StructuredCodexProfile()
 	if err = finish(project.ID, retry.Lease); err != nil {
 		t.Fatal(err)
 	}
@@ -95,12 +102,20 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if err != nil || detail.Status != "WAITING_INPUT" || len(detail.Questions) != 1 || detail.Questions[0].Answer != "" || detail.Questions[0].ManagementAdvice == nil || detail.Questions[0].ManagementAdvice.At == nil {
 		t.Fatal(detail.Status, err)
 	}
+	if p := detail.Questions[0].ManagementAdvice.Profile; p == nil || !validStructuredProfile(p) {
+		t.Fatal("missing archived permissions")
+	}
 	if _, err = s.AnswerQuestion(ctx, task, id, "Harbor"); err != nil {
 		t.Fatal(err)
 	}
 	if err = finish(project.ID, retry.Lease); err != nil {
 		t.Fatal("lost response replay", err)
 	}
+	a.Profile = nil
+	if !errors.Is(finish(project.ID, retry.Lease), ErrConflict) {
+		t.Fatal("replay removed archived permissions")
+	}
+	a.Profile = &profile
 	a.Rationale = "Changed after the answer."
 	if !errors.Is(finish(project.ID, retry.Lease), ErrConflict) {
 		t.Fatal("rewrote historical advice")

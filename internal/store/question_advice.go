@@ -19,13 +19,14 @@ type QuestionAdviceJob struct {
 }
 
 type QuestionAdvice struct {
-	At         *time.Time `json:"at,omitempty"`
-	Level      string     `json:"level"`
-	Rationale  string     `json:"rationale"`
-	Suggestion string     `json:"suggestion"`
-	Source     string     `json:"source"`
-	Quote      string     `json:"quote"`
-	Session    string     `json:"session_id"`
+	Profile    *AgentProfile `json:"profile,omitempty"`
+	At         *time.Time    `json:"at,omitempty"`
+	Level      string        `json:"level"`
+	Rationale  string        `json:"rationale"`
+	Suggestion string        `json:"suggestion"`
+	Source     string        `json:"source"`
+	Quote      string        `json:"quote"`
+	Session    string        `json:"session_id"`
 }
 
 const liveAdviceQuestion = `t.status='WAITING_INPUT' AND q.answer IS NULL AND q.withdrawn_at IS NULL
@@ -34,7 +35,7 @@ const liveAdviceQuestion = `t.status='WAITING_INPUT' AND q.answer IS NULL AND q.
 
 func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups, supportsDeadline bool) (*ManagementJob, error) {
 	var input QuestionAdviceJob
-	job := ManagementJob{ProjectID: project, Question: &input, MinimumLevel: "D2"}
+	job := ManagementJob{ProjectID: project, Question: &input, MinimumLevel: "D2", CaptureProfile: true}
 	tx, pool, err := s.beginManagementClaim(ctx, project, "question_advice", supportsDeadline)
 	if tx == nil {
 		return nil, err
@@ -78,7 +79,7 @@ func (s *Store) ClaimQuestionAdvice(ctx context.Context, project int64, lookups,
 }
 
 func (s *Store) CompleteQuestionAdvice(ctx context.Context, project, id int64, lease string, a QuestionAdvice) error {
-	if a.At != nil || (a.Level != "D1" && a.Level != "D2" && a.Level != "D3") || !decisionText(a.Rationale) || !decisionText(a.Source) || !decisionText(a.Quote) ||
+	if !validStructuredProfile(a.Profile) || a.At != nil || (a.Level != "D1" && a.Level != "D2" && a.Level != "D3") || !decisionText(a.Rationale) || !decisionText(a.Source) || !decisionText(a.Quote) ||
 		(a.Suggestion != "" && (!decisionText(a.Suggestion) || a.Level != "D2")) || a.Session == "" || len(a.Session) > 128 ||
 		strings.Trim(a.Session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" {
 		return ErrConflict

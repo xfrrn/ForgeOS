@@ -153,6 +153,10 @@ func (w *worker) runManagement(ctx context.Context) error {
 				log.Printf("management question %d review failed: %v", job.Question.ID, err)
 				continue
 			}
+			if job.CaptureProfile {
+				profile := store.StructuredCodexProfile()
+				advice.Profile = &profile
+			}
 			status, err = w.managementReceipt(ctx, "/internal/management/questions/result", map[string]any{"id": job.Question.ID, "lease": job.Lease, "advice": advice})
 			if err != nil {
 				return err
