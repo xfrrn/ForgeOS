@@ -1943,3 +1943,15 @@ CI 恢复后的候选会话与规则追溯对应提交 `80ef8450e93df5ffee7980f5
 | 重启三个隔离控制面，重读相同问题；使用 Worker 身份或将问题编号与错误任务组合查询 | 重启前后消息内容相同，未获授权或不存在的组合被拒绝 | 三次重启前后，按键排序的 JSON 消息摘要均相同。#101 为 `a47921de544b5adad43e4509cc1c0c39e2fa67ac9f53f02aa34b5fcdb5b00158`，#103 为 `c2bb819e4822c5a3fd04da12af326de56bc1bd557927bb8bc57e8bcef0373b95`，#105 为 `e5767b329d7d8613837c96c22ebf0ad879a6998a3df091879b1f0f06fc171c2e`。错误身份返回 401，错误任务返回 404。 |
 
 本轮启用真实 PostgreSQL 与 Docker，全量回归 204 个测试及子测试通过，零跳过。UTC 输出定稿后，重新构建控制面复验了上述 10 条消息、数据库专项测试及 Go vet。其他操作的消息路由继续待验收。
+
+ACP 1.0 格式及原生决策记录回读对应 ForgeOS 提交 `ca6aa459eba90d665ff92825c0a4f42633f7cf05`。
+
+### 专题 05、07 · 原生 Worker 在线接收 ACP 决策答复
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 导入 beta #107，要求使用 Owner 指定的标题，并在下一行记录答复附带的请求和响应 ID。在原生 Codex 提问后重启控制面，从 Chrome 的待答队列答复 | 同一执行与原生会话接收 ACP 消息，校验作用域、双方身份和原问题，将答复和消息 ID 交给下一回合 | 执行 1、检查点 0 的进程 41568、42492 共用 Session `01a1e87b-354c-78c0-9264-0c8fca8e6bb7`。候选仅新增 `docs/owner-message-receipt.md`，标题为 `Harbor 3e2f28ca`，下方写入 `QUESTION-1-REQUEST QUESTION-1-RESPONSE`。两个 ID 与 Owner 接口逐字相同，关联 ID 为 `QUESTION-1`。 |
+| 在 Docker 本地验证通过后批准候选，等待 GitHub 门禁，核对合并和 Issue 关闭 | 只有受验候选被交付，原任务可追溯到完成状态 | 候选 `feb0923510adeba740d070821e4ea2b9ff2b6c3d` 的两项检查成功，合并为 `ac57c1edad130ed06d96f97d51ab6b73a470df0c`。任务 DONE，Issue CLOSED。[PR #108](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/108) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44041896451) |
+| 改变消息的项目、Goal、工作项、执行、序号、问题、Git 依据、参与方或关联信息；重读三个归档来源；检查版本协商 | 不匹配的答复被拒绝，旧回执保持相同。声明使用 1.0 的任务不能退回纯文本答复 | Worker 专项用例拒绝 14 种不匹配的消息。三个历史来源共 10 条消息，摘要与上一节相同。旧任务接受旧格式，1.0 任务拒绝缺少消息的数据。 |
+
+本轮真实 PostgreSQL 与 Docker 全量回归 219 个测试及子测试通过，零跳过，Go vet 通过。新增的协议协商用例及消息绑定专项随后单独复验通过。

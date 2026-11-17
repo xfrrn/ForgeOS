@@ -23,7 +23,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 1. Agent Profile 的版本和配置结构。
 2. Harness Adapter 的正式 Go 接口与错误模型。
-3. ACP 1.0 消息的 JSON Schema、文档样例及原生检查点决策请求与答复的控制面回读已验收。其他角色消息的在线路由及按消息类型执行策略仍待补齐。
+3. ACP 1.0 消息的 JSON Schema、文档样例及原生检查点决策请求与答复的控制面回读已验收。beta #107 已从真实原生 Worker 验证 Owner 答复的在线路由、消息身份和交付。其他角色消息的在线路由及按消息类型执行策略仍待补齐。
 4. 已验证单个 Execution 关联多个进程并保留原生会话，覆盖 Claude 实现、Codex 实现和 Codex 只读规划的终态传输丢失。beta #103、#105 验证了 Daemon 在等待业务答复时退出，两个替代进程中只有一个接回原执行并完成交付。原生 CLI 被强制终止、整机重启后的模型恢复和跨 Session 交接仍待验收。
 5. Issue 执行失败重试或验收退回后均使用新 Execution 和新 Worktree。退回修订从上一次被拒的候选开始，原工作区留存。多 Worker 租约续约已从正式 Worker 与项目专用身份验证，控制面重启后可续约；已过期、已结束或其他节点的执行拒绝续约。适配器异常退出后，正式 Worker 已验证在原租约内恢复会话，见 B.4。
 6. `validation.yaml` 版本 1、候选自动选级、隔离 Runner 及检查报告已实测。beta #49 验证了 Worker 后台传输、从 Owner 工作台下载原始日志和产物，以及 Windows 节点向 Linux 控制面传送文件。中央 CI 文件按项目分类型到期清理见专题 13。beta #52 已验证关闭来源 Issue 时取消运行中的 Docker 检查、保留日志、收回容器和继续派发。beta #54 已从任务页主动取消运行中的 CI，核对名额释放、日志归档及原 Issue 保持开放。beta #55 已从任务页暂停真实 CI，重启后恢复同一候选的完整复验。模型回合中的暂停和原生 Session 恢复仍见 B.4。

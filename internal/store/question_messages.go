@@ -10,27 +10,40 @@ import (
 	"forgeos/schemas"
 )
 
-// Use the original question and answer receipts, including for executions predating ACP.
+const questionMessageSource = `SELECT t.project_id,t.goal_id,to_jsonb(q)
+	FROM work_items t JOIN decision_questions q ON q.task_id=t.id
+	WHERE q.checkpoint_sequence IS NOT NULL AND `
+
 func (s *Store) QuestionMessages(ctx context.Context, taskID, questionID int64) ([]schemas.AgentMessage, error) {
+	return readQuestionMessages(s.db.QueryRowContext(ctx, questionMessageSource+"q.task_id=$1 AND q.id=$2", taskID, questionID))
+}
+
+func (s *Store) CheckpointMessages(ctx context.Context, executionID int64, sequence int) ([]schemas.AgentMessage, error) {
+	return readQuestionMessages(s.db.QueryRowContext(ctx, questionMessageSource+"q.execution_id=$1 AND q.checkpoint_sequence=$2", executionID, sequence))
+}
+
+// Use the original question and answer receipts, including for executions predating ACP.
+func readQuestionMessages(row *sql.Row) ([]schemas.AgentMessage, error) {
 	var project int64
 	var goal sql.NullInt64
 	var raw []byte
-	err := s.db.QueryRowContext(ctx, `SELECT t.project_id,t.goal_id,to_jsonb(q)
-		FROM work_items t JOIN decision_questions q ON q.task_id=t.id
-		WHERE t.id=$1 AND q.id=$2 AND q.checkpoint_sequence IS NOT NULL`, taskID, questionID).Scan(&project, &goal, &raw)
+	err := row.Scan(&project, &goal, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	var q DecisionQuestion
+	var q struct {
+		DecisionQuestion
+		TaskID int64 `json:"task_id"`
+	}
 	if err = json.Unmarshal(raw, &q); err != nil {
 		return nil, err
 	}
-	work := "WORK-" + strconv.FormatInt(taskID, 10)
+	work := "WORK-" + strconv.FormatInt(q.TaskID, 10)
 	execID := "EXEC-" + strconv.FormatInt(q.ExecutionID, 10)
-	correlation := "QUESTION-" + strconv.FormatInt(questionID, 10)
+	correlation := "QUESTION-" + strconv.FormatInt(q.ID, 10)
 	request := schemas.AgentMessage{Version: "1.0", ID: correlation + "-REQUEST", Correlation: correlation,
 		Project: "PROJECT-" + strconv.FormatInt(project, 10), WorkItem: &work, Execution: &execID,
 		From: schemas.Actor{Type: "agent", ID: q.Requester}, To: schemas.Actor{Type: "owner", ID: "owner"},

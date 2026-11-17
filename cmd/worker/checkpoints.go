@@ -90,6 +90,14 @@ func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, sessi
 		return nil, errors.New("invalid business question from harness")
 	}
 	input := store.CheckpointQuestion{Trees: trees, Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
+	path := fmt.Sprintf("/internal/executions/%d/checkpoint-question", job.ExecutionID)
+	switch job.DecisionProtocol {
+	case "1.0":
+		path += "?acp=1.0"
+	case "":
+	default:
+		return nil, errors.New("unsupported decision message protocol")
+	}
 	if job.ResumeQuestions {
 		var nonce [32]byte
 		if _, err := rand.Read(nonce[:]); err != nil {
@@ -99,14 +107,24 @@ func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, sessi
 	}
 	for ctx.Err() == nil {
 		var reply struct {
-			Answer *string `json:"answer"`
+			Answer   *string           `json:"answer"`
+			Messages []json.RawMessage `json:"messages"`
 		}
-		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/checkpoint-question", job.ExecutionID), input, &reply)
+		status, err := w.post(ctx, path, input, &reply)
 		if status == http.StatusOK {
-			if err != nil || reply.Answer == nil {
-				return nil, errors.New("invalid checkpoint question response")
+			if err != nil {
+				return nil, err
 			}
-			if *reply.Answer != "" {
+			if job.DecisionProtocol == "1.0" {
+				if reply.Messages == nil {
+					return nil, errors.New("missing checkpoint decision messages")
+				}
+				if len(reply.Messages) > 0 {
+					return checkpointAnswer(reply.Messages, w.id, job, seq, q)
+				}
+			} else if reply.Answer == nil {
+				return nil, errors.New("invalid checkpoint question response")
+			} else if *reply.Answer != "" {
 				return json.Marshal(map[string]string{"question": q.Question, "answer": *reply.Answer})
 			}
 		} else if status == http.StatusPreconditionFailed {

@@ -308,6 +308,8 @@ type Event struct {
 }
 
 type Job struct {
+	ProjectID           int64           `json:"project_id,omitempty"`
+	DecisionProtocol    string          `json:"decision_protocol,omitempty"`
 	CheckpointWorktrees bool            `json:"checkpoint_worktrees,omitempty"`
 	ResumeQuestions     bool            `json:"resume_questions,omitempty"`
 	OwnerClarifications json.RawMessage `json:"owner_clarifications,omitempty"`
@@ -663,6 +665,10 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.RuntimeQuestions = j.SupportsCheckpoints && j.Spec.Mode != "plan"
 		j.CheckpointWorktrees = j.RuntimeQuestions
 		j.ResumeQuestions = j.RuntimeQuestions
+		if j.RuntimeQuestions {
+			j.ProjectID = projectID
+			j.DecisionProtocol = "1.0"
+		}
 		j.RecordProcesses = j.Spec.VerifyCommit == ""
 		j.ReportLiveProcess = j.RecordProcesses
 		j.RecordToolActivity = j.RecordProcesses

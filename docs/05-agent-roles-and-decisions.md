@@ -91,6 +91,8 @@ Issue 评论、附件和导入文档都是不可信输入，不得成为系统�
 
 Owner 可用 `GET /tasks/{id}/questions/{question}/messages` 回读原生实现检查点的决策请求。等待答复时有一条 REQUEST，答复后多一条 RESPONSE。控制面从持久记录生成身份、UTC 时间、对象范围和消息 ID，校验格式后返回。请求的 `trust_level` 为 `agent_generated`，接收方为 Owner；Owner 答复的来源为 `owner_authenticated`，引用原请求并发回提问节点。重新读取同一问题得到相同的关联标识和幂等键。
 
+支持 ACP 的控制面在原生实现任务的领取结果中提供 `decision_protocol: "1.0"` 和本地项目 ID。Worker 在原执行的检查点问题接口请求 `?acp=1.0`。等待期间收到空消息数组，取得答复的进程收到与 Owner 回读一致的 REQUEST 和 RESPONSE。Worker 校验格式、项目、Goal、工作项、执行、检查点、提问节点、Git 依据和答复者，并核对两条消息的关联标识。校验通过后，原生回合的 `owner_clarification` 同时包含问题、答复、请求 ID、响应 ID 和关联 ID。已按 1.0 领取的执行收到缺少消息的答复时会报告失败。旧版控制面签发的任务沿用原有答复格式。
+
 ## 6. 知识来源优先级
 
 普通规则冲突：
