@@ -28,6 +28,8 @@ func TestAPIBoundaries(t *testing.T) {
 		{"POST", "/internal/claim", "owner", "{}", http.StatusUnauthorized},
 		{"POST", "/executions/1/abandon", "worker", "", http.StatusUnauthorized},
 		{"POST", "/executions/1/cancel", "worker", "", http.StatusUnauthorized},
+		{"POST", "/executions/1/instructions", "worker", "{}", http.StatusUnauthorized},
+		{"POST", "/executions/1/instructions", "owner", "{}", http.StatusBadRequest},
 		{"POST", "/executions/1/pause-ci", "worker", "", http.StatusUnauthorized},
 		{"POST", "/executions/1/resume-ci", "worker", "", http.StatusUnauthorized},
 		{"POST", "/internal/executions/1/ci-candidate", "owner", "", http.StatusUnauthorized},

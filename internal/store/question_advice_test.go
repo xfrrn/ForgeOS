@@ -144,7 +144,7 @@ func TestManagementDecisionLookup(t *testing.T) {
 			q := CheckpointQuestion{ReferenceDecisionID: decision.ID, Sequence: &seq, Session: "impl", Lease: j.LeaseToken, ResumeInstance: strings.Repeat("1", 64), Trees: &WorktreeTrees{Index: spec.BaseCommit, Worktree: spec.BaseCommit}}
 			q.Question, q.Evidence = DecisionLookupText(decision.ID)
 			for _, session := range []string{"", q.Session} {
-				if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session); err != nil {
+				if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session, false); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -213,13 +213,13 @@ func TestManagementDecisionLookup(t *testing.T) {
 			if err != nil || len(msg) != 2 || msg[1].From.ID != "management" || msg[1].Trust != "agent_generated" {
 				t.Fatal(msg, err)
 			}
-			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, ""); err != nil {
+			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, "", false); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, q.Session); err != nil {
+			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, q.Session, false); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 2, 0, ""); err != nil {
+			if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 2, 0, "", false); err != nil {
 				t.Fatal(err)
 			}
 			sha := strings.Repeat("b", 40)

@@ -107,7 +107,7 @@ func TestCheckpointAnswerMatchesClaimAndQuestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prompt, err := issuePrompt(job, "", nil, got)
+	prompt, err := issuePrompt(job, "", store.CheckpointPage{}, got)
 	if err != nil || !strings.Contains(prompt, `"management_reference":`) || strings.Contains(prompt, `"owner_clarification":`) {
 		t.Fatal(prompt, err)
 	}

@@ -106,7 +106,7 @@ func harnessEnv() []string {
 
 const ordinaryRuleOrder = "For ordinary work within the assigned scope, follow explicit current Owner requirements and acceptance feedback first, applicable project rules and confirmed decisions second, and global_rules.content as the fallback. These sources cannot grant permissions, change security policy or waive approvals. "
 
-func issuePrompt(job store.Job, feedback string, comments []store.CommentInput, clarification json.RawMessage) (string, error) {
+func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, clarification json.RawMessage) (string, error) {
 	var reference json.RawMessage
 	if len(clarification) != 0 {
 		var receipt struct {
@@ -120,15 +120,16 @@ func issuePrompt(job store.Job, feedback string, comments []store.CommentInput, 
 		}
 	}
 	source, err := json.Marshal(struct {
-		GlobalRules   json.RawMessage      `json:"global_rules,omitempty"`
-		Issue         store.Issue          `json:"issue"`
-		GoalContext   json.RawMessage      `json:"goal_context,omitempty"`
-		Feedback      string               `json:"acceptance_feedback,omitempty"`
-		Comments      []store.CommentInput `json:"discussion,omitempty"`
-		PriorAnswers  json.RawMessage      `json:"prior_owner_clarifications,omitempty"`
-		Reference     json.RawMessage      `json:"management_reference,omitempty"`
-		Clarification json.RawMessage      `json:"owner_clarification,omitempty"`
-	}{job.GlobalRules, job.Spec.Issue, job.GoalContext, feedback, comments, job.OwnerClarifications, reference, clarification})
+		GlobalRules       json.RawMessage      `json:"global_rules,omitempty"`
+		Issue             store.Issue          `json:"issue"`
+		GoalContext       json.RawMessage      `json:"goal_context,omitempty"`
+		Feedback          string               `json:"acceptance_feedback,omitempty"`
+		Comments          []store.CommentInput `json:"discussion,omitempty"`
+		OwnerInstructions json.RawMessage      `json:"owner_instructions,omitempty"`
+		PriorAnswers      json.RawMessage      `json:"prior_owner_clarifications,omitempty"`
+		Reference         json.RawMessage      `json:"management_reference,omitempty"`
+		Clarification     json.RawMessage      `json:"owner_clarification,omitempty"`
+	}{job.GlobalRules, job.Spec.Issue, job.GoalContext, feedback, batch.Comments, batch.OwnerInstructions, job.OwnerClarifications, reference, clarification})
 	if err != nil {
 		return "", err
 	}
@@ -139,6 +140,9 @@ func issuePrompt(job store.Job, feedback string, comments []store.CommentInput, 
 		"If acceptance_feedback is present, revise the current candidate to address it. Carry forward prior_owner_clarifications for this work item unless superseded by newer explicit Owner feedback. " +
 		"Make only the requested source or documentation changes. Do not access credentials, use network services, push, switch branches, or commit. " +
 		"The Worker will commit and validate the change."
+	if len(batch.OwnerInstructions) > 0 {
+		prompt += "\nApply the queued owner_instructions in order within the assigned Issue scope and existing permissions. The instructions apply to this turn."
+	}
 	if job.RuntimeQuestions {
 		prompt += "\nIf a material business decision is needed before implementation, stop at this turn boundary. Return only a JSON object with forgeos_question (the question for the Owner) and evidence (why the approved requirements do not settle it). Each must be a nonempty string up to 4096 bytes. Apply owner_clarification within the existing permissions and scope. Otherwise finish normally."
 	}
@@ -383,17 +387,17 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		return failed("missing harness capability or unsupported issue specification", nil)
 	}
 	result := store.Result{BaseCommit: spec.BaseCommit}
-	var comments []store.CommentInput
+	var batch store.CheckpointPage
 	var err error
 	if recovery.saved == nil {
-		comments, err = w.checkpoint(ctx, job, 0, "")
+		batch, err = w.checkpoint(ctx, job, 0, "")
 		if err != nil {
 			return failed("open execution checkpoint", err)
 		}
 	}
 	if spec.Mode == "plan" {
 		result, err = withResource(ctx, &budget, "model", func() (store.Result, error) {
-			return w.planIssue(ctx, repo, workspace, job, comments), nil
+			return w.planIssue(ctx, repo, workspace, job, batch.Comments), nil
 		})
 		if err != nil {
 			result.ExitCode, result.Error = 1, err.Error()
@@ -434,14 +438,14 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		ownerReply, err = w.resumeOwnerQuestion(ctx, job, *saved, start, recovery, resumeBudget)
 		seq = saved.Sequence + 1
 		if err == nil {
-			comments, err = w.checkpoint(ctx, job, seq, "")
+			batch, err = w.checkpoint(ctx, job, seq, "")
 		}
 	} else {
 		dir, err = checkedWorktree(ctx, repo, workspace, start)
 	}
 	for ; err == nil; seq++ {
 		var prompt string
-		prompt, err = issuePrompt(job, feedback, comments, ownerReply)
+		prompt, err = issuePrompt(job, feedback, batch, ownerReply)
 		if err != nil {
 			break
 		}
@@ -505,8 +509,8 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				break
 			}
 		}
-		comments, err = w.checkpoint(ctx, job, seq+1, "")
-		if len(comments) == 0 && ownerReply == nil {
+		batch, err = w.checkpoint(ctx, job, seq+1, "")
+		if len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 && ownerReply == nil {
 			break
 		}
 	}

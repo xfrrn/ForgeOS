@@ -33,6 +33,7 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
 }
 type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type Attempt = {
+  queue_sequence?: number
   global_rules?: GlobalRulesRevision
   owner_clarifications?: CandidateContext['owner_clarifications']
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
@@ -203,7 +204,31 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
   </div>
 }
 
-type Checkpoint = { sequence: number; through_event: number; comment_count: number; at: string; session_id?: string }
+type Checkpoint = { sequence: number; through_event: number; comment_count: number; at: string; session_id?: string
+  next_instructions?: { key: string; body: string }[] }
+
+function QueueInstruction({ attempt, sequence, request, refresh }: { attempt: number; sequence: number; request: ApiRequest; refresh: (message: string) => void }) {
+  const [body, setBody] = useState('')
+  const [key, setKey] = useState(() => crypto.randomUUID())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function submit() {
+    setBusy(true); setError('')
+    try {
+      await request(`/executions/${attempt}/instructions`, { method: 'POST', body: JSON.stringify({ sequence, key, body: body.trim() }) })
+      setBody(''); setKey(crypto.randomUUID()); refresh(`指令已排入检查点 ${sequence + 1}。`)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) refresh('请查看最新检查点。回合结束、队列已满或重复请求内容不同会拒绝入队。')
+      else setError('未收到回执。可重试同一指令，或从执行检查点核对。')
+    } finally { setBusy(false) }
+  }
+  return <form className="detail-accept" onSubmit={e => { e.preventDefault(); void submit() }}>
+    <label htmlFor="next-instruction">下一回合指令</label>
+    <textarea id="next-instruction" required value={body} disabled={busy} onChange={e => { setBody(e.target.value); setKey(crypto.randomUUID()) }}/>
+    <button className="button" disabled={busy || !body.trim() || new TextEncoder().encode(body.trim()).length > 4096}>排入下一回合</button>
+    {error && <p role="alert">{error}</p>}
+  </form>
+}
 
 function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: Attempt; request: ApiRequest }) {
   const [open, setOpen] = useState(false)
@@ -223,6 +248,9 @@ function CheckpointHistory({ task, attempt, request }: { task: Task; attempt: At
       <strong>{row.sequence === 0 ? '回合开始' : '提交前'} · {row.comment_count} 条评论</strong> · {formatTime(row.at)}
       <dl><Fact label="截至评论事件">{row.through_event}</Fact>
         {row.session_id && <Fact label="处理会话" code>{row.session_id}</Fact>}</dl>
+      {row.next_instructions?.length ? <div><strong>发往检查点 {row.sequence + 1} 的 Owner 指令</strong>
+        <ol>{row.next_instructions.map(item => <li key={item.key}>{item.body}</li>)}</ol>
+        <p>{rows.find(item => item.sequence === row.sequence + 1)?.session_id ? '下一回合已确认处理' : attempt.status === 'RUNNING' ? '等待回合确认' : '执行结束，未收到处理回执'}</p></div> : null}
     </li>)}</ol>)}</div>
 }
 
@@ -591,6 +619,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
           ? <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'resume-ci')}>恢复 CI · 复验此提交</button>
           : last.ci_pause_requested_at ? <p role="status">已请求暂停 CI，等待 Worker 回执。</p>
           : last.ci_candidate && <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'pause-ci')}>暂停 CI · 执行 #{last.id}</button>}
+        {last.queue_sequence != null && <QueueInstruction key={`${last.id}/${last.queue_sequence}`} attempt={last.id} sequence={last.queue_sequence} request={request} refresh={refresh}/>}
         <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'cancel')}>取消任务 · 执行 #{last.id}</button>
       </>}
     </section>}

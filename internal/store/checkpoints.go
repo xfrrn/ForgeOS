@@ -22,7 +22,8 @@ type Checkpoint struct {
 }
 type CheckpointSummary struct {
 	Checkpoint
-	CommentCount int `json:"comment_count"`
+	CommentCount     int             `json:"comment_count"`
+	NextInstructions json.RawMessage `json:"next_instructions,omitempty"`
 }
 type CommentInput struct {
 	EventID   int64  `json:"event_id"`
@@ -30,13 +31,73 @@ type CommentInput struct {
 	URL       string `json:"source"`
 	Body      string `json:"body"`
 }
-type CheckpointPage struct {
-	Checkpoint
-	Comments []CommentInput `json:"comments"`
-	More     bool           `json:"more"`
+
+type OwnerInstruction struct {
+	Key  string `json:"key"`
+	Body string `json:"body"`
 }
 
-func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq int, after int64, session string) (CheckpointPage, error) {
+func (s *Store) QueueInstruction(ctx context.Context, id int64, seq int, input OwnerInstruction) error {
+	if seq < 0 || seq > 2147483646 || len(input.Key) == 0 || len(input.Key) > 64 || strings.Trim(input.Key, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" ||
+		strings.TrimSpace(input.Body) == "" || strings.ContainsRune(input.Body, 0) || len(input.Body) > 4096 {
+		return ErrConflict
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var raw []byte
+	err = tx.QueryRowContext(ctx, `SELECT c.next_instructions FROM executions e JOIN execution_checkpoints c ON c.execution_id=e.id
+		WHERE e.id=$1 AND c.sequence=$2 FOR UPDATE OF e,c`, id, seq).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	var queued []OwnerInstruction
+	if err = json.Unmarshal(raw, &queued); err != nil {
+		return err
+	}
+	for _, entry := range queued {
+		if entry.Key == input.Key {
+			if entry != input {
+				return ErrConflict
+			}
+			return nil
+		}
+	}
+	if len(queued) >= 8 {
+		return ErrConflict
+	}
+	raw, err = json.Marshal(append(queued, input))
+	if err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE execution_checkpoints c SET next_instructions=$3 FROM open_instruction_queues q
+		WHERE c.execution_id=$1 AND c.sequence=$2 AND q.execution_id=c.execution_id AND q.sequence=c.sequence`, id, seq, string(raw))
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrConflict
+	}
+	return tx.Commit()
+}
+
+type CheckpointPage struct {
+	Checkpoint
+	Comments          []CommentInput  `json:"comments"`
+	OwnerInstructions json.RawMessage `json:"owner_instructions,omitempty"`
+	More              bool            `json:"more"`
+}
+
+func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq int, after int64, session string, supportsQueue bool) (CheckpointPage, error) {
 	var page CheckpointPage
 	if seq < 0 || after < 0 || len(session) > 128 || strings.Trim(session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" {
 		return page, ErrConflict
@@ -61,10 +122,23 @@ func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq 
 	if subtle.ConstantTimeCompare(hash[:], digest) != 1 {
 		return page, ErrConflict
 	}
+	var instructions []byte
+	err = tx.QueryRowContext(ctx, `SELECT NULLIF(next_instructions,'[]') FROM execution_checkpoints WHERE execution_id=$1 AND sequence=$2::integer-1`, id, seq).Scan(&instructions)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return page, err
+	}
+	if len(instructions) > 0 && !supportsQueue {
+		return page, ErrConflict
+	}
+	if after == 0 {
+		page.OwnerInstructions = instructions
+	}
 	if session != "" {
 		// A native turn may be reported repeatedly after a dropped HTTP response.
 		var stored int
 		err = tx.QueryRowContext(ctx, `UPDATE execution_checkpoints SET session_id=$3 WHERE execution_id=$1 AND sequence=$2 AND (session_id IS NULL OR session_id=$3)
+   AND NOT EXISTS(SELECT 1 FROM execution_checkpoints prior WHERE prior.execution_id=$1 AND prior.sequence=$2::integer-1
+       AND prior.next_instructions<>'[]' AND prior.session_id IS DISTINCT FROM $3)
    AND NOT EXISTS(SELECT 1 FROM decision_questions q JOIN execution_checkpoints asked ON asked.execution_id=q.execution_id AND asked.sequence=q.checkpoint_sequence
        WHERE q.execution_id=$1 AND q.checkpoint_sequence<$2 AND asked.session_id<>$3) RETURNING sequence`, id, seq, session).Scan(&stored)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -75,10 +149,10 @@ func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq 
 		}
 		return page, tx.Commit()
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO execution_checkpoints(execution_id,sequence,source_task_id,after_event,through_event)
-		SELECT $1,$2,$3,COALESCE(p.through_event,0),COALESCE((SELECT max(id) FROM issue_comment_events WHERE task_id=$3),0)
+	_, err = tx.ExecContext(ctx, `INSERT INTO execution_checkpoints(execution_id,sequence,source_task_id,after_event,through_event,supports_queue)
+		SELECT $1,$2,$3,COALESCE(p.through_event,0),COALESCE((SELECT max(id) FROM issue_comment_events WHERE task_id=$3),0),$4
 		FROM (SELECT 1) seed LEFT JOIN execution_checkpoints p ON p.execution_id=$1 AND p.sequence=$2::integer-1
-		WHERE $2=0 OR p.session_id IS NOT NULL ON CONFLICT DO NOTHING`, id, seq, source)
+		WHERE $2=0 OR p.session_id IS NOT NULL ON CONFLICT DO NOTHING`, id, seq, source, supportsQueue)
 	if err != nil {
 		return page, err
 	}
@@ -131,7 +205,7 @@ func (s *Store) ReadCheckpoint(ctx context.Context, id int64, lease string, seq 
 }
 
 func (s *Store) Checkpoints(ctx context.Context, taskID, executionID int64) ([]CheckpointSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.execution_id,c.sequence,c.source_task_id,c.after_event,c.through_event,c.at,COALESCE(c.session_id,''),
+	rows, err := s.db.QueryContext(ctx, `SELECT c.execution_id,c.sequence,c.source_task_id,c.after_event,c.through_event,c.at,COALESCE(c.session_id,''),NULLIF(c.next_instructions,'[]'),
 		(SELECT count(*) FROM checkpoint_comments i WHERE i.execution_id=c.execution_id AND i.sequence=c.sequence)
 		FROM execution_checkpoints c JOIN executions e ON e.id=c.execution_id WHERE e.task_id=$1 AND e.id=$2 ORDER BY c.sequence`, taskID, executionID)
 	if err != nil {
@@ -141,9 +215,11 @@ func (s *Store) Checkpoints(ctx context.Context, taskID, executionID int64) ([]C
 	out := []CheckpointSummary{}
 	for rows.Next() {
 		var c CheckpointSummary
-		if err = rows.Scan(&c.ExecutionID, &c.Sequence, &c.SourceTaskID, &c.After, &c.Through, &c.At, &c.SessionID, &c.CommentCount); err != nil {
+		var instructions []byte
+		if err = rows.Scan(&c.ExecutionID, &c.Sequence, &c.SourceTaskID, &c.After, &c.Through, &c.At, &c.SessionID, &instructions, &c.CommentCount); err != nil {
 			return nil, err
 		}
+		c.NextInstructions = instructions
 		out = append(out, c)
 	}
 	return out, rows.Err()

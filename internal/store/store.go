@@ -262,6 +262,9 @@ var testPlanModelBudgetsSchema string
 //go:embed 079_curation_model_budgets.sql
 var curationModelBudgetsSchema string
 
+//go:embed 080_owner_instructions.sql
+var ownerInstructionsSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -313,6 +316,7 @@ type Execution struct {
 	TestPlanRevision       int              `json:"test_plan_revision,omitempty"`
 	CommitStatus           *CommitStatus    `json:"commit_status,omitempty"`
 	CodeReviewState        string           `json:"code_review_state,omitempty"`
+	QueueSequence          *int             `json:"queue_sequence,omitempty"`
 	UsesCheckpoints        bool             `json:"uses_checkpoints,omitempty"`
 	RequirementID          int64            `json:"requirement_id,omitempty"`
 	RequirementRevision    int              `json:"requirement_revision,omitempty"`
@@ -401,7 +405,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -456,7 +460,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 	err := s.db.QueryRowContext(ctx, `
 		SELECT t.id, t.project_id, p.requires_code_review, t.status, t.kind, COALESCE(t.active_revision,0),COALESCE(frozen.revision,0),COALESCE((SELECT MAX(revision) FROM requirement_revisions WHERE task_id=COALESCE(t.goal_id,t.id)),0),t.spec,
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
-		        'id', e.id,'uses_checkpoints',e.uses_checkpoints,'owner_clarifications',inherited_owner_answers(e.id), 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
+		        'id', e.id,'queue_sequence',(SELECT sequence FROM open_instruction_queues WHERE execution_id=e.id),'uses_checkpoints',e.uses_checkpoints,'owner_clarifications',inherited_owner_answers(e.id), 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
 		        'live_ci_log',CASE WHEN e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>clock_timestamp() THEN e.live_ci_log END,
 		        'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
@@ -860,7 +864,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 					WHERE turn.execution_id=$1 AND turn.session_id=$2
 					AND NOT EXISTS(SELECT 1 FROM decision_questions q WHERE q.execution_id=$1 AND q.checkpoint_sequence=turn.sequence)
                     AND CASE WHEN $3 THEN turn.sequence=0 ELSE next.sequence IS NOT NULL AND next.session_id IS NULL
-					AND NOT EXISTS(SELECT 1 FROM checkpoint_comments c WHERE c.execution_id=$1 AND c.sequence=next.sequence) END)`,
+					AND turn.next_instructions='[]' AND next.next_instructions='[]' AND NOT EXISTS(SELECT 1 FROM checkpoint_comments c WHERE c.execution_id=$1 AND c.sequence=next.sequence) END)`,
 					id, result.SessionID, issue.Mode == "plan").Scan(&confirmed)
 				if err != nil {
 					return err

@@ -10,6 +10,24 @@ import (
 )
 
 func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	mux.HandleFunc("POST /executions/{id}/instructions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Sequence *int `json:"sequence"`
+			store.OwnerInstruction
+		}
+		if !decodeLimited(w, r, &input, 32<<10) {
+			return
+		}
+		if input.Sequence == nil {
+			problem(w, http.StatusBadRequest, "provide the active checkpoint sequence")
+			return
+		}
+		respond(w, http.StatusNoContent, nil, data.QueueInstruction(r.Context(), id, *input.Sequence, input.OwnerInstruction))
+	}))
 	mux.HandleFunc("GET /tasks/{id}/checkpoints", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -69,7 +87,7 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 			problem(w, http.StatusBadRequest, "provide an execution lease and checkpoint sequence")
 			return
 		}
-		page, err := data.ReadCheckpoint(r.Context(), id, input.Lease, *input.Sequence, input.After, input.Session)
+		page, err := data.ReadCheckpoint(r.Context(), id, input.Lease, *input.Sequence, input.After, input.Session, r.URL.Query().Get("queue_next") == "1")
 		if input.Session != "" {
 			respond(w, http.StatusNoContent, nil, err)
 			return

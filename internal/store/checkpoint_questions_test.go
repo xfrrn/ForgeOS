@@ -41,7 +41,7 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 				r.ResumeInstance = strings.Repeat("1", 64)
 			}
 			check := func(seq int, session string) error {
-				_, err := s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session)
+				_, err := s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session, false)
 				return err
 			}
 			if err := check(0, ""); err != nil {

@@ -27,39 +27,43 @@ func (w *worker) recordCICandidate(ctx context.Context, job store.Job, sha, sess
 	return ctx.Err()
 }
 
-func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session string) ([]store.CommentInput, error) {
+func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session string) (store.CheckpointPage, error) {
+	var batch store.CheckpointPage
 	if !job.SupportsCheckpoints {
-		return nil, nil
+		return batch, nil
 	}
-	var comments []store.CommentInput
+
 	var after int64
 	for ctx.Err() == nil {
 		var page store.CheckpointPage
-		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/checkpoints", job.ExecutionID), map[string]any{
+		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/checkpoints?queue_next=1", job.ExecutionID), map[string]any{
 			"lease_token": job.LeaseToken, "sequence": seq, "after": after, "session_id": session}, &page)
 		if temporary(status) {
 			wait(ctx)
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return batch, err
 		}
 		if session != "" && status == http.StatusNoContent {
-			return nil, nil
+			return batch, nil
 		}
 		if status != http.StatusOK || page.ExecutionID != job.ExecutionID || page.Sequence != seq {
-			return nil, fmt.Errorf("checkpoint %d not acknowledged (HTTP %d)", seq, status)
+			return batch, fmt.Errorf("checkpoint %d not acknowledged (HTTP %d)", seq, status)
 		}
-		comments = append(comments, page.Comments...)
+		if after == 0 {
+			batch.OwnerInstructions = page.OwnerInstructions
+		}
+		batch.Comments = append(batch.Comments, page.Comments...)
 		if !page.More {
-			return comments, nil
+			return batch, nil
 		}
 		if len(page.Comments) == 0 || page.Comments[len(page.Comments)-1].EventID <= after {
-			return nil, fmt.Errorf("checkpoint %d cursor did not advance", seq)
+			return batch, fmt.Errorf("checkpoint %d cursor did not advance", seq)
 		}
 		after = page.Comments[len(page.Comments)-1].EventID
 	}
-	return nil, ctx.Err()
+	return batch, ctx.Err()
 }
 
 // Only the adapter's final assistant message may ask for a business decision.

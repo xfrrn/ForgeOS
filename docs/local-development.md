@@ -238,6 +238,7 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 | `POST /executions/{id}/pause-ci` | Owner | 暂停已登记候选 SHA 的 CI；回执到达后进入 PAUSED。 |
 | `POST /executions/{id}/resume-ci` | Owner | 使用暂停执行的候选 SHA 重新排队复验。对同一执行重放请求仅恢复一次。 |
 | `POST /executions/{id}/cancel` | Owner | 请求取消指定运行中的执行。已登记的请求可安全重报。任务详情显示请求时间，Worker 回传结果后才能释放名额。 |
+| `POST /executions/{id}/instructions` | Owner | 提交 `{"sequence":0,"key":"request-1","body":"在本页补充已约定的副标题"}`。sequence 取自当前执行的 queue_sequence。同一执行、检查点和请求键的原文可幂等重报，成功返回 204。改写已用键、过时回合或队列已满返回 409。 |
 | `POST /executions/{id}/abandon` | Owner | 核对失联执行并确认原 Worker 已停止后，人工结束过期租约。标记失败并释放项目名额，保留工作区与事件。 |
 | `POST /executions/{id}/retry` | Owner | 核对失败原因后重试该次 Issue 执行。相同执行 ID 的重试请求幂等，继续沿用原工作项与冻结需求，下一次执行使用新 Worktree。 |
 

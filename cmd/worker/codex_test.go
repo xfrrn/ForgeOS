@@ -33,7 +33,7 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 			job.GlobalRules = json.RawMessage(`{"revision":1,"content":"Default heading"}`)
 			job.OwnerClarifications = json.RawMessage(`[{"id":7,"execution_id":2,"question":"Which title?","answer":"Harbor"}]`)
 		}
-		prompt, err := issuePrompt(job, "Keep the heading", nil, nil)
+		prompt, err := issuePrompt(job, "Keep the heading", store.CheckpointPage{}, nil)
 		if err != nil || strings.Contains(prompt, job.LeaseToken) {
 			t.Fatal("invalid implementation prompt", err)
 		}

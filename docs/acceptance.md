@@ -17,6 +17,8 @@
 
 此后，跨节点共享账号预算已从两个普通 Codex Worker 的竞争、控制面重启和两次 GitHub 交付验收，见本页“跨节点共享模型名额”。上表的 20–30 项保留为原估算；扣除这一项后约余 19–29 项。独立角色预算已验证 Reviewer、候选 Test Agent 和 Management 的覆盖审核。知识提取和知识审核也已通过两份资料的争用与重启验收。其余 Management 任务和 Linux 专用账号仍在范围内。
 
+任务详情的下一回合指令已完成独立验收，扣除此项后约余 18–28 个工作包。两种适配器的版本探测和基础错误分类已有实测，运行中审批、中断等操作仍列在适配器工作内。
+
 另有三项由 Owner 确认保留待验收，单独计数：从第二台设备经 Tailscale 访问预览、使用 GitHub App 或细粒度凭据实测最小权限、第二位维护者批准受保护分支的 PR。全路线最终回归仍待执行。
 
 | 路线要求 | 已有实现或证据 | 待补齐或待验收 |
@@ -2166,3 +2168,21 @@ alpha 首次导入选择了 auto。原生会话恢复成功，但固定基线缺
 | beta #119 · Claude Code | `1ae18d72-21ab-4448-ba03-3f0870f0dfda`，48976、38328 | 候选 `8b36eddf3802c4c96ea137b9232ceb174332120d`，合并 `e47bf8567555366738a3d5591831d7a8d96c13b6`。[PR #120](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/120) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44068122855) |
 
 启用 PostgreSQL 18 和 Docker 的全包回归共 237 项 Go 测试及子测试通过，零跳过。回归包括两种适配器报告失败终态并以 0 或 23 退出的组合。Go vet 和 Web 生产构建通过。真实模型进程在执行途中被强制终止以及整机断电仍待验收。
+
+原生回合终态分类与恢复对应 ForgeOS 提交 `69b884d6fd2d57bfcf04f65b7226829eeea298db`。
+
+### 专题 06、07 · Owner 向下一回合排队
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从两个仓库导入只规定页面主标题的 Issue，启动 Windows Worker，在 Chrome 的首个模型回合提交随机副标题 | 指令绑定执行和当前检查点；输入与来源 Issue 评论分别记录 | 首次点击发现工作台的 API 路径校验未包含新入口，两个浏览器均未发出请求。修复后重新导入同一对 Issue，Chrome 在检查点 0 成功入队，两次均收到 204。 |
+| 在入队之后重启控制面，重报原请求，再改写同一键的正文，用 Worker 身份重复请求 | 原请求幂等，改写被拒，只有 Owner 可以提交 | 两仓分别返回 204、409、401。通过真实 Caddy 双向 TLS 对 alpha 重报亦为 204，改写 409，匿名与 Worker 均为 401，内部领取路径为 404。 |
+| 检查页面处理回执、模型会话、候选 Git 对象及本地验证 | 第二回合使用首轮会话并应用指令，候选包含 Owner 在首回合期间给出的副标题 | 两仓均有 3 个检查点、0 条评论，检查点 0 保存唯一指令，1 确认同一会话，2 为空。Chrome 显示“下一回合已确认处理”。两仓分别只新增一个文件，保留 H1，H2 与下表对应，验证退出码均为 0。 |
+| 批准各自候选，核对必需 CI 的受控失败和重跑 | 通过后合并，交付回执与 GitHub 的 SHA、Issue 状态一致 | 两个 PR 均已合并。原 Issue 已关闭，acceptance-check 和 forgeos/local-ci 通过。 |
+
+| 入口与实测 H2 | 会话、PID | 验收候选与交付 |
+| --- | --- | --- |
+| alpha #30 · `Harbor bef55d6b` | Codex `01a1e928-6244-7b43-adf6-39d606535636`，45272、47192 | 候选 `30607e45d9af0a8658f7049d77a8b9ee2168df92`，合并 `01ac03a0e52d3894593d3fefe7270393520a6ab4`。[PR #31](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/31) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/44069874104) |
+| beta #121 · `Harbor 24c642ac` | Claude Code `48ff6486-aaf1-41b3-802e-01dfef8854ab`，43516、45988 | 候选 `022715f584056659b46a9caf4b7ec139050c06a8`，合并 `30731869de50e47a71d0cc19f8f3792c20e0ef25`。[PR #122](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/122) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44069914209) |
+
+PostgreSQL 18 和 Docker 均启用的全包回归共 238 项 Go 测试及子测试通过，零跳过。数据库回归覆盖入队顺序、容量、旧 Worker、错误会话、跳过待处理指令的候选登记与结果上报、结束后重报。Go vet 和 Web 生产构建通过。

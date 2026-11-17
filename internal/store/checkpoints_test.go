@@ -9,6 +9,93 @@ import (
 	"testing"
 )
 
+func TestOwnerQueueBindsInstructionsToTheNextTurn(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	conflict := func(err error) {
+		t.Helper()
+		if !errors.Is(err, ErrConflict) {
+			t.Fatalf("want conflict, got %v", err)
+		}
+	}
+	must(s.Migrate(ctx))
+	p, err := s.CreateProject(ctx, "queue-next")
+	must(err)
+	base, sha := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 4, Number: 3}, BaseCommit: base, Validation: "docs"})
+	must(err)
+	caps := WorkerCapabilities{SupportsCodex: true, SupportsCheckpoints: true, SupportsResources: true}
+	must(s.RecordHeartbeat(ctx, WorkerHeartbeat{Worker: "queued", OS: "linux", Arch: "amd64", CPUs: 1, Slots: 1, ModelSlots: 1, CISlots: 1, Capabilities: caps}))
+	j, err := s.ClaimForProjects(ctx, "queued", t.TempDir(), nil, caps)
+	must(err)
+	if j == nil {
+		t.Fatal("missing execution")
+	}
+	cp := func(seq int, session string, supports bool) (CheckpointPage, error) {
+		return s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session, supports)
+	}
+	add := func(key, body string) error {
+		return s.QueueInstruction(ctx, j.ExecutionID, 0, OwnerInstruction{Key: key, Body: body})
+	}
+	_, err = cp(0, "", true)
+	must(err)
+	conflict(add("one", "early"))
+	ok, err := s.ReserveExecutionResource(ctx, j.ExecutionID, ResourceRequest{Lease: j.LeaseToken, Step: 1, Kind: "model"})
+	must(err)
+	if !ok {
+		t.Fatal("model slot unavailable")
+	}
+	for i := 0; i < 8; i++ {
+		must(add(fmt.Sprint(i), "use subtitle "+fmt.Sprint(i)))
+	}
+	conflict(add("extra", "queue full"))
+	must(add("0", "use subtitle 0"))
+	conflict(add("0", "changed"))
+	_, err = cp(0, "session", true)
+	must(err)
+	_, err = cp(1, "", false)
+	conflict(err)
+	page, err := cp(1, "", true)
+	must(err)
+	var items []OwnerInstruction
+	must(json.Unmarshal(page.OwnerInstructions, &items))
+	if len(items) != 8 || items[7].Key != "7" || len(page.Comments) != 0 {
+		t.Fatal(page)
+	}
+	repeat, err := cp(1, "", true)
+	must(err)
+	if string(repeat.OwnerInstructions) != string(page.OwnerInstructions) {
+		t.Fatal("checkpoint changed on replay")
+	}
+	conflict(s.RecordCICandidate(ctx, j.ExecutionID, j.LeaseToken, sha, "session"))
+	result := Result{Commit: sha, BaseCommit: base, SessionID: "session", Validation: &ValidationResult{Commit: sha, Profile: "docs"}}
+	conflict(s.Complete(ctx, j.ExecutionID, j.LeaseToken, result))
+	_, err = cp(1, "different-session", true)
+	conflict(err)
+	_, err = cp(1, "session", true)
+	must(err)
+	page, err = cp(2, "", true)
+	must(err)
+	if len(page.OwnerInstructions) != 0 {
+		t.Fatal("stale instructions")
+	}
+	must(s.RecordCICandidate(ctx, j.ExecutionID, j.LeaseToken, sha, "session"))
+	must(s.Complete(ctx, j.ExecutionID, j.LeaseToken, result))
+	must(add("0", "use subtitle 0"))
+	conflict(add("late", "after completion"))
+	rows, err := s.Checkpoints(ctx, task.ID, j.ExecutionID)
+	must(err)
+	if len(rows) != 3 || string(rows[0].NextInstructions) != string(repeat.OwnerInstructions) || rows[1].SessionID != "session" {
+		t.Fatal(rows)
+	}
+}
+
 func TestCheckpointFreezesPagesAndRequiresConsumedTurns(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
@@ -46,13 +133,13 @@ func TestCheckpointFreezesPagesAndRequiresConsumedTurns(t *testing.T) {
 	}
 	check := func(seq int, after int64, session string) CheckpointPage {
 		t.Helper()
-		page, err := s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, after, session)
+		page, err := s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, after, session, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return page
 	}
-	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, "wrong", 0, 0, ""); !errors.Is(err, ErrConflict) {
+	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, "wrong", 0, 0, "", false); !errors.Is(err, ErrConflict) {
 		t.Fatal(err)
 	}
 	first := check(0, 0, "")
@@ -64,12 +151,12 @@ func TestCheckpointFreezesPagesAndRequiresConsumedTurns(t *testing.T) {
 	if second.More || len(second.Comments) != 2 || second.Through != first.Through || second.Comments[1].Body != "edited" {
 		t.Fatal(second)
 	}
-	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, ""); !errors.Is(err, ErrConflict) {
+	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 1, 0, "", false); !errors.Is(err, ErrConflict) {
 		t.Fatal("advanced without turn", err)
 	}
 	check(0, 0, "native-1")
 	check(0, 0, "native-1")
-	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 0, 0, "other"); !errors.Is(err, ErrConflict) {
+	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 0, 0, "other", false); !errors.Is(err, ErrConflict) {
 		t.Fatal("overwritten receipt", err)
 	}
 	next := check(1, 0, "")
@@ -93,7 +180,7 @@ func TestCheckpointFreezesPagesAndRequiresConsumedTurns(t *testing.T) {
 	if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, result); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 2, 0, ""); !errors.Is(err, ErrConflict) {
+	if _, err = s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, 2, 0, "", false); !errors.Is(err, ErrConflict) {
 		t.Fatal("closed execution accepted new checkpoint", err)
 	}
 	out, err := s.Checkpoints(ctx, task.ID, j.ExecutionID)
