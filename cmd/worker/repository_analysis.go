@@ -28,6 +28,10 @@ func (w *worker) analyzeRepository(ctx context.Context, job store.AnalysisJob) e
 	}
 	r := store.AnalysisResult{Task: job.Task, Lease: job.Lease}
 	a.Session = session
+	if job.CaptureProfile {
+		profile := store.StructuredCodexProfile()
+		a.Profile = &profile
+	}
 	switch {
 	case err != nil:
 		r.Failure = "agent_run_failed"

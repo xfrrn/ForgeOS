@@ -14,10 +14,11 @@ import (
 )
 
 type AnalysisJob struct {
-	LeaseUntil *time.Time              `json:"lease_until,omitempty"`
-	Task       int64                   `json:"task_id"`
-	Lease      string                  `json:"lease"`
-	Input      localrepo.AnalysisInput `json:"input"`
+	CaptureProfile bool                    `json:"capture_profile,omitempty"`
+	LeaseUntil     *time.Time              `json:"lease_until,omitempty"`
+	Task           int64                   `json:"task_id"`
+	Lease          string                  `json:"lease"`
+	Input          localrepo.AnalysisInput `json:"input"`
 }
 
 type AnalysisFact struct {
@@ -27,6 +28,7 @@ type AnalysisFact struct {
 	Quote string `json:"quote"`
 }
 type RepositoryAnalysis struct {
+	Profile *AgentProfile  `json:"profile,omitempty"`
 	Session string         `json:"session_id"`
 	Facts   []AnalysisFact `json:"facts"`
 }
@@ -38,7 +40,7 @@ type AnalysisResult struct {
 }
 
 func (a RepositoryAnalysis) Valid(input localrepo.AnalysisInput) bool {
-	if a.Session == "" || len(a.Session) > 128 || strings.Trim(a.Session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" || a.Facts == nil || len(a.Facts) > 40 {
+	if !validStructuredProfile(a.Profile) || a.Session == "" || len(a.Session) > 128 || strings.Trim(a.Session, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != "" || a.Facts == nil || len(a.Facts) > 40 {
 		return false
 	}
 	for _, f := range a.Facts {
@@ -104,6 +106,7 @@ func (s *Store) ClaimAnalysis(ctx context.Context, project int64, supportsDeadli
 	if err = json.Unmarshal(raw, &j.Input); err != nil {
 		return nil, err
 	}
+	j.CaptureProfile = true
 	return &j, tx.Commit()
 }
 

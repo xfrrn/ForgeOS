@@ -98,7 +98,7 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	third, err := s.ClaimAnalysis(ctx, p.ID, true)
-	if err != nil || third == nil {
+	if err != nil || third == nil || !third.CaptureProfile {
 		t.Fatal(err)
 	}
 	fact := AnalysisFact{Kind: "start", Value: "invented command", Path: "README.md", Quote: "go run ./cmd/app"}
@@ -115,6 +115,16 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 	if err = s.FinishAnalysis(ctx, p.ID+1, r); !errors.Is(err, ErrConflict) {
 		t.Fatal("cross-project completion", err)
 	}
+	if !r.Analysis.Valid(third.Input) {
+		t.Fatal("legacy analysis rejected")
+	}
+	profile := StructuredCodexProfile()
+	r.Analysis.Profile = &profile
+	profile.Permission = "on-request"
+	if err = s.FinishAnalysis(ctx, p.ID, r); !errors.Is(err, ErrConflict) {
+		t.Fatal("incorrect native permission", err)
+	}
+	profile = StructuredCodexProfile()
 	for range 2 {
 		if err = s.FinishAnalysis(ctx, p.ID, r); err != nil {
 			t.Fatal(err)
@@ -124,5 +134,15 @@ func TestRepositoryAnalysisPinsEvidenceAndLease(t *testing.T) {
 	checkUsage(0)
 	if err != nil || strings.Contains(string(raw), "Start with") || !strings.Contains(string(raw), "session-qa") {
 		t.Fatal(string(raw), err)
+	}
+	var receipt struct {
+		Analysis RepositoryAnalysis `json:"analysis"`
+	}
+	if err = json.Unmarshal(raw, &receipt); err != nil || receipt.Analysis.Profile == nil || !validStructuredProfile(receipt.Analysis.Profile) {
+		t.Fatal("missing archived configuration", err)
+	}
+	r.Analysis.Profile = nil
+	if err = s.FinishAnalysis(ctx, p.ID, r); !errors.Is(err, ErrConflict) {
+		t.Fatal("replay removed archived permissions", err)
 	}
 }
