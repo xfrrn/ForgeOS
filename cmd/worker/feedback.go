@@ -22,7 +22,7 @@ func (w *worker) classifyFeedback(ctx context.Context, job store.FeedbackJob) er
 		"Cite a short verbatim substring of feedback.note in evidence. Explain the category briefly in the author's language. Classification alone never approves a candidate.\n"
 	turn, cancel := managementTurn(ctx, job.LeaseUntil)
 	var c store.FeedbackClassification
-	session, err := w.managementJSONTurn(turn, job.CaptureProcess, store.ManagementProcessReport{FeedbackID: job.ID, Lease: job.Lease}, feedbackSchema, prompt+string(job.Source), 12<<10, &c)
+	session, err := w.roleJSONTurn(turn, job.CaptureProcess, store.ManagementProcessReport{FeedbackID: job.ID, Lease: job.Lease}, feedbackSchema, prompt+string(job.Source), 12<<10, &c)
 	cancel()
 	if err != nil {
 		log.Printf("management feedback %d classification unavailable; lease will retry", job.ID)

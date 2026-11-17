@@ -21,6 +21,7 @@ type Extraction struct {
 }
 
 type CurationJob struct {
+	CaptureProcess bool            `json:"capture_process,omitempty"`
 	CaptureProfile bool            `json:"capture_profile,omitempty"`
 	ID             int64           `json:"id"`
 	Lease          string          `json:"lease"`
@@ -87,8 +88,24 @@ func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease s
 	if err != nil {
 		return err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var locked int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM material_curations WHERE project_id=$1 AND id=$2 AND extraction_lease::text=$3 FOR UPDATE`, project, id, lease).Scan(&locked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{CurationID: id, CurationRole: "curator", Lease: lease}, out.Session); err != nil {
+		return err
+	}
 	var recorded int64
-	err = s.db.QueryRowContext(ctx, `UPDATE material_curations c SET extraction=$4::jsonb,extracted_at=COALESCE(extracted_at,now())
+	err = tx.QueryRowContext(ctx, `UPDATE material_curations c SET extraction=$4::jsonb,extracted_at=COALESCE(extracted_at,now())
 		FROM curation_sources s WHERE c.project_id=$1 AND c.id=$2 AND c.extraction_lease::text=$3
 		AND (c.extraction=$4::jsonb OR (c.extraction IS NULL AND c.extraction_until>now()))
 		AND s.curation_id=c.id
@@ -97,7 +114,10 @@ func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease s
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ReviewCuration(ctx context.Context, project, id int64, lease string, review ManagementReview) error {
@@ -108,18 +128,39 @@ func (s *Store) ReviewCuration(ctx context.Context, project, id int64, lease str
 	if err != nil {
 		return err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var locked int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM material_curations WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 FOR UPDATE`, project, id, lease).Scan(&locked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{CurationID: id, CurationRole: "management", Lease: lease}, review.SessionID); err != nil {
+		return err
+	}
 	var recorded int64
-	err = s.db.QueryRowContext(ctx, `UPDATE material_curations SET review=$4::jsonb,reviewed_at=COALESCE(reviewed_at,now())
+	err = tx.QueryRowContext(ctx, `UPDATE material_curations SET review=$4::jsonb,reviewed_at=COALESCE(reviewed_at,now())
 		WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 AND extraction->>'session'<>$5
 		AND (review=$4::jsonb OR (review IS NULL AND review_until>now())) RETURNING id`, project, id, lease, string(doc), review.SessionID).Scan(&recorded)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 const curationReceipt = `SELECT jsonb_build_object('id',c.id,'revision',s.revision,'content_sha256',s.content_sha256,
 		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at,
+        'extraction_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.curation_id=c.id AND p.curation_role='curator'),'[]'::jsonb),
+        'review_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.curation_id=c.id AND p.curation_role='management'),'[]'::jsonb),
 		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
 		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
 		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id,'event_id',c.event_id,'source',CASE WHEN c.event_id IS NOT NULL THEN s.source END,'delivery',s.delivery,'goal',s.goal,'document',s.document,'content',CASE WHEN c.document_id IS NOT NULL THEN s.content END))

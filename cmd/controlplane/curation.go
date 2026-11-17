@@ -24,11 +24,24 @@ func registerCurator(mux *http.ServeMux, data *store.Store, owner, manager strin
 	}
 	mux.HandleFunc("POST /internal/curator/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		job, err := data.ClaimCuration(r.Context(), id, false, r.URL.Query().Get("supports_budget_deadline") == "1")
+		if job != nil {
+			job.CaptureProcess = r.URL.Query().Get("supports_process") == "1"
+		}
 		if job == nil && err == nil {
 			w.WriteHeader(204)
 			return
 		}
 		respond(w, 200, job, err)
+	}))
+	mux.HandleFunc("POST /internal/curator/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var report store.ManagementProcessReport
+		if decodeLimited(w, r, &report, 64<<10) {
+			if report.CurationID <= 0 || report.CurationRole != "curator" {
+				problem(w, 403, "Curator identity only reports extraction processes")
+				return
+			}
+			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
+		}
 	}))
 	mux.HandleFunc("POST /internal/curator/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var out struct {

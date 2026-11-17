@@ -16,10 +16,10 @@ func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJ
 	if job.Share != nil {
 		target.ShareID = job.Share.ID
 	}
-	return w.managementJSONTurn(ctx, job.CaptureProcess, target, reviewSchema, prompt, 12<<10, review)
+	return w.roleJSONTurn(ctx, job.CaptureProcess, target, reviewSchema, prompt, 12<<10, review)
 }
 
-func (w *worker) managementJSONTurn(ctx context.Context, capture bool, target store.ManagementProcessReport, contract, prompt string, limit int64, dest any) (string, error) {
+func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.ManagementProcessReport, contract, prompt string, limit int64, dest any) (string, error) {
 	if !capture {
 		return readOnlyJSONTurn(ctx, w.codex, contract, prompt, limit, dest)
 	}
@@ -36,7 +36,11 @@ func (w *worker) managementJSONTurn(ctx context.Context, capture bool, target st
 	}
 	// Separate role journals even when a host also runs an ordinary Worker.
 	recorder := *w
-	recorder.id = "management-" + node
+	role := "management"
+	if target.CurationRole == "curator" {
+		role = "curator"
+	}
+	recorder.id = role + "-" + node
 	db, err := recorder.openJournal(ctx)
 	if err != nil {
 		return "", err
@@ -54,7 +58,7 @@ func (w *worker) managementJSONTurn(ctx context.Context, capture bool, target st
 		}
 		report := target
 		report.Process = p
-		status, err := w.post(call, "/internal/management/process", report, nil)
+		status, err := w.post(call, "/internal/"+role+"/process", report, nil)
 		if err != nil {
 			return err
 		}

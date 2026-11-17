@@ -72,11 +72,11 @@ func TestOnlyFinalMessageCanRequestOwnerDecision(t *testing.T) {
 
 func TestCuratorRetriesNoncontiguousSourceQuote(t *testing.T) {
 	w := worker{codex: os.Args[0]}
-	out, err := w.extractFacts(context.Background(), json.RawMessage(`{"content":"SIMULATED_QUOTE_REPAIR: saved 918 then resumed at 918"}`))
+	out, err := w.extractFacts(context.Background(), store.CurationJob{Material: json.RawMessage(`{"content":"SIMULATED_QUOTE_REPAIR: saved 918 then resumed at 918"}`)})
 	if err != nil || len(out.Facts) != 1 || out.Facts[0].Quote != "resumed at 918" || out.Session == "" {
 		t.Fatal(out, err)
 	}
-	if _, err := w.extractFacts(context.Background(), json.RawMessage(`{"content":"SIMULATED_QUOTE_REPAIR: no quoted offset"}`)); err == nil {
+	if _, err := w.extractFacts(context.Background(), store.CurationJob{Material: json.RawMessage(`{"content":"SIMULATED_QUOTE_REPAIR: no quoted offset"}`)}); err == nil {
 		t.Fatal("accepted a quote missing from the source after the retry")
 	}
 }
@@ -272,11 +272,18 @@ func TestMain(m *testing.M) {
 						output = `{"facts":[{"kind":"start","value":"invented","path":"README.md","quote":"invented"}]}`
 					}
 				}
+				if strings.Contains(string(body), "SIMULATED_CURATOR_REVIEW") {
+					output = `{"level":"D1","verdict":"approve","rationale":"Recorded observation.","evidence":"resumed at 918","validation_minimum":""}`
+				}
 				if os.WriteFile(os.Args[k+1], []byte(output), 0600) != nil {
 					os.Exit(3)
 				}
-				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
-				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") || strings.Contains(string(body), "SIMULATED_FEEDBACK_PROCESS") {
+				if strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") && strings.Contains(string(body), "previous extraction") {
+					fmt.Println(`{"type":"thread.started","thread_id":"curator-repaired"}`)
+				} else {
+					fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
+				}
+				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") || strings.Contains(string(body), "SIMULATED_FEEDBACK_PROCESS") || strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") {
 					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
 					time.Sleep(500 * time.Millisecond)
 					if strings.Contains(string(body), "FAIL_PROCESS") {

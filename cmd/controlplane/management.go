@@ -70,6 +70,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			c, claimErr := data.ClaimCuration(r.Context(), id, true, r.URL.Query().Get("supports_budget_deadline") == "1")
 			err = claimErr
 			if c != nil {
+				c.CaptureProcess = r.URL.Query().Get("supports_curation_process") == "1"
 				job = &store.ManagementJob{Curation: c}
 			}
 		}
@@ -105,6 +106,10 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 	mux.HandleFunc("POST /internal/management/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var report store.ManagementProcessReport
 		if decodeLimited(w, r, &report, 64<<10) {
+			if report.CurationRole == "curator" {
+				problem(w, 403, "Curator process requires Curator identity")
+				return
+			}
 			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
 		}
 	}))

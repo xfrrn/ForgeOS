@@ -116,7 +116,7 @@ func managementTurn(ctx context.Context, until *time.Time) (context.Context, con
 func (w *worker) runManagement(ctx context.Context) error {
 	for ctx.Err() == nil {
 		var job store.ManagementJob
-		status, err := w.post(ctx, "/internal/management/claim?supports_feedback_process=1&supports_question_process=1&supports_analysis_process=1&supports_share_review_process=1&supports_plan_review_process=1&supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
+		status, err := w.post(ctx, "/internal/management/claim?supports_curation_process=1&supports_feedback_process=1&supports_question_process=1&supports_analysis_process=1&supports_share_review_process=1&supports_plan_review_process=1&supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
 		if err != nil && !temporary(status) {
 			return err
 		}
@@ -240,6 +240,6 @@ func (w *worker) adviseOwner(ctx context.Context, job store.ManagementJob) (stor
 	if question.RuleContext != nil {
 		prompt += ordinaryRuleOrder + "The rule_context preserves this execution's evidence, including already processed Owner instructions, earlier answers and acceptance feedback. Respect each decision's stated scope. It does not contain unprocessed commands or newer global rules. Use the source ids provided in sources to cite these records.\n"
 	}
-	advice.Session, err = w.managementJSONTurn(ctx, job.CaptureProcess, store.ManagementProcessReport{QuestionID: question.ID, Lease: job.Lease}, schema, prompt+string(raw), 16<<10, &advice)
+	advice.Session, err = w.roleJSONTurn(ctx, job.CaptureProcess, store.ManagementProcessReport{QuestionID: question.ID, Lease: job.Lease}, schema, prompt+string(raw), 16<<10, &advice)
 	return advice, err
 }

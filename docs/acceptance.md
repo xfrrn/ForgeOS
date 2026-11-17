@@ -3072,3 +3072,27 @@ PostgreSQL 18／真实 Docker 全包 335 项测试及子测试通过，零失败
 PostgreSQL 18／真实 Docker 全包 339 项测试及子测试通过，零失败、零跳过，报告 feedback-process-regression.jsonl。回归覆盖进程退出先于分类结果、非零退出无分类、旧协议，以及目标互斥、负编号和多余修订拒绝、项目与租约绑定、失败／重领历史、实际退出及会话匹配、重复分类和原文校验。Go 静态检查、TypeScript 和生产构建通过。证据目录 feedback_process_current、feedback_process_oldcontrol、feedback_process_oldworker；迁移证据 advice_process_current/feedback-migration-proof.json。
 
 本项覆盖反馈分类的有界公开消息和进程历史。自然到期重领会创建新会话，不等同于独立 Daemon 崩溃恢复；完整会话归档、其他独立角色、全路线最终验收及已列外部条件仍待完成。
+
+上述预览反馈分类进程实现与验收对应 ForgeOS 提交 e9bae2aafb81e9e95b9c4dcc4c7c58d538a9caa2。
+
+### 专题 07、08、13、16 C.3 · Curator 提取与 Management 知识审核进程
+
+2026-11-18 从 Chrome 导入 queue-lab 修订 1，内容是一次恢复演练前后核对 offset 274 的观察。在独立 PostgreSQL 18 库运行真实 Curator 和 Management，使用相同节点名 qa-knowledge-current 及同一私有状态目录，分别持有角色凭据。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 页面导入资料并展开知识提取，运行 Curator，回合中重启控制面 | 只读身份和提取进程保留，原文引句有效 | PID 46944、Thread 01a1ebd7-273d-7f83-8eb1-a05b2b1db9c6，Codex 0.169.0-alpha.11.1，read-only／never；退出码 0，提取引句均来自该修订，未经审核前经验列表为空。 |
+| 在同一节点和状态目录运行 Management，回合中再次重启控制面 | 审核与提取独立，公开消息分别保存 | PID 41768、Thread 01a1ebd7-500f-7c40-8e62-607e9cfcf7ea，退出码 0、D1／approve；两个原生会话不同，两个 SQLite 文件分别保存各角色公开窗口，并与 API 相同。 |
+| 回读当前项目经验 | 只有获准事实进入经验，进程不随之发布 | 获得同一来源的事实；返回内容不包含两个原生会话及进程历史字段。 |
+| 从 Chrome 编辑修订 2，只声明议程且没有观察，运行 Curator | 空提取不触发审核，新修订不沿用旧批准 | PID 43156、Thread 01a1ebd7-803a-7f40-85fc-2c7d8d8bdef5，退出码 0、facts 为空、无 review；当前项目经验为空，修订 1 的提取和审核仍保留。 |
+| 从 Chrome 保存修订 3，确认 Curator 原生子进程后终止 | 不生成提取或审核，保存真实失败 | PID 26960、Thread 01a1ebd7-a548-7862-b8a5-1c2088fca526，退出码 15，无 extraction／review。该修订仍待提取，本次未启动新的重领回合。 |
+| 重启后从页面分别打开三个修订 | 来源、角色及实际退出归属不变 | 四条原生进程均可展开，原始记录与 API 相同，存在的公开消息可回读。 |
+| 角色令牌互访进程端点、伪装另一角色、读取 Owner 历史 | 角色隔离，来源历史不由角色令牌公开 | 跨令牌端点为 401；本角色令牌报告另一角色为 403；两个角色读取 Owner 来源历史均为 401。 |
+| 旧控制面／新 Worker、新控制面／旧 Worker完成两阶段并重启回读 | 保持原协议，不补造进程 | 提取／审核会话分别为 01a1ebd7-863d-7d40-abb5-b31eae6b0ea9 / 01a1ebd7-af8d-7912-bb14-9e2aedd36db2；01a1ebd7-84b6-7622-9f3e-bf9cfcc82c93 / 01a1ebd7-ac16-7510-a782-974fe2f44c3c。两组均 D1 approve，原回执可读，无虚构进程。 |
+| 将真实反馈库从迁移 102 升至 103 | 多角色、多回合扩展不损坏已有单回合历史 | 三条反馈进程的 ID、节点及完整 JSON 不变；Chrome 回读首条分类和第二条反馈的失败／自然到期重试。 |
+
+同租约引文修复通过实际测试子进程和 PostgreSQL 回归验证：第一次非连续引句被拒绝，第二次原生尝试另有 Session 和更大的 instance；未确认第一次成功退出、跨节点、重复会话或第三次尝试均不能替代合法过程。最终提取匹配最后一次成功回合，已结束的第一回合不能覆盖结果。本轮真实模型没有主动触发两次引文修复，不把测试夹具记作该分支的真实模型证据。
+
+PostgreSQL 18／真实 Docker 全包 346 项测试及子测试通过，零失败、零跳过，报告 curation-process-regression.jsonl。另覆盖角色路由、项目／来源／租约绑定、先退出后结果、提取与审核隔离、失败及过期重领历史、结果重放和旧组件兼容。Go 静态检查、TypeScript 和生产构建通过。证据目录 curation_process_current、curation_process_oldcontrol、curation_process_oldworker；迁移证据 feedback_process_current/curation-migration-proof.json。
+
+本项保存有界公开消息及各次原生进程。失败修订 3 保持待提取；独立 Daemon 崩溃补报、原会话恢复、完整归档、其余独立角色和全路线最终验收继续待完成，已列外部条件保持待验收。
