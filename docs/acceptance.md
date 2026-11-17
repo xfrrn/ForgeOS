@@ -1810,3 +1810,15 @@ Goal 交付完成触发提取及依赖证据审核对应提交 `6237e703bfe04607
 本次验收通过的是角色会话独立性。TC-001 第一步把原实现 SHA 写成待测候选，Management 仍给出 covered。实际核对使用了换基后的 Git 对象。用例文字和覆盖审核识别错误 SHA 的能力另列待修复；保留本次原始回执。首次克隆和首次创建 Issue 遇到 TLS 中断，核对远端记录后重试，只创建一个 Issue。测试脚本为首次审查补办正式请求，并给只读 Reviewer 配置登记仓库根目录后继续。
 
 真实 PostgreSQL 与 Docker 全量回归 187 项通过，零跳过。用例覆盖无规则候选、连续两次换基、开发会话被拒、独立会话成功和相同回执重报。Go vet 通过。
+
+换基后会话独立性检查对应提交 `85d9c5cc2b258daed6195e11a7c54b4be3e3f1e9`。
+
+### 专题 11 · 核对用例指向的 Git 候选
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 读取 beta #88 原样归档的测试输入及计划，经隔离的本机 HTTP 回放入口交给正式 Management Worker 和原生模型 | 旧计划摘要相同；应指出 TC-001 错把原实现当作验收对象 | 摘要仍为 `19708c8be657f77271f362de21e8429b2d9b2777a99c4d29a7d9b24df7c76ac4`。会话 `01a1e7ab-c717-73e2-b181-6baa6ceb285a` 返回 changes_requested，准确指出前置条件和第一步把 `36fbbc71` 当作新候选 `c29858e3`。历史数据库只读 |
+| 在 beta #91 推进目标分支，关闭原 PR #92，在同一新候选上请求计划和审核 | 使用新基线和新候选，覆盖审核后等待实际操作 | 修订 1 的目标正确，Management 因自己没有执行 Git 检查而要求澄清。修正覆盖审核的职责描述后申请修订 2。Test Agent 会话 `01a1e7ac-23af-7611-8aa6-5efe62766cae` 将前置条件和三步操作指向新候选 `3d369395c8c78c29395526d442c2d92372f01b5d`，比较基线 `57883b676d8d501f5073ce6bb2cd1246cef6dc95`。Management 会话 `01a1e7ac-6b01-7ef3-a3a8-8118edeb5f77` 判定 covered。两版回执均留存 |
+| 按 TC-001 读取候选 blob，核对 H1、name-status 和完整 diff，通过项目节点入口记录并由 Owner 在 Chrome 批准 | 只有目标文档新增，准确标题来自原实现使用的规则修订 1；证据绑定当前候选 | `git show` 返回唯一一行 `# Frozen 6b16cbad`，`git diff --name-status` 只有 `A docs/review-refresh.md`。行号和完整 diff 已归档，计划摘要 `6f4bfc31c7c8c23acc6101e42798ff0f91d55e693aedf917591328bdf12f9237`，执行状态 passed |
+
+PR #93 的 acceptance-check 与 forgeos/local-ci 均通过，合并 SHA `6b4040f9adf5d806ece6b8d982059087893179db`；Issue #91 已关闭。重启后计划和审查回执与重启前相同。最终版本使用真实 PostgreSQL 和 Docker 跑完全量 Go 回归，187 项通过、零跳过，Go vet 通过。[Issue #91](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/91) · [PR #93](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/93)

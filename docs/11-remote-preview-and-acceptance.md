@@ -84,7 +84,7 @@ Test Agent 在独立只读会话中读取固定差异、基础规则、验收标
 
 控制面配置 `FORGEOS_TEST_AGENT_PROJECT_ID`、`FORGEOS_TEST_AGENT_TOKEN`，以及同一项目的 Management 身份。Test Agent 节点设置回环 API 地址和专用令牌，运行 `worker test-agent`；Management 节点运行 `worker management`。两者使用独立只读会话和凭据，控制面提供已冻结的输入。
 
-新申请的计划修订会保存候选实现所用的全局规则、有效项目决策和 Owner 退回意见。换基候选通过交付记录追溯原实现。当存在这些依据时，Test Agent 和 Management 领取须带查询参数 `supports_candidate_context=1`。控制面在接收独立 Reviewer、Test Agent 和 Management 的新结果时按换基记录查找实际开发会话，即使项目没有发布候选规则也执行此检查。两者取得相同的 `source.candidate_context`，用例的比较步骤可以据此写出明确的预期取值。覆盖审查仍逐项核对用例与证据。
+新申请的计划修订会保存候选实现所用的全局规则、有效项目决策和 Owner 退回意见。换基候选通过交付记录追溯原实现。当存在这些依据时，Test Agent 和 Management 领取须带查询参数 `supports_candidate_context=1`。控制面在接收独立 Reviewer、Test Agent 和 Management 的新结果时按换基记录查找实际开发会话，即使项目没有发布候选规则也执行此检查。两者取得相同的 `source.candidate_context`，用例的比较步骤可以据此写出明确的预期取值。测试计划以 `basis.decision.commit` 为待测候选、`base_commit` 为比较基线。独立的覆盖审核核对前置条件、操作和取证步骤中的提交；若将原实现当作当前候选，要求修订。实际 Git 检查由用例执行者记录。
 
 在工作台的“查看测试计划”展开“测试计划使用的候选依据”，可以核对原文及整份依据的 SHA-256。`basis.candidate_context_sha256` 取 PostgreSQL 中该 JSONB 的文本表示按 UTF-8 编码后的摘要，并参与计划摘要校验。没有候选规则的任务仍可由旧节点领取。升级前归档的计划保留原依据，申请新修订时会使用该候选可追溯的规则。
 
