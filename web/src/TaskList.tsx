@@ -14,8 +14,8 @@ const metrics = [
   { key: 'DONE', name: '已完成', icon: 'CheckCircle2', color: 'green' },
 ] as const
 
-export default function TaskList({ request, queue, onCounts }: {
-  request: ApiRequest; queue: boolean; onCounts: (counts: Record<string, number>) => void
+export default function TaskList({ request, queue, running, onCounts }: {
+  request: ApiRequest; queue: boolean; running: boolean; onCounts: (counts: Record<string, number>) => void
 }) {
   const [input, setInput] = useState('')
   const [query, setQuery] = useState('')
@@ -28,7 +28,7 @@ export default function TaskList({ request, queue, onCounts }: {
   const [lastRequest, setLastRequest] = useState('')
   const [synced, setSynced] = useState('')
   const cursor = cursors.at(-1)
-  const status = queue ? 'WAITING_ACCEPTANCE' : filter
+  const status = queue ? 'WAITING_ACCEPTANCE' : running ? 'RUNNING' : filter
   const params = new URLSearchParams({ limit: '20' })
   if (query) params.set('q', query)
   if (status) params.set('status', status)
@@ -58,13 +58,13 @@ export default function TaskList({ request, queue, onCounts }: {
   function changeFilter(value: string) { setFilter(value); setCursors([]) }
   const visible = lastRequest === path ? page : null
   return <>
-    <div className="page-heading"><div><h1>{queue ? '验收队列' : '任务列表'}</h1>
+    <div className="page-heading"><div><h1>{queue ? '验收队列' : running ? '执行中任务' : '任务列表'}</h1>
       <p>{synced ? '最近同步 ' + synced : '正在读取控制面记录…'}</p></div>
       <button className="button refresh" onClick={() => setRevision(n => n + 1)} disabled={loading}>
         <Icon name="RefreshCw" size={15} />刷新
       </button>
     </div>
-    {!queue && <div className="metrics" aria-label="任务统计">{metrics.map(m =>
+    {!queue && !running && <div className="metrics" aria-label="任务统计">{metrics.map(m =>
       <button className={'metric ' + m.color} key={m.key} onClick={() => changeFilter(m.key === 'ALL' ? '' : m.key)}
         aria-pressed={(filter || 'ALL') === m.key}>
         <span className="metric-icon"><Icon name={m.icon} size={19} /></span>
@@ -75,7 +75,7 @@ export default function TaskList({ request, queue, onCounts }: {
         <div className="tools">
           <label className="search"><Icon name="Search" size={16} /><input type="search" aria-label="搜索任务"
             placeholder="搜索任务、仓库或编号" maxLength={120} value={input} onChange={e => setInput(e.target.value)} /></label>
-          {!queue && <label className="filter"><Icon name="SlidersHorizontal" size={15} />
+          {!queue && !running && <label className="filter"><Icon name="SlidersHorizontal" size={15} />
             <select aria-label="任务状态" value={filter} onChange={e => changeFilter(e.target.value)}>
               <option value="">全部状态</option>{filters.map(key => <option key={key} value={key}>{statusLabels[key]}</option>)}
             </select><Icon name="ChevronDown" size={13} /></label>}
@@ -83,7 +83,7 @@ export default function TaskList({ request, queue, onCounts }: {
       </div>
       {error ? <div role="alert" className="table-message"><Icon name="AlertCircle"/><p>{error}</p><button className="button" onClick={() => setRevision(n => n + 1)}>重试</button></div> :
         visible && !visible.items.length ? <div className="table-message"><Icon name={queue ? 'ClipboardCheck' : 'Inbox'} size={28}/>
-          <strong>{query || filter ? '没有匹配的任务' : queue ? '当前没有待验收任务' : '暂无任务'}</strong>
+          <strong>{query || filter ? '没有匹配的任务' : queue ? '当前没有待验收任务' : running ? '当前没有执行中任务' : '暂无任务'}</strong>
           {(query || filter) && <button className="button" onClick={() => { setInput(''); setQuery(''); changeFilter('') }}>清除筛选</button>}
         </div> : <div className="table-scroll"><table className="task-table">
           <thead><tr><th>任务 / 来源</th><th>状态</th><th className="worker-cell">Worker</th><th className="time-cell">最近更新</th><th aria-label="进入详情" /></tr></thead>

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-const labels = { plan: 'Goal 计划', decision: '项目决策', share: '跨项目共享' }
+export const approvalLabels = { plan: 'Goal 计划', decision: '项目决策', share: '跨项目共享' }
 const verdicts = { approve: '建议通过', needs_owner: '请 Owner 决定', revise: '建议修订' }
-type Kind = keyof typeof labels
-type Item = { kind: Kind; id: number; project_id: number; title: string; revision?: number; verdict?: keyof typeof verdicts; level?: string; recipient?: number; digest?: string; valid_until?: string }
-type Page = { items: Item[]; next_before?: string }
+type Kind = keyof typeof approvalLabels
+export type ApprovalItem = { kind: Kind; id: number; project_id: number; title: string; revision?: number; verdict?: keyof typeof verdicts; level?: string; recipient?: number; digest?: string; valid_until?: string }
+type Page = { items: ApprovalItem[]; next_before?: string }
 
-function details(item: Item) {
+export function approvalPath(item: ApprovalItem) {
   if (item.kind === 'plan') return `#/tasks/${item.id}/plans/${item.revision}`
   return `#/projects/${item.project_id}/${item.kind === 'decision' ? 'decisions' : 'shares'}/${item.id}`
 }
@@ -33,7 +33,7 @@ export function Approvals({request}: {request: ApiRequest}) {
   return <section className="panel detail-card"><h1>审批中心</h1>
     <div className="detail-actions">
       <label>操作　<select value={kind} onChange={e => { setKind(e.target.value); setCursors([]) }}>
-        <option value="">全部操作</option>{Object.entries(labels).map(([k,label]) => <option key={k} value={k}>{label}</option>)}
+        <option value="">全部操作</option>{Object.entries(approvalLabels).map(([k,label]) => <option key={k} value={k}>{label}</option>)}
       </select></label>
       <button className="button" onClick={() => setRevision(n => n + 1)}>刷新审批列表</button>
     </div>
@@ -41,14 +41,14 @@ export function Approvals({request}: {request: ApiRequest}) {
     {!page && !error && <p role="status">正在读取待审批记录…</p>}
     {page?.items.length === 0 && <p>本页没有待审批记录。</p>}
     {page?.items.map(item => <article className="notification-row" key={item.kind + item.id}>
-      <h2>{labels[item.kind]} · {item.title}</h2>
+      <h2>{approvalLabels[item.kind]} · {item.title}</h2>
       <p>项目 #{item.project_id} · {item.kind === 'plan' ? '任务 T-' : '记录 #'}{item.id}
         {item.level && ' · ' + item.level}{item.revision && ' · 修订 ' + item.revision}
         {item.recipient && ' · 接收项目 #' + item.recipient}</p>
       {item.verdict && <p>Management 审核 · {verdicts[item.verdict]}</p>}
       {item.digest && <p>副本 SHA-256 · <code>{item.digest}</code></p>}
       {item.valid_until && <p>有效期至 <time dateTime={item.valid_until}>{formatTime(item.valid_until)}</time></p>}
-      <a href={details(item)}>查看{labels[item.kind]}</a>
+      <a href={approvalPath(item)}>查看{approvalLabels[item.kind]}</a>
     </article>)}
     <div className="detail-actions">
       {before && <button className="button" onClick={() => setCursors(c => c.slice(0,-1))}>上一页</button>}

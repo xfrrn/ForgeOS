@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Overview } from './Overview'
 import { Approvals } from './Approvals'
 import { NotificationCount, Notifications } from './Notifications'
 import TaskDetail from './TaskDetail'
@@ -57,9 +58,11 @@ function App() {
   const [owner, setOwner] = useState(storedOwner)
   const activeOwner = useRef(owner)
   const [loginError, setLoginError] = useState('')
-  const [route, setRoute] = useState(() => location.hash.slice(1) || '/tasks')
+  const [route, setRoute] = useState(() => location.hash.slice(1) || '/overview')
   const [mobileNav, setMobileNav] = useState(false)
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const overview = route === '/overview' || route === '/'
+  const running = route === '/tasks?status=RUNNING'
   const approvals = route === '/approvals'
   const queue = route === '/review'
   const [notificationRevision, setNotificationRevision] = useState(0)
@@ -76,9 +79,9 @@ function App() {
   const projects = route === '/projects' || Boolean(materials || decisions || shares)
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9}))?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
-  const valid = Boolean(id || approvals || queue || notifications || nodes || questions || projects || route === '/tasks')
+  const valid = Boolean(overview || running || id || approvals || queue || notifications || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
-  const title = preview ? '预览反馈' : id ? '任务详情' : approvals ? '审批中心' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
+  const title = overview ? '工作台总览' : running ? '执行中任务' : preview ? '预览反馈' : id ? '任务详情' : approvals ? '审批中心' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
   }, [])
@@ -91,7 +94,7 @@ function App() {
   }, [owner, request])
   useEffect(() => { if (id) refreshCounts() }, [id, refreshCounts])
   useEffect(() => {
-    const change = () => { setRoute(location.hash.slice(1) || '/tasks'); setMobileNav(false); window.scrollTo(0, 0) }
+    const change = () => { setRoute(location.hash.slice(1) || '/overview'); setMobileNav(false); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
@@ -102,10 +105,11 @@ function App() {
   return <div className="shell">
     <a href="#content" className="skip-link" onClick={e => {e.preventDefault(); document.getElementById('content')?.focus()}}>跳到主要内容</a>
     <aside className={'sidebar' + (mobileNav ? ' open' : '')}>
-      <a className="brand-link" aria-label="ForgeOS 任务列表" href="#/tasks"><Brand/></a>
+      <a className="brand-link" aria-label="ForgeOS 工作台总览" href="#/overview"><Brand/></a>
       <div className="work-label">工作区</div>
       <nav aria-label="工作台导航">
-        <a className={!queue && !approvals && !notifications && !nodes && !questions && !projects ? 'active' : ''} aria-current={!queue && !approvals && !notifications && !nodes && !questions && !projects ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
+        <a className={overview ? 'active' : ''} aria-current={overview ? 'page' : undefined} href="#/overview"><Icon name="Layers3"/>工作台总览</a>
+        <a className={!overview && !queue && !approvals && !notifications && !nodes && !questions && !projects ? 'active' : ''} aria-current={!overview && !queue && !approvals && !notifications && !nodes && !questions && !projects ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
         <a className={projects ? 'active' : ''} aria-current={projects ? 'page' : undefined} href="#/projects" onClick={() => setMobileNav(false)}><Icon name="GitBranch"/>项目接入</a>
         <a className={queue ? 'active' : ''} aria-current={queue ? 'page' : undefined} href="#/review" onClick={() => setMobileNav(false)}><Icon name="ClipboardCheck"/>验收队列
           {counts.WAITING_ACCEPTANCE > 0 && <span className="nav-count">{counts.WAITING_ACCEPTANCE}</span>}</a>
@@ -128,6 +132,7 @@ function App() {
     <main id="content" tabIndex={-1} className="content">
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
+        overview ? <Overview request={request} onCounts={setCounts}/> :
         approvals ? <Approvals request={request}/> :
         notifications ? <Notifications request={request} onRead={() => setNotificationRevision(n => n + 1)}/> :
         nodes ? <WorkerNodes request={request}/> :
@@ -136,7 +141,7 @@ function App() {
         materials && projectID ? <ProjectMaterials key={projectID} project={projectID} request={request}/> :
         projects ? <Projects request={request}/> :
         questions ? <DecisionQuestions request={request} onChanged={refreshCounts}/> :
-        valid ? <TaskList key={queue ? 'review' : 'all'} queue={queue} request={request} onCounts={setCounts}/> :
+        valid ? <TaskList key={route} queue={queue} running={running} request={request} onCounts={setCounts}/> :
         <div className="panel table-message"><h1>页面不存在</h1><a className="button" href="#/tasks">返回任务列表</a></div>}
     </main></div>
   </div>
