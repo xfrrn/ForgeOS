@@ -52,7 +52,7 @@ class Client:
             raise RuntimeError("App Server resumed a different thread")
         return thread
 
-    def turn(self, thread, prompt, interrupt=False, decision=None):
+    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None):
         self.notifications.clear()
         turn = self.call("turn/start", {"threadId": thread, "input": [{"type": "text", "text": prompt}]})["turn"]["id"]
         message, started = "", False
@@ -64,11 +64,15 @@ class Client:
             event = self.notifications.pop(0)
             params = event["params"]
             if "id" in event:
-                if (decision not in ("decline", "cancel") or self.approval is not None
+                if (decision not in ("decline", "cancel", "accept") or self.approval is not None
                         or event["method"] != "item/commandExecution/requestApproval"
                         or params.get("threadId") != thread or params.get("turnId") != turn
-                        or not params.get("itemId") or "approval_probe.py" not in (params.get("command") or "")):
+                        or not params.get("itemId")):
                     raise RuntimeError(f"Unexpected server request: {event['method']}")
+                if (Path(params.get("cwd") or "").resolve() != workspace
+                        or params.get("additionalPermissions") or params.get("networkApprovalContext")
+                        or params.get("commandActions") != [{"type": "unknown", "command": command}]):
+                    raise RuntimeError("Approval did not match the temporary probe command")
                 self.approval = {"request": event["id"], "item": params["itemId"], "decision": decision}
                 self.send({"id": event["id"], "result": {"decision": decision}})
                 continue
@@ -81,6 +85,8 @@ class Client:
                     message = item["text"].strip()
                 if self.approval and item["type"] == "commandExecution" and item["id"] == self.approval["item"]:
                     self.approval["status"] = item["status"]
+                    if decision == "accept":
+                        self.approval["output"] = (item.get("aggregatedOutput") or "").strip()
             if method == "turn/started" and params["turn"]["id"] == turn:
                 if interrupt and not started:
                     self.call("turn/interrupt", {"threadId": thread, "turnId": turn})
@@ -89,8 +95,9 @@ class Client:
                 expected = "interrupted" if interrupt or decision == "cancel" else "completed"
                 if not started or params["turn"]["status"] != expected:
                     raise RuntimeError(f"Expected a started then {expected} turn, got {params['turn']['status']}")
-                if decision and (not self.approval or self.approval.get("status") != "declined"):
-                    raise RuntimeError("The turn ended without a declined command receipt")
+                command_status = "completed" if decision == "accept" else "declined"
+                if decision and (not self.approval or self.approval.get("status") != command_status):
+                    raise RuntimeError(f"The turn ended without a {command_status} command receipt")
                 return turn, message
 
 
@@ -131,7 +138,7 @@ def server(binary, workspace):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin", default="codex", help="native Codex executable")
-    parser.add_argument("--approvals", action="store_true", help="exercise decline and cancel on native command approvals")
+    parser.add_argument("--approvals", action="store_true", help="exercise one-time approval, decline and cancel")
     args = parser.parse_args()
     binary = shutil.which(args.bin)
     if not binary or (os.name == "nt" and Path(binary).suffix.lower() != ".exe"):
@@ -146,12 +153,17 @@ def main():
                 "from pathlib import Path\nPath('executed.txt').write_text('ran')\n", encoding="utf-8")
             receipts = []
             with server(binary, workspace) as client:
-                for decision in ("decline", "cancel"):
-                    thread = client.thread(workspace, approval="untrusted")
-                    turn, _ = client.turn(thread, "Run the command python approval_probe.py in the current "
-                                          "directory once, using your shell tool. We are testing the native "
+                thread = client.thread(workspace, approval="untrusted")
+                stamp = str(secrets.randbelow(10**12))
+                read_command = f'python -c "print({stamp})"'
+                for decision, command in (("accept", read_command), ("decline", read_command),
+                                          ("decline", "python approval_probe.py"), ("cancel", "python approval_probe.py")):
+                    turn, _ = client.turn(thread, f"Run this exact command in the current directory once: {command}\n"
+                                          "Use your shell tool. We are testing the native "
                                           "approval UI. If permission is declined, stop without retrying "
-                                          "or using another tool.", decision=decision)
+                                          "or using another tool.", decision=decision, workspace=workspace, command=command)
+                    if decision == "accept" and client.approval["output"] != stamp:
+                        raise RuntimeError("Approved command did not return the expected value")
                     if (workspace / "executed.txt").exists():
                         raise RuntimeError("Denied command executed")
                     receipts.append({"thread": thread, "turn": turn, **client.approval})

@@ -61,7 +61,7 @@ Adapter 应报告真实能力，不支持的能力不得伪装支持。
 
 在已登录的 Harness 用户下执行 `python scripts/probe_codex_app_server.py --bin <原生可执行文件>`，通过本地 stdio 启动两个独立 App Server。探测核对服务返回的只读 sandbox，完成首轮后关闭进程，在第二个进程恢复原 Thread 并读取随机标识，再中断第三轮。以返回的 Turn ID 和 `turn/completed` 状态核对中断。当前实测版本要求先接收 `turn/started` 通知，再调用 `turn/interrupt`。可用 `codex app-server generate-json-schema --out <目录>` 对照安装版本的字段。[App Server 协议说明](https://developers.openai.com/codex/app-server/)
 
-用同一命令加 `--approvals` 实测命令审批。探针在临时目录创建一份会留下执行标记的 Python 脚本，在只读 Thread 中要求模型运行一次。收到原生审批请求后，核对 Thread、Turn 和工具项编号，分别回答 `decline` 和 `cancel`。两次均核对标记文件不存在，前者还需正常完成回合，后者需收到回合中断。输出保留请求和工具项编号，可与原生会话对照。
+用同一命令加 `--approvals` 实测命令审批。探针在只读 Thread 中用 `accept` 批准一次只输出随机数的 Python 命令，核对工具项状态和标准输出，然后在同一 Thread 再次提交相同命令，核对新的审批请求并拒绝。接下来分别拒绝和取消临时目录中的标记脚本，检查标记文件始终不存在、拒绝后回合完成、取消后回合中断。每次审批均比对工作目录、命令、Thread、Turn 和工具项编号。输出保留原生回执。
 
 ## 5. Claude Code 接入建议
 
