@@ -117,9 +117,10 @@ func (s *Store) CompleteCodeReview(ctx context.Context, project, execution int64
 	}
 	var found int64
 	err = s.db.QueryRowContext(ctx, `UPDATE code_reviews r SET report=$4::jsonb,completed_at=COALESCE(completed_at,now())
-		FROM work_items t,executions e WHERE t.id=r.task_id AND e.id=r.execution_id AND t.project_id=$1
+		FROM work_items t WHERE t.id=r.task_id AND t.project_id=$1
 		AND r.execution_id=$2 AND r.lease::text=$3 AND r.commit_sha=$5 AND r.base_commit=$6
-		AND r.failed_at IS NULL AND COALESCE(e.result->>'session_id','') <> $7 AND (r.report=$4::jsonb OR (r.report IS NULL AND r.lease_until>now()))
+		AND r.failed_at IS NULL AND (r.report=$4::jsonb OR (r.report IS NULL AND r.lease_until>now()
+			AND COALESCE((SELECT result->>'session_id' FROM executions WHERE id=candidate_implementation_execution($2)),'') <> $7))
 		RETURNING r.execution_id`, project, execution, lease, string(doc), report.Commit, report.Base, report.Session).Scan(&found)
 	var constraint *pq.Error
 	if errors.Is(err, sql.ErrNoRows) || (errors.As(err, &constraint) && constraint.Code == "23505") {

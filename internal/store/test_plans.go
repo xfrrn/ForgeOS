@@ -181,7 +181,7 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 	err = tx.QueryRowContext(ctx, `SELECT p.source,(SELECT outcome FROM candidate_test_plan_jobs WHERE plan_id=p.id AND role='test'),
 		COALESCE(e.result->>'session_id',''),j.outcome,j.completed_at IS NOT NULL,j.failed,(j.lease_until>now() AND `+currentTestPlan+`)
 		FROM candidate_test_plan_jobs j JOIN candidate_test_plans p ON j.plan_id=p.id JOIN work_items t ON t.id=p.task_id
-		JOIN executions e ON e.id=p.execution_id WHERE p.id=$1 AND t.id=$2 AND j.role=$3 AND j.lease::text=$4 FOR UPDATE OF j`, out.ID, taskID, role, out.Lease).Scan(&srcJSON, &planJSON, &dev, &stored, &complete, &failed, &active)
+		LEFT JOIN executions e ON e.id=candidate_implementation_execution(p.execution_id) WHERE p.id=$1 AND t.id=$2 AND j.role=$3 AND j.lease::text=$4 FOR UPDATE OF j`, out.ID, taskID, role, out.Lease).Scan(&srcJSON, &planJSON, &dev, &stored, &complete, &failed, &active)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
@@ -196,7 +196,7 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 		}
 		var value any
 		if wantPlan {
-			if out.Plan.Session == dev || out.Plan.Verify(src.Basis, src.Library) != nil {
+			if (!complete && out.Plan.Session == dev) || out.Plan.Verify(src.Basis, src.Library) != nil {
 				return ErrConflict
 			}
 			value = out.Plan
@@ -206,7 +206,7 @@ func (s *Store) FinishTestPlan(ctx context.Context, project int64, role string, 
 				return err
 			}
 			r, err := plan.Coverage(out.Coverage.Session, out.Coverage.Items)
-			if err != nil || r.Session == dev || !reflect.DeepEqual(r, *out.Coverage) {
+			if err != nil || (!complete && r.Session == dev) || !reflect.DeepEqual(r, *out.Coverage) {
 				return ErrConflict
 			}
 			value = r

@@ -16,11 +16,12 @@ import (
 )
 
 func TestCandidatePlanRolesAndRevisions(t *testing.T) {
-	t.Run("legacy", func(t *testing.T) { testCandidatePlanRoles(t, false) })
-	t.Run("published rules", func(t *testing.T) { testCandidatePlanRoles(t, true) })
+	t.Run("refreshed without rules", func(t *testing.T) { testCandidatePlanRoles(t, false, true) })
+	t.Run("legacy", func(t *testing.T) { testCandidatePlanRoles(t, false, false) })
+	t.Run("published rules", func(t *testing.T) { testCandidatePlanRoles(t, true, false) })
 }
 
-func testCandidatePlanRoles(t *testing.T, published bool) {
+func testCandidatePlanRoles(t *testing.T, published, refresh bool) {
 	ctx := context.Background()
 	root, repo, base := issueTestRepo(t)
 	data := store.New(testdb.Open(t))
@@ -64,15 +65,47 @@ func testCandidatePlanRoles(t *testing.T, published bool) {
 		_, err = data.PublishGlobalRules(ctx, 1, "Future headings")
 		must(err)
 	}
+	execution := dev.ExecutionID
+	if refresh {
+		_, err = data.Review(ctx, task.ID, execution, sha, "approve", "Checked", true, "main")
+		must(err)
+		delivery, err := data.ClaimDelivery(ctx, project.ID)
+		must(err)
+		if delivery == nil {
+			t.Fatal("missing delivery")
+		}
+		delivery.State, delivery.PRNumber, delivery.PRURL = "WAITING", 1, "https://github.com/a/b/pull/1"
+		must(data.SaveDelivery(ctx, *delivery))
+		git := func(args ...string) string {
+			t.Helper()
+			out, err := localrepo.Git(ctx, repo, append([]string{"-c", "user.name=Test", "-c", "user.email=test@example.invalid"}, args...)...)
+			must(err)
+			return strings.TrimSpace(string(out))
+		}
+		git("checkout", "--detach", base)
+		git("commit", "--allow-empty", "-qm", "advance target")
+		base = git("rev-parse", "HEAD")
+		git("cherry-pick", sha)
+		refreshed := git("rev-parse", "HEAD")
+		_, err = data.QueueRefreshedCandidate(ctx, task.ID, execution, sha, base, refreshed)
+		must(err)
+		ci, err := data.ClaimForProjects(ctx, "ci", t.TempDir(), []int64{project.ID}, store.WorkerCapabilities{SupportsValidation: true})
+		must(err)
+		if ci == nil {
+			t.Fatal("missing CI job")
+		}
+		execution, sha = ci.ExecutionID, refreshed
+		must(data.Complete(ctx, execution, ci.LeaseToken, store.Result{BaseCommit: base, Commit: sha, Validation: &store.ValidationResult{Profile: "docs", Commit: sha}}))
+	}
 	request := func(previous int, criteria []string) error {
-		_, err := data.RequestTestPlan(ctx, root, task.ID, dev.ExecutionID, sha, previous, criteria)
+		_, err := data.RequestTestPlan(ctx, root, task.ID, execution, sha, previous, criteria)
 		return err
 	}
 	must(request(0, nil))
 	must(request(0, nil))
 	conflict(request(0, []string{"Different."}))
 	approve := func() error {
-		_, err := data.Review(ctx, task.ID, dev.ExecutionID, sha, "approve", "", false, "")
+		_, err := data.Review(ctx, task.ID, execution, sha, "approve", "", false, "")
 		return err
 	}
 	conflict(approve())
@@ -141,10 +174,13 @@ func testCandidatePlanRoles(t *testing.T, published bool) {
 	coverage.Digest = sha
 	conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
 	coverage.Digest = original
+	coverage.Session = "dev"
+	conflict(data.FinishTestPlan(ctx, project.ID, "management", v))
+	coverage.Session = "manager"
 	must(data.FinishTestPlan(ctx, project.ID, "management", v))
 	must(data.FinishTestPlan(ctx, project.ID, "management", v))
 	conflict(approve())
-	caseResult := store.TestCaseResult{Execution: dev.ExecutionID, Revision: 2, Commit: sha, PlanDigest: original, Case: "TC-001", Result: "blocked", Operations: []string{"Open guide.md"}, Actual: "No review account available", Evidence: []string{"Test fixture observation"}}
+	caseResult := store.TestCaseResult{Execution: execution, Revision: 2, Commit: sha, PlanDigest: original, Case: "TC-001", Result: "blocked", Operations: []string{"Open guide.md"}, Actual: "No review account available", Evidence: []string{"Test fixture observation"}}
 	record := func(tester, actor string) error {
 		_, err := data.RecordTestCase(ctx, task.ID, project.ID, tester, actor, caseResult)
 		return err

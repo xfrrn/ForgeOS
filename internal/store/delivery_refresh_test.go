@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"forgeos/internal/review"
 )
 
 func TestRefreshKeepsDeliveryAndRequiresNewValidation(t *testing.T) {
@@ -133,14 +135,14 @@ func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
 		complete("")
 	}
 	must(s.RequestCodeReview(ctx, task.ID, job.ExecutionID, commit))
-	review, err := s.ClaimCodeReview(ctx, project.ID, false)
+	claimed, err := s.ClaimCodeReview(ctx, project.ID, false)
 	must(err)
-	if review != nil {
+	if claimed != nil {
 		t.Fatal("legacy reviewer took refreshed context")
 	}
-	review, err = s.ClaimCodeReview(ctx, project.ID, true)
+	claimed, err = s.ClaimCodeReview(ctx, project.ID, true)
 	must(err)
-	if review == nil {
+	if claimed == nil {
 		t.Fatal("missing refreshed review")
 	}
 	var got struct {
@@ -148,8 +150,15 @@ func TestReviewKeepsImplementationRulesAcrossRepeatedRefresh(t *testing.T) {
 		Commit string          `json:"implementation_commit"`
 		Rules  json.RawMessage `json:"global_rules"`
 	}
-	must(json.Unmarshal(review.CandidateContext, &got))
-	if got.Origin != origin || got.Commit != originCommit || string(got.Rules) != string(initial) || review.Commit != commit {
-		t.Fatalf("wrong implementation in %s", review.CandidateContext)
+	must(json.Unmarshal(claimed.CandidateContext, &got))
+	if got.Origin != origin || got.Commit != originCommit || string(got.Rules) != string(initial) || claimed.Commit != commit {
+		t.Fatalf("wrong implementation in %s", claimed.CandidateContext)
 	}
+	report := review.Report{Base: base, Commit: commit, Session: "development", Summary: "Checked refreshed change.", Findings: []review.Finding{}}
+	if err = s.CompleteCodeReview(ctx, project.ID, job.ExecutionID, claimed.Lease, report); !errors.Is(err, ErrConflict) {
+		t.Fatal("original development session on refreshed review", err)
+	}
+	report.Session = "independent-review"
+	must(s.CompleteCodeReview(ctx, project.ID, job.ExecutionID, claimed.Lease, report))
+
 }
