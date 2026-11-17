@@ -2186,3 +2186,23 @@ alpha 首次导入选择了 auto。原生会话恢复成功，但固定基线缺
 | beta #121 · `Harbor 24c642ac` | Claude Code `48ff6486-aaf1-41b3-802e-01dfef8854ab`，43516、45988 | 候选 `022715f584056659b46a9caf4b7ec139050c06a8`，合并 `30731869de50e47a71d0cc19f8f3792c20e0ef25`。[PR #122](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/122) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44069914209) |
 
 PostgreSQL 18 和 Docker 均启用的全包回归共 238 项 Go 测试及子测试通过，零跳过。数据库回归覆盖入队顺序、容量、旧 Worker、错误会话、跳过待处理指令的候选登记与结果上报、结束后重报。Go vet 和 Web 生产构建通过。
+
+Owner 下一回合指令对应 ForgeOS 提交 `2c13ca8adf9218e748962e136836b4817337f906`。
+
+### 专题 06、08、10 · 从实现检查点追溯候选审查与测试依据
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在版本 80 回查 alpha #30 和 beta #121，再用 beta #123 实现一项新需求并保存第一版测试计划 | 能分辨实现回执与当时各角色真正取得的依据 | 两个旧执行均有已处理的 Owner 指令，旧候选依据中均未包含。#123 首回合从 Chrome 指定 H2 为 `Harbor f76f3df2`；旧版测试计划保存时也没有该依据和摘要。 |
+| 升级控制面后，向同一候选请求独立代码审查和第二版测试计划，再重报创建请求 | 保留修订 1；新修订和审查取得同一实现检查点的指令 | 两份新回执列出检查点 1、实现会话和完整指令。Reviewer 的报告明确核对了指定 H2；Test Agent 将请求键和指定文字写进 TC-001。重报仍返回修订 2。|
+| Management 审核修订 2；重启控制面，在 Chrome 切换审查报告及两版测试计划 | 独立角色核对同一固定候选，重启后仍能分辨历史修订 | 修订 2 获得 covered；审查和计划依据分别在页面展示相同的指令及实现会话。修订 1 仍没有新增的依据。三个回执在重启前后相同。用 PostgreSQL 保存的原文重新计算的依据 SHA-256 为 `ac72f4586bdf787674c55fd4464921b021180a7f8630f07fb49a878bb248ff0d`，与修订 2 和测试计划中的值相同。 |
+| 以项目限定的 Runner 身份从两个固定 Git 提交执行用例，批准候选，再从 GitHub 核对交付 | 文档只新增一个文件，唯一 H1 之下的 H2 与 Owner 原文一致；必需 CI 成功后合并并关闭 Issue | TC-001 回读指定文件并核对两个标题的行号，TC-002 核对完整路径列表和差异，两项均通过。候选 `24a95639acc4641ebf3cdc7421c5b8a03232e373`，合并 `d0a337b859ecf72271d2641787e5d2e3f5dd3887`。预设首次 CI 失败后重跑通过，任务 DONE，Issue 已关闭。[PR #124](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/124) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44071377188) |
+
+| 回合 | 独立原生会话 |
+| --- | --- |
+| Claude 实现 | `da3aaacc-cc92-4039-9426-03b00577ddc3` |
+| Claude Reviewer | `a3980a7b-e4cd-455b-aee1-decaa390a521` |
+| Codex Test Agent | `01a1e92f-b990-7cd2-b0c6-849ba980e460` |
+| Codex Management 覆盖审核 | `01a1e930-269f-7753-b531-c19f1d49da80` |
+
+开启 PostgreSQL 18 和 Docker 的全包回归共 238 项 Go 测试及子测试通过，零跳过。数据库回归另核对一批 8 条指令的顺序、处理检查点和会话，Go vet 与 Web 生产构建通过。

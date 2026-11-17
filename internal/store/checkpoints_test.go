@@ -94,6 +94,20 @@ func TestOwnerQueueBindsInstructionsToTheNextTurn(t *testing.T) {
 	if len(rows) != 3 || string(rows[0].NextInstructions) != string(repeat.OwnerInstructions) || rows[1].SessionID != "session" {
 		t.Fatal(rows)
 	}
+	var basis struct {
+		Instructions []struct {
+			Sequence int             `json:"sequence"`
+			Session  string          `json:"session_id"`
+			Items    json.RawMessage `json:"instructions"`
+		} `json:"owner_instructions"`
+	}
+	var raw []byte
+	must(s.db.QueryRowContext(ctx, `SELECT review_rules_for_execution($1)`, j.ExecutionID).Scan(&raw))
+	must(json.Unmarshal(raw, &basis))
+	if len(basis.Instructions) != 1 || basis.Instructions[0].Sequence != 1 || basis.Instructions[0].Session != "session" ||
+		string(basis.Instructions[0].Items) != string(rows[0].NextInstructions) {
+		t.Fatalf("candidate lost the ordered, confirmed instructions: %s", raw)
+	}
 }
 
 func TestCheckpointFreezesPagesAndRequiresConsumedTurns(t *testing.T) {

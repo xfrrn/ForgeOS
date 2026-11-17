@@ -3,6 +3,7 @@ import type { GlobalRulesRevision } from './GlobalRules'
 export type CandidateContext = {
   implementation_execution_id?: number
   implementation_commit?: string
+  owner_instructions?: {sequence: number; session_id: string; instructions: {key: string; body: string}[]}[]
   owner_clarifications?: {id?: number; execution_id?: number; sequence?: number; question: string; answer: string; commit_sha?: string}[]
   management_references?: {question_id: number; sequence: number; session_id: string; decision: {id: string; text: string; validity: string; source: string}}[]
   global_rules?: GlobalRulesRevision
@@ -18,6 +19,11 @@ export function CandidateRuleEvidence({context, title, digest}: {context: Candid
     {context.owner_clarifications?.map(q => <p key={q.id != null ? 'question-' + q.id : 'turn-' + q.sequence}>
       {q.execution_id && `原执行 #${q.execution_id} · `}{q.sequence == null ? '候选验收' : `检查点 ${q.sequence}`} · {q.question} · Owner 答复 · {q.answer}
       {q.commit_sha && <> · <code>{q.commit_sha}</code></>}</p>)}
+    {context.owner_instructions?.map(batch => <div key={batch.sequence}>
+      <p>检查点 {batch.sequence} · 已处理的 Owner 指令</p>
+      <ol>{batch.instructions.map(item => <li key={item.key}>{item.body}</li>)}</ol>
+      <small>处理会话 <code>{batch.session_id}</code></small>
+    </div>)}
     {context.management_references?.map(ref => <div key={ref.question_id}>
       <p>检查点 {ref.sequence} · Management 引用 <code>{ref.decision.id}</code> · 问题 #{ref.question_id}</p>
       <blockquote>{ref.decision.text}</blockquote>
