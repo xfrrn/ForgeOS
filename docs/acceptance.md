@@ -1919,3 +1919,15 @@ CI 恢复后的候选会话与规则追溯对应提交 `80ef8450e93df5ffee7980f5
 [Issue #101](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/101) · [PR #102](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/102) · [Actions 两次运行](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44033567538)
 
 本次 PostgreSQL 18 和 Docker 全量回归 198 个测试及子测试通过，零跳过。Go vet 和 Web 构建通过。Git 回归核对了暂存、删除、忽略、未跟踪、相同大小和修改时间的文件，计算前后真实 index 字节一致。此场景中 Worker 持续运行；节点重启后的会话恢复继续待验收。
+
+检查点工作区变化检测对应 ForgeOS 提交 `870e1eab47685731f030ea13ec82b2c29c516234`。
+
+### 专题 07、14 · 原 Worker 退出后接回等待答复的执行
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 beta #103 确认 Codex 提问、原生进程已有退出回执；停止该验收 Daemon，重启控制面。用相同身份、状态目录与工作区启动两个替代 Daemon，从 Chrome 回答 | 一个 Daemon 取得答复，接回原 Session，另一个退出本次恢复。后续资源申请从原序号继续 | 初测执行 1 的模型资源申请序号归零，控制面返回 409。修复后在同一工作项重试。执行 2 的原 Daemon PID 38328；PID 23252、31020 均读到检查点 0，只有一个取得答复。原生进程 29452、38032 共用 Session `01a1e853-3a70-78d1-bb5d-c902e6080b5d`。保存的活动预算剩余 1177.5 秒。 |
+| 核对执行 2 的工作区、候选差异、Docker 验证和远端交付 | 同一执行交付指定标题。核对 PR、检查与关闭回执 | 仅增加 `docs/daemon-checkpoint-codex.md`，标题为 `Harbor b635abef`。候选 `751d15707345479a52d6c8695f8ec9802630060d` 的两项必需检查通过。合并为 `5462d1cd516f76eb1cedb9be5703962a2f47822b`，Issue 已关闭。[PR #104](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/104) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44036279084) |
+| 在 beta #105 以 Claude Code 重复上述中断、两个替代进程并发恢复、工作台答复及交付 | 保留原执行、工作区、Session 和活动预算，只有一次恢复后的模型回合 | 执行 1 的原 Daemon PID 16056，替代进程 13644、2944。原生进程 26328、2592 共用 Session `3d5df7ef-8a39-428a-a5a8-001c5de399a9`，预算剩余 1190.1 秒。候选 `e1f6e792bce4af7af36339fb073e0763ea00a197` 仅增加指定文件并采用标题 `Harbor 4fed3e00`，两项检查通过，合并为 `3caa8099362d4c548cdd7dae03929d0e6a994762`，Issue 已关闭。[PR #106](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/106) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44038777485) |
+
+两次成功运行均从本地 SQLite 核对了一次领取、已退出的模型进程、恢复完成后清除的待恢复正文。控制面两次返回 DONE。真实 PostgreSQL 18 和 Docker 全量回归 203 个测试及子测试通过，零跳过，Go vet 通过。运行中的原生进程被强制终止、整机重启后的模型恢复及跨 Session 交接仍待验收。

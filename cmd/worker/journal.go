@@ -82,6 +82,9 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		instance INTEGER PRIMARY KEY, lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), harness TEXT NOT NULL, version TEXT NOT NULL,
 		pid INTEGER NOT NULL, started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, session_id TEXT, exited_at TEXT, exit_code INTEGER
 	);
+	CREATE TABLE IF NOT EXISTS parked_questions (
+		lease_hash BLOB PRIMARY KEY REFERENCES attempts(lease_hash), checkpoint BLOB NOT NULL
+	);
 	CREATE INDEX IF NOT EXISTS harness_processes_attempt ON harness_processes(lease_hash,instance);
 	CREATE TABLE IF NOT EXISTS harness_tool_events (
 		instance INTEGER NOT NULL REFERENCES harness_processes(instance), seq INTEGER NOT NULL, call INTEGER NOT NULL,
@@ -101,13 +104,25 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 }
 
 func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested time.Time) error {
+	return w.runAttempt(ctx, job, requested, nil)
+}
+
+func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.Time, saved *parkedQuestion) error {
 	key := sha256.Sum256([]byte(job.LeaseToken))
-	_, err := w.journal.ExecContext(ctx, `INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)`,
-		key[:], job.ExecutionID, job.TaskID, job.Workspace)
-	if err != nil {
-		return fmt.Errorf("record claim for execution %d: %w", job.ExecutionID, err)
+	var err error
+	if saved == nil {
+		_, err = w.journal.ExecContext(ctx, `INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)`,
+			key[:], job.ExecutionID, job.TaskID, job.Workspace)
+		if err != nil {
+			return fmt.Errorf("record claim for execution %d: %w", job.ExecutionID, err)
+		}
 	}
-	result := w.executeWithLease(ctx, job, requested)
+	recovery := questionRecovery{saved: saved, waiting: saved != nil, leaveUnsettled: saved != nil}
+	result := w.executeWithLease(ctx, job, requested, &recovery)
+	if recovery.leaveUnsettled || recovery.waiting && ctx.Err() != nil {
+		log.Printf("execution %d left at recorded checkpoint: %s", job.ExecutionID, result.Error)
+		return nil
+	}
 	if job.RecordProcesses {
 		result.Processes, err = w.processHistory(context.WithoutCancel(ctx), key[:])
 		if err != nil {
@@ -126,10 +141,26 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 		return err
 	}
 	// Finish writing the receipt even when shutdown interrupted the harness.
-	_, err = w.journal.ExecContext(context.WithoutCancel(ctx), `UPDATE attempts SET buffered_at=CURRENT_TIMESTAMP,
-		exit_code=?,candidate=?,session_id=?,report=? WHERE lease_hash=?`, result.ExitCode, result.Commit, result.SessionID, report, key[:])
+	writeCtx := context.WithoutCancel(ctx)
+	tx, err := w.journal.BeginTx(writeCtx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	buffered, err := tx.ExecContext(writeCtx, `UPDATE attempts SET buffered_at=CURRENT_TIMESTAMP,
+		exit_code=?,candidate=?,session_id=?,report=? WHERE lease_hash=? AND buffered_at IS NULL`, result.ExitCode, result.Commit, result.SessionID, report, key[:])
 	if err != nil {
 		return fmt.Errorf("buffer result for execution %d: %w", job.ExecutionID, err)
+	}
+	count, err := buffered.RowsAffected()
+	if err != nil || count == 0 {
+		return err
+	}
+	if _, err = tx.ExecContext(writeCtx, `DELETE FROM parked_questions WHERE lease_hash=?`, key[:]); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
 	}
 	return w.sendReceipt(ctx, key[:], job.ExecutionID, report)
 }

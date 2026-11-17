@@ -10,9 +10,9 @@ import (
 	"forgeos/internal/store"
 )
 
-func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested time.Time) store.Result {
+func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested time.Time, recovery *questionRecovery) store.Result {
 	if job.LeaseSeconds == 0 {
-		return w.execute(ctx, job)
+		return w.executeAttempt(ctx, job, recovery)
 	}
 	ttl := time.Duration(job.LeaseSeconds) * time.Second
 	deadline := requested.Add(ttl)
@@ -35,7 +35,7 @@ func (w *worker) executeWithLease(ctx context.Context, job store.Job, requested 
 		}
 		done <- err
 	}()
-	result := w.execute(active, job)
+	result := w.executeAttempt(active, job, recovery)
 	cancel()
 	if err := <-done; err != nil && result.ExitCode != 0 {
 		result.Error = err.Error()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -25,6 +26,10 @@ func failed(message string, cause error) store.Result {
 }
 
 func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
+	return w.executeAttempt(ctx, job, &questionRecovery{})
+}
+
+func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *questionRecovery) store.Result {
 	timeout := time.Minute
 	if job.Kind == "codex_issue" {
 		timeout = 20 * time.Minute
@@ -51,12 +56,26 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 	if rel, err := filepath.Rel(expected, job.Workspace); err != nil || rel != "." || job.ExecutionID <= 0 {
 		return failed("unexpected execution workspace", err)
 	}
-	if _, err := os.Lstat(expected); !errors.Is(err, os.ErrNotExist) {
+	if recovery.saved != nil {
+		dir, err := filepath.EvalSymlinks(expected)
+		if err != nil || dir != expected {
+			return failed("original execution workspace is unavailable", err)
+		}
+		common := []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}
+		projectGit, err := localrepo.Git(ctx, repo, common...)
+		if err != nil {
+			return failed("original project metadata is unavailable", err)
+		}
+		workGit, err := localrepo.Git(ctx, expected, common...)
+		if err != nil || !bytes.Equal(workGit, projectGit) {
+			return failed("restored workspace does not belong to the assigned project", err)
+		}
+	} else if _, err := os.Lstat(expected); !errors.Is(err, os.ErrNotExist) {
 		return failed("execution workspace already exists or is inaccessible", err)
 	}
 	if job.Kind == "codex_issue" {
 		deadline, _ := ctx.Deadline()
-		return w.executeIssue(leaseCtx, repo, expected, job, deadline)
+		return w.executeIssue(leaseCtx, repo, expected, job, deadline, recovery)
 	}
 	if job.Kind == "environment_check" {
 		if job.Startup == nil {

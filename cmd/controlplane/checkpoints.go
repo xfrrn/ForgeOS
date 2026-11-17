@@ -1,9 +1,11 @@
 package main
 
 import (
-	"forgeos/internal/store"
+	"errors"
 	"net/http"
 	"strconv"
+
+	"forgeos/internal/store"
 )
 
 func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
@@ -30,6 +32,10 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 			return
 		}
 		answer, err := data.AskAtCheckpoint(r.Context(), id, input)
+		if errors.Is(err, store.ErrQuestionClaimed) {
+			problem(w, http.StatusPreconditionFailed, err.Error())
+			return
+		}
 		respond(w, http.StatusOK, map[string]string{"answer": answer}, err)
 	}))
 	workers.handle(mux, "POST /internal/executions/{id}/checkpoints", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {

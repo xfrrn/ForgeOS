@@ -349,6 +349,10 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		WorkspaceRoot string `json:"workspace_root"`
 		store.WorkerCapabilities
 	}{w.id, w.workspaceRoot, caps}
+	parked, err := w.parkedExecutions(ctx)
+	if err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		select {
 		case occupied <- struct{}{}:
@@ -357,23 +361,39 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		}
 		var job store.Job
 		requested := time.Now()
-		status, err := w.post(ctx, "/internal/claim?supports_rework_answers=1", claim, &job)
-		if status == http.StatusNoContent || temporary(status) {
-			<-occupied
-			if status != http.StatusNoContent && ctx.Err() == nil {
-				log.Printf("claim unavailable (HTTP %d), retrying", status)
+		var saved *parkedQuestion
+		if len(parked) > 0 {
+			id := parked[0]
+			parked = parked[1:]
+			saved, err = w.readParkedQuestion(ctx, id)
+			if err != nil {
+				return err
 			}
-			wait(ctx)
-			continue
-		}
-		if err != nil || status != http.StatusOK || job.ExecutionID <= 0 || job.LeaseToken == "" {
-			return fmt.Errorf("invalid claim response (HTTP %d)", status)
+			if saved == nil {
+				<-occupied
+				continue
+			}
+			job = saved.Job
+			log.Printf("checking saved owner question for execution %d at checkpoint %d", job.ExecutionID, saved.Sequence)
+		} else {
+			status, err := w.post(ctx, "/internal/claim?supports_rework_answers=1", claim, &job)
+			if status == http.StatusNoContent || temporary(status) {
+				<-occupied
+				if status != http.StatusNoContent && ctx.Err() == nil {
+					log.Printf("claim unavailable (HTTP %d), retrying", status)
+				}
+				wait(ctx)
+				continue
+			}
+			if err != nil || status != http.StatusOK || job.ExecutionID <= 0 || job.LeaseToken == "" {
+				return fmt.Errorf("invalid claim response (HTTP %d)", status)
+			}
 		}
 		jobs.Add(1)
 		go func() {
 			defer jobs.Done()
 			defer func() { <-occupied }()
-			if err := w.executeAndReport(ctx, job, requested); err != nil {
+			if err := w.runAttempt(ctx, job, requested, saved); err != nil {
 				stop(err)
 			}
 		}()

@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"forgeos/internal/store"
 	"net/http"
 	"strings"
+
+	"forgeos/internal/store"
 )
 
 func (w *worker) recordCICandidate(ctx context.Context, job store.Job, sha, session string) error {
@@ -87,6 +90,13 @@ func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, sessi
 		return nil, errors.New("invalid business question from harness")
 	}
 	input := store.CheckpointQuestion{Trees: trees, Lease: job.LeaseToken, Sequence: &seq, Session: session, Question: q.Question, Evidence: q.Evidence}
+	if job.ResumeQuestions {
+		var nonce [32]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return nil, err
+		}
+		input.ResumeInstance = hex.EncodeToString(nonce[:])
+	}
 	for ctx.Err() == nil {
 		var reply struct {
 			Answer *string `json:"answer"`
@@ -99,6 +109,10 @@ func (w *worker) waitForOwner(ctx context.Context, job store.Job, seq int, sessi
 			if *reply.Answer != "" {
 				return json.Marshal(map[string]string{"question": q.Question, "answer": *reply.Answer})
 			}
+		} else if status == http.StatusPreconditionFailed {
+			return nil, store.ErrQuestionClaimed
+		} else if status == http.StatusConflict && job.ResumeQuestions {
+			return nil, store.ErrConflict
 		} else if !temporary(status) {
 			return nil, fmt.Errorf("checkpoint question rejected (HTTP %d)", status)
 		}

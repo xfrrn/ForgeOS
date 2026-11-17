@@ -324,11 +324,15 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 	return candidate, nil
 }
 
-func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, job store.Job, deadline time.Time) store.Result {
+func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, job store.Job, deadline time.Time, recovery *questionRecovery) store.Result {
 	ctx, cancel := context.WithCancel(leaseCtx)
 	defer cancel()
 	activeTime := time.AfterFunc(time.Until(deadline), cancel)
 	defer activeTime.Stop()
+	resumeBudget := func(remaining time.Duration) {
+		deadline = time.Now().Add(remaining)
+		activeTime.Reset(remaining)
+	}
 	spec := job.Spec
 	budget := executionResources{worker: w, job: job}
 	validate := func(candidate, session string) (store.ValidationResult, error) {
@@ -362,9 +366,13 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		return failed("missing harness capability or unsupported issue specification", nil)
 	}
 	result := store.Result{BaseCommit: spec.BaseCommit}
-	comments, err := w.checkpoint(ctx, job, 0, "")
-	if err != nil {
-		return failed("open execution checkpoint", err)
+	var comments []store.CommentInput
+	var err error
+	if recovery.saved == nil {
+		comments, err = w.checkpoint(ctx, job, 0, "")
+		if err != nil {
+			return failed("open execution checkpoint", err)
+		}
 	}
 	if spec.Mode == "plan" {
 		result, err = withResource(ctx, &budget, "model", func() (store.Result, error) {
@@ -396,9 +404,25 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 		start, feedback = review.Commit, review.Note
 	}
-	dir, err := checkedWorktree(ctx, repo, workspace, start)
+	var dir []byte
 	var ownerReply json.RawMessage
-	for seq := 0; err == nil; seq++ {
+	seq := 0
+	if saved := recovery.saved; saved != nil {
+		dir = saved.GitDir
+		budget.step = saved.ResourceStep
+		result.SessionID = saved.Session
+		if !activeTime.Stop() {
+			return failed("execution budget expired before resume", nil)
+		}
+		ownerReply, err = w.resumeOwnerQuestion(ctx, job, *saved, start, recovery, resumeBudget)
+		seq = saved.Sequence + 1
+		if err == nil {
+			comments, err = w.checkpoint(ctx, job, seq, "")
+		}
+	} else {
+		dir, err = checkedWorktree(ctx, repo, workspace, start)
+	}
+	for ; err == nil; seq++ {
 		var prompt string
 		prompt, err = issuePrompt(job, feedback, comments, ownerReply)
 		if err != nil {
@@ -444,25 +468,23 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				err = context.DeadlineExceeded
 				break
 			}
-			ownerReply, err = w.waitForOwner(ctx, job, seq, session, *question, trees)
+			if job.ResumeQuestions && w.journal != nil && trees != nil {
+				saved := parkedQuestion{Job: job, Sequence: seq, Session: session, Question: question.Question, Evidence: question.Evidence,
+					Version: w.nativeVersion(job), GitDir: dir, Trees: *trees, Remaining: remaining, ResourceStep: budget.step}
+				if err = w.parkQuestion(ctx, saved); err != nil {
+					break
+				}
+				recovery.waiting = true
+				ownerReply, err = w.resumeOwnerQuestion(ctx, job, saved, start, recovery, resumeBudget)
+			} else {
+				ownerReply, err = w.waitForOwner(ctx, job, seq, session, *question, trees)
+				if err == nil {
+					resumeBudget(remaining)
+					err = w.verifyQuestionWorkspace(ctx, job, start, dir, seq, trees)
+				}
+			}
 			if err != nil {
 				break
-			}
-			deadline = time.Now().Add(remaining)
-			activeTime.Reset(remaining)
-			if err = w.confirmRecovery(ctx, job, start, dir); err != nil {
-				break
-			}
-			if trees != nil {
-				current, captureErr := checkpointTrees(ctx, workspace)
-				if captureErr != nil {
-					err = fmt.Errorf("verify worktree at checkpoint %d: %w", seq, captureErr)
-					break
-				}
-				if current != *trees {
-					err = fmt.Errorf("worktree or index changed while waiting for Owner at checkpoint %d", seq)
-					break
-				}
 			}
 		}
 		comments, err = w.checkpoint(ctx, job, seq+1, "")

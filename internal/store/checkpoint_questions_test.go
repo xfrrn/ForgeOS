@@ -38,6 +38,7 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 			r := CheckpointQuestion{Lease: j.LeaseToken, Sequence: &seq, Session: "native", Question: "Which name?", Evidence: "Two names are still proposed."}
 			if end == "answer" {
 				r.Trees = &WorktreeTrees{Index: strings.Repeat("c", 40), Worktree: strings.Repeat("d", 40)}
+				r.ResumeInstance = strings.Repeat("1", 64)
 			}
 			check := func(seq int, session string) error {
 				_, err := s.ReadCheckpoint(ctx, j.ExecutionID, j.LeaseToken, seq, 0, session)
@@ -94,12 +95,20 @@ func TestCheckpointQuestionsHoldProjectUntilResumeOrSettlement(t *testing.T) {
 			result := Result{Commit: candidate, BaseCommit: spec.BaseCommit, SessionID: r.Session, Validation: &ValidationResult{Commit: candidate, Profile: "docs"}}
 			switch end {
 			case "answer":
+				contender := r
+				contender.ResumeInstance = strings.Repeat("2", 64)
+				if answer, err := s.AskAtCheckpoint(ctx, j.ExecutionID, contender); err != nil || answer != "" {
+					t.Fatal("observer before answer", answer, err)
+				}
 				for i := 0; i < 2; i++ {
 					if task, err = s.AnswerQuestion(ctx, task.ID, id, "Harbor"); err != nil || task.Status != "RUNNING" {
 						t.Fatal(task, err)
 					}
 					if answer, err := s.AskAtCheckpoint(ctx, j.ExecutionID, r); err != nil || answer != "Harbor" {
 						t.Fatal(answer, err)
+					}
+					if _, err := s.AskAtCheckpoint(ctx, j.ExecutionID, contender); !errors.Is(err, ErrQuestionClaimed) {
+						t.Fatal("second consumer", err)
 					}
 				}
 				if err := check(1, ""); err != nil {

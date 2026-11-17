@@ -119,12 +119,13 @@ func (s *Store) AskAtAcceptance(ctx context.Context, id int64, r QuestionRequest
 }
 
 type CheckpointQuestion struct {
-	Trees    *WorktreeTrees `json:"trees,omitempty"`
-	Lease    string         `json:"lease_token"`
-	Sequence *int           `json:"sequence"`
-	Session  string         `json:"session_id"`
-	Question string         `json:"question"`
-	Evidence string         `json:"evidence"`
+	ResumeInstance string         `json:"resume_instance,omitempty"`
+	Trees          *WorktreeTrees `json:"trees,omitempty"`
+	Lease          string         `json:"lease_token"`
+	Sequence       *int           `json:"sequence"`
+	Session        string         `json:"session_id"`
+	Question       string         `json:"question"`
+	Evidence       string         `json:"evidence"`
 }
 
 type WorktreeTrees struct {
@@ -132,11 +133,16 @@ type WorktreeTrees struct {
 	Worktree string `json:"worktree"`
 }
 
+var ErrQuestionClaimed = errors.New("another worker process already claimed this checkpoint answer")
+
 func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r CheckpointQuestion) (string, error) {
 	if r.Sequence == nil || *r.Sequence < 0 || int64(*r.Sequence) > 2147483647 || len(r.Lease) != 64 || r.Session == "" || len(r.Session) > 128 || !decisionText(r.Question) || !decisionText(r.Evidence) {
 		return "", ErrConflict
 	}
 	var trees any
+	if r.ResumeInstance != "" && (r.Trees == nil || len(r.ResumeInstance) != 64 || !validCommit(r.ResumeInstance)) {
+		return "", ErrConflict
+	}
 	if r.Trees != nil {
 		if !validCommit(r.Trees.Index) || !validCommit(r.Trees.Worktree) || len(r.Trees.Index) != len(r.Trees.Worktree) {
 			return "", ErrConflict
@@ -185,13 +191,26 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 		return "", ErrConflict
 	}
 	var answer string
-	var same bool
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(answer,''),question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb
-		FROM decision_questions WHERE execution_id=$1 AND checkpoint_sequence=$2 AND withdrawn_at IS NULL`,
-		execution, *r.Sequence, r.Question, r.Evidence, trees).Scan(&answer, &same)
+	var same, fenced bool
+	var id int64
+	err = tx.QueryRowContext(ctx, `SELECT q.id,COALESCE(answer,''),question=$3 AND evidence=$4 AND trees IS NOT DISTINCT FROM $5::jsonb, cr.question_id IS NOT NULL
+		FROM decision_questions q LEFT JOIN checkpoint_resumes cr ON cr.question_id=q.id
+		WHERE execution_id=$1 AND checkpoint_sequence=$2 AND withdrawn_at IS NULL`,
+		execution, *r.Sequence, r.Question, r.Evidence, trees).Scan(&id, &answer, &same, &fenced)
 	if err == nil {
-		if !same {
+		if !same || fenced != (r.ResumeInstance != "") {
 			return "", ErrConflict
+		}
+		if fenced && answer != "" {
+			hash := sha256.Sum256([]byte(r.ResumeInstance))
+			err = tx.QueryRowContext(ctx, `UPDATE checkpoint_resumes SET claimant_hash=$2,claimed_at=COALESCE(claimed_at,clock_timestamp())
+				WHERE question_id=$1 AND (claimant_hash IS NULL OR claimant_hash=$2) RETURNING question_id`, id, hash[:]).Scan(&id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", ErrQuestionClaimed
+			}
+			if err != nil {
+				return "", err
+			}
 		}
 		return answer, tx.Commit()
 	}
@@ -201,7 +220,6 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	if status != "RUNNING" {
 		return "", ErrConflict
 	}
-	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO decision_questions(task_id,execution_id,plan_revision,commit_sha,request_key,question,evidence,requester,checkpoint_sequence,trees)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, task, execution, revision, base, "checkpoint:"+strconv.Itoa(*r.Sequence), r.Question, r.Evidence, requester, *r.Sequence, trees).Scan(&id)
 	if err != nil {
@@ -209,6 +227,11 @@ func (s *Store) AskAtCheckpoint(ctx context.Context, execution int64, r Checkpoi
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='WAITING_INPUT',waiting_execution_id=$2 WHERE id=$1`, task, execution); err != nil {
 		return "", err
+	}
+	if r.ResumeInstance != "" {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO checkpoint_resumes(question_id) VALUES($1)`, id); err != nil {
+			return "", err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,question_id) VALUES($1,$2,'decision_requested',$3)`, task, execution, id); err != nil {
 		return "", err
