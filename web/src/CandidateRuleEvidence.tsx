@@ -7,7 +7,7 @@ export type CandidateContext = {
   owner_clarifications?: {id?: number; execution_id?: number; sequence?: number; question: string; answer: string; commit_sha?: string}[]
   management_references?: {question_id: number; sequence: number; session_id: string; decision: {id: string; text: string; validity: string; source: string}}[]
   global_rules?: GlobalRulesRevision
-  decisions?: {id: number; ref: string; statement: string; validity: string}[]
+  decisions?: {id: number; ref: string; statement: string; validity: string; plan_keys?: string[]}[]
   acceptance_feedback?: {execution_id: number; commit: string; note: string; actor: string}
 }
 
@@ -30,7 +30,8 @@ export function CandidateRuleEvidence({context, title, digest}: {context: Candid
       <p>适用范围 · {ref.decision.validity} · 来源 · {ref.decision.source}</p>
       <small>Management 会话 <code>{ref.session_id}</code></small>
     </div>)}
-    {context.decisions?.map(d => <p key={d.id}><a href={'#' + d.ref}>决策 #{d.id}</a> · {d.statement} · {d.validity}</p>)}
+    {context.decisions?.map(d => <p key={d.id}><a href={'#' + d.ref}>决策 #{d.id}</a> · {d.statement} · {d.validity}
+      {d.plan_keys && <> · 计划工作项：{d.plan_keys.join('、')}</>}</p>)}
     {context.global_rules && <><p>全局规则修订 {context.global_rules.revision} · <code>{context.global_rules.content_sha256}</code></p>
       <pre className="material-content">{context.global_rules.content}</pre></>}
   </details>

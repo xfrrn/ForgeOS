@@ -27,7 +27,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 		if r.ContentLength != 0 && !decode(w, r, &capabilities) {
 			return
 		}
-		job, err := data.ClaimManagement(r.Context(), id, r.URL.Query().Get("supports_plan_review_deadline") == "1")
+		job, err := data.ClaimManagement(r.Context(), id, r.URL.Query().Get("supports_plan_review_deadline") == "1", r.URL.Query().Get("supports_plan_review_context") == "1")
 		if err == nil && job == nil && r.URL.Query().Get("supports_question_advice") == "1" {
 			job, err = data.ClaimQuestionAdvice(r.Context(), id, r.URL.Query().Get("supports_decision_lookups") == "1", r.URL.Query().Get("supports_question_deadline") == "1")
 		}

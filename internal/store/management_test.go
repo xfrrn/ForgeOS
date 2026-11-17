@@ -31,13 +31,13 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	}
 	claim := func() *ManagementJob {
 		t.Helper()
-		job, err := s.ClaimManagement(ctx, p.ID, true)
+		job, err := s.ClaimManagement(ctx, p.ID, true, false)
 		if err != nil || job == nil || !job.CaptureProfile {
 			t.Fatal(job, err)
 		}
 		return job
 	}
-	if job, err := s.ClaimManagement(ctx, p.ID+1, true); err != nil || job != nil {
+	if job, err := s.ClaimManagement(ctx, p.ID+1, true, false); err != nil || job != nil {
 		t.Fatal(job, err)
 	}
 	first := claim()
@@ -53,7 +53,7 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 		}
 	}
 	used(1)
-	if job, err := s.ClaimManagement(ctx, p.ID, true); err != nil || job != nil {
+	if job, err := s.ClaimManagement(ctx, p.ID, true, false); err != nil || job != nil {
 		t.Fatal(job, err)
 	}
 	if err = s.SetPlanMinimum(ctx, task.ID, 1, "D1"); !errors.Is(err, ErrConflict) {
@@ -64,14 +64,14 @@ func TestManagementBindsPolicyLeaseAndRevision(t *testing.T) {
 	if _, err = s.SavePlanWithPolicy(ctx, task.ID, 1, plan, "D3"); err != nil {
 		t.Fatal(err)
 	}
-	if job, err := s.ClaimManagement(ctx, p.ID, true); err != nil || job != nil {
+	if job, err := s.ClaimManagement(ctx, p.ID, true, false); err != nil || job != nil {
 		t.Fatal("superseded review still running", job, err)
 	}
 	if err = s.CompleteManagement(ctx, p.ID, task.ID, 1, first.Lease, review); !errors.Is(err, ErrConflict) {
 		t.Fatal("stale accepted", err)
 	}
 	used(0)
-	if job, err := s.ClaimManagement(ctx, p.ID, false); err != nil || job != nil {
+	if job, err := s.ClaimManagement(ctx, p.ID, false, false); err != nil || job != nil {
 		t.Fatal("legacy worker received budgeted plan", job, err)
 	}
 	second := claim()
@@ -158,7 +158,7 @@ func TestManagementValidationMinimumAppliesOnActivation(t *testing.T) {
 	for i, floor := range []string{"V3", "V4", "V1"} {
 		rev, err := s.SavePlan(ctx, task.ID, i, plan)
 		must(err)
-		job, err := s.ClaimManagement(ctx, project.ID, true)
+		job, err := s.ClaimManagement(ctx, project.ID, true, false)
 		must(err)
 		if job == nil {
 			t.Fatal("no review job")

@@ -80,6 +80,21 @@ func TestCuratorRetriesNoncontiguousSourceQuote(t *testing.T) {
 	}
 }
 
+func TestManagementReviewSendsOnlyFrozenRuleContext(t *testing.T) {
+	w := worker{codex: os.Args[0]}
+	for _, evidence := range []json.RawMessage{nil, json.RawMessage(`{"global_rules":{"revision":2,"content":"Default heading"},"decisions":[{"id":3,"plan_keys":["guide"],"statement":"Project heading"}]}`)} {
+		job := store.ManagementJob{Lease: "private-review-lease", MinimumLevel: "D2", ReviewContext: evidence, Spec: store.IssueSpec{Issue: store.Issue{Title: "SIMULATED_PLAN_REVIEW_CONTEXT"}}}
+		r, err := w.reviewManagement(context.Background(), job)
+		want := string(evidence)
+		if evidence == nil {
+			want = "no-context"
+		}
+		if err != nil || r.Evidence != want || r.SessionID == "" {
+			t.Fatal("lost frozen review sources", r, err)
+		}
+	}
+}
+
 // The test executable doubles as a local JSONL CLI, on both Windows and Unix.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "app-server" {
@@ -135,6 +150,25 @@ func TestMain(m *testing.M) {
 					if strings.Contains(string(body), "previous extraction") {
 						output = `{"facts":[{"statement":"Recovered.","quote":"resumed at 918"}]}`
 					}
+				}
+				if strings.Contains(string(body), "SIMULATED_PLAN_REVIEW_CONTEXT") {
+					var source struct {
+						Context json.RawMessage `json:"review_context"`
+					}
+					_, raw, _ := strings.Cut(string(body), "Leave validation_minimum empty for this review.\n")
+					if json.Unmarshal([]byte(raw), &source) != nil || strings.Contains(string(body), "private-review-lease") ||
+						(source.Context != nil) != strings.Contains(string(body), ordinaryRuleOrder) {
+						os.Exit(5)
+					}
+					evidence := string(source.Context)
+					if source.Context == nil {
+						evidence = "no-context"
+					}
+					result, e := json.Marshal(store.ManagementReview{Level: "D2", Verdict: "approve", Rationale: "Rule priority checked", Evidence: evidence})
+					if e != nil {
+						os.Exit(6)
+					}
+					output = string(result)
 				}
 				if os.WriteFile(os.Args[k+1], []byte(output), 0600) != nil {
 					os.Exit(3)

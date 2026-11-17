@@ -13,6 +13,7 @@ import (
 )
 
 type ManagementJob struct {
+	ReviewContext      json.RawMessage    `json:"review_context,omitempty"`
 	CaptureProfile     bool               `json:"capture_profile,omitempty"`
 	LeaseUntil         *time.Time         `json:"lease_until,omitempty"`
 	Question           *QuestionAdviceJob `json:"question,omitempty"`
@@ -63,9 +64,9 @@ func (s *Store) SetPlanMinimum(ctx context.Context, id int64, revision int, leve
 	return err
 }
 
-func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDeadline bool) (*ManagementJob, error) {
+func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDeadline, supportsContext bool) (*ManagementJob, error) {
 	var job ManagementJob
-	var spec, plan []byte
+	var spec, plan, reviewContext []byte
 	tx, pool, err := s.beginManagementClaim(ctx, projectID, "plan_review", supportsDeadline)
 	if tx == nil {
 		return nil, err
@@ -77,10 +78,21 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDe
 		AND r.revision=(SELECT max(revision) FROM plan_revisions WHERE task_id=t.id)
 		AND r.review IS NULL AND (r.review_until IS NULL OR r.review_until<=clock_timestamp())
 		ORDER BY r.at,t.id LIMIT 1 FOR UPDATE OF t,r SKIP LOCKED)
-		UPDATE plan_revisions r SET review_lease=gen_random_uuid(),review_until=clock_timestamp()+interval '6 minutes',model_budget=$2
+		UPDATE plan_revisions r SET review_lease=gen_random_uuid(),review_until=clock_timestamp()+interval '6 minutes',model_budget=$2,
+		review_context=CASE WHEN $4 THEN jsonb_build_object(
+			'global_rules',(SELECT to_jsonb(g) FROM global_rule_revisions g ORDER BY revision DESC LIMIT 1),
+			'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+				'id',d.id,'statement',d.statement,'validity',d.validity,'valid_until',d.valid_until,
+				'source',d.source,'confirmed_at',d.history->-1->'at','ref',refs.ref,'plan_keys',refs.keys) ORDER BY d.id)
+				FROM (SELECT ref,jsonb_agg(DISTINCT i->>'key' ORDER BY i->>'key') AS keys FROM jsonb_array_elements(r.plan->'milestones') m
+					CROSS JOIN LATERAL jsonb_array_elements(NULLIF(m->'items','null'::jsonb)) i
+					CROSS JOIN LATERAL jsonb_array_elements_text(NULLIF(i->'context_refs','null'::jsonb)) f(ref)
+					GROUP BY ref) refs
+				JOIN project_decision_index d ON d.project_id=$1 AND d.status='CONFIRMED'
+					AND refs.ref='/projects/' || d.project_id || '/decisions/' || d.id),'[]'::jsonb)) END
 		FROM candidate c WHERE r.task_id=c.id AND r.revision=c.revision
-		RETURNING c.id,c.project_id,c.spec,r.revision,r.plan,r.review_lease,COALESCE(r.minimum_level,'D2'),CASE WHEN $3 THEN r.review_until END`, projectID, pool, supportsDeadline).Scan(
-		&job.TaskID, &job.ProjectID, &spec, &job.Revision, &plan, &job.Lease, &job.MinimumLevel, &job.LeaseUntil)
+		RETURNING c.id,c.project_id,c.spec,r.revision,r.plan,r.review_lease,COALESCE(r.minimum_level,'D2'),CASE WHEN $3 THEN r.review_until END,r.review_context`, projectID, pool, supportsDeadline, supportsContext).Scan(
+		&job.TaskID, &job.ProjectID, &spec, &job.Revision, &plan, &job.Lease, &job.MinimumLevel, &job.LeaseUntil, &reviewContext)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -94,6 +106,7 @@ func (s *Store) ClaimManagement(ctx context.Context, projectID int64, supportsDe
 		return nil, err
 	}
 	job.CaptureProfile = true
+	job.ReviewContext = reviewContext
 	return &job, tx.Commit()
 }
 

@@ -2755,3 +2755,20 @@ PostgreSQL 18 和 Docker 全包 Go 回归 265 项测试及子测试通过，零�
 正式原生审批、运行中的输入、Claude 原生中断及其他 Codex 版本继续待验收；这次没有扩大角色权限。
 
 本项最终 PostgreSQL 18 与 Docker 全包 Go 回归 285 项测试及子测试通过，零失败、零跳过。Go 静态检查、TypeScript 及生产构建通过。Linux 容器中的 App Server 针对性竞态检查通过。
+
+上述 App Server 原生中断对应 ForgeOS 提交 `af79a557af1fe91f328aeed8b18a2412b3d9fd89`。
+
+### 专题 05、08、16 C.7 · Management 计划审核的固定规则依据
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在真实 beta #173 从 Chrome 起草两项有依赖的计划；第一项采用 Issue 明确指定标题，第二项故意采用与项目决策冲突的全局默认标题 | Management 按 Owner、项目、全局的优先级审核，来源绑定到此次领取 | 原生会话 `01a1eae5-e09a-7823-a9d8-bb0d2604d5a7` 退回修订 1，指出第二项标题不符合决策 1。review_context 固定全局修订 1、决策 1 正文、适用范围和引用它的 capacity/title 工作项。 |
+| 领取后更新全局规则并使决策 1 失效，再等待审核结束、重启并从 Chrome 打开修订 1 | 正在审核的输入和历史证据保持领取时版本 | 完成后的快照逐字段不变；页面仍显示全局修订 1 的 Generic queue guide 及原项目规则，不混入修订 2 的 Later default guide。原生输入 JSON 与归档快照一致。 |
+| 确认新的项目决策 2，Chrome 提交修订，原生 Management 审核后由 Owner 批准 | Owner 明确标题优先于项目约定，项目标题优先于全局默认；D2 仍需 Owner 激活 | 修订 2 的会话 `01a1eae6-28de-7600-a6e7-a1170628b3a7` 正确识别两处标题优先级，但要求重复写明前项先合并。补充中台对 dependencies 的既有执行合同后，同一计划的修订 3 在会话 `01a1eae8-686a-75f1-bdc7-bdb67cbb46f5` 获 D2 approve。两版均固定全局修订 2 和决策 2。Chrome 批准后，title 为 READY、capacity 为 BLOCKED。三次原生输入均逐字段匹配各自快照，权限为 never、read-only、禁网。 |
+| 正式 Worker 实现 title；Chrome 核对标题、HTML 引文及单文件差异并验收 | 使用 Owner 指定 H1，必需 CI 通过后合并，父 Issue 继续开放 | 候选 `89e8cc3058f7be57e67a0824cf47ffdacfe0b398` 仅新增 authority-title.md，H1 为 Queue preview Owner title。PR #174 合并为 `2b3943401276e7f3f80280fcd50fbe8e090af64c`，父 Issue #173 OPEN。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/174) · [Actions 44155648615](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44155648615) |
+| 依赖项获派后实现 capacity；Chrome 验收并等待整个 Goal 交付 | 使用项目约定标题，以前项合并为基础，全部必需项交付后关闭父 Issue | 候选 `6672e00ed7af8706c8b952d06444624252454c2f` 的基础为上述合并 SHA，只新增 authority-capacity.md，H1 为 Queue project guide；等待容量原句匹配 HTML，链接可定位已交付首项。PR #175 合并为 `34802ac54ff9a3a1b5de0980d3ecfee28d4172d4`，父 Goal DONE、Issue #173 CLOSED。两个候选均核对全局修订 2、决策 2；必需 Actions 的预设失败均在同一 SHA 重跑成功，本地检查也为 SUCCESS。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/175) · [Actions 44156183628](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44156183628) |
+| 旧版先完成计划审核，再升级迁移 095；另分别运行新控制面/旧 Worker、旧控制面/新 Worker | 历史记录保持原状，混合版本不记录未派发的上下文 | 历史会话 `01a1eae6-c773-74a3-9dc8-e96c8d219270` 的整份计划回执升级前后相同，Chrome 可回读且无补造快照。两个交叉组合分别以 `01a1eae7-1043-7002-ae02-206eb34d25b8`、`01a1eae6-e6ec-7223-aaac-ae1bacffe990` 完成原生审核，保持原输入格式。 |
+
+PostgreSQL 18 与 Docker 全包 Go 回归 287 项测试及子测试通过，零失败、零跳过。随后对引用工作项的稳定排序再次运行相关数据库和 Worker 测试，通过；Go 静态检查、TypeScript 和生产构建通过。回归核对跨项目、未确认、失效和未引用决策的排除、重复引用合并、历史固定以及租约重领后的新快照。临时移除项目边界时，测试检出跨项目内容，恢复条件后通过。
+
+本项覆盖计划审核；其他角色的上下文和整条路线的最终回归仍待完成。

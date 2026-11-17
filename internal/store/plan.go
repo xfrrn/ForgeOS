@@ -32,14 +32,15 @@ type PlanItem struct {
 }
 
 type PlanRevision struct {
-	Review       *ManagementReview `json:"review,omitempty"`
-	MinimumLevel string            `json:"minimum_level,omitempty"`
-	ReviewedAt   *time.Time        `json:"reviewed_at,omitempty"`
-	TaskID       int64             `json:"task_id"`
-	Revision     int               `json:"revision"`
-	Plan         Plan              `json:"plan"`
-	At           time.Time         `json:"at"`
-	GitCommit    string            `json:"git_commit,omitempty"`
+	ReviewContext *json.RawMessage  `json:"review_context,omitempty"`
+	Review        *ManagementReview `json:"review,omitempty"`
+	MinimumLevel  string            `json:"minimum_level,omitempty"`
+	ReviewedAt    *time.Time        `json:"reviewed_at,omitempty"`
+	TaskID        int64             `json:"task_id"`
+	Revision      int               `json:"revision"`
+	Plan          Plan              `json:"plan"`
+	At            time.Time         `json:"at"`
+	GitCommit     string            `json:"git_commit,omitempty"`
 }
 
 var planItemKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
