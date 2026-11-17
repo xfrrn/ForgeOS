@@ -23,9 +23,9 @@ func verifyWriterHandoff(ctx context.Context, tx *sql.Tx, execution int64, p Har
 	var allowed bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM model_pauses pause
 		WHERE pause.execution_id=$1 AND pause.session_id=$2 AND pause.instance<$3 AND ($4::bigint=0 OR pause.instance=$4) AND pause.resumed_at IS NOT NULL
-		AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence=0 AND c.at<=pause.requested_at)
-		AND NOT EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.sequence>0 AND c.at<=pause.requested_at))`,
-		execution, p.HandoffFrom, p.Instance, sourceInstance).Scan(&allowed)
+		AND (pause.handoff_session IS NULL OR (pause.handoff_session=$5 AND pause.handoff_instance=$3))
+		AND EXISTS(SELECT 1 FROM execution_checkpoints c WHERE c.execution_id=$1 AND c.at<=pause.requested_at))`,
+		execution, p.HandoffFrom, p.Instance, sourceInstance, p.Session).Scan(&allowed)
 	if err == nil && !allowed {
 		return ErrConflict
 	}

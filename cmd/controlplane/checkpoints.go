@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -127,12 +128,7 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		if !ok {
 			return
 		}
-		var input struct {
-			Lease    string `json:"lease_token"`
-			Sequence *int   `json:"sequence"`
-			After    int64  `json:"after"`
-			Session  string `json:"session_id"`
-		}
+		var input store.CheckpointRequest
 		if !decode(w, r, &input) {
 			return
 		}
@@ -140,13 +136,22 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 			problem(w, http.StatusBadRequest, "provide an execution lease and checkpoint sequence")
 			return
 		}
-		page, err := data.ReadCheckpoint(r.Context(), id, input.Lease, *input.Sequence, input.After, input.Session, r.URL.Query().Get("queue_next") == "1")
+		page, err := data.WorkerCheckpoint(r.Context(), id, input, r.URL.Query().Get("queue_next") == "1")
 		if input.Session != "" {
 			respond(w, http.StatusNoContent, nil, err)
 			return
 		}
 		if err == nil && len(page.OwnerInstructions) > 0 && r.URL.Query().Get("commands") == "1.0" {
 			page.Commands, err = data.InstructionMessages(r.Context(), page.TaskID, id, *input.Sequence)
+		}
+		if err == nil && input.History && input.After == 0 && *input.Sequence > 0 {
+			var messages []schemas.AgentMessage
+			messages, err = data.CheckpointMessages(r.Context(), id, *input.Sequence-1)
+			if errors.Is(err, store.ErrNotFound) {
+				err = nil
+			} else if err == nil {
+				page.AnswerMessages, err = json.Marshal(messages)
+			}
 		}
 		respond(w, http.StatusOK, page, err)
 	}))

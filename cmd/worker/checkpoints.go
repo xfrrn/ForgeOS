@@ -28,12 +28,23 @@ func (w *worker) recordCICandidate(ctx context.Context, job store.Job, sha, sess
 }
 
 func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session string) (store.CheckpointPage, error) {
+	return w.readCheckpoint(ctx, job, seq, session, false)
+}
+
+func (w *worker) readCheckpoint(ctx context.Context, job store.Job, seq int, session string, history bool) (store.CheckpointPage, error) {
 	var batch store.CheckpointPage
 	if !job.SupportsCheckpoints {
 		return batch, nil
 	}
 
-	var after int64
+	request := store.CheckpointRequest{Lease: job.LeaseToken, Sequence: &seq, Session: session, History: history}
+	if job.CheckpointHandoff && session != "" && w.journal != nil {
+		var err error
+		request.Handoffs, err = w.checkpointHandoffs(ctx, job, session)
+		if err != nil {
+			return batch, err
+		}
+	}
 	path := fmt.Sprintf("/internal/executions/%d/checkpoints?queue_next=1", job.ExecutionID)
 	switch job.InstructionProtocol {
 	case "1.0":
@@ -44,8 +55,7 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 	}
 	for ctx.Err() == nil {
 		var page store.CheckpointPage
-		status, err := w.post(ctx, path, map[string]any{
-			"lease_token": job.LeaseToken, "sequence": seq, "after": after, "session_id": session}, &page)
+		status, err := w.post(ctx, path, request, &page)
 		if temporary(status) {
 			wait(ctx)
 			continue
@@ -59,7 +69,9 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 		if status != http.StatusOK || page.ExecutionID != job.ExecutionID || page.Sequence != seq {
 			return batch, fmt.Errorf("checkpoint %d not acknowledged (HTTP %d)", seq, status)
 		}
-		if after == 0 {
+		if request.After == 0 {
+			batch.Checkpoint = page.Checkpoint
+			batch.AnswerMessages = page.AnswerMessages
 			batch.OwnerInstructions = page.OwnerInstructions
 			if job.InstructionProtocol == "1.0" {
 				batch.OwnerInstructions, err = checkpointCommands(page, job, w.id)
@@ -72,10 +84,10 @@ func (w *worker) checkpoint(ctx context.Context, job store.Job, seq int, session
 		if !page.More {
 			return batch, nil
 		}
-		if len(page.Comments) == 0 || page.Comments[len(page.Comments)-1].EventID <= after {
+		if len(page.Comments) == 0 || page.Comments[len(page.Comments)-1].EventID <= request.After {
 			return batch, fmt.Errorf("checkpoint %d cursor did not advance", seq)
 		}
-		after = page.Comments[len(page.Comments)-1].EventID
+		request.After = page.Comments[len(page.Comments)-1].EventID
 	}
 	return batch, ctx.Err()
 }

@@ -9,6 +9,65 @@ import (
 	"testing"
 )
 
+func TestCheckpointHandoffRequiresTheResumedSourceAndFinalHistory(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	conflict := func(err error) {
+		t.Helper()
+		if !errors.Is(err, ErrConflict) {
+			t.Fatalf("expected conflict, got %v", err)
+		}
+	}
+	must(s.Migrate(ctx))
+	p, err := s.CreateProject(ctx, t.TempDir())
+	must(err)
+	base := strings.Repeat("a", 40)
+	_, err = s.ImportIssue(ctx, p.ID, IssueSpec{Issue: Issue{RepositoryID: 1, ID: 2, Number: 3}, BaseCommit: base, Validation: "docs"})
+	must(err)
+	j, err := s.ClaimForProjects(ctx, "writer", t.TempDir(), nil, WorkerCapabilities{SupportsCodex: true, SupportsCheckpoints: true})
+	must(err)
+	if j == nil {
+		t.Fatal("no job")
+	}
+	checkpoint := func(seq int, session string, history bool, links ...SessionHandoff) error {
+		_, err := s.WorkerCheckpoint(ctx, j.ExecutionID, CheckpointRequest{Lease: j.LeaseToken, Sequence: &seq, History: history, Session: session, Handoffs: links}, true)
+		return err
+	}
+	must(checkpoint(0, "", false))
+	must(checkpoint(0, "first", false))
+	must(checkpoint(0, "", true))
+	conflict(checkpoint(1, "", true))
+	must(checkpoint(1, "", false))
+	_, err = s.db.ExecContext(ctx, `UPDATE execution_checkpoints SET next_instructions='[{"key":"one","body":"Keep the heading"}]' WHERE execution_id=$1 AND sequence=0`, j.ExecutionID)
+	must(err)
+	link := SessionHandoff{From: "first", Session: "second", SourceInstance: 3, Instance: 5}
+	conflict(checkpoint(1, "second", false, link))
+	_, err = s.db.ExecContext(ctx, `INSERT INTO model_pauses(execution_id,resource_step,instance,session_id,parked_at,resumed_at,index_tree,worktree_tree)
+		VALUES($1,2,3,'first',now(),now(),$2,$2),($1,3,5,'second',now(),now(),$2,$2)`, j.ExecutionID, base)
+	must(err)
+	conflict(checkpoint(1, "second", false))
+	bad := link
+	bad.SourceInstance = 4
+	conflict(checkpoint(1, "second", false, bad))
+	next := SessionHandoff{From: "second", Session: "third", SourceInstance: 5, Instance: 7}
+	conflict(checkpoint(1, "third", false, next))
+	must(checkpoint(1, "third", false, link, next))
+	must(checkpoint(1, "third", false, link, next))
+	conflict(checkpoint(1, "second", false, link))
+	var earlier, later, reversed bool
+	must(s.db.QueryRowContext(ctx, `SELECT checkpoint_session_continues($1,0,'first','third'),checkpoint_session_continues($1,1,'first','third'),checkpoint_session_continues($1,1,'third','first')`, j.ExecutionID).Scan(&earlier, &later, &reversed))
+	if earlier || !later || reversed {
+		t.Fatal("handoff chain escaped its checkpoint or direction")
+	}
+	conflict(s.Complete(ctx, j.ExecutionID, j.LeaseToken, Result{BaseCommit: base, ExitCode: 1, Error: "later failure", SessionID: "third"}))
+}
+
 func TestOwnerQueueBindsInstructionsToTheNextTurn(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))

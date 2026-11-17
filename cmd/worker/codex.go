@@ -487,11 +487,11 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			if resumed != nil {
 				turnPrompt = "The Owner resumed this interrupted turn. Inspect existing changes and finish only the remaining authorized work.\n" + prompt
 			}
-			// Later checkpoints also depend on earlier instructions and answers in the original session.
-			if seq != 0 {
-				resumed = nil
+			var checkpoint *writerCheckpoint
+			if resumed != nil {
+				checkpoint = &writerCheckpoint{sequence: seq, trees: *resumed}
 			}
-			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", resumed)
+			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
 		})
 		if session != "" {
 			result.SessionID = session

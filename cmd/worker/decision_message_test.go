@@ -107,6 +107,20 @@ func TestCheckpointAnswerMatchesClaimAndQuestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("historical Management response", func(t *testing.T) {
+		encoded, err := json.Marshal(pair)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := worker{id: "node"}
+		frozen, err := w.historicalAnswer(encoded, job, 3)
+		if err != nil || string(frozen) != string(got) {
+			t.Fatal("historical response lost its Management identity or decision scope", err)
+		}
+		if _, err := w.historicalAnswer(encoded, job, 4); err == nil {
+			t.Fatal("accepted a response from another checkpoint")
+		}
+	})
 	prompt, err := issuePrompt(job, "", store.CheckpointPage{}, got)
 	if err != nil || !strings.Contains(prompt, `"management_reference":`) || strings.Contains(prompt, `"owner_clarification":`) {
 		t.Fatal(prompt, err)
