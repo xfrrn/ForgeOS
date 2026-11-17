@@ -103,7 +103,7 @@ Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动
 
 ### 私网 HTTPS 入口
 
-使用仓库的 [Caddyfile](../deploy/caddy/Caddyfile)。为工作台与预览分配一个专用私有 DNS 区，例如 `qa.internal.example`。在私有解析器将 `*.qa.internal.example` 指向验收主机的 tailnet 地址，在 tailnet 中为该区配置分流 DNS。工作台域名为 `forgeos.qa.internal.example`。每次启动预览后，工作台会给出该候选独有的 HTTPS 链接。预览停止或到期后原链接失效。
+使用仓库的 [Caddyfile](../deploy/caddy/Caddyfile)。为工作台与预览分配一个专用私有 DNS 区，例如 `qa.internal.example`。在私有解析器将 `*.qa.internal.example` 指向验收主机的 tailnet 地址，在 tailnet 中为该区配置分流 DNS。工作台域名为 `forgeos.qa.internal.example`。工作台域名上的 `/global-rules` 允许持客户端证书及 Owner 令牌的用户读取历史、发布及撤下全局规则。每次启动预览后，工作台会给出该候选独有的 HTTPS 链接。预览停止或到期后原链接失效。
 
 | 设置 | 配置位置和用途 |
 | --- | --- |
