@@ -60,6 +60,15 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 
 执行 `systemctl daemon-reload` 和 `systemctl enable --now forgeos-controlplane forgeos-worker`。用 `systemctl status` 检查两项服务，随后通过 Owner API 登记仓库并创建 `git_head` 任务。任务应返回该仓库 HEAD。重启两个服务并再次查询，原执行的工作区、退出码和提交应与重启前一致。
 
+服务账号可以使用 `nologin` 登录 Shell。运维人员可在终端以目标身份直接执行 CLI，核对专用 HOME 的登录状态。下面的路径对应安装在 Worker 自己的 `.local/bin` 下的两个 CLI。
+
+```bash
+sudo -H -u forgeos-worker env PATH=/var/lib/forgeos-worker/.local/bin:/usr/local/bin:/usr/bin:/bin codex login status
+sudo -H -u forgeos-worker env PATH=/var/lib/forgeos-worker/.local/bin:/usr/local/bin:/usr/bin:/bin claude auth status --text
+```
+
+执行节点页面显示的是 CLI 版本和已探测到的操作。验证账号可用性还要在同一身份下完成登录，并通过 Worker 提交一次真实模型请求。
+
 ## 3. 私有网络
 
 第一版建议 Tailscale：

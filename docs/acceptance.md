@@ -2266,6 +2266,8 @@ PostgreSQL 18 和 Docker 全包回归包含预算生效时的在途分类、过�
 
 ### 专题 05、07、14、16 A.3 · Owner 先答复时的业务问题建议与交付
 
+ForgeOS 实现提交 `ff584935cede64bfa9cb1d6aa9006eb27f44fe0f`。
+
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
 | 对 beta #125 的已分类预览观察，Owner 在候选验收时询问是否检查浏览器标题。用版本 85 配置一个 `question_advice` 名额，升级至版本 86 重试 | 沿用同一问题和候选，支持截止时间的 Management Worker 才可领取 | 配置从 409 变为 204，旧客户端得到空领取，任务等待回答。第一台 Worker 开始原生建议回合。 |
@@ -2274,3 +2276,14 @@ PostgreSQL 18 和 Docker 全包回归包含预算生效时的在途分类、过�
 | 以同一 SHA 核对 Markdown 标题、唯一变更路径和验证回执，Owner 同时引用反馈 1、2 批准。跟踪真实 PR、必需检查和来源 Issue | 决定绑定相同候选和两条观察，检查通过后交付并关闭 Issue | 候选 `5da50fd7832b706d086d5afbeaff8a932934b4ce`，两条观察均关联批准回执。预设的首次 CI 失败后重跑，`acceptance-check` 与 `forgeos/local-ci` 均成功。PR #126 已合并，Merge SHA `2824245d2c7270bfc1aecbebeecbecaa713def67`，任务 DONE、Issue #125 已关闭。[Issue #125](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/125) · [PR #126](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/126) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44078720644) |
 
 全包 Go 回归在 PostgreSQL 18 和 Docker 上通过 238 项测试及子测试，零跳过。数据库覆盖在途配置、过期重领、D1 决策查阅、错误项目、D3 下限及结果重放。Go vet 和 Web 生产构建通过。
+
+### 专题 07、14、16 A.4 · Linux 服务身份的原生 CLI 探测和节点重启
+
+在 WSL Ubuntu 上使用仓库的 Worker systemd unit，仅将可执行文件和环境文件路径改到本次验收的运行目录。控制面运行于 Windows，使用 PostgreSQL 18。控制面和 Linux Worker 的项目根目录不同；两侧仓库来自同一固定 Git 提交。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 用专用用户安装并执行 Linux 原生 CLI，回读 HOME、权限与版本 | 服务身份有独立 HOME，CLI 在 unit 的 PATH 中可用 | 用户 `forgeos-worker`，HOME 为 `/var/lib/forgeos-worker`，权限 0700，Node 22.23.5，Codex 0.169.0-alpha.11.1，Claude Code 2.1.310。 |
+| 启动正式 Worker，通过 Owner API 回读心跳，再派发一次项目 HEAD 检查 | 控制面取得两个适配器真实探测的版本与操作，Worktree 归 Worker 所有 | 节点 `linux-native-32807572` 报告上述两个版本，两者均声明 probe、start、resume、events。任务 1 为 DONE，Worktree 属主为服务用户。 |
+| 重启该 systemd unit，再从项目入口重复检查 | 新进程使用同一 HOME，登记相同能力并能完成新任务 | PID 从 2681 变为 2787；任务 2 同样为 DONE，两次都返回 `0cc6087ae6cda0df01832cbf62328d0d1d6aef39`，执行目录分别为 execution-1、execution-2。 |
+| 在同一专用 HOME 中运行两个 CLI 的登录状态命令 | 要验收真实模型和代理请求，须有已登录的账号 | 两者均返回未登录。登录复用、经代理发出真实模型请求和服务重启后的会话恢复保持待验收。临时验收 unit 已停止，专用用户及 CLI 保留供登录。 |
