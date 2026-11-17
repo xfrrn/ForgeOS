@@ -38,7 +38,10 @@ func (s *Store) ObserveCILog(ctx context.Context, id int64, report CILogReport) 
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE executions e SET live_ci_log=CASE WHEN (e.live_ci_log-'observed_at')=$4::jsonb THEN e.live_ci_log
 		ELSE $4::jsonb || jsonb_build_object('observed_at',clock_timestamp()) END FROM work_items t
-		WHERE t.id=e.task_id AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.id=$1 AND e.lease_hash=$2 AND e.ci_candidate=$3
+		WHERE t.id=e.task_id AND t.status='RUNNING' AND t.source_closure_id IS NULL AND e.id=$1 AND e.lease_hash=$2
+		AND (e.ci_candidate=$3 OR (t.kind='environment_check' AND e.resource_kind='ci' AND $5='ci-run-'||e.id::text AND $6=0
+		 AND EXISTS(SELECT 1 FROM startup_checks c JOIN repository_inventories i ON i.task_id=c.source_task_id
+		 WHERE c.task_id=t.id AND i.commit_sha=$3 AND c.environment=$7)))
 		AND e.lease_until>clock_timestamp() AND e.abandoned_at IS NULL AND e.result IS NULL AND e.owner_cancel_requested_at IS NULL AND e.ci_pause_requested_at IS NULL
 		AND (e.live_ci_log IS NULL OR e.live_ci_log-'observed_at'=$4::jsonb OR
 			(e.live_ci_log->>'run'=$5 AND (

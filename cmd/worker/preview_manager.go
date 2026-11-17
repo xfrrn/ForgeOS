@@ -156,7 +156,7 @@ func (m *previewManager) start(ctx context.Context, id string, lease preview.Lea
 		if live.binding != binding || !live.expires.Equal(lease.Expires) {
 			return errors.New("preview identity already bound")
 		}
-		return run.waitReady(ctx, m.docker, live.name)
+		return run.waitReady(ctx, m.docker, live.name, nil)
 	}
 	if err = run.pinImage(ctx, m.docker); err != nil {
 		return err
@@ -178,7 +178,7 @@ func (m *previewManager) start(ctx context.Context, id string, lease preview.Lea
 		return errors.New("preview lease expired")
 	}
 	if err = m.docker.command(ctx, run.containerArgs(options, lifetime)...).Run(); err == nil {
-		if err = run.waitReady(ctx, m.docker, name); err == nil {
+		if err = run.waitReady(ctx, m.docker, name, nil); err == nil {
 			return nil
 		}
 	} else {

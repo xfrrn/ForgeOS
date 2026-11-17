@@ -57,18 +57,35 @@ func verifyEnvironment(ctx context.Context, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	probeErr := run.record(ctx, repo, dir)
+	probeErr := run.record(ctx, repo, dir, &environmentLog{secrets: outputSecrets("")})
 	if err = json.NewEncoder(out).Encode(run); err != nil {
 		return err
 	}
 	return probeErr
 }
 
-func (run *environmentRun) record(ctx context.Context, repo, dir string) error {
+func (run *environmentRun) record(ctx context.Context, repo, dir string, capture *environmentLog) error {
 	run.ID = filepath.Base(dir)
 	check, cancel := context.WithTimeout(ctx, 7*time.Minute)
 	defer cancel()
-	probeErr := run.verify(check, repo)
+	var logger io.Writer
+	var file *os.File
+	if capture != nil {
+		var err error
+		file, err = capture.open(dir, run.Environment)
+		if err != nil {
+			return err
+		}
+		logger = capture.writer
+	}
+	probeErr := run.verify(check, repo, logger)
+	if capture != nil {
+		var err error
+		run.Output, err = capture.finish(dir, file)
+		if err != nil {
+			probeErr = errors.Join(probeErr, errors.New("cannot retain startup output"))
+		}
+	}
 	if probeErr != nil {
 		run.Failure = probeErr.Error()
 	}
@@ -83,7 +100,7 @@ func (run *environmentRun) record(ctx context.Context, repo, dir string) error {
 	return probeErr
 }
 
-func (r *environmentRun) verify(ctx context.Context, repo string) error {
+func (r *environmentRun) verify(ctx context.Context, repo string, logger io.Writer) error {
 	if err := r.readConfig(ctx, repo); err != nil {
 		return err
 	}
@@ -106,7 +123,7 @@ func (r *environmentRun) verify(ctx context.Context, repo string) error {
 		return err
 	}
 	defer release()
-	return r.probe(ctx, d, snapshot)
+	return r.probe(ctx, d, snapshot, logger)
 }
 
 func (r *environmentRun) readConfig(ctx context.Context, repo string) error {
@@ -168,27 +185,53 @@ func integrationNetwork(ctx context.Context, d localDocker, project string) (str
 	return n.ID, nil
 }
 
-func (r *environmentRun) probe(ctx context.Context, d localDocker, snapshot string) (err error) {
+func (r *environmentRun) probe(ctx context.Context, d localDocker, snapshot string, logger io.Writer) (err error) {
 	options, name, err := sandboxContainerOptions(snapshot, r.Network)
 	if err != nil {
 		return err
 	}
 	// The engine also bounds the container lifetime when the worker disconnects.
 	args := r.containerArgs(options, r.Config.TimeoutSeconds+30)
+	var attached chan struct{}
+	attachCtx, stopAttach := context.WithCancel(ctx)
+	defer stopAttach()
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		_ = d.command(cleanup, "rm", "-fv", name).Run()
+		if attached != nil {
+			stopAttach()
+			<-attached
+		}
 		remaining, e := d.command(cleanup, "ps", "-aq", "--filter", "name=^/"+name+"$").Output()
 		r.Removed = e == nil && len(bytes.TrimSpace(remaining)) == 0
 		if !r.Removed {
 			err = errors.Join(err, errors.New("cannot confirm startup container removal"))
 		}
 	}()
+	if logger != nil {
+		// Attach before starting so even an immediately failing service keeps its diagnostics.
+		args[0] = "create"
+		args = append(args[:1], args[2:]...)
+		create := d.command(ctx, args...)
+		create.Stderr = logger
+		if err = create.Run(); err != nil {
+			return errors.New("could not create the environment container")
+		}
+		attached = make(chan struct{})
+		start := d.command(attachCtx, "start", "-a", name)
+		start.Stdout, start.Stderr, start.WaitDelay = logger, logger, 3*time.Second
+		if err = start.Start(); err != nil {
+			close(attached)
+			return errors.New("could not attach the environment container")
+		}
+		go func() { _ = start.Wait(); close(attached) }()
+		return r.waitReady(ctx, d, name, attached)
+	}
 	if err = d.command(ctx, args...).Run(); err != nil {
 		return errors.New("could not start the environment container")
 	}
-	return r.waitReady(ctx, d, name)
+	return r.waitReady(ctx, d, name, nil)
 }
 
 func (r *environmentRun) containerArgs(options []string, lifetime int) []string {
@@ -198,11 +241,16 @@ func (r *environmentRun) containerArgs(options []string, lifetime int) []string 
 	return args
 }
 
-func (r *environmentRun) waitReady(ctx context.Context, d localDocker, name string) error {
+func (r *environmentRun) waitReady(ctx context.Context, d localDocker, name string, attached <-chan struct{}) error {
 	probe, cancel := context.WithTimeout(ctx, time.Duration(r.Config.TimeoutSeconds)*time.Second)
 	defer cancel()
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", r.Config.Port, r.Config.HealthPath)
 	for probe.Err() == nil {
+		select {
+		case <-attached:
+			return errors.New("service exited before readiness")
+		default:
+		}
 		r.Probes++
 		code, e := d.command(probe, "exec", name, "/usr/bin/curl", "--disable", "--noproxy", "*", "--silent", "--output", "/dev/null", "--write-out", "%{http_code}", "--max-time", "2", url).Output()
 		var exit *exec.ExitError
@@ -225,7 +273,7 @@ func (r *environmentRun) waitReady(ctx context.Context, d localDocker, name stri
 		if e != nil {
 			return errors.New("startup container status unavailable")
 		}
-		if len(bytes.TrimSpace(alive)) == 0 {
+		if len(bytes.TrimSpace(alive)) == 0 && attached == nil {
 			return errors.New("service exited before readiness")
 		}
 		select {

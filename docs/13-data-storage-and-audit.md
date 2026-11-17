@@ -51,6 +51,12 @@ SELECT seq, call, tool, phase, datetime(at, 'unixepoch') AS observed_utc
 FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 ```
 
+### 本地环境启动日志
+
+启动检查复用 `executions.live_ci_log`，以执行租约、已获 CI 名额、来源清单的固定提交、环境名和 `ci-run-<execution>` 绑定。结束后该临时窗口清除，`result.environment_run.output` 保留脱敏字节数和最近 8 KiB；最终回执不得删除或回退已观察日志。旧控制面未声明 `report_live_ci_log` 时新 Worker 沿用旧协议，旧 Worker 不补造输出。
+
+节点在写入私有 `startup.log` 前处理完整行、已知凭据、轮换后的节点令牌和跨块私钥。未完成行最多缓冲 64 KiB，超长行丢弃并保守遮蔽到明确的私钥结束标记；结束时安全处理未换行尾部。单行脱敏窗口最多 8 KiB，文件上限为 1 MiB 加截断标记；这里的字节数是实际脱敏文件长度，不是原始输出长度。Docker 创建后直接附着启动，立即失败也保留诊断；清理完成再关闭日志文件。CLI 的 `verify-environment` 同样写入日志和 `run.json`。这些有界文件尚无自动中央上传和到期清理，不代表完整无限日志归档。
+
 ## 2. 事件记录
 
 事件建议采用追加式记录，至少包含：

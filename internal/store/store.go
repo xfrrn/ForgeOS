@@ -763,6 +763,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	}
 	if j.Kind == "environment_check" {
 		j.ManageResources = true
+		j.ReportLiveCILog = true
 		j.Startup, err = startupSpec(ctx, tx, j.TaskID)
 		if err != nil {
 			return nil, err
@@ -875,13 +876,13 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	var abandoned, usesCheckpoints, sourceClosed, ownerCancel, ciPause, modelPause bool
 	var handoffInstances pq.Int64Array
 	var ciCandidate string
-	var expectedHash, stored, spec, observed []byte
+	var expectedHash, stored, spec, observed, liveLog []byte
 	var repo, worker, kind string
 	err = tx.QueryRowContext(ctx, `
 		SELECT e.task_id, e.lease_hash, e.result, e.abandoned_at IS NOT NULL, t.spec,e.uses_checkpoints,p.path,e.worker,t.source_closure_id IS NOT NULL,e.owner_cancel_requested_at IS NOT NULL,e.ci_pause_requested_at IS NOT NULL,COALESCE(e.ci_candidate,''),t.kind,EXISTS(SELECT 1 FROM model_pauses p WHERE p.execution_id=e.id AND p.resumed_at IS NULL),
-		    ARRAY(SELECT h.handoff_instance FROM writer_handoff_sources h WHERE h.execution_id=e.id AND h.handoff_session IS NOT NULL ORDER BY h.handoff_instance),e.observed_process
+		    ARRAY(SELECT h.handoff_instance FROM writer_handoff_sources h WHERE h.execution_id=e.id AND h.handoff_session IS NOT NULL ORDER BY h.handoff_instance),e.observed_process,e.live_ci_log
 		FROM executions e JOIN work_items t ON t.id = e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &ciPause, &ciCandidate, &kind, &modelPause, &handoffInstances, &observed)
+		WHERE e.id = $1 FOR UPDATE OF e,t`, id).Scan(&taskID, &expectedHash, &stored, &abandoned, &spec, &usesCheckpoints, &repo, &worker, &sourceClosed, &ownerCancel, &ciPause, &ciCandidate, &kind, &modelPause, &handoffInstances, &observed, &liveLog)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -936,6 +937,22 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		}
 		if !expected.accepts(result, worker, "execution-"+strconv.FormatInt(id, 10)) {
 			return ErrConflict
+		}
+		if result.EnvironmentRun != nil && !result.EnvironmentRun.Output.valid(token) {
+			return ErrConflict
+		}
+		if len(liveLog) != 0 {
+			var prior LiveCILog
+			if err := json.Unmarshal(liveLog, &prior); err != nil {
+				return err
+			}
+			if result.EnvironmentRun == nil || result.EnvironmentRun.Output == nil {
+				return ErrConflict
+			}
+			o := result.EnvironmentRun.Output
+			if o.Bytes < prior.Bytes || (o.Bytes == prior.Bytes && o.Text != prior.Text) {
+				return ErrConflict
+			}
 		}
 	} else if result.EnvironmentRun != nil {
 		return ErrConflict

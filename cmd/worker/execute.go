@@ -86,7 +86,13 @@ func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *ch
 		}
 		r, err := withResource(ctx, &executionResources{worker: w, job: job}, "ci", func() (*environmentRun, error) {
 			r := environmentRun{EnvironmentRequest: store.EnvironmentRequest{Repo: localrepo.RelativePath(w.repoRoot, repo), Commit: job.Startup.Commit, Environment: job.Startup.Environment}, Worker: w.id, Started: time.Now().UTC()}
-			err := r.record(ctx, repo, expected)
+			var capture *environmentLog
+			if job.ReportLiveCILog {
+				observe, stop := w.watchCILog(ctx, job, r.Commit)
+				defer stop()
+				capture = &environmentLog{observe: observe, run: fmt.Sprintf("ci-run-%d", job.ExecutionID), secrets: outputSecrets(job.LeaseToken), credential: w.credential}
+			}
+			err := r.record(ctx, repo, expected, capture)
 			return &r, err
 		})
 		var result store.Result

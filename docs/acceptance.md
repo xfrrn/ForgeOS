@@ -2945,3 +2945,25 @@ Claude 本项是业务问题检查点恢复，不代表活动工具强制中断�
 本地证据在 tool_stream_v2_stream、tool_output_streamresume、tool_stream_compat_oldcontrol、tool_stream_compat_oldworker、tool_stream_final_compat_planner；前两项均有原生会话核对、DONE 和重启回读标记。增量窗口按完整行刷新，不是字节级直播；中断时未换行的原始片段不留存，超长行及无法确认边界的恢复会保守遮蔽到明确结束标记。Codex CLI 和 Claude 的其他增量接口、结构化工具结果、完整归档、启动阶段与独立角色输出仍待补齐；全路线最终验收及已列外部条件继续待验收。13–23 个剩余工作包的粗估口径不变。
 
 上述 App Server 命令增量输出实现和验收对应 ForgeOS 提交 9cc8d28add7cc42cdcb8d206c78bd949b14e4cdd。#206 的取消核销只更新验收证据，未改动运行实现。
+
+### 专题 07、13、16 C.3 · 本地环境启动日志
+
+2026-11-18 在真实 PostgreSQL 18、Docker Linux 引擎和 Chrome 中验收。节点 startup-output-node，来源 HEAD 任务 #3，固定提交 d9488baed8d73a3af76f7e6370b2f94bf734359e。镜像 golang:1.26.9-bookworm，实际 ID sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c。Integrated 在项目隔离网络连接真实 PostgreSQL 16.15，核对数据库日志中的 SELECT marker FROM forgeos_readiness。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从 HEAD 清单点击 local-mock 启动检查，运行中查看日志并重启控制面 | 就绪前可读安全输出，重启不回退，完成后保留回执 | 任务 #4 首次窗口 33 字节，含 FIRST 与 [redacted]；HTTP 204、DONE，最终 132 字节，页面最终日志与本地文件一致。 |
+| 从同一清单启动 local-integrated | 真实依赖就绪后成功，日志保留 | 任务 #5 实际查询数据库，HTTP 204、DONE，132 字节。 |
+| 停止依赖数据库，再从页面重新检查 | 失败且保留诊断，不记为成功 | 任务 #6 HTTP 503、readiness deadline exceeded、FAILED，398 字节包含 Database not ready。 |
+| 恢复数据库，再次从页面检查 | 新任务成功，失败历史不覆盖 | 任务 #7 HTTP 204、DONE，132 字节；原 #6 仍为失败。 |
+| Mock 输出首行后从 Chrome 取消 | 记录取消，保留已观察日志并清理容器 | 任务 #8 CANCELLED，66 字节；Owner 取消接口 204，回执 context canceled。 |
+| 新 HEAD #9 将脚本改成输出 stderr 后立即 exit 7，再启动 | 不丢失瞬时失败输出 | 提交 246ceee8f9e234c65a046410a5357c10a423104f 的任务 #10 FAILED，45 字节包含 immediate failure，回执 service exited before readiness。 |
+| 重启控制面，从页面回读六项终态 | 正式日志保留，过期实时面板清除 | 六项均通过；output 与 run.json、startup.log 的脱敏内容和字节数一致，container_removed 均为 true，没有合成密码或私钥正文。 |
+| 分别运行旧控制面／新 Worker、新控制面／旧 Worker并重启回读 | 未支持日志的组合保持兼容，不补造历史 | 两套独立库的任务 #2 均 DONE，无 output、无 startup.log，页面重启回读无虚构日志。 |
+| 用最终 Worker 的 verify-environment 运行成功及立即失败脚本 | CLI、节点文件和 JSON 回执一致 | environment-run-415403625 成功、132 字节；environment-run-2926815011 失败、45 字节。两项 stdout JSON 与 run.json 一致，敏感样本遮蔽，容器均清理。 |
+
+首个夹具在 Windows 写入 CRLF shell 脚本，固定提交 f2fc535c54ec523bfd9c5a8c71f157431563db09 的来源 #1／启动 #2 因 Linux 路径含回车失败。该失败保留，控制字符行被遮蔽；修正为 LF 后新建 HEAD 检查，没有改写旧清单。首次重复 HEAD 请求按幂等约定返回旧任务，验收脚本随后沿用正式页面的 retry_task_id 创建 #3。
+
+回归覆盖完整行前不落盘、分块凭据及私钥、凭据轮换、超长行、无换行尾部、脱敏器后续失败时保留已存前缀、真实 Docker 正常／立即退出／取消，以及租约、CI 名额、固定提交、环境和运行身份绑定。拒绝同字节数改写与终态删除、回退已观察输出。最终 PostgreSQL 18／Docker 全包 317 项测试及子测试通过，零失败、零跳过；Go 静态检查、TypeScript 和生产构建通过。
+
+本地证据目录 startup_output_live（proof.json、cli-proof.json）、startup_output_compat_oldcontrol、startup_output_compat_oldworker，回归报告 startup-output-final-regression.jsonl。Docker 回归需包含 curl 和 timeout 的 Linux 镜像，当前默认 golang:1.26.9-bookworm，可用 FORGEOS_STARTUP_IMAGE 指定预备镜像。启动日志为有界脱敏记录，尚未提供完整中央归档或到期清理。其他适配器增量、结构化工具结果、独立角色输出及全路线最终回归仍待完成；已列外部条件继续待验收。

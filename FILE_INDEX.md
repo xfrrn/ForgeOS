@@ -58,7 +58,7 @@
 
 | 文件 | 查看内容 |
 |---|---|
-| [project.yaml.example](schemas/project.yaml.example) · [项目配置校验](schemas/project.schema.json) | 项目标识、仓库与本地目录、Harness、交付策略、分环境密钥需求和本地启动配置。Worker 使用固定提交声明的脚本和就绪端点检查本地环境。 |
+| [project.yaml.example](schemas/project.yaml.example) · [项目配置校验](schemas/project.schema.json) | 项目标识、仓库与本地目录、Harness、交付策略、分环境密钥需求和本地启动配置。Worker 使用固定提交声明的脚本和就绪端点检查本地环境，工作台与命令行保留脱敏启动日志。采集实现见 [environment_log.go](cmd/worker/environment_log.go)，操作见[本地运行指南](docs/local-development.md)。 |
 | [validation.yaml.example](schemas/validation.yaml.example) | 接入项目的检查命令、超时和检查组合 |
 | [validation.schema.json](schemas/validation.schema.json) | 版本 1 的验证配置合同，控制面读取配置时使用 |
 | [acceptance.yaml.example](schemas/acceptance.yaml.example) | 按模块路径选择验收方法、最低验证等级和人工验收条件 |

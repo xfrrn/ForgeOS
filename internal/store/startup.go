@@ -33,6 +33,17 @@ type EnvironmentRun struct {
 	StatusCode int                       `json:"http_status,omitempty"`
 	Removed    bool                      `json:"container_removed,omitempty"`
 	Failure    string                    `json:"failure,omitempty"`
+	Output     *EnvironmentOutput        `json:"output,omitempty"`
+}
+
+type EnvironmentOutput struct {
+	Bytes int    `json:"bytes"`
+	Text  string `json:"text"`
+}
+
+func (o *EnvironmentOutput) valid(lease string) bool {
+	return o == nil || o.Bytes >= 0 && o.Bytes <= validation.MaxLogBytes && len(o.Text) <= validation.LiveLogWindow &&
+		(o.Bytes != 0 || o.Text == "") && validation.DisplayLogTail([]byte(o.Text), []string{lease}) == o.Text
 }
 
 type StartupSpec struct {
@@ -128,6 +139,7 @@ func (s StartupSpec) accepts(result Result, worker, runID string) bool {
 		return result.ExitCode != 0 && result.Error != "" && result.Commit == ""
 	}
 	if r.ID != runID || r.Worker != worker || r.Environment != s.Environment || r.Commit != s.Commit || result.Commit != s.Commit ||
+		!r.Output.valid("") ||
 		r.Repo == "" || r.Started.IsZero() || r.Finished.Before(r.Started) || r.Probes < 0 || (r.StatusCode != 0 && (r.StatusCode < 100 || r.StatusCode > 599)) ||
 		(r.ConfigBlob != "" && r.ConfigBlob != s.ConfigBlob) || (r.Config != nil && *r.Config != s.Config) {
 		return false

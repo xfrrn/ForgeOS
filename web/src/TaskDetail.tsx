@@ -31,7 +31,7 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
     </li>)}</ol>
   </section>
 }
-type Result = { environment_run?: { probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
+type Result = { environment_run?: { output?: { bytes: number; text: string }; probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type ModelPause = { instance: number; session_id: string; requested_at: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
 type Attempt = {
   queue_sequence?: number
@@ -436,6 +436,9 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       </dl>)}
     </details>}
     {result?.error && <p className="detail-problem" role="status">{result.error}</p>}
+    {result?.environment_run?.output && <details><summary>启动日志 · 已记录 {result.environment_run.output.bytes} 字节</summary>
+      <p>最近 8 KiB，经脱敏后保存。</p><pre className="material-content">{result.environment_run.output.text || '没有日志输出。'}</pre>
+    </details>}
     {validation ? <section className={'detail-validation ' + (validation.exit_code === 0 ? 'passed' : 'failed')}>
       <div><Icon name={validation.exit_code === 0 ? 'CheckCircle2' : 'AlertCircle'} size={16} />
         <strong>{validation.exit_code === 0 ? '本地验证通过' : '本地验证失败'}</strong><code>{validation.profile}</code>
@@ -445,7 +448,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {validation.run && <DeclaredChecks run={validation.run} path={`/tasks/${task.id}/executions/${attempt.id}/ci`} request={request} />}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
     {attempt.live_ci_log && <section className="panel detail-card">
-      <h3>实时 CI 日志 · {attempt.live_ci_log.check}</h3>
+      <h3>{task.startup ? '实时启动日志' : '实时 CI 日志'} · {attempt.live_ci_log.check}</h3>
       <p>运行 <code>{attempt.live_ci_log.run}</code> · 已输出 {attempt.live_ci_log.bytes} 字节 · 最近更新 {formatTime(attempt.live_ci_log.observed_at)}</p>
       <p>候选 <code>{attempt.live_ci_log.commit}</code></p>
       <pre className="material-content">{attempt.live_ci_log.text || '等待完整的日志行…'}</pre>
