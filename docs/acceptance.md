@@ -2007,3 +2007,17 @@ D1 查阅已确认项目决策对应 ForgeOS 提交 `36b88b4f7d5787517ff6aeb5cbd
 | 对 3 项任务的归档库和 0 项任务的新库分别执行仓库内的浏览器探针 | 核对首页四项计数、四条导航、返回和窄屏布局 | 两次均通过；TypeScript 检查与 Vite 生产构建通过。 |
 
 复验命令为 `python scripts/probe_overview.py http://127.0.0.1:8080`，使用当前控制面配套的 `FORGEOS_OWNER_TOKEN` 和 Chrome。
+
+工作台总览对应 ForgeOS 提交 `30855aaeae2598917382cc1bb42b3a5c189aa283`。
+
+### 专题 10、13、16 C.3 · 运行中查看声明式 CI 日志
+
+以下操作使用私有 beta #55 的独立 PostgreSQL 还原库、本机原生 Codex、真实 Docker 和 Chrome。基础项目的 build 检查先输出一行文字，等待 65 秒，再运行 Go 构建。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从已归档候选 aae51b5ff79b882a489d52e9869bd11aa3e47c11 的正式验收入口退回修改。执行 36 进入构建时，从任务详情读取输出并与节点文件比较 | 在 CI 完成前显示当前检查、候选 SHA 和实际输出 | 候选 a608f2f30e09d114e0e1c99e1346da9982ddce27、ci-run-2770184003、检查 build。页面显示 waiting-for-ci-pause，带行尾换行共 21 字节，与节点当时的 build.log 逐字节相同。 |
+| 保持 Docker 检查运行，重启控制面；等待正式 Worker 回报最终结果 | 重启保留同一样本，结算后回到带摘要的归档记录 | 重启后样本含首次观察时间，内容完全相同。format、unit、build 全部通过，任务回到 WAITING_ACCEPTANCE。数据库上的实时样本清空。build.log 的 SHA-256 为 62fde2cd4ebcf34475c2f2458b1a5ff5566f6f9567368c56ee91da7cbeeee5b2，与正式回执一致。 |
+| 在另一份 #55 还原库退回候选，从任务详情暂停执行 36 的 build，再从暂停状态恢复 | 原执行结束，新执行重新验证同一候选，实时输出和最终归档都属于新运行 | 候选 f98d9143e97902fad0c4a1b217daa795dbda2708 保持不变。执行 36 的 ci-run-315086847 和执行 37 的 ci-run-2160220780 分别报告 21 字节，观察时间不同。恢复后的 format、unit、build 均通过，归档摘要与上行一致，任务回到 WAITING_ACCEPTANCE。 |
+
+PostgreSQL 和 Docker 均启用时，Go 全包回归共 229 项测试及子测试通过，零跳过。Go vet 和 Web 生产构建通过。

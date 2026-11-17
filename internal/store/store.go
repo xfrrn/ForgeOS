@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"time"
 
+	"forgeos/internal/validation"
+
 	"github.com/lib/pq"
 )
 
@@ -245,6 +247,9 @@ var decisionLookupsSchema string
 //go:embed 074_candidate_decision_references.sql
 var candidateDecisionReferencesSchema string
 
+//go:embed 075_live_ci_log.sql
+var liveCILogSchema string
+
 type Project struct {
 	ID           int64  `json:"id"`
 	Path         string `json:"path"`
@@ -282,6 +287,7 @@ type Execution struct {
 	OwnerClarifications    json.RawMessage  `json:"owner_clarifications,omitempty"`
 	GlobalRules            *json.RawMessage `json:"global_rules,omitempty"`
 	DecisionContext        *json.RawMessage `json:"decision_context,omitempty"`
+	LiveCILog              *LiveCILog       `json:"live_ci_log,omitempty"`
 	ObservedProcess        *ObservedProcess `json:"observed_process,omitempty"`
 	CICandidate            string           `json:"ci_candidate,omitempty"`
 	CIPauseRequestedAt     *time.Time       `json:"ci_pause_requested_at,omitempty"`
@@ -327,6 +333,7 @@ type Job struct {
 	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
 	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
 	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
+	ReportLiveCILog     bool            `json:"report_live_ci_log,omitempty"`
 	ReportCICandidate   bool            `json:"report_ci_candidate,omitempty"`
 	Startup             *StartupSpec    `json:"startup,omitempty"`
 	ManageResources     bool            `json:"manage_resources,omitempty"`
@@ -382,7 +389,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -439,6 +446,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		    COALESCE((SELECT jsonb_agg(jsonb_build_object(
 		        'id', e.id,'uses_checkpoints',e.uses_checkpoints,'owner_clarifications',inherited_owner_answers(e.id), 'requirement_id',e.requirement_id,'requirement_revision',er.revision,'worker', e.worker, 'workspace', e.workspace,
 		        'lease_until', e.lease_until, 'lease_expired', e.abandoned_at IS NULL AND e.result IS NULL AND e.lease_until <= now(),
+		        'live_ci_log',CASE WHEN e.result IS NULL AND e.abandoned_at IS NULL AND e.lease_until>clock_timestamp() THEN e.live_ci_log END,
 		        'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
 		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,'global_rules',to_jsonb(gr),
 		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
@@ -671,6 +679,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			}
 		}
 		j.ReportCICandidate = j.Spec.Mode != "plan"
+		j.ReportLiveCILog = j.ReportCICandidate && (j.Spec.Validation == "auto" || validation.ValidLevel(j.Spec.Validation))
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		j.RuntimeQuestions = j.SupportsCheckpoints && j.Spec.Mode != "plan"
 		j.CheckpointWorktrees = j.RuntimeQuestions

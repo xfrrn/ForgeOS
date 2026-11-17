@@ -36,6 +36,7 @@ type Attempt = {
   global_rules?: GlobalRulesRevision
   owner_clarifications?: CandidateContext['owner_clarifications']
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
+  live_ci_log?: { run: string; commit: string; check: string; bytes: number; text: string; observed_at: string }
   observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
   ci_candidate?: string; ci_pause_requested_at?: string
   owner_cancel_requested_at?: string
@@ -361,6 +362,12 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
       {validation.output && <pre>{validation.output}</pre>}
       {validation.run && <DeclaredChecks run={validation.run} path={`/tasks/${task.id}/executions/${attempt.id}/ci`} request={request} />}
     </section> : result?.plan ? <p>规划结果 · {result.plan.objective}</p> : task.spec && <p className="detail-empty-text">此执行尚无本地验证结果。</p>}
+    {attempt.live_ci_log && <section className="panel detail-card">
+      <h3>实时 CI 日志 · {attempt.live_ci_log.check}</h3>
+      <p>运行 <code>{attempt.live_ci_log.run}</code> · 已输出 {attempt.live_ci_log.bytes} 字节 · 最近更新 {formatTime(attempt.live_ci_log.observed_at)}</p>
+      <p>候选 <code>{attempt.live_ci_log.commit}</code></p>
+      <pre className="material-content">{attempt.live_ci_log.text || '等待完整的日志行…'}</pre>
+    </section>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
     {task.spec && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&
       <CandidatePreviews task={task.id} execution={attempt.id} commit={result.commit} request={request} />}

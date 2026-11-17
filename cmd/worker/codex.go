@@ -359,7 +359,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			}
 		}
 		return withResource(ctx, &budget, "ci", func() (store.ValidationResult, error) {
-			return w.validateIssueCandidate(ctx, job.ExecutionID, repo, workspace, candidate, spec)
+			return w.validateIssueCandidate(ctx, job, repo, workspace, candidate, spec)
 		})
 	}
 	if spec != nil && spec.VerifyCommit != "" {

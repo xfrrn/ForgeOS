@@ -24,6 +24,7 @@ import (
 )
 
 type ciRequest struct {
+	observe     func(ciLogFile)
 	ExecutionID int64              `json:"-"`
 	Repo        string             `json:"repo"`
 	Base        string             `json:"base_commit"`
@@ -34,13 +35,19 @@ type ciRequest struct {
 
 var imageID = regexp.MustCompile("^sha256:[a-f0-9]{64}$")
 
-func (w *worker) validateIssueCandidate(ctx context.Context, execID int64, repo, workspace, candidate string, spec *store.IssueSpec) (store.ValidationResult, error) {
+func (w *worker) validateIssueCandidate(ctx context.Context, job store.Job, repo, workspace, candidate string, spec *store.IssueSpec) (store.ValidationResult, error) {
 	base, profile := spec.BaseCommit, spec.Validation
 	if profile != "auto" && !validation.ValidLevel(profile) {
 		return validateCandidate(ctx, workspace, base, candidate, profile)
 	}
 	report := store.ValidationResult{Profile: profile, Commit: candidate, ExitCode: 1}
-	run, err := runLocalCI(ctx, ciRequest{ExecutionID: execID, Repo: repo, Base: base, Commit: candidate, Level: profile, Policy: spec.Policy}, w.repoRoot, w.workspaceRoot, w.id)
+	req := ciRequest{ExecutionID: job.ExecutionID, Repo: repo, Base: base, Commit: candidate, Level: profile, Policy: spec.Policy}
+	if job.ReportLiveCILog {
+		var stop func()
+		req.observe, stop = w.watchCILog(ctx, job, candidate)
+		defer stop()
+	}
+	run, err := runLocalCI(ctx, req, w.repoRoot, w.workspaceRoot, w.id)
 	if err != nil {
 		report.Output = err.Error()
 		return report, err
@@ -143,9 +150,12 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 	defer release()
 	var failure, detail string
 	remaining := int64(64 << 20)
-	for _, c := range plan.Checks {
+	for i, c := range plan.Checks {
 		if ctx.Err() != nil {
 			return finish("TIMEOUT", "validation interrupted before all checks completed")
+		}
+		if req.observe != nil {
+			req.observe(ciLogFile{dir: dir, run: run.ID, index: i, check: c.Name})
 		}
 		result := runCheck(ctx, docker, run.Image, snapshot, dir, c, &remaining)
 		run.Checks = append(run.Checks, result)

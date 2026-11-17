@@ -276,6 +276,18 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		respond(w, http.StatusNoContent, nil, err)
 	}))
+	workers.handle(mux, "POST /internal/executions/{id}/ci-log", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var report store.CILogReport
+		if ok && decodeLimited(w, r, &report, 64<<10) {
+			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if (owner != "" && strings.Contains(report.Log.Text, owner)) || (token != "" && strings.Contains(report.Log.Text, token)) {
+				problem(w, http.StatusBadRequest, "invalid CI log sample")
+				return
+			}
+			respond(w, 204, nil, data.ObserveCILog(r.Context(), id, report))
+		}
+	}))
 	workers.handle(mux, "POST /internal/executions/{id}/process", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var report store.ProcessReport

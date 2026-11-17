@@ -11,6 +11,8 @@ var runID = regexp.MustCompile("^ci-run-[0-9]{1,20}$")
 var digest = regexp.MustCompile("^[0-9a-f]{64}$")
 var checkName = regexp.MustCompile("^[a-z][a-z0-9_-]{0,63}$")
 
+func ValidCheckName(name string) bool { return checkName.MatchString(name) }
+
 func ValidRunID(id string) bool { return runID.MatchString(id) }
 
 func (r *Run) Valid() bool {
@@ -22,7 +24,7 @@ func (r *Run) Valid() bool {
 	seen := map[string]bool{}
 	var total int64
 	for _, c := range r.Checks {
-		if !checkName.MatchString(c.Name) || seen[c.Name] || c.Log != c.Name+".log" || c.Started.Before(prev) || c.Finished.Before(c.Started) || c.Finished.After(r.Finished) || len(c.Outputs) > 64 {
+		if !ValidCheckName(c.Name) || seen[c.Name] || c.Log != c.Name+".log" || c.Started.Before(prev) || c.Finished.Before(c.Started) || c.Finished.After(r.Finished) || len(c.Outputs) > 64 {
 			return false
 		}
 		seen[c.Name] = true
