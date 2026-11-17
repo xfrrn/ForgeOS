@@ -86,7 +86,7 @@ func refreshCommit(ctx context.Context, repo, oldBase, commit, newBase string) (
 	return sha, err
 }
 
-func (targets deliveryTargets) refresh(data *store.Store, root string) http.HandlerFunc {
+func (targets deliveryTargets) refresh(data *store.Store, root string, api deliveryAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -142,7 +142,7 @@ func (targets deliveryTargets) refresh(data *store.Store, root string) http.Hand
 			return
 		}
 		var source githubIssue
-		if err = ghRead(ctx, fmt.Sprintf("repositories/%d/issues/%d", i.RepositoryID, i.Number), &source); err != nil {
+		if err = api(ctx, "GET", fmt.Sprintf("repositories/%d/issues/%d", i.RepositoryID, i.Number), nil, &source); err != nil {
 			problem(w, http.StatusBadGateway, "could not read delivery issue")
 			return
 		}
@@ -153,15 +153,21 @@ func (targets deliveryTargets) refresh(data *store.Store, root string) http.Hand
 		}
 		path := fmt.Sprintf("repositories/%d/pulls/%d", i.RepositoryID, d.PRNumber)
 		var pr remotePull
-		if err = deliveryRequest(ctx, "GET", path, nil, &pr); err != nil {
+		if err = api(ctx, "GET", path, nil, &pr); err != nil {
 			problem(w, http.StatusBadGateway, "could not read the original PR")
 			return
 		}
-		if !pr.matches(i, *d) || pr.Merged || (pr.State != "open" && pr.State != "closed") || !gitCommit.MatchString(pr.Base.SHA) || pr.Base.SHA == task.Spec.BaseCommit {
+		if !pr.matches(i, *d) || pr.Merged || (pr.State != "open" && pr.State != "closed") {
 			respond(w, 0, nil, store.ErrConflict)
 			return
 		}
-		base := pr.Base.SHA
+		// A PR's base SHA may still describe its original base after the branch advances.
+		repository := fmt.Sprintf("repositories/%d", i.RepositoryID)
+		base, err := deliveryTarget(ctx, api, repository, d.TargetBranch)
+		if err != nil {
+			problem(w, http.StatusBadGateway, "could not verify the current target branch")
+			return
+		}
 		if err = fetchBase(ctx, repo, root, i.Repository, base); err != nil {
 			problem(w, http.StatusBadGateway, "could not fetch the new target commit")
 			return
@@ -176,12 +182,21 @@ func (targets deliveryTargets) refresh(data *store.Store, root string) http.Hand
 			return
 		}
 		if pr.State == "open" {
-			if err = deliveryRequest(ctx, "PATCH", path, map[string]any{"state": "closed"}, &pr); err != nil {
+			if err = api(ctx, "PATCH", path, map[string]any{"state": "closed"}, &pr); err != nil {
 				problem(w, http.StatusBadGateway, "PR closure not confirmed; retry the same refresh")
 				return
 			}
 		}
-		if !pr.matches(i, *d) || pr.Merged || pr.State != "closed" || pr.Base.SHA != base {
+		if !pr.matches(i, *d) || pr.Merged || pr.State != "closed" {
+			respond(w, 0, nil, store.ErrConflict)
+			return
+		}
+		current, err := deliveryTarget(ctx, api, repository, d.TargetBranch)
+		if err != nil {
+			problem(w, http.StatusBadGateway, "could not recheck the target branch after PR closure")
+			return
+		}
+		if current != base {
 			respond(w, 0, nil, store.ErrConflict)
 			return
 		}

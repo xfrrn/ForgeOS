@@ -2808,4 +2808,22 @@ PostgreSQL 18 与 Docker 全包 Go 回归 287 项测试及子测试通过，零�
 
 本项 PostgreSQL 18 与 Docker 全包 Go 回归 291 项测试及子测试通过，零失败、零跳过；Go 静态检查、TypeScript 和生产构建通过。
 
-**待验收**：仅重跑 CI 或换基候选的完整预览分类场景。本次还原的 beta #55 固定候选不含 index.html，正式预览入口按合同返回 422；未伪造页面或预览记录。此边界的来源追溯和会话隔离已有数据库回归，不能据此宣称浏览器端到端通过。其余全路线工作及最终回归继续保留，粗估 13–23 个工作包不变。
+初次还原的 beta #55 固定候选不含 index.html，正式预览入口按合同返回 422，未伪造页面或预览记录。仅重跑 CI 及换基候选的完整预览分类现已在 beta #178 实测，详见下一节。其余全路线工作及最终回归继续保留，粗估 13–23 个工作包不变。
+
+上述固定候选依据实现对应 ForgeOS 提交 `478b715bf86d6bf1cb03d9fa3b4c57dfd145604a`。
+
+
+### 专题 08、11、12、16 · CI 恢复与真实换基后的预览依据
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 从 beta #178 派发单文件 HTML；在实际 Docker 验证进程 PID 14904 运行时，通过 Chrome 暂停 CI，重启控制面后恢复 | 只重跑验证，沿用原候选，不重新调用实现模型 | 原实现执行 1、会话 `01a1eb0f-a87c-74e2-b25f-a56f47ad1d5c` 生成 `f0705aa31192e7faa591d2409f51b98385b105ad`。执行 2 无模型会话，真实 Docker go-test 通过，候选不变。 |
+| 在恢复后的候选开启静态预览，用 Chrome 核对 title、唯一 H1 和段落，再登记观察；全局规则此时已从修订 1 更新为 2 | 分类沿用原实现依据，不能由原实现会话代审 | 页面标题及唯一 H1 为 Queue CI evidence，段落逐字匹配 Issue。用原实现会话回报返回 409；隔离验收库将该次人工探测租约设为到期后，正式 Management Worker 重新领取，独立原生会话 `01a1eb13-a499-7f83-8a7b-61b6569df8e5` 返回 acceptance。上下文是预览执行 2、原实现执行 1、原需求及全局修订 1。Chrome 重启回读并勾选该反馈完成验收。 |
+| 独立交付 beta #180，让真实目标分支前进，同时保持原 PR #179 开放 | 新基线来自正常受保护交付；旧候选不能越过目标更新直接合并 | 直接推进空提交曾被分支保护拒绝，未修改目标。随后原生 Worker 完成单文件 refresh-note.md，文档验证及两项必需检查通过。[PR #181](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/181) 合并为 `ba4254b4c832e00c126e17fecbd1ab1985116728`，[Actions 44164247128](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44164247128) 重跑通过，Issue #180 关闭。验收分支保留两项必需检查并启用 strict；旧 PR 的预设失败检查重跑成功后，GitHub 显示 BEHIND。 |
+| Chrome 点击“在最新目标版本上重新验证” | 读取目标分支当前 ref，应用已批准补丁，关闭旧 PR，排队新验证 | 首次真实运行发现 GitHub PR 的 base.sha 仍为 `fff9cd97784673a56dc215fbe7663a3ceca9b038`，原代码返回 409。修复后按实际分支 ref 换基，关闭 [PR #179](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/179)，未发生合并。执行 4 无模型会话，Docker go-test 成功，产生新候选 `fd2d16c252b6acac10ef14c43c9638689b23f863`，唯一父提交是上述新基线；相对基线只新增原 HTML，正文逐字不变。 |
+| 在新候选重新开启预览并分类，重启后重新勾选反馈验收 | 新候选有自己的分类与批准，依据追溯到旧实现，不混入全局新版 | 会话 `01a1eb1d-dad7-7d81-86ca-37fc35c5e011` 返回 acceptance。候选为执行 4 和新 SHA；规则为原实现执行 1、提交 `f0705aa31192e7faa591d2409f51b98385b105ad` 及全局修订 1。原实现会话代审仍返回 409。两次原生 prompt 的 context 均逐字段匹配归档，权限均为 never、read-only、禁网。 |
+| 等待新候选必需 CI、合并与 Issue 回写，最后重启工作台 | 只交付重新验收的新 SHA；两次历史依据与验收引用继续可读 | [Actions 44165869662](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44165869662) 首轮仅预设步骤失败，同一 SHA 重跑成功。acceptance-check、forgeos/local-ci 均 SUCCESS。[PR #182](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/182) 合并为 `a68e1c2fb11ed1f0b46d88474098fb26d5fe6e9c`，Issue #178 CLOSED、任务 DONE。重启后 Chrome 可回读两版预览的当前候选、原实现提交及全局修订 1；两条反馈均关联各自的 Owner approve。 |
+
+新增控制面回归覆盖真实 Git 仓库和 PostgreSQL：PR base SHA 保持旧值、目标 ref 身份不符、目标未前进、关闭旧 PR 期间目标再次前进、从已关闭 PR 重试及重放无远端副作用。最初测试夹具把普通 Issue 的 pull_request 序列化为 null，被严格身份校验拒绝；改为与实际普通 Issue 一样省略该字段后通过。临时恢复使用 PR base SHA 的错误实现时，新增测试失败，恢复修复后复测。
+
+本项 PostgreSQL 18 与 Docker 全包回归 292 项测试及子测试通过，零失败、零跳过；Go 静态检查及 git diff --check 通过。本次未改 Web 代码，沿用上一实现提交的 TypeScript 与生产构建结果。全路线最终回归尚未执行，外部设备、受限 GitHub 身份、独立审查者及其余已列缺口继续待验收。

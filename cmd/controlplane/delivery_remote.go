@@ -255,29 +255,37 @@ func confirmBase(ctx context.Context, api deliveryAPI, path, repo string, d stor
 	if err != nil || !gitCommit.MatchString(base) || len(parents) != 1 || parents[0] != base {
 		return errors.New("local candidate is missing or does not have the validated base as its only parent")
 	}
-	var ref struct {
-		Ref    string
-		Object struct{ Type, SHA string }
-	}
-	if err := api(ctx, "GET", path+"/git/ref/heads/"+url.PathEscape(d.TargetBranch), nil, &ref); err != nil {
+	target, err := deliveryTarget(ctx, api, path, d.TargetBranch)
+	if err != nil {
 		return err
 	}
-	if ref.Ref != "refs/heads/"+d.TargetBranch || ref.Object.Type != "commit" || !gitCommit.MatchString(ref.Object.SHA) {
-		return errIdentity
-	}
-	if ref.Object.SHA == base {
+	if target == base {
 		return nil
 	}
 	var comparison struct {
 		MergeBase struct{ SHA string } `json:"merge_base_commit"`
 	}
-	if err := api(ctx, "GET", path+"/compare/"+base+"..."+ref.Object.SHA+"?per_page=1", nil, &comparison); err != nil {
+	if err := api(ctx, "GET", path+"/compare/"+base+"..."+target+"?per_page=1", nil, &comparison); err != nil {
 		return err
 	}
 	if comparison.MergeBase.SHA != base {
 		return errors.New("validated base is not in the target branch history")
 	}
 	return nil
+}
+
+func deliveryTarget(ctx context.Context, api deliveryAPI, path, branch string) (string, error) {
+	var ref struct {
+		Ref    string
+		Object struct{ Type, SHA string }
+	}
+	if err := api(ctx, "GET", path+"/git/ref/heads/"+url.PathEscape(branch), nil, &ref); err != nil {
+		return "", err
+	}
+	if ref.Ref != "refs/heads/"+branch || ref.Object.Type != "commit" || !gitCommit.MatchString(ref.Object.SHA) {
+		return "", errIdentity
+	}
+	return ref.Object.SHA, nil
 }
 
 func mergeGates(ctx context.Context, api deliveryAPI, i store.Issue, d store.Delivery) (string, error) {
