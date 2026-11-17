@@ -13,6 +13,7 @@ import (
 )
 
 type FeedbackJob struct {
+	CaptureProcess bool            `json:"capture_process,omitempty"`
 	CaptureProfile bool            `json:"capture_profile,omitempty"`
 	LeaseUntil     *time.Time      `json:"lease_until,omitempty"`
 	ID             int64           `json:"id"`
@@ -82,6 +83,18 @@ func (s *Store) ClassifyFeedback(ctx context.Context, project, id int64, lease s
 		return err
 	}
 	defer tx.Rollback()
+	var locked int64
+	err = tx.QueryRowContext(ctx, `SELECT f.id FROM preview_feedback f JOIN static_preview_receipts p ON p.id=f.preview_id
+ WHERE f.id=$1 AND p.project_id=$2 AND f.review_lease::text=$3 FOR UPDATE OF f`, id, project, lease).Scan(&locked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrConflict
+	}
+	if err != nil {
+		return err
+	}
+	if err = verifyManagementProcess(ctx, tx, ManagementProcessReport{FeedbackID: id, Lease: lease}, c.Session); err != nil {
+		return err
+	}
 	var task, execution int64
 	err = tx.QueryRowContext(ctx, `UPDATE preview_feedback f SET classification=$4::jsonb || CASE WHEN f.classification_context IS NULL THEN '{}'::jsonb
             ELSE jsonb_build_object('context',f.classification_context) END,classified_at=now()

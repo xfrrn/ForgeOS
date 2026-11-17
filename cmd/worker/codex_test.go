@@ -276,7 +276,7 @@ func TestMain(m *testing.M) {
 					os.Exit(3)
 				}
 				fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
-				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") {
+				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") || strings.Contains(string(body), "SIMULATED_FEEDBACK_PROCESS") {
 					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
 					time.Sleep(500 * time.Millisecond)
 					if strings.Contains(string(body), "FAIL_PROCESS") {

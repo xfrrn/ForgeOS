@@ -93,6 +93,7 @@ func (s *Store) PreviewFeedbackPage(ctx context.Context, task int64, preview str
         'feedback',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',f.id,'created_at',f.created_at,'author','owner',
             'state',CASE WHEN f.classified_at IS NOT NULL THEN 'classified' WHEN f.review_until>now() THEN 'in_review' ELSE 'awaiting_review' END,
             'classification',f.classification,'classified_at',f.classified_at,'body',f.body,
+            'management_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.feedback_id=f.id),'[]'::jsonb),
             'artifacts',COALESCE((SELECT jsonb_agg((to_jsonb(a)-'storage_key') || jsonb_build_object('expired',a.removed_at IS NOT NULL OR COALESCE(a.expires_at<=statement_timestamp(),false)) ORDER BY a.id) FROM feedback_artifacts a WHERE a.feedback_id=f.id),'[]'),
             'work_item',(SELECT jsonb_build_object('id',t.id,'number',t.spec->'issue'->'number') FROM feedback_work_items l JOIN work_items t ON t.id=l.task_id WHERE l.feedback_id=f.id),
             'requirement',(SELECT jsonb_build_object('revision',v.revision,'task_id',v.task_id) FROM requirement_revisions v WHERE v.feedback_id=f.id),

@@ -3050,3 +3050,25 @@ PostgreSQL 18／真实 Docker 全包 331 项测试及子测试通过，零失败
 PostgreSQL 18／真实 Docker 全包 335 项测试及子测试通过，零失败、零跳过，报告 advice-process-regression.jsonl。回归包含实际测试子进程的成功／非零退出、旧协议，以及项目和目标互斥、过期重领历史、建议前退出和会话校验、待答页历史、D1 引用决定及 Owner 先答复时不能提前归还活动名额。Go 静态检查、TypeScript 和生产构建通过。证据目录 advice_process_current、advice_process_oldcontrol、advice_process_oldworker；迁移证据 analysis_process_current/advice-migration-proof.json。
 
 本次真实原生进程验收覆盖 D2 和 Owner 答复，D1 的新增进程门禁由数据库回归验证；原有 D1 在线引用验收见前文。异常回合没有建议完成回报，名额仍按原租约期限回收，不宣称已实现独立 Daemon 的失败补报或原会话恢复。采集为有界公开消息，其他独立角色、完整归档、全路线最终验收及已列外部条件保持待完成。
+
+上述业务问题建议进程实现与验收对应 ForgeOS 提交 0c5d47a2cd1113ffd0342e3fac0f7323c0427942。
+
+### 专题 07、11、13、16 C.3 · 预览反馈分类进程
+
+2026-11-18 在独立 PostgreSQL 18 库还原既有真实候选 d689d8e011d2c9e1e49e93cfa632d31b132c2228 的待验收状态，从真实静态预览检查页面和指南，再经 Chrome 提交反馈。该候选本轮未重复交付；任务保持 WAITING_ACCEPTANCE。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在真实预览核对标题与 H1，提交反馈 #1，观察原生分类进程并在回合中重启控制面 | 反馈、候选和进程可关联，重启保留原观察 | qa-feedback-current、PID 26448、Thread 01a1ebc9-133a-7193-ac43-ba28304874d9，read-only／never，Codex 0.169.0-alpha.11.1；退出码 0，窗口与节点 SQLite 完全相同。 |
+| 回读首条分类及固定需求 | 分类引用实际观察，不把局部观察误当完整候选验收 | 结果 blocked：只观察了预览页，未证明需求中的新增指南满足内容与长度要求。引用为观察原文，固定候选及需求修订可回读，任务仍待验收。 |
+| 从同一预览实际读取 reviewer-sources.md，核对固定 SHA、H1、HTML 标题、容量句、来源路径及少于 150 词，再提交反馈 #2 | 新观察覆盖指南要求，保留与首条不同的反馈 | 浏览器取回 HTTP 200 和同一 X-ForgeOS-Commit，所有内容断言通过；以 /reviewer-sources.md 路径提交完整观察。 |
+| 确认反馈 #2 的原生子进程后终止，等待原租约自然到期 | 不生成失败分类；到期后同一反馈由新会话重领 | PID 11480、Thread 01a1ebca-ecd9-7160-9979-0d47afbfa742 退出码 15。未更改数据库截止时间，也未手动派发；六分钟租约到期后 PID 35256、Thread 01a1ebd0-6c7c-7cc3-869b-9e7820ece187 完成，退出码 0、acceptance，名额归零。 |
+| 重启后从 Chrome 展开两条反馈的全部进程 | 失败与重试不相互覆盖，分类会话与成功退出一致 | 三条进程身份与原回执一致；第二条反馈保留实际失败和新会话成功，输出与 SQLite／API／页面相同；分类引句均属于原观察。 |
+| 旧控制面／新 Worker、新控制面／旧 Worker完成分类并重启回读 | 旧协议兼容，不补造原生历史 | Thread 01a1ebc9-5424-7cb1-b4fc-9a4f5b009dbf、01a1ebc9-5419-7052-b356-cb70dd40486d 均完成真实分类；页面保留分类及固定候选，无虚构进程。 |
+| 将真实问题建议库从迁移 101 升至 102 | 反馈关联不破坏已有问题历史 | 三条问题进程的 ID、节点和完整 JSON 未改变，Chrome 可展开两条成功、一条失败；原建议及三条 Owner 答复保持。 |
+
+首轮脚本预设标题观察一定属于 acceptance，实际固定需求是新增指南，原生分类合理返回 blocked；核对原需求和理由后保留该结论。补充的指南观察从真实页面读取后另行提交，没有改写首条反馈或重跑已完成分类。脚本续跑时曾错误替换预览的能力主机名，得到 404；恢复原主机和绑定端口后读取成功，没有放宽预览鉴权。
+
+PostgreSQL 18／真实 Docker 全包 339 项测试及子测试通过，零失败、零跳过，报告 feedback-process-regression.jsonl。回归覆盖进程退出先于分类结果、非零退出无分类、旧协议，以及目标互斥、负编号和多余修订拒绝、项目与租约绑定、失败／重领历史、实际退出及会话匹配、重复分类和原文校验。Go 静态检查、TypeScript 和生产构建通过。证据目录 feedback_process_current、feedback_process_oldcontrol、feedback_process_oldworker；迁移证据 advice_process_current/feedback-migration-proof.json。
+
+本项覆盖反馈分类的有界公开消息和进程历史。自然到期重领会创建新会话，不等同于独立 Daemon 崩溃恢复；完整会话归档、其他独立角色、全路线最终验收及已列外部条件仍待完成。

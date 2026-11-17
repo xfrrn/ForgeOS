@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
@@ -179,6 +180,32 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			}
 		}
 		usage(1)
+		observation := ManagementProcessReport{FeedbackID: first, Lease: j.Lease, Node: "feedback-node", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.2.3", Session: "failed-feedback", Started: time.Now().UTC().Truncate(time.Second)}}
+		observe := func(want bool) {
+			t.Helper()
+			e := s.ObserveManagementProcess(ctx, p.ID, observation)
+			if (want && e != nil) || (!want && !errors.Is(e, ErrConflict)) {
+				t.Fatal("feedback process", want, e)
+			}
+		}
+		observe(true)
+		observation.QuestionID = first
+		observe(false)
+		observation.QuestionID = 0
+		observation.AnalysisTask = -1
+		observe(false)
+		observation.AnalysisTask = 0
+		observation.Revision = 1
+		observe(false)
+		observation.Revision = 0
+		if e := s.ObserveManagementProcess(ctx, p.ID+1, observation); !errors.Is(e, ErrConflict) {
+			t.Fatal("cross project observation", e)
+		}
+		end := observation.Process.Started.Add(time.Second)
+		code := 15
+		observation.Process.Exited = &end
+		observation.Process.ExitCode = &code
+		observe(true)
 		if second, err := s.ClaimFeedback(ctx, p.ID, true, false); err != nil || second != nil {
 			t.Fatalf("duplicate claim: %v %v", second, err)
 		}
@@ -197,6 +224,14 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if err != nil || next == nil || !next.CaptureProfile || next.Lease == j.Lease || next.LeaseUntil == nil {
 			t.Fatalf("renewal: %v %v", next, err)
 		}
+		observe(false)
+		observation.Lease = next.Lease
+		observation.Process.PID = 456
+		observation.Process.Session = c.Session
+		observation.Process.Exited = nil
+		observation.Process.ExitCode = nil
+		observation.Process.Output = &ModelOutput{Sequence: 1, Text: "Classifying observation.\n"}
+		observe(true)
 		invalid := c
 		invalid.Evidence = "unreported evidence"
 		if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(err, ErrConflict) {
@@ -213,11 +248,37 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 			t.Fatal("incorrect native permission", err)
 		}
 		profile = StructuredCodexProfile()
+		if e := s.ClassifyFeedback(ctx, p.ID, first, next.Lease, c); !errors.Is(e, ErrConflict) {
+			t.Fatal("classified while active", e)
+		}
+		code = 0
+		observation.Process.Exited = &end
+		observation.Process.ExitCode = &code
+		observe(true)
+		invalid = c
+		invalid.Session = "another-session"
+		if e := s.ClassifyFeedback(ctx, p.ID, first, next.Lease, invalid); !errors.Is(e, ErrConflict) {
+			t.Fatal("classified wrong session", e)
+		}
 		for range 2 {
 			if err = s.ClassifyFeedback(ctx, p.ID, first, next.Lease, c); err != nil {
 				t.Fatal(err)
 			}
 		}
+		page, e := s.PreviewFeedbackPage(ctx, task.ID, preview.ID)
+		var decoded struct {
+			Feedback []struct {
+				Processes []ManagementProcess `json:"management_processes"`
+			}
+		}
+		if e != nil || json.Unmarshal(page, &decoded) != nil || len(decoded.Feedback) != 1 {
+			t.Fatal("feedback page", e)
+		}
+		processes := decoded.Feedback[0].Processes
+		if len(processes) != 2 || *processes[0].ExitCode != 15 || *processes[1].ExitCode != 0 || processes[1].Output.Text != "Classifying observation.\n" {
+			t.Fatal("feedback attempt history", processes)
+		}
+		observe(false)
 		invalid = c
 		usage(0)
 		invalid.Profile = nil

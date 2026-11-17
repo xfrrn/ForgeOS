@@ -53,7 +53,7 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 ### Management 作业进程日志
 
-控制面的 management_processes 按任务与计划修订、共享副本 ID、仓库分析任务或问题 ID，加租约 SHA-256 保存各次作业的节点身份、最近进程窗口及接收时间；API 不暴露租约摘要。当前计划、历史修订以及来源项目的共享回执均通过 review_processes 回读，失败、过期或被新修订替代的尝试仍保留。迁移 099 将原 plan_review_processes 更名并加入互斥的副本身份，迁移 100 加入同样互斥的 analysis_task，迁移 101 再加入 question_id。既有记录原样保留，已对真实三版计划和两份共享历史升级回读。仓库分析接口通过 processes 返回全部尝试，重试不删除失败进程；归纳结果仍核对首次归档的固定来源。初始化报告的版本快照保存分析结果，进程历史由原任务的仓库分析入口回读。问题的 management_processes 同时出现在待答队列与任务历史，回答后仍由任务回读，不嵌入建议或 Owner 答复。已回答问题的在途进程在租约有效期内可上报实际退出。共享副本接收方不能读取该私有历史。公开消息沿用节点 harness_model_output 的 8 KiB 脱敏窗口，控制面拒绝旧序号、同序号改写、节点或进程身份替换及退出后修改。
+控制面的 management_processes 按任务与计划修订、共享副本 ID、仓库分析任务、问题 ID 或预览反馈 ID，加租约 SHA-256 保存各次作业的节点身份、最近进程窗口及接收时间；API 不暴露租约摘要。当前计划、历史修订以及来源项目的共享回执均通过 review_processes 回读，失败、过期或被新修订替代的尝试仍保留。迁移 099 将原 plan_review_processes 更名并加入互斥的副本身份，迁移 100 加入同样互斥的 analysis_task，迁移 101 再加入 question_id，迁移 102 加入 feedback_id；每条记录只能关联一种来源。既有记录原样保留，已对真实三版计划和两份共享历史升级回读。仓库分析接口通过 processes 返回全部尝试，重试不删除失败进程；归纳结果仍核对首次归档的固定来源。初始化报告的版本快照保存分析结果，进程历史由原任务的仓库分析入口回读。问题的 management_processes 同时出现在待答队列与任务历史，回答后仍由任务回读，不嵌入建议或 Owner 答复。已回答问题的在途进程在租约有效期内可上报实际退出。反馈页在各条观察下通过 management_processes 回读分类尝试，租约过期重新领取不会覆盖旧进程。共享副本接收方不能读取该私有历史。公开消息沿用节点 harness_model_output 的 8 KiB 脱敏窗口，控制面拒绝旧序号、同序号改写、节点或进程身份替换及退出后修改。
 
 独立 Management 的 SQLite 与同机普通 Worker 分开，均遵循 FORGEOS_WORKER_STATE_DIR 的私有目录要求。原生退出先记入 SQLite，再上报控制面；控制面不可达且最终回执未确认时不会提交审核结论。该角色尚无 Daemon 重启后的自动补报及原会话恢复，节点记录可用于核对。
 

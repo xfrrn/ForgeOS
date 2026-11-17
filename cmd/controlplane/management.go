@@ -54,6 +54,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			var f *store.FeedbackJob
 			f, err = data.ClaimFeedback(r.Context(), id, r.URL.Query().Get("supports_feedback_deadline") == "1", r.URL.Query().Get("supports_feedback_context") == "1")
 			if f != nil {
+				f.CaptureProcess = r.URL.Query().Get("supports_feedback_process") == "1"
 				job = &store.ManagementJob{Feedback: f}
 			}
 		}
