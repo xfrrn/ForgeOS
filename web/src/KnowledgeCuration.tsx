@@ -7,7 +7,7 @@ type Receipt = {
   event_id?: number
   source?: string
   goal?: {plan_revision: number; children: {task_id: number; key: string; pr_url: string; candidate: string; merge_sha: string}[]}
-  document?: {path: string; commit: string; blob: string}
+  document?: {path: string; commit: string; blob: string; part?: number; byte_offset?: number}
   content?: string
   delivery?: {pr_number: number; candidate: string; merge_sha: string; target_branch: string}
   revision: number
@@ -68,6 +68,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
       {error && <p role="alert">{error}</p>}
       {receipt?.decision_id && <p>确认事件 #{receipt.revision} · SHA-256 · <code>{receipt.content_sha256}</code></p>}
       {receipt?.document && <><p>固定来源 · <code>{receipt.document.commit}:{receipt.document.path}</code></p>
+        {receipt.document.part && <p>第 {receipt.document.part} 段 · 起始字节 {receipt.document.byte_offset}</p>}
         <p>正文 SHA-256 · <code>{receipt.content_sha256}</code></p>
         <details><summary>查看固定版本原文</summary><pre className="material-content">{receipt.content}</pre></details></>}
       {receipt?.goal && <><p>Goal 完成事件 #{receipt.event_id} · 计划修订 {receipt.goal.plan_revision}</p>

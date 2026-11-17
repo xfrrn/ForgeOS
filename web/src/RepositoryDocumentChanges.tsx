@@ -2,9 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import { type ApiRequest } from './shared'
 
-type Change = {id: number; path: string; commit_sha: string; blob: string; previous_blob: string; problem: string}
+type Change = {id: number; path: string; commit_sha: string; blob: string; previous_blob: string; problem: string; part_count?: number; byte_length?: number; file_sha256?: string}
 type History = {head: string | null; items: Change[]}
-const reasons: Record<string,string> = {deleted: '已删除', empty: '空文档', non_text: '非 UTF-8 文本', size_limit: '超过 256 KiB，待提取'}
+const reasons: Record<string,string> = {deleted: '已删除', empty: '空文档', non_text: '非 UTF-8 文本', size_limit: '等待从固定 Git blob 读取正文', partitioned: '分段文档'}
+
+function DocumentParts({change, project, path, request}: {change: Change; project: number; path: string; request: ApiRequest}) {
+  const [part, setPart] = useState(1)
+  return <>
+    <p>全文 {change.byte_length} 字节 · SHA-256 · <code>{change.file_sha256}</code></p>
+    <label>文档分段 <input type="number" value={part} min={1} max={change.part_count} onChange={event => {
+      const n = event.currentTarget.valueAsNumber
+      if (Number.isInteger(n) && n >= 1 && n <= (change.part_count || 0)) setPart(n)
+    }}/> / {change.part_count}</label>
+    <KnowledgeCuration key={part} project={project} path={`${path}?part=${part}`} request={request}/>
+  </>
+}
 
 export function RepositoryDocumentChanges({project, request}: {project: number; request: ApiRequest}) {
   const [history, setHistory] = useState<History>()
@@ -38,6 +50,7 @@ export function RepositoryDocumentChanges({project, request}: {project: number; 
         <p>提交 · <code>{c.commit_sha}</code></p>
         {c.previous_blob && <p>原 blob · <code>{c.previous_blob}</code></p>}
         {c.blob && <p>新 blob · <code>{c.blob}</code></p>}
+        {c.part_count && <DocumentParts change={c} project={project} path={`${base}/${c.id}/curation`} request={request}/>}
         {!c.problem && <KnowledgeCuration project={project} path={`${base}/${c.id}/curation`} request={request}/>}
       </details>)}
       {more && <button className="button" disabled={busy} onClick={() => void load(false, history.items[history.items.length - 1].id)}>更早的文档变更</button>}

@@ -94,7 +94,15 @@ func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner 
 			problem(w, 400, "invalid document change")
 			return
 		}
-		out, err := data.DocumentCuration(r.Context(), project, change)
+		var part int64
+		if r.URL.Query().Has("part") {
+			part, err = strconv.ParseInt(r.URL.Query().Get("part"), 10, 32)
+			if err != nil || part < 1 {
+				problem(w, 400, "invalid document part")
+				return
+			}
+		}
+		out, err := data.DocumentPartCuration(r.Context(), project, change, int(part))
 		respond(w, 200, out, err)
 	}))
 }

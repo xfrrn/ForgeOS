@@ -52,6 +52,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 		}
 	}
 	git("init", "--quiet")
+	git("config", "core.autocrlf", "false")
 	write("README.md", "Initial version")
 	git("add", ".")
 	git("commit", "-qm", "Baseline")
@@ -61,7 +62,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	}
 	write("docs/recovery.md", "Observed offset 418.")
 	write("docs/binary.md", "bad\x00file")
-	write("docs/large.md", strings.Repeat("a", 256<<10+1))
+	write("docs/large.md", strings.Repeat("a", 256<<10+1)+"\x00")
 	write("vendor/notes.md", "unrelated")
 	git("add", ".")
 	git("commit", "-qm", "Add repository guides")
@@ -85,7 +86,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	list, err := s.DocumentChanges(ctx, p.ID, 0)
-	if err != nil || !strings.Contains(string(list), "non_text") || !strings.Contains(string(list), "size_limit") || strings.Contains(string(list), "vendor/") {
+	if err != nil || !strings.Contains(string(list), "non_text") || strings.Contains(string(list), "size_limit") || strings.Contains(string(list), "vendor/") {
 		t.Fatal(string(list), err)
 	}
 	git("rm", "-f", "docs/recovery.md")
@@ -99,6 +100,44 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	if err != nil || !strings.Contains(string(history), src.Content) {
 		t.Fatal(string(history), err)
 	}
+
+	t.Run("multipart recovery and sparse source", func(t *testing.T) {
+		body := strings.Repeat("重复行。\r\n", 25000) + "final fact"
+		write("docs/large.md", body)
+		write("docs/spaces.md", strings.Repeat(" ", (256<<10)+1))
+		git("add", "docs/large.md", "docs/spaces.md")
+		git("commit", "-qm", "Record long text")
+		observe()
+		var id int64
+		var parts int
+		if err := s.db.QueryRowContext(ctx, `SELECT id,part_count FROM repository_document_changes WHERE project_id=$1 AND path='docs/large.md' ORDER BY id DESC LIMIT 1`, p.ID).Scan(&id, &parts); err != nil || parts < 2 {
+			t.Fatal(parts, err)
+		}
+		var joined strings.Builder
+		for part := 1; part <= parts; part++ {
+			r, err := s.DocumentPartCuration(ctx, p.ID, id, part)
+			var doc struct {
+				Content  string
+				Document struct {
+					Offset int64 `json:"byte_offset"`
+				}
+			}
+			if err != nil || json.Unmarshal(r, &doc) != nil || doc.Document.Offset != int64(joined.Len()) {
+				t.Fatal(part, err)
+			}
+			joined.WriteString(doc.Content)
+		}
+		if joined.String() != body {
+			t.Fatal("multipart content changed")
+		}
+		if _, err := s.DocumentCuration(ctx, p.ID, id); !errors.Is(err, ErrNotFound) {
+			t.Fatal("missing part selector", err)
+		}
+		var orphaned int
+		if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM repository_document_parts p JOIN repository_document_changes d ON d.id=p.change_id WHERE d.project_id=$1 AND d.problem<>'partitioned'`, p.ID).Scan(&orphaned); err != nil || orphaned != 0 {
+			t.Fatal("partial source left behind", orphaned, err)
+		}
+	})
 	t.Run("resume history between observations", func(t *testing.T) {
 		write("docs/offline.md", "Interim observation")
 		git("add", "docs/offline.md")

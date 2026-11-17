@@ -15,8 +15,11 @@ import (
 func (s *Store) ObserveDocumentHead(ctx context.Context, project int64, repo string) error {
 	for {
 		more, err := s.observeDocumentBatch(ctx, project, repo)
-		if err != nil || !more {
+		if err != nil {
 			return err
+		}
+		if !more {
+			return s.collectDocumentParts(ctx, project, repo)
 		}
 	}
 }
@@ -110,8 +113,8 @@ func recordDocumentDelta(ctx context.Context, tx *sql.Tx, repo string, project i
 func (s *Store) DocumentChanges(ctx context.Context, project, before int64) (json.RawMessage, error) {
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('head',h.commit_sha,'items',COALESCE((
-		SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id DESC) FROM (
-			SELECT id,path,commit_sha,previous_commit,blob,previous_blob,problem,observed_at
+		SELECT jsonb_agg(jsonb_strip_nulls(to_jsonb(r)) ORDER BY r.id DESC) FROM (
+			SELECT id,path,commit_sha,previous_commit,blob,previous_blob,problem,observed_at,NULLIF(part_count,0) AS part_count,byte_length,file_sha256
 			FROM repository_document_changes WHERE project_id=p.id AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 30
 		) r),'[]')) FROM projects p LEFT JOIN repository_document_heads h ON h.project_id=p.id WHERE p.id=$1`, project, before).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -121,5 +124,9 @@ func (s *Store) DocumentChanges(ctx context.Context, project, before int64) (jso
 }
 
 func (s *Store) DocumentCuration(ctx context.Context, project, id int64) (json.RawMessage, error) {
-	return readCurationReceipt(s.db.QueryRowContext(ctx, curationReceipt+" AND c.document_id=$2", project, id))
+	return s.DocumentPartCuration(ctx, project, id, 0)
+}
+
+func (s *Store) DocumentPartCuration(ctx context.Context, project, id int64, part int) (json.RawMessage, error) {
+	return readCurationReceipt(s.db.QueryRowContext(ctx, curationReceipt+" AND c.document_id=$2 AND c.document_part IS NOT DISTINCT FROM NULLIF($3::int,0)", project, id, part))
 }
