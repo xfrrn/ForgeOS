@@ -35,7 +35,7 @@
 | 替换 Daemon 后从 Chrome 取消尚未登记 Session 的原进程 | 套用原租约结算取消，保留真实的进程记录 | Daemon 21664 → 42512。原生 PID 26528 退出，任务 CANCELLED，无候选，Session 为空。 |
 | 在首次模型启动前终止执行进程，以仅有 Codex 的节点启动；在 Chrome 取消，再恢复 Claude 配置 | 保留 Claude 检查点，另一项目可用空余名额；恢复后不再启动已取消任务 | 检查点摘要 `a25ad8fbcc5893a77fbdbc28b4a3ee683b1656bdb366149168c6a8c7c21815d2` 保持相同。第二个项目的任务 2 为 DONE。恢复 Claude 后原项 CANCELLED，原生启动数 0。 |
 
-回执位于 `supervised-claude-{provider,initialized,cancel,changed}/latest.json`。成功生成候选、完成交付和 Claude 工具输出增量仍待真实模型服务可用后验收。
+回执位于 `supervised-claude-{provider,initialized,cancel,changed}/latest.json`。成功生成候选、完成交付和 Claude 工具输出增量仍待真实模型服务可用后验收。 实现提交 `29a760ab1664e69bb0a9c9d518f7ed66dae94335` 经空 PostgreSQL 18 和真实 Docker 全包回归，582 项具名测试及子测试通过，0 项失败或跳过，另有 3 个包无测试文件。原始结果为 `supervised-claude-provider/regression.jsonl`。
 
 <a id="supervised-roles"></a>
 
@@ -226,6 +226,7 @@
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
 | 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
 | 专题 07、16 B.4 · 独立角色接回 | [原生进程、后续派单、Reviewer 失败与 Ubuntu 服务重启](#supervised-roles) | `ffb9103b7b581bc8b4ac7ca470f4572b2067a36f` |
+| 专题 07、16 B.4 · Claude 写入回合接回 | [首个会话建立前后接回、原生失败、工作台取消及适配器恢复](#supervised-claude) | `29a760ab1664e69bb0a9c9d518f7ed66dae94335` |
 | 专题 07、16 B.4 · 存活的只读规划进程 | [两种适配器、工作台取消、暂停后接回同一会话并产出草案](#supervised-planner) | `2bfd6d2e2dff37ef6ed8b8dce2e9c19aacfdcc77` |
 | 专题 07、16 B.4 · 存活的普通 CLI 写入进程 | [工作台排入下一回合、取消、切换适配器与受保护 PR #272](#supervised-cli-writer) | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 专题 07、16 B.4 · 存活的普通 App Server 写入进程 | [双版本、活动输入、容量、执行进程故障与受保护 PR #270](#supervised-writer) | `a9a4181557b26aca690eab3eb8454a73b7f6d046` |
@@ -772,18 +773,39 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 
 派发竞态修复为 `b4e7c54b06726fd8949b20faa052f75a0aeb8d1a`。alpha #4 通过按编号导入入口选择规划模式，旧 Worker 的领取请求返回 204。真实 Codex CLI 0.169.0-alpha.11.1 在只读沙箱中完成任务 16，Session 为 `01a1e322-fda7-7751-903d-93519a6cae56`。修订 1 包含两项工作、README 和 CI 上下文、依赖及验收条件。基础 SHA 与导入时一致，Git 工作区干净，草案未自动派发子任务；重启控制面后任务 JSON 相同。[规划输入](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/4)
 
+<a id="intake-knowledge-matrix"></a>
+
+## 项目接入与知识更新逐项对照
+
+按初始设计提交 `1a1782246225ab810ca34f3a5c1fd73194242ab8` 的专题 01「项目接入与初始化」和专题 08「触发」逐项核对。操作链接指向各功能已有的真实环境记录，每行 SHA 对应该功能的 ForgeOS 实现。当前整条路线的最终复验单独记录。
+
+| 范围 | 原始要求 | 实测证据 | 实现提交 |
+| --- | --- | --- | --- |
+| 接入与初始化 | 准备本地项目，导入路径与 Git 仓库身份 | [工作台登记、空仓库失败与补提交重查](#intake-project-path) | `d57f60da4b1dff1892b1c5f50559add4acd00e38` |
+| 接入与初始化 | 扫描入口文档、技术栈、依赖 | [固定 SHA 扫描，按清单及 Git blob 回读](#intake-entry-inventory) | `e73088cbe63e0da79133d342e477d018c640021c` |
+| 接入与初始化 | Agent 归纳项目用途、启动和测试命令 | [真实 Management 会话及固定来源](#intake-entry-model) | `3541ac70b38e92bf10b93b1051732f255a767ce3` |
+| 接入与初始化 | 识别声明的密钥需求，隔离普通初始化与生产凭据 | [归档 production/S3 声明，扫描前后实际授权和使用数均为零](#intake-secret-inventory) | `6e51e433ac87e43f8b432d968908e5eca7bc1b22` |
+| 接入与初始化 | 配置 Local Mock 和 Local Integrated 并验证启动 | [工作台派发固定提交，真实 Docker 和 PostgreSQL 启动回执](#intake-environment-run) | `42dee55abb05f6627a2acd0086a747cb5b4f25fe` |
+| 接入与初始化 | 项目画像、仓库映射、环境清单、密钥需求清单、初始化报告 | [三版报告切换与原文下载，控制面重启后逐字段回读](#intake-versioned-report) | `9a75d9e04a2cdd2be90b833da5f8bd6c38d1e698` |
+| 知识更新触发 | 决策确认 | [原决定与确认事件进入审核，替代后撤下项目经验](#knowledge-confirmed-decision) | `4d1d737b36e2eb072bf0f718a20b89fe3128b60a` |
+| 知识更新触发 | Goal 完成 | [第一个子 PR 合并时无父事件，第二个交付后触发](#knowledge-goal-completed) | `6237e703bfe04607bc86bf29ad7d78b43cb97044` |
+| 知识更新触发 | PR 合并 | [确认合并后提取，独立 Management 审核](#knowledge-pr-merged) | `44a77fc8ad52d801cabcd7d686a181b0f59e4fec` |
+| 知识更新触发 | 用户导入资料 | [原生提取和独立审核关联同一固定修订](#knowledge-material-import) | `2df857ecb236b45d48f64d8d1a4f367a6e1facf6` |
+| 知识更新触发 | 文档变化 | [归档变更的提交和 blob，内容替代后旧经验撤下](#knowledge-document-change) | `8b2dbf115cffd423570c8ed8a7d23ba80de279c2` |
+| 知识更新触发 | 用户明确要求记住 | [工作台请求、重复回报、历史修订与权限隔离](#knowledge-owner-memory) | `382aa91b0251f0cb4010364e2c36de2122779a20` |
+
 ## 专题覆盖与实现提交
 
 下列短 SHA 属于本地 ForgeOS 仓库。PR 内的 SHA 属于验收项目。历史检索版本 `a31c02ceb9ea5419f356d00aebb2989480a1a28b` 在专用 PostgreSQL 18 实例中启用数据库和 Docker 测试，`go test -count=1 -json ./...` 得到 63 项通过、零跳过，`go vet ./...` 通过。前端生产构建在 `bd1c734` 通过。
 
 | 专题 | 已验证的入口和证据 | 实现 SHA | 仍待补齐或实测 |
 | --- | --- | --- | --- |
-| 00–01 产品与端到端流程 | [规则分类](#issue-work-type-rules)和[原生分类建议](#issue-classification-agent)已在私库、正式节点及 Chrome 验收。两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭。工作台登记、首次检查、固定 SHA 启动验证、版本化初始化报告与 Ruby、Gradle 仓库样例已验收 | `1a17822`、`32c0fa0`、`5447445`、`d57f60d`、`42dee55`、`9a75d9e`、`f724eea`、`d2c094a`、`673295d`、`bbd7773`、`439415c` | 外部设备访问、其他知识归档触发条件、其余初始化场景 |
+| 00–01 产品与端到端流程 | [规则分类](#issue-work-type-rules)和[原生分类建议](#issue-classification-agent)已在私库、正式节点及 Chrome 验收。两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭。工作台登记、首次检查、固定 SHA 启动验证、版本化初始化报告与 Ruby、Gradle 仓库样例已验收 | `1a17822`、`32c0fa0`、`5447445`、`d57f60d`、`42dee55`、`9a75d9e`、`f724eea`、`d2c094a`、`673295d`、`bbd7773`、`439415c` | [项目接入和六类知识更新触发均有逐项证据](#intake-knowledge-matrix)。远程私网外部设备访问仍待验收。 |
 | 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行。工作台可打开有租约的动态应用，普通 Worker 分别限制模型与 CI 的名额。站内通知及已读回执见 beta #65；当前独立模型角色均已验证共用名额，包括 beta #125 的问题建议及 [#247、#248 的 Issue 分类](#issue-classification-agent) | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6`、`9a08b44`、`f876721`、`e8a84ea`、`31a46df`、`ff58493` | Telegram、飞书发送及重试已有本机 TLS 证据，真实收件待验收；其余管理协调。普通 Worker 共享账号实测见 alpha #22、beta #115 |
 | 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要。可下载其他节点的 CI 文件。运行中的 Codex、Claude 在工作台显示节点、PID 与会话，控制面重启后仍可查询（beta #57、#59）。另从[正式节点](#worker-app-turn)对照进程实例、Thread 和 Turn。 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3`、`91a150b`、`39d3f68`、`6f9b0c1`、`db6155b`、`1f31794` | 其他跨节点工件及独立审核角色 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版。跨项目验收问题的批量答复、Owner 按原生审核意见修改并批准指定修订见下文。换基后的三个角色与开发会话各自独立，见 beta #88。原生业务问题、Management 建议和 D1 项目决策查阅见 beta #94–111。已对照[五类 ACP 业务路由](#protocol-route-matrix)，并从审批中心处理[有来源的审核等级](#approval-source-levels)与[原问题的 D2/D3 答复](#approval-questions)。 | `70781ba`、`f8503c5`、`abb5257`、`d9fc283`、`a6f05da`、`85d9c5c`、`2672efc`、`0fad34a`、`5c5657b`、`913caea`、`d329bba` | 其余业务操作的 D0–D3 策略 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理。来源关闭取消、工作台取消及暂停后恢复同一候选的 CI 已实测（beta #52、#54、#55）。Owner 从工作台修订、批准并归档计划，beta #67 完成子项及父 Issue 交付 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3`、`a5d2193`、`84758c5`、`a221a0d`、`d9fc283`、`a6f05da`、`616dcb6` | Codex 实现回合暂停和同会话恢复见 beta #137。只读 Planner 主动暂停见 beta #19。只读 Planner 已完成跨 Thread 交接，见页末。Codex 和 Claude 的首轮暂停草稿交接分别见 beta #145、#149。整机重启及其余写入回合交接待验；下一回合指令已验收，原生取消见 beta #131、#132 |
-| 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断。已验收节点登记与普通执行容量、模型终态回执丢失后的恢复、运行中与结束后的进程记录及工具调用（beta #61、#63）。beta #127、#129 的原生 Claude、Codex 实现进程被终止后在原会话继续，beta #19 的只读 Planner 也在同一 Thread 恢复并保存草案；Linux 服务已探测两种原生 CLI。beta #155、#157 已验证等待业务答复时原会话丢失后的交接，beta #159、#161 已验证未主动暂停的写入进程崩溃后的会话交接。已验证[原生运行中输入](#native-steer-probe)、[中断回退](#native-interrupt-fallback)、[工作台的原生回合编号](#worker-app-turn)、[Claude 工作台中断](#claude-worker-interrupt)及[完成写入回合后恢复排队指令](#completed-writer-input)。 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b`、`611850e`、`9f6d396`、`e8a84ea`、`d78ae18`、`9f83fff`、`db6155b`、`3c9226b`、`c18af6d`、`332568f`、`9da6a8e`、`c1b4847`、`a77cf1c`、`cfe0bbc`、`bb78b3c`、`1f31794`、`2023af5`、`2d991f2`、`f8f9e8d` | [Codex 写入](#supervised-cli-writer)和[只读规划](#supervised-planner)的存活进程已接回。Claude 恢复后的完整交付、Claude 和独立角色的存活进程接回、整机重启与 Linux 服务身份仍待验。 |
+| 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断。已验收节点登记与普通执行容量、模型终态回执丢失后的恢复、运行中与结束后的进程记录及工具调用（beta #61、#63）。beta #127、#129 的原生 Claude、Codex 实现进程被终止后在原会话继续，beta #19 的只读 Planner 也在同一 Thread 恢复并保存草案；Linux 服务已探测两种原生 CLI。beta #155、#157 已验证等待业务答复时原会话丢失后的交接，beta #159、#161 已验证未主动暂停的写入进程崩溃后的会话交接。已验证[原生运行中输入](#native-steer-probe)、[中断回退](#native-interrupt-fallback)、[工作台的原生回合编号](#worker-app-turn)、[Claude 工作台中断](#claude-worker-interrupt)及[完成写入回合后恢复排队指令](#completed-writer-input)。 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b`、`611850e`、`9f6d396`、`e8a84ea`、`d78ae18`、`9f83fff`、`db6155b`、`3c9226b`、`c18af6d`、`332568f`、`9da6a8e`、`c1b4847`、`a77cf1c`、`cfe0bbc`、`bb78b3c`、`1f31794`、`2023af5`、`2d991f2`、`f8f9e8d` | [Codex 写入](#supervised-cli-writer)和[只读规划](#supervised-planner)的存活进程已接回。[独立角色](#supervised-roles)和 [Claude](#supervised-claude) 的存活进程已接回。Claude 成功交付、Reviewer 成功审查、整机重启和 Linux 服务用户模型登录仍待验。 |
 | 08 项目知识 | 固定版本工程事实、历史检索、私有资料与跨项目脱敏审批已验收。节点可查询固定需求、计划与依赖；原生实现回合的使用见 beta #69。确认合并及已完成 Goal 的历史检索见 beta #72。资料导入和 Owner 记忆请求已从原生提取到独立审核；提案修改、确认、拒绝及固定来源见 R17、R18 验收。子项引用有效决策见 beta #74，确认合并和 Goal 完成触发原生提取及独立审核见 beta #76、#78；Git 文档变化与全局规则发布见下文双项目实测。规划与实现的规则优先级见 beta #81、#83，独立审查使用的候选依据见下文。测试计划及覆盖审核使用相同的候选依据 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`、`e80e961`、`4713fdc`、`f7a9bbe`、`a6c797e`、`4bfc017`、`4be0ceb`、`2df857e`、`382aa91`、`2359fe3`、`ddbaae2`、`4d1d737`、`44a77fc`、`6237e70`、`8b2dbf1`、`07aeae4`、`a5309b4`、`766d452`、`3744ecc`、`e566c17`、`feba4f4`、`da40dd4`、`e6fb688` | [项目决策](#decision-search)、项目资料及 D1 经验的混合检索、审核回执、固定 Git 版本的工程文档查询已验收，见页末。六类角色已从[原生会话](#knowledge-role-matrix)回核。[四类项目历史的混合检索](#history-hybrid-search)和[固定 Git 版本的工程文档混合检索](#git-document-hybrid)均已验收 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与恢复、状态接口、执行租约与用途绑定、一次性解包、签发与失败审计。具名 Worker 在活动租约中轮换令牌与 mTLS 客户端证书 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`、`72cd89d`、`8c83ac8`、`266f11f`、`40736ea` | 生产专用操作策略及其他节点身份场景 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限。任务页跨节点下载 CI 文件（beta #49），中央及 Windows、Linux 节点按策略清理，真实候选 CI 的取消和恢复见专题 06。beta #88 和归档的 #55 已核对实现会话及重验来源 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`、`0420f45`、`6f9b0c1`、`b465048`、`9f0c704`、`84758c5`、`a221a0d`、`85d9c5c` | 其他验证器与独立审核角色场景 |
@@ -1800,6 +1822,8 @@ PostgreSQL 18 和真实 Docker 的全量回归共 9 个有测试的包、137 项
 
 来源 Issue 关闭的实现及验收对应 ForgeOS 提交 `a5d21934d8ecd6c288d20a169b8170e16d822ab3`。
 
+<a id="intake-project-path"></a>
+
 ## 阶段一、专题 01、16 · 工作台登记项目与首次 Worker 检查
 
 在新的 PostgreSQL schema 中启动正式控制面。用 Chrome 从工作台登记一个新建的本地 Git 仓库，通过正式 Worker 检查从空仓库到首个提交的状态。
@@ -1814,6 +1838,8 @@ PostgreSQL 18 和真实 Docker 的全量回归共 9 个有测试的包、137 项
 PostgreSQL 18 和 Docker 全量回归 138 项通过，零测试跳过。Go 静态检查、TypeScript 检查与生产构建均通过。
 
 工作台项目接入与验收对应 ForgeOS 提交 `d57f60da4b1dff1892b1c5f50559add4acd00e38`。
+
+<a id="intake-entry-inventory"></a>
 
 ## 专题 01、08 · 固定提交上的仓库入口与依赖清单
 
@@ -1830,6 +1856,8 @@ PostgreSQL 18 和 Docker 全量回归 138 项通过，零测试跳过。Go 静�
 PostgreSQL 18 和 Docker 全量回归 139 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
 
 仓库入口和依赖清单对应 ForgeOS 提交 `e73088cbe63e0da79133d342e477d018c640021c`。
+
+<a id="intake-secret-inventory"></a>
 
 ## 专题 01、09、ADR-001 · 按环境归档项目声明的密钥需求
 
@@ -1863,6 +1891,8 @@ PostgreSQL 18 和 Docker 全量回归 142 项通过，零测试跳过。Go 静�
 
 本地启动清单与 Worker 命令行验证对应 ForgeOS 提交 `b5e07294ca091f1b79000f818c808cce6ffc2cf4`。
 
+<a id="intake-environment-run"></a>
+
 ## 专题 01、08 · 工作台派发本地启动检查
 
 在 PostgreSQL schema `queue_01858544` 启动控制面、独立 Worker、桌面 Chrome 和 Docker 中的应用及 PostgreSQL 16.15 依赖。使用工作台派发全部四次检查。
@@ -1892,6 +1922,8 @@ PostgreSQL 18 和 Docker 全量回归 142 项通过，零测试跳过。Go 静�
 
 PHP Composer 清单对应 ForgeOS 提交 `a0b90a45b69f054b8537ccc11ef950b838cff1f2`。
 
+<a id="intake-entry-model"></a>
+
 ## 专题 01 · 原生 Agent 归纳固定版本的入口文档
 
 在 `analysis_5a06be3e` 使用正式控制面、独立 HEAD Worker、项目专用 Management Agent、已登录的原生 Codex 和 Chrome。
@@ -1908,6 +1940,8 @@ PHP Composer 清单对应 ForgeOS 提交 `a0b90a45b69f054b8537ccc11ef950b838cff1
 固定来源的 Agent 归纳对应 ForgeOS 提交 `3541ac70b38e92bf10b93b1051732f255a767ce3`。
 
 <a id="check-c-8"></a>
+
+<a id="intake-versioned-report"></a>
 
 ## 专题 01 · 版本化初始化报告
 
@@ -2369,6 +2403,8 @@ TypeScript、Web 生产构建通过。本场景验收至子任务就绪，来源
 
 PostgreSQL 回归另覆盖 PR 等待必需检查、已合并尚未完成交付、重复提交回执和已领取关闭租约但尚未完成的 Goal。启用 PostgreSQL 和 Docker 的全量 Go 回归 167 项通过，零跳过；Go vet 通过。
 
+<a id="knowledge-material-import"></a>
+
 ### 专题 08、ADR-018 · 固定资料修订的知识提取和独立审核
 
 正式控制面、PostgreSQL、Chrome、独立令牌的 Curator 和 Management 进程。两种角色分别通过原生只读 Codex 会话工作。验收材料记录队列服务重启前后观察到的相同偏移量 274。资料 UTF-8 摘要为 `18843f38d8ef6496be02a0b3db87e65277919365c8573b27f3d4abbecdfaa429`。
@@ -2383,6 +2419,8 @@ PostgreSQL 回归另覆盖 PR 等待必需检查、已合并尚未完成交付�
 启用 PostgreSQL 和 Docker 的 Go 全量回归 168 项通过，零跳过。Go vet、TypeScript 和 Web 生产构建通过。首次 Chrome 复验发现前端请求路径白名单缺少回执入口；补齐后已从工作台复跑完整场景。
 
 固定资料修订的提取和审核对应提交 `2df857ecb236b45d48f64d8d1a4f367a6e1facf6`。
+
+<a id="knowledge-owner-memory"></a>
 
 ### 专题 08、ADR-018 · Owner 明确要求记住一条项目经验
 
@@ -2423,6 +2461,8 @@ Owner 将审核建议提出为决策并单独确认或拒绝对应提交 `2359fe
 
 子项执行引用已确认项目决策对应提交 `ddbaae25eb110553bcc3d958bd268117ea57331d`。
 
+<a id="knowledge-confirmed-decision"></a>
+
 ### 专题 08、ADR-018 · 确认项目决策触发知识提取
 
 | 操作 | 预期 | 实际 |
@@ -2446,6 +2486,8 @@ Owner 将审核建议提出为决策并单独确认或拒绝对应提交 `2359fe
 
 尚未拆分的未来里程碑与当前子项派发对应提交 `f21b9b6bf53f7df26d366f7e7861c7567628ff57`。
 
+<a id="knowledge-pr-merged"></a>
+
 ### 专题 08、ADR-018 · 确认 PR 合并触发知识提取
 
 | 操作 | 预期 | 实际 |
@@ -2458,6 +2500,8 @@ Owner 将审核建议提出为决策并单独确认或拒绝对应提交 `2359fe
 
 确认 PR 合并触发提取与独立审核对应提交 `44a77fc8ad52d801cabcd7d686a181b0f59e4fec`。
 
+<a id="knowledge-goal-completed"></a>
+
 ### 专题 08、ADR-018 · Goal 交付完成触发知识提取
 
 | 操作 | 预期 | 实际 |
@@ -2469,6 +2513,8 @@ Owner 将审核建议提出为决策并单独确认或拒绝对应提交 `2359fe
 首次验收时，队列中第一个 PR 的原生提取触及五分钟超时，浏览器等待也到期。保留同一数据库，从父事件继续了已完成提取的审核，并在租约到期后用正式 Worker 处理剩余 PR，最终无待提取记录。启用 PostgreSQL 和 Docker 的全量 Go 回归 176 项（含子测试）通过，零跳过。Go vet、TypeScript 和 Web 生产构建通过。
 
 Goal 交付完成触发提取及依赖证据审核对应提交 `6237e703bfe04607bc86bf29ad7d78b43cb97044`。
+
+<a id="knowledge-document-change"></a>
 
 ### 专题 08、ADR-018 · Git 仓库文档变化触发提取
 
