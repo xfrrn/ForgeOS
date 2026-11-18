@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,6 +61,11 @@ func TestCompletedWriterExitReceipt(t *testing.T) {
 	}
 	defer w.journal.Close()
 	w.codexAppServer, w.codexVersion, job.RecordAppTurn = true, "test", true
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	w.api, w.client = server.URL, server.Client()
 	for _, tc := range []struct {
 		arg string
 		ok  bool
@@ -95,6 +102,11 @@ func TestCompletedWriterExitReceipt(t *testing.T) {
 		q.Active.Deadline = time.Now().Add(-time.Second)
 		if err := w.waitForWriterExit(ctx, &q); !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatal("unknown exit outlasted the execution budget", err)
+		}
+		q.Active.Deadline = time.Now().Add(100 * time.Millisecond)
+		recovery := checkpointRecovery{waiting: true, leaveUnsettled: true}
+		if err := w.recoverActiveWriter(ctx, &executionResources{recovery: &recovery}, &q, ""); !errors.Is(err, context.DeadlineExceeded) || recovery.leaveUnsettled || recovery.waiting {
+			t.Fatal("unconfirmed writer did not settle at its deadline", err, recovery)
 		}
 	}
 }

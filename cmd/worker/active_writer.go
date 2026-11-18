@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"errors"
+	"log"
 	"time"
 
 	"forgeos/internal/store"
@@ -19,6 +20,10 @@ type activeWriterTurn struct {
 
 var errPendingWriterStart = errors.New("writer startup awaiting native confirmation")
 var errRejectedWriterStart = errors.New("App Server rejected turn/start")
+
+type pendingWriterEvidence string
+
+func (e pendingWriterEvidence) Error() string { return string(e) }
 
 func (a activeWriterTurn) validReceipt() bool {
 	if a.Turn != "" {
@@ -50,7 +55,7 @@ func (w *worker) waitForWriterExit(ctx context.Context, q *parkedCheckpoint) err
 			if !q.Active.Deadline.After(time.Now()) {
 				return context.DeadlineExceeded
 			}
-			return errors.New("original completed writer has no successful process exit receipt")
+			return pendingWriterEvidence("original completed writer has no successful process exit receipt")
 		}
 		if *p.ExitCode != 0 {
 			return errTurnFailed
@@ -98,6 +103,31 @@ func (w *worker) waitWriterTree(ctx context.Context, p store.HarnessProcess) err
 }
 
 func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources, q *parkedCheckpoint, base string) error {
+	for first := true; ctx.Err() == nil; first = false {
+		err := w.inspectActiveWriter(ctx, b, q, base)
+		if ctx.Err() != nil {
+			break
+		}
+		var pending pendingWriterEvidence
+		if !errors.As(err, &pending) {
+			return err
+		}
+		if first {
+			log.Printf("execution %d waiting for writer evidence: %s", q.Job.ExecutionID, pending)
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(min(15*time.Second, time.Until(q.Active.Deadline))):
+		}
+	}
+	cause := context.Cause(ctx)
+	if errors.Is(cause, store.ErrOwnerStop) || errors.Is(cause, store.ErrSourceClosed) {
+		b.recovery.waiting, b.recovery.leaveUnsettled = false, false
+	}
+	return cause
+}
+
+func (w *worker) inspectActiveWriter(ctx context.Context, b *executionResources, q *parkedCheckpoint, base string) error {
 	if err := w.confirmWriterLease(ctx, q, b.recovery); err != nil {
 		return err
 	}
@@ -115,12 +145,12 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 	history, err := (codexCLI{bin: w.codex}).readInputHistory(read, q.Job.Workspace, q.Session)
 	cancel()
 	if err != nil {
-		return err
+		return pendingWriterEvidence("cannot read native writer history")
 	}
 	if q.Active.Turn == "" {
 		id := history.writerStart(q)
 		if id == "" {
-			return errors.New("native history does not identify the latest writer startup request")
+			return pendingWriterEvidence("native history does not identify the latest writer startup request")
 		}
 		process := processLog{db: w.journal, id: q.Active.Instance, recordAppTurn: true}
 		if err := process.appTurn(id); err != nil {
@@ -133,7 +163,7 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 	}
 	if q.ReturnedTip != "" {
 		if !history.latestWriter(q, "completed") {
-			return errors.New("native history does not confirm the completed writer as the latest turn")
+			return pendingWriterEvidence("native history does not confirm the completed writer as the latest turn")
 		}
 		if err := verifyWriterDraft(ctx, q); err != nil {
 			return err
@@ -147,7 +177,7 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 		return w.saveFinalization(ctx, q)
 	}
 	if !history.latestWriter(q, "interrupted") {
-		return errors.New("native history does not confirm the interrupted writer as the latest turn")
+		return pendingWriterEvidence("native history does not confirm the interrupted writer as the latest turn")
 	}
 	if err := w.confirmRecovery(ctx, q.Job, base, q.GitDir); err != nil {
 		return err
