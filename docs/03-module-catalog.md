@@ -46,6 +46,8 @@
 | Local CI Runner | 本地检查、测试、构建 |
 | Preview Manager | 预览环境生命周期和路由 |
 
+本地 CI 按检查限制 CPU、内存、进程数与运行时间。Workspace Manager 为固定候选创建临时 Git Worktree；检查成功、失败和超时后都回收这份快照。[Linux 运行回执与资源读数](acceptance.md#ci-resource-worktree)
+
 ## 3. 横向能力
 
 - Audit Service；

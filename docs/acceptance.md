@@ -64,6 +64,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="ci-resource-worktree"></a>
+
+### 专题 03、10 · 在 CI 容器内读取资源限额并核对临时工作树
+
+Ubuntu 用户 UID 1000 调用正式入口 `worker validate-candidate`，以同一份固定 Git 配置分别验证三个候选。每个检查在容器内读取实际 UID 和 cgroup v2，期望为 UID 65534、2 个 CPU、2 GiB 内存、256 个进程。实测三次分别读到 `65534`、`cpu.max=200000 100000`、`memory.max=2147483648`、`pids.max=256`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 检查读取限额后正常返回 | 成功，运行绑定候选，临时工作树释放 | `ci-run-3555881520` 为 PASSED，检查退出 0。 |
+| 下一候选的检查返回 23 | 记录代码失败，保留原退出码并释放工作树 | `ci-run-44219342` 为 CODE_FAILURE，检查退出 23，命令退出 1。 |
+| 最后一项声明 5 秒期限，尝试等待 30 秒 | 截止后记录超时，保留日志并释放工作树 | `ci-run-1861597537` 为 TIMEOUT，检查退出码为空，命令退出 1。 |
+
+三次运行期间均实际观察到临时 Worktree 的 `.git`。退出后专用临时目录中无验证快照，源仓库的 `git worktree list --porcelain` 与运行前一致。各次回执保留独立运行号、候选、镜像和日志摘要。回执为 `ci-resource-proof/latest.json`，CI 实现提交为 `ee695b39ca1d61ec7d3d8bfd0ebaefe1681cfaf6`。
+
 <a id="candidate-record-identity"></a>
 
 ### 专题 04、ADR-007 · 从验收记录追溯返工前后的候选
