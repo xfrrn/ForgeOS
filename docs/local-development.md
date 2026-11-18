@@ -354,7 +354,7 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 路径为示例，替换为实际私有 SQLite 的绝对路径；Linux 使用相同参数。此入口不需要 GitHub 或模型凭据，也不向控制面发送数据。导出目录应限服务账号访问。独立角色分别选择其日志文件，并与页面中的 Session 和节点进程实例对应。
 
-export 成功时退出码为 0，末行 verified 为 true；truncated 为 true 表示达到本进程容量，不能将其标作完整输出。list 的 available=false 表示旧进程没有归档；expired_at 表示已按策略清理，export 返回错误且保留可查的摘要。JSONL 内部摘要校验使用原始 UTF-8 字节，修改正文或重新格式化后不能沿用原摘要。
+export 在同一个 SQLite 快照中先检查全档，再输出 JSONL。序号、字节数或摘要校验失败时，标准输出为零字节。成功时退出码为 0，末行 verified 为 true。truncated 为 true 表示归档达到本进程容量。list 的 available=false 表示旧进程没有归档。expired_at 表示已按策略清理，export 返回错误且保留可查的摘要。JSONL 内部摘要使用原始 UTF-8 字节计算。
 
 可在 Daemon 环境设置 FORGEOS_PROCESS_LOG_MAX_MIB（默认 32）和 FORGEOS_PROCESS_LOG_DAYS（默认 30）。正文仅在执行退出且业务结果已确认、保留期届满后清理；pending 补报、暂停及在途角色作业会阻止清理。prune 返回本次新到期数量，重复执行为零。旧版本 Worker 日志须由新 Daemon 打开升级后才有归档表，不会补造旧输出。完整归档目前从节点 CLI 导出，工作台仍展示最近 8 KiB。
 

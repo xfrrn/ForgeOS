@@ -105,8 +105,9 @@ func TestProcessArchiveKeepsLongOutputAndStreamOrder(t *testing.T) {
 	if _, err = w.journal.Exec("UPDATE harness_log_entries SET entry=replace(CAST(entry AS TEXT),'model-begin','model-wrong') WHERE instance=? AND seq=1", p.id); err != nil {
 		t.Fatal(err)
 	}
-	if err = exportProcessArchive(w.journal, p.id, io.Discard); err == nil {
-		t.Fatal("corrupt archive exported")
+	var corrupt bytes.Buffer
+	if err = exportProcessArchive(w.journal, p.id, &corrupt); err == nil || corrupt.Len() != 0 {
+		t.Fatalf("corrupt archive wrote %d bytes, error %v", corrupt.Len(), err)
 	}
 }
 

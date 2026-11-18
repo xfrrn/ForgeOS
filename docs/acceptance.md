@@ -3752,3 +3752,16 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 程序 app-turn-live.py、app-turn-final-live.py，证据 app_turn_final_current、app_turn_id_oldworker、app_turn_id_oldcontrol 下的 proof.json。工作台向运行中原生回合发送 Owner 输入另行验收。
 
 此版使用空 PostgreSQL 18 数据库和真实 Docker 运行全量 Go 测试。worker-turn-final-regression.jsonl 中有 9 个测试包通过、3 个包没有测试；506 项具名测试和子测试全部通过。go vet、TypeScript 检查与工作台生产构建通过。全路线最终端到端验收仍待功能补齐后执行。
+
+<a id="archive-verify-before-export"></a>
+
+### 专题 07、16 C.3 · 进程归档校验失败时的导出
+
+2026-11-18，使用 beta #235 的正式 Worker 私有 SQLite 快照，执行 worker process-logs export。仅在独立备份上替换最后一条工具记录的正文，保留原摘要。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 导出损坏的进程 1 归档，分别读取退出码和标准输出 | 命令返回失败，任何正文均不进入管道或重定向文件 | 修复前已输出 97,744 字节，其中有替换的文本。修复后返回失败，输出 0 字节。 |
+| 导出未改动的真实日志，按字节与旧版输出比较 | 顺序、正文及验证末行完全一致 | 两版均成功，531 条记录，完整输出均为 97,855 字节，逐字节相同。 |
+
+专项测试还覆盖首条被更改、归档截断、跨块脱敏以及到期清理。操作脚本为 archive-before-export.py，运行记录为 comparison.json。工作台中央全文调阅仍待完成。

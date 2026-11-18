@@ -67,10 +67,6 @@ func exportProcessArchive(db *sql.DB, instance int64, output io.Writer) error {
 	if info.Expired != "" {
 		return fmt.Errorf("process archive expired at %s; metadata remains available", info.Expired)
 	}
-	enc := json.NewEncoder(output)
-	if err = enc.Encode(info); err != nil {
-		return err
-	}
 	rows, err := tx.Query("SELECT seq,entry FROM harness_log_entries WHERE instance=? ORDER BY seq", instance)
 	if err != nil {
 		return err
@@ -91,15 +87,34 @@ func exportProcessArchive(db *sql.DB, instance int64, output io.Writer) error {
 			return errors.New("process archive sequence is inconsistent")
 		}
 		digest = archiveDigest(digest, raw)
-		if _, err = output.Write(raw); err != nil {
-			return err
-		}
 	}
 	if err = rows.Err(); err != nil {
 		return err
 	}
 	if size != info.Bytes || count != info.Records || digest != info.Digest {
 		return errors.New("process archive digest is inconsistent")
+	}
+	// Stream the verified snapshot without buffering an entire archive in memory.
+	entries, err := tx.Query("SELECT entry FROM harness_log_entries WHERE instance=? ORDER BY seq", instance)
+	if err != nil {
+		return err
+	}
+	defer entries.Close()
+	enc := json.NewEncoder(output)
+	if err = enc.Encode(info); err != nil {
+		return err
+	}
+	for entries.Next() {
+		var raw []byte
+		if err = entries.Scan(&raw); err != nil {
+			return err
+		}
+		if _, err = output.Write(raw); err != nil {
+			return err
+		}
+	}
+	if err = entries.Err(); err != nil {
+		return err
 	}
 	if err = enc.Encode(map[string]any{"type": "verification", "verified": true, "chain_sha256": digest, "records": count, "bytes": size, "truncated": info.DroppedRecords > 0}); err != nil {
 		return err
