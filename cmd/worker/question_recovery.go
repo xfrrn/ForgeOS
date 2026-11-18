@@ -16,6 +16,7 @@ import (
 
 // The journal binds each recoverable boundary to its original lease and worktree.
 type parkedCheckpoint struct {
+	ReturnedTip                          string                 `json:",omitempty"`
 	InitialTip                           string                 `json:",omitempty"`
 	Finalization                         *candidateFinalization `json:",omitempty"`
 	CompletedTip                         string                 `json:",omitempty"`
@@ -117,8 +118,19 @@ func (w *worker) saveParkedCheckpoint(ctx context.Context, q parkedCheckpoint) e
 		return err
 	}
 	key := sha256.Sum256([]byte(q.Job.LeaseToken))
-	_, err = w.journal.ExecContext(ctx, `INSERT INTO parked_questions(lease_hash,checkpoint) VALUES(?,?)`, key[:], raw)
-	return err
+	tx, err := w.journal.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `INSERT INTO parked_questions(lease_hash,checkpoint) VALUES(?,?)`, key[:], raw); err != nil {
+		return err
+	}
+	// Once parked, recovery must honor the Owner gate before using a successful native result.
+	if _, err = tx.ExecContext(ctx, "DELETE FROM candidate_finalizations WHERE lease_hash=?", key[:]); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (w *worker) readParkedCheckpoint(ctx context.Context, id int64) (*parkedCheckpoint, error) {

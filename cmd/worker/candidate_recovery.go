@@ -116,7 +116,7 @@ func (w *worker) readWriterInputs(ctx context.Context, q *parkedCheckpoint, reco
 
 func verifyWriterDraft(ctx context.Context, q *parkedCheckpoint) error {
 	tip, err := checkedWorktreeTip(ctx, q.Job.Workspace, q.GitDir)
-	if err != nil || tip != cmp.Or(q.InitialTip, q.CompletedTip) {
+	if err != nil || tip != cmp.Or(q.InitialTip, q.CompletedTip, q.ReturnedTip) {
 		return errors.New("saved writer worktree HEAD changed")
 	}
 	trees, err := checkpointTrees(ctx, q.Job.Workspace)
@@ -220,10 +220,14 @@ func (w *worker) readFinalization(ctx context.Context, id int64) (*parkedCheckpo
 	if !bytes.Equal(digest[:], key) || q.Job.ExecutionID != id || q.Job.TaskID != task || q.Job.Workspace != workspace ||
 		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || q.Job.Spec.Mode == "plan" || q.Job.Spec.VerifyCommit != "" ||
 		q.Job.LeaseSeconds <= 0 || q.Remaining <= 0 || q.Remaining > 20*time.Minute || len(q.GitDir) == 0 ||
-		q.ResourceStep < 0 || q.Planner != nil || q.Writer != nil {
+		q.ResourceStep < 0 || q.Planner != nil || (q.Writer != nil && q.ReturnedTip == "") {
 		return nil, fmt.Errorf("invalid saved candidate for execution %d", id)
 	}
-	if q.InitialTip != "" {
+	if q.ReturnedTip != "" {
+		if q.CompletedTip != "" || q.InitialTip != "" || q.Finalization != nil || q.Writer == nil || !q.Writer.Finished || !q.Job.ManageResources || !q.Job.SupportsCheckpoints || q.ResourceStep < 1 || q.Sequence < 0 || q.Session == "" || q.Trees.Index == "" || q.Trees.Worktree == "" {
+			return nil, fmt.Errorf("invalid native writer result for execution %d", id)
+		}
+	} else if q.InitialTip != "" {
 		if q.Finalization != nil || q.CompletedTip != "" || q.Session != "" || q.Sequence != 0 || q.ResourceStep != 0 || !q.Job.SupportsCheckpoints || !q.Job.ManageResources || q.Trees.Index == "" || q.Trees.Worktree == "" {
 			return nil, fmt.Errorf("invalid unstarted writer turn for execution %d", id)
 		}

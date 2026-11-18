@@ -49,6 +49,23 @@ func (w *worker) pollModelPause(ctx context.Context, job store.Job, input store.
 func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequence int, session, base string, identity []byte,
 	stopClock func() time.Duration, resumeClock func(time.Duration), run func(context.Context, string, *store.WorktreeTrees) (string, error)) (string, error) {
 	var resumeTrees *store.WorktreeTrees
+	var returned string
+	if b.recovery != nil && b.recovery.saved != nil && b.recovery.saved.ReturnedTip != "" {
+		q := b.recovery.saved
+		if err := w.confirmWriterLease(ctx, q, b.recovery); err != nil {
+			return q.Session, err
+		}
+		if q.Version != w.nativeVersion(b.job) {
+			return q.Session, errors.New("native writer version changed after completion")
+		}
+		if err := verifyWriterDraft(ctx, q); err != nil {
+			return q.Session, err
+		}
+		b.step = q.ResourceStep
+		returned = q.Session
+		b.recovery.saved = nil
+		resumeClock(q.Remaining)
+	}
 	if b.capturePause != nil && b.recovery.saved != nil && (b.recovery.saved.Planner != nil || b.recovery.saved.Writer != nil) {
 		q := b.recovery.saved
 		if stopClock() <= 0 {
@@ -67,38 +84,49 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 	}
 	for {
 		interrupted := false
-		next, err := withResource(ctx, b, "model", func() (string, error) {
-			if !b.job.ModelPause {
-				return run(ctx, session, nil)
+		var next string
+		var err error
+		if returned != "" {
+			next, returned = returned, ""
+			// The reservation may already have been released before its acknowledgement was lost.
+			err = b.request(ctx, "model", true)
+			if err == nil {
+				b.recovery.leaveUnsettled = false
 			}
-			if resumeTrees != nil {
-				if err := w.verifyQuestionWorkspace(ctx, b.job, base, identity, sequence, resumeTrees); err != nil {
-					return session, err
+		} else {
+			next, err = withResource(ctx, b, "model", func() (string, error) {
+				if !b.job.ModelPause {
+					return run(ctx, session, nil)
 				}
-			}
-			turn, cancel := context.WithCancelCause(ctx)
-			stop := errors.New("Owner requested a model pause")
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				for turn.Err() == nil {
-					wait(turn)
-					p, e := w.pollModelPause(turn, b.job, store.PausePoll{Step: b.step})
-					if e != nil {
-						return
-					}
-					if p != nil && p.Resumed == nil {
-						cancel(stop)
-						return
+				if resumeTrees != nil {
+					if err := w.verifyQuestionWorkspace(ctx, b.job, base, identity, sequence, resumeTrees); err != nil {
+						return session, err
 					}
 				}
-			}()
-			got, turnErr := run(turn, session, resumeTrees)
-			cancel(nil)
-			<-done
-			interrupted = context.Cause(turn) == stop && errors.Is(turnErr, context.Canceled)
-			return got, turnErr
-		})
+				turn, cancel := context.WithCancelCause(ctx)
+				stop := errors.New("Owner requested a model pause")
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					for turn.Err() == nil {
+						wait(turn)
+						p, e := w.pollModelPause(turn, b.job, store.PausePoll{Step: b.step})
+						if e != nil {
+							return
+						}
+						if p != nil && p.Resumed == nil {
+							cancel(stop)
+							return
+						}
+					}
+				}()
+				got, turnErr := run(turn, session, resumeTrees)
+				cancel(nil)
+				<-done
+				interrupted = context.Cause(turn) == stop && errors.Is(turnErr, context.Canceled)
+				return got, turnErr
+			})
+		}
 		if !b.job.ModelPause || ctx.Err() != nil || (err != nil && !interrupted) {
 			return next, err
 		}

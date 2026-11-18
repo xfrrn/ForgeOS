@@ -176,7 +176,7 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 		return err
 	}
 	defer unlock()
-	if saved != nil && (saved.Finalization != nil || saved.CompletedTip != "" || saved.InitialTip != "") {
+	if saved != nil && (saved.Finalization != nil || saved.CompletedTip != "" || saved.InitialTip != "" || saved.ReturnedTip != "") {
 		// The previous owner can advance or settle the candidate between queue discovery and this lock.
 		saved, err = w.readFinalization(ctx, job.ExecutionID)
 		if err != nil || saved == nil {

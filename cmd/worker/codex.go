@@ -531,10 +531,10 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		if job.RuntimeQuestions && job.SupportsCheckpoints {
 			question = &nativeQuestion{}
 		}
+		if saved := recovery.saved; saved != nil && saved.Writer != nil && saved.Writer.Asked {
+			question = &nativeQuestion{Question: saved.Question, Evidence: saved.Evidence, ReferenceDecisionID: saved.ReferenceDecisionID, requested: true}
+		}
 		if job.RecoverWriterPause && w.journal != nil {
-			if saved := recovery.saved; saved != nil && saved.Writer != nil && saved.Writer.Asked {
-				question = &nativeQuestion{Question: saved.Question, Evidence: saved.Evidence, ReferenceDecisionID: saved.ReferenceDecisionID, requested: true}
-			}
 			budget.capturePause = func(q *parkedCheckpoint, interrupted bool) error {
 				q.Writer = &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: !interrupted}
 				if !interrupted && question != nil && question.requested {
@@ -543,6 +543,10 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				}
 				return nil
 			}
+		}
+		var returned *parkedCheckpoint
+		if saved := recovery.saved; saved != nil && saved.ReturnedTip != "" {
+			returned = saved
 		}
 		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed *store.WorktreeTrees) (string, error) {
 			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
@@ -573,7 +577,25 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				launchFrom = nil
 				recovery.waiting, recovery.leaveUnsettled = false, false
 			}
-			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
+			session, err := w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
+			if err != nil || session == "" || !job.ManageResources || !job.SupportsCheckpoints || w.journal == nil || job.LeaseSeconds <= 0 || (job.ModelPause && !job.RecoverWriterPause) {
+				return session, err
+			}
+			q := parkedCheckpoint{Job: job, GitDir: dir, Session: session, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step,
+				Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: true}}
+			if question != nil && question.requested {
+				q.Writer.Asked = true
+				q.Question, q.Evidence, q.ReferenceDecisionID = question.Question, question.Evidence, question.ReferenceDecisionID
+			}
+			if err = captureCompletedTree(turn, &q, start); err == nil {
+				q.ReturnedTip, q.CompletedTip = q.CompletedTip, ""
+				err = w.saveFinalization(turn, &q)
+			}
+			if err == nil {
+				returned = &q
+				recovery.waiting = true
+			}
+			return session, err
 		})
 		answeredTrees = nil
 		if session != "" {
@@ -584,8 +606,14 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			break
 		}
 		if w.journal != nil && job.LeaseSeconds > 0 && session != "" && (question == nil || !question.requested) {
-			completed = &parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step}
-			err = captureCompletedTree(ctx, completed, start)
+			if returned != nil {
+				completed = returned
+				completed.CompletedTip, completed.ReturnedTip, completed.Writer = completed.ReturnedTip, "", nil
+				completed.Remaining = time.Until(deadline)
+			} else {
+				completed = &parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step}
+				err = captureCompletedTree(ctx, completed, start)
+			}
 			if err == nil {
 				err = w.saveFinalization(ctx, completed)
 			}

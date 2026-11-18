@@ -158,6 +158,63 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 	}
 }
 
+func TestNativeWriterResultReleasesOriginalReservation(t *testing.T) {
+	for _, phase := range []string{"released", "cancelled", "edited", "changed-version"} {
+		t.Run(phase, func(t *testing.T) {
+			ctx := context.Background()
+			w, job, base := fixture(t)
+			job.ManageResources = true
+			job.Spec = &store.IssueSpec{BaseCommit: base}
+			dir, err := checkedWorktree(ctx, job.RepoPath, job.Workspace, base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := &parkedCheckpoint{Job: job, GitDir: dir, ReturnedTip: base, Session: "original", ResourceStep: 3, Remaining: time.Minute, Version: w.nativeVersion(job), Writer: &pausedWriter{Finished: true}}
+			q.Trees, err = checkpointTrees(ctx, job.Workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if phase == "edited" {
+				if err := os.WriteFile(filepath.Join(job.Workspace, "README.md"), []byte("changed"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if phase == "changed-version" {
+				q.Version += ".old"
+			}
+			var releases int
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/renew"):
+					if phase == "cancelled" {
+						rw.WriteHeader(423)
+						return
+					}
+				case strings.HasSuffix(r.URL.Path, "/resource"):
+					var claim store.ResourceRequest
+					if err := json.NewDecoder(r.Body).Decode(&claim); err != nil || claim.Step != 3 || claim.Kind != "model" || !claim.Release {
+						t.Error("unexpected reservation", err)
+					}
+					releases++
+				default:
+					t.Error("unexpected request", r.URL.Path)
+				}
+				rw.WriteHeader(204)
+			}))
+			defer server.Close()
+			w.api, w.client = server.URL, server.Client()
+			b := executionResources{worker: w, job: job, recovery: &checkpointRecovery{saved: q, waiting: true, leaveUnsettled: true}}
+			got, err := w.runModelTurn(ctx, &b, 0, q.Session, base, dir, nil, func(time.Duration) {}, func(context.Context, string, *store.WorktreeTrees) (string, error) {
+				t.Fatal("replayed completed native turn")
+				return "", nil
+			})
+			if got != q.Session || (err == nil) != (phase == "released") || (releases == 1) != (phase == "released") || b.recovery.leaveUnsettled != (phase == "edited" || phase == "changed-version") {
+				t.Fatal(got, err, releases, b.recovery.leaveUnsettled)
+			}
+		})
+	}
+}
+
 func TestCandidateFinalizationRecovery(t *testing.T) {
 	for _, phase := range []string{"before-staging", "after-staging", "cached-index", "changed-draft", "changed-index", "before-head", "after-head", "validated", "changed-worktree", "expired-lease", "cancelled", "save-failed", "validation-failed", "receipt-failed", "owner-stop", "source-close"} {
 		t.Run(phase, func(t *testing.T) {

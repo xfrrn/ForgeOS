@@ -9,16 +9,29 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。 | 首个原生进程启动后至首份完成记录落盘前的中断、下一原生回合启动后的中断、接回仍存活进程以及整机重启恢复。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。 | 首个原生进程启动后至首份完成记录落盘前的中断、下一原生回合启动后的中断、接回仍存活进程以及整机重启恢复。 |
 | C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="returned-writer-recovery"></a>
+
+### 专题 07、16 B.4 · 写入回合返回后、模型名额释放期间重启
+
+2026-11-18，用正式 Windows Worker、Codex App Server、Chrome 和隔离 PostgreSQL 18，分别验证成功返回、Owner 取消、暂停与业务答复。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 beta #256 丢弃控制面已接受的模型释放回执，终止 Worker，再重启控制面与 Worker | 仅重报原步骤的释放；沿用实际退出记录和工作区，不重复调用模型 | 原进程 36824，Session `01a1ee7f-d02c-7422-9d91-0d0c4c0290b7`，恢复前后始终只有这一个进程。两次释放均为步骤 1，CI 仅步骤 2。候选 `e4fccfbb05650ed77f94e534b46edd32d02af147` 保留原生回合写出的完整正文。[Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/256) |
+| 在同一断点停机期间用 Chrome 取消，再重启节点 | 取消生效，原草稿不进入 CI | 终态 CANCELLED，进程表仅有原进程；没有候选、CI 或残留的恢复记录。 |
+| 暂缓转发原进程退出通知及模型释放请求，在 Chrome 请求暂停后终止 Worker | 恢复时先停车，Owner 确认恢复才继续 | 页面进入 PAUSED，SQLite 中一条暂停记录、零条候选结算记录，CI 尚未启动。点击恢复后仍只有进程 26400，会话 `01a1ee7f-d04c-71b3-a07f-9f8af35c828e`；候选 `bfb9ecd571c40fad1035975e496338af358ec7af` 包含原稿。 |
+| 在 beta #257 首个回合提出业务问题后丢弃释放回执，重启并通过 Chrome 答复 | 提问及依据保留，答复前不写文件，仅答复后的回合执行写入 | 原问题要求 Owner 指定手册 H1，停机时文件尚不存在。页面显示原生问题，Owner 答复 Review 484e98ea；原会话 `01a1ee82-3d57-78f0-a388-85d7131fabc6` 的两次进程分别提问和实现。候选 `02e2362506146704e8d754adddb42d8101935551` 含指定标题，仅一次 CI。[Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/257) |
 
 <a id="first-model-grant-recovery"></a>
 
 ### 专题 07、16 B.4 · 首个写入回合启动前重启
 
-在 [beta #255](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/255) 上使用两个隔离 PostgreSQL 18 实例分别验证恢复和取消。两次均在控制面实际批准第一个模型名额后丢弃 204 响应并终止 Worker。操作前后从工作台、控制面 API、节点 SQLite 和 Git 交叉核对。
+实现提交 `0c977d76a699ff7fe23dd2844bbe8459b526abcd`。在 [beta #255](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/255) 上使用两个隔离 PostgreSQL 18 实例分别验证恢复和取消。两次均在控制面实际批准第一个模型名额后丢弃 204 响应并终止 Worker。操作前后从工作台、控制面 API、节点 SQLite 和 Git 交叉核对。
 
 | 操作 | 预期 | 实际 |
 | --- | --- | --- |
