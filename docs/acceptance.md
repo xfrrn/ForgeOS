@@ -60,6 +60,19 @@
 
 实测回执为 `retry-audit-live/latest.json`。数据库专项还覆盖已结束的过期租约，此类重试记录原执行的结束时间，退出码留空。提交 `6b56a2c59dc4364bdfc1cb094f5167b4ca0b3adb` 的代码在空 PostgreSQL 18 与 Docker 上运行全包回归，584 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。`go vet ./...` 和工作台生产构建均通过。回归回执为 `retry-audit-regression.jsonl`。
 
+<a id="native-retry-preserves-worktree"></a>
+
+### 专题 06、07、16 B.5 · 重试时保留已占用的工作树
+
+在空 PostgreSQL 18 中登记 beta 的独立克隆，从正式控制面导入 #245 的只读规划任务。基线为 `39a8b8b996ab319ff9a266f941c77933c85d6b83`。使用正式 Worker、已登录的原生 Codex 及 390 像素 Chrome 工作台。[Issue #245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在执行 1 的预定路径准备独立 Git Worktree 和一份未跟踪的运维笔记，启动节点 | 原目录保留，可从任务页定位失败原因 | 节点报告工作区已存在，执行 1 退出码为 1。笔记 SHA-256 为 `cabec7515234538b3e1892fd2a2b322a027ead649008d6415ef2844b1a0a016c`。 |
+| 核对工作区后在 Chrome 重试并等待实际规划，重放原决定，再停节点、重启控制面 | 使用同一基线下的另一工作树，旧笔记保留，新执行及草案可追溯 | 执行 2 在干净的 `execution-2` 完成规划，原生 Session 为 `01a1effd-eec8-7272-86c7-dc94080c3fe4`，退出码为 0。新目录中没有原笔记。原目录的 HEAD、Git 状态和笔记摘要逐一相同。事件 4 保留执行 1 的失败回执，重启后原事件和规划修订 1 均相同。 |
+
+一次较早的独立演练中，重放请求的响应在传输时中断。另一次演练中，Planner 返回无效依赖图，节点将该次执行记为失败。上表记录最后一次完整复验，回执为 `retry-native-245/latest.json`。工作台重试与回执实现提交为 `6b56a2c59dc4364bdfc1cb094f5167b4ca0b3adb`。
+
 <a id="ci-archive-worker-scope"></a>
 
 ### 阶段四、专题 09、10、13 · CI 归档补传时变更节点授权
