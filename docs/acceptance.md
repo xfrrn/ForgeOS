@@ -3432,3 +3432,11 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 | 重启控制面，再次从 Chrome 回读 | 处置结果和原工作区持久保留 | 页面显示失败，原退出记录、HEAD、暂存文件和人工结束时间一致，仍只有一次执行。 |
 
 首次页面实测发现浏览器请求白名单遗漏 abandon，点击未送出请求。补入执行编号受限的路径后，用同一旧执行完成以上验证。证据为 file_change_output_cli/abandon-proof.json 和 abandon-ui-live.py。TypeScript 编译、Vite 构建与 diff 检查通过。旧执行按人工结束失联记录，候选检查点落盘之前的自动恢复仍待补齐。
+
+上述工作台失联执行处置对应 ForgeOS 提交 `c4b68dfd13ffefd1cde3f03c3887ba186bededb7`。
+
+### 专题 07 · 候选恢复锁内复核
+
+节点发现候选后，原 Daemon 可能在替代 Daemon 获取锁之前完成 CI 或把最终回执入队。以提交 2ea9a0f 的 journal.go 加载相同测试，原实现实际申请了两次 CI。修复在持有同一执行的锁后重新读取节点 SQLite。验证覆盖两种时序：先前的拥有者已保存验证结果时仅补报，已结算时直接跳过。固定候选的 CI 名额只申请一次，结果只发送一次。操作、回执使用真实 Git、SQLite 和本机 HTTP 测试控制面，专项入口为 `go test ./cmd/worker -run TestCandidateFinalizationRecovery/receipt-failed -count=1 -v`。此前的原生端到端证据见 PR #225 和 #227。
+
+报告 candidate-lock-before.log 保留了旧版失败。修复后的 Windows 候选／锁专项和 Ubuntu 恢复专项均通过。随后在独立 PostgreSQL 18 和真实 Docker 下执行 `go test -count=1 -json ./...`，487 项测试及子测试通过，零失败、零跳过，报告 candidate-lock-stage-regression.jsonl。此为候选恢复阶段回归。

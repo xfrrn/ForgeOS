@@ -169,7 +169,14 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 		return err
 	}
 	defer unlock()
-	if saved == nil {
+	if saved != nil && saved.Finalization != nil {
+		// The previous owner can advance or settle the candidate between queue discovery and this lock.
+		saved, err = w.readFinalization(ctx, job.ExecutionID)
+		if err != nil || saved == nil {
+			return err
+		}
+		job = saved.Job
+	} else if saved == nil {
 		_, err = w.journal.ExecContext(ctx, `INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)`,
 			key[:], job.ExecutionID, job.TaskID, job.Workspace)
 		if err != nil {

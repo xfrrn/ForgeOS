@@ -148,6 +148,10 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			if phase == "receipt-failed" {
+				stale, err := w.readFinalization(ctx, job.ExecutionID)
+				if err != nil || stale == nil || stale.Finalization.Validated {
+					t.Fatal("expected an unvalidated candidate before the first owner finishes", err)
+				}
 				if _, err := w.journal.Exec("CREATE TRIGGER fail_receipt BEFORE UPDATE OF buffered_at ON attempts BEGIN SELECT RAISE(FAIL,'receipt fault'); END"); err != nil {
 					t.Fatal(err)
 				}
@@ -164,6 +168,7 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 				if _, err = w.journal.Exec("DROP TRIGGER fail_receipt"); err != nil {
 					t.Fatal(err)
 				}
+				saved = stale
 			}
 			if err := w.runAttempt(ctx, saved.Job, time.Now(), saved); err != nil {
 				t.Fatal(err)
@@ -193,6 +198,11 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 			}
 			if !stopped && git(t, job.Workspace, "rev-parse", "HEAD") != q.Finalization.Result.Commit {
 				t.Fatal("recovery created another SHA")
+			}
+			if phase == "receipt-failed" {
+				if err := w.runAttempt(ctx, saved.Job, time.Now(), saved); err != nil || reports != 1 || claims != 1 || releases != 2 {
+					t.Fatal("a late owner replayed a settled candidate", err, claims, releases, reports)
+				}
 			}
 		})
 	}
