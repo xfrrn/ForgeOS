@@ -37,6 +37,7 @@
 | 专题 10、13、14，内置 Go 测试日志可下载、恢复并按期清理 | [alpha #38 的失败和成功候选、PR #39、离线下载及到期](#builtin-go-archive) | `9431507cc85cb798d69702bb8d0251d0f3d10437` |
 | 阶段四、专题 09、10、13，撤销或换发节点凭据后的归档补传 | [两次执行的归档授权、轮换与重启](#ci-archive-worker-scope) | `68cc02ef6eec97730389abd5dd4f14eae0de71d0` |
 | 专题 06、13、16 B.5，从工作台重试失败的 Issue 并追溯原执行 | [两次浏览器提交、一次排队及后续失败后重读原回执](#workbench-failed-execution-retry) | `6b56a2c59dc4364bdfc1cb094f5167b4ca0b3adb` |
+| 专题 06、07、12，规划和实现回合读取首次派发来源 | [原生只读规划、GitHub 标签领取和旧数据升级](#native-issue-dispatch-origin) | `b93d5ae0e888c3facdc03f0a62a0dcd1c4cca068` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
@@ -60,6 +61,22 @@
 | 另用旧控制面导入 #245，切到当前控制面后读取原事件并领取任务 | 缺少首次派发来源时保留未知 | 原事件的来源、操作者均为空；领取回执省略 `issue_import_origin`，原 Issue 规格逐字段相同。 |
 
 运行回执位于 `dispatch-origin-live/owner.json`、`github.json` 和 `legacy.json`。数据库回归另覆盖 Owner 首次导入后再次被轮询时，领取仍使用首次事件。
+
+该提交通过空 PostgreSQL 18 和真实 Docker 的全包回归，9 个包共 585 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。`go vet ./...` 通过。原始回执为 `dispatch-origin-regression.jsonl`。
+
+<a id="web-issue-number"></a>
+
+### 专题 00、01、12 · 从项目工作台按编号派发 Issue
+
+从空 PostgreSQL 18 启动正式控制面，登记 beta 私库，保持轮询关闭。桌面和 390 像素 Chrome 通过 Owner 登录打开同一项目的空收件箱。工作台通过 TypeScript 检查和生产构建。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 输入空值、负数、小数、指数写法和超出安全整数范围的编号 | 无效编号留在表单 | 浏览器阻止五次提交，未发出 POST，任务数为零。 |
+| 对声明「测试」的 #245 先选「运维」，再沿用原类型，并从另一浏览器重复派发 | 冲突可见，合法请求打开同一工作项 | 首次 HTTP 409，页面提示类型不一致。后两次均打开任务 1，只读规划，首次派发事件 1 的来源为 Owner。 |
+| 对 #247 先沿用待澄清类型，再选「测试」，最后重启控制面 | 提示 Owner 明确类型，成功后保留该次派发 | 首次 HTTP 409，页面提示选择工作类型，任务数仍为 1。第二次打开规划任务 3，事件 2 来源为 Owner。重启后共两个工作项，各只有一次导入事件。 |
+
+运行回执为 `owner-inbox-number.json`。[beta #245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245) · [beta #247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247)
 
 <a id="workbench-failed-execution-retry"></a>
 

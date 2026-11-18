@@ -73,6 +73,8 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
       const info = await response.json().catch(() => null)
       if (response.status === 401) onUnauthorized()
       throw new ApiError(response.status, response.status === 401 ? 'Owner 令牌无效，请重新连接。' :
+        response.status === 409 && info?.error === 'select an Issue work type before dispatch' ? '请先为这条 Issue 选择工作类型。' :
+        response.status === 409 && info?.error === 'work type differs from the current GitHub Issue' ? '所选工作类型与 GitHub Issue 声明的类型不一致。' :
         response.status === 409 ? '任务状态或候选版本已变化，请刷新记录。' :
         response.status === 404 ? '找不到这条记录。' : (info?.error || '请求失败，请稍后重试。'))
     }

@@ -13,6 +13,7 @@ export function ProjectInbox({ project, request }: { project: number; request: A
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [converting, setConverting] = useState(0)
+  const [issueNumber, setIssueNumber] = useState('')
   const [choices, setChoices] = useState<Record<number, string>>({})
   const conversion = useRef<AbortController | null>(null)
   useEffect(() => () => conversion.current?.abort(), [])
@@ -30,19 +31,19 @@ export function ProjectInbox({ project, request }: { project: number; request: A
     return () => controller.abort()
   }, [before, project, request, revision])
 
-  async function convert(row: Discussion, workType: string) {
+  async function convert(number: number, workType?: string, sourceDigest?: string) {
     if (conversion.current) return
     const controller = new AbortController()
     conversion.current = controller
-    setConverting(row.number); setError('')
+    setConverting(number); setError('')
     try {
-      const input = row.source_digest ? { validation: 'auto', work_type: workType, source_digest: row.source_digest } : { validation: 'auto' }
-      const task = await request<{ id: number }>(`/projects/${project}/issues/${row.number}`, {
+      const input = { validation: 'auto', work_type: workType, source_digest: sourceDigest }
+      const task = await request<{ id: number }>(`/projects/${project}/issues/${number}`, {
         method: 'POST', body: JSON.stringify(input), signal: controller.signal,
       })
       if (!controller.signal.aborted) location.hash = '/tasks/' + task.id
     } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof ApiError && e.status === 409 ? '来源 Issue 或任务类型已变化。请刷新讨论并核对。' : e instanceof Error ? e.message : '无法转换讨论。')
+      if (!controller.signal.aborted) setError(e instanceof ApiError && e.status === 409 && sourceDigest ? '来源 Issue 或任务类型已变化。请刷新讨论并核对。' : e instanceof Error ? e.message : '无法转换讨论。')
     } finally {
       conversion.current = null
       if (!controller.signal.aborted) setConverting(0)
@@ -53,6 +54,24 @@ export function ProjectInbox({ project, request }: { project: number; request: A
     <a href="#/projects">返回项目接入</a>
     <h1>项目 #{project} · 讨论收件箱</h1>
     <p>开发任务进入实现队列。审查、测试、调查和运维先进入只读规划，供 Owner 核对范围。</p>
+    <form onSubmit={e => {
+      e.preventDefault()
+      const workType = new FormData(e.currentTarget).get('work_type')
+      void convert(Number(issueNumber), typeof workType === 'string' && workType ? workType : undefined)
+    }}>
+      <fieldset disabled={!!converting}><legend>按编号派发 Issue</legend>
+        <label>本项目 Issue 编号<input type="text" inputMode="numeric" pattern="[1-9][0-9]*" required value={issueNumber} onChange={e => {
+          setIssueNumber(e.target.value)
+          e.target.setCustomValidity(Number.isSafeInteger(Number(e.target.value)) ? '' : '请输入有效的 Issue 编号。')
+        }}/></label>
+        <label htmlFor="dispatch-work-type">工作类型</label>
+        <select id="dispatch-work-type" key={issueNumber} name="work_type" defaultValue="">
+          <option value="">沿用 Issue 类型</option>
+          {Object.entries(workTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+        <button className="button" type="submit">派发 Issue</button>
+      </fieldset>
+    </form>
     <div><button className="button" disabled={loading || !!converting} onClick={() => { setChoices({}); setBefore(0); setRevision(v => v + 1) }}>刷新讨论</button></div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {loading && <p role="status">正在读取讨论…</p>}
@@ -69,7 +88,7 @@ export function ProjectInbox({ project, request }: { project: number; request: A
           <option value="">请选择并澄清类型</option>
           {Object.entries(workTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </select></label>}
-        <button className="button" disabled={loading || !!converting || !choice} onClick={() => void convert(row, choice)}>
+        <button className="button" disabled={loading || !!converting || !choice} onClick={() => void convert(row.number, row.source_digest ? choice : undefined, row.source_digest || undefined)}>
           {converting === row.number ? '正在转换…' : choice === 'development' ? '转为实现任务' : '转为规划任务'}</button>
       </div>
     </article>})}
