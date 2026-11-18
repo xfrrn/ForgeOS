@@ -3626,6 +3626,14 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 
 最早的中断点在完成回合记录已写入 SQLite 之后。原生进程退出到首份记录写入，以及上一轮记录撤销到下一轮保存之间的中断仍待验收。操作脚本为 `completed-turn-live.py`，节点证据为 `completed_turn_queue_codex/proof.json`。
 
+#### Owner 在检查点确认期间取消
+
+在[私库 beta #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235) 的独立执行中，让 Codex 完成草稿，测试代理暂缓当前检查点确认。从 Chrome 点击“取消任务”后恢复请求。预期 Worker 确认取消并提交停止回执，保持原草稿，CI 和交付均不启动。
+
+实际执行 1 的原生进程 40880 退出 0，Session 为 `01a1ed65-d974-7320-8658-2d8af04aab05`。控制面接受取消后，检查点返回 409，随后的租约查询返回 423。Worker 回报停止原因，节点清除恢复记录；任务为 `CANCELLED`，没有候选、CI 领取或 PR。重启控制面后状态一致，专用取消用例的来源 Issue 仍打开。
+
+修复前，Owner 取消与来源关闭两个竞态测试都把执行留在待恢复状态。修复后，Windows 与非 root Ubuntu 的 12 个专项场景全部通过。PostgreSQL 18 和真实 Docker 的全量 Go 回归共 526 项测试及子测试通过，零失败、零跳过。来源关闭的本次竞态由专项测试覆盖。节点证据为 `completed_turn_cancel_codex/proof.json`。
+
 <a id="role-recovery-retention"></a>
 
 ### 专题 07、13、14、16 B.9 · 独立角色的恢复资料到期清理

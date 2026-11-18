@@ -16,7 +16,7 @@ import (
 )
 
 func TestCompletedWriterCheckpoint(t *testing.T) {
-	for _, phase := range []string{"empty", "comment", "instruction", "changed-draft", "changed-index", "changed-tip", "changed-version", "cancelled", "closed", "unconfirmed-next"} {
+	for _, phase := range []string{"empty", "comment", "instruction", "changed-draft", "changed-index", "changed-tip", "changed-version", "cancelled", "closed", "cancel-during-confirm", "close-during-next", "unconfirmed-next"} {
 		t.Run(phase, func(t *testing.T) {
 			ctx := context.Background()
 			w, job, base := fixture(t)
@@ -63,13 +63,13 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 			case "changed-version":
 				w.codexVersion += "-changed"
 			}
-			var confirmed bool
+			var confirmed, checkpointRejected bool
 			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 				if strings.HasSuffix(r.URL.Path, "/renew") {
 					status := http.StatusNoContent
-					if phase == "cancelled" {
+					if phase == "cancelled" || phase == "cancel-during-confirm" && checkpointRejected {
 						status = http.StatusLocked
-					} else if phase == "closed" {
+					} else if phase == "closed" || phase == "close-during-next" && checkpointRejected {
 						status = http.StatusGone
 					}
 					rw.WriteHeader(status)
@@ -82,6 +82,11 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 					return
 				}
 				if *in.Sequence == 2 && in.Session == q.Session {
+					if phase == "cancel-during-confirm" {
+						checkpointRejected = true
+						rw.WriteHeader(409)
+						return
+					}
 					confirmed = true
 					rw.WriteHeader(204)
 					return
@@ -89,7 +94,8 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 				if !confirmed || *in.Sequence != 3 || in.Session != "" {
 					t.Error("wrong checkpoint order")
 				}
-				if phase == "unconfirmed-next" {
+				if phase == "unconfirmed-next" || phase == "close-during-next" {
+					checkpointRejected = true
 					rw.WriteHeader(409)
 					return
 				}
@@ -107,7 +113,7 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 			recovery := checkpointRecovery{saved: saved, leaveUnsettled: true}
 			page, err := w.advanceCompletedTurn(ctx, saved, &recovery)
 			advanced := phase == "instruction" || phase == "comment"
-			stop := phase == "cancelled" || phase == "closed"
+			stop := phase == "cancelled" || phase == "closed" || phase == "cancel-during-confirm" || phase == "close-during-next"
 			if (err == nil) != (advanced || phase == "empty") || recovery.leaveUnsettled != (err != nil && !stop) ||
 				advanced != (len(page.OwnerInstructions)+len(page.Comments) > 0 && err == nil) {
 				t.Fatal(err, recovery, page)

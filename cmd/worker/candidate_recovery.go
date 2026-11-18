@@ -64,18 +64,35 @@ func (w *worker) advanceCompletedTurn(ctx context.Context, q *parkedCheckpoint, 
 			recovery.waiting, recovery.leaveUnsettled = false, false
 		}
 	}()
-	status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/renew", q.Job.ExecutionID), map[string]string{"lease_token": q.Job.LeaseToken}, nil)
-	if err != nil || status != http.StatusNoContent {
-		if status == http.StatusLocked || status == http.StatusGone {
+	confirmLease := func() error {
+		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/renew", q.Job.ExecutionID), map[string]string{"lease_token": q.Job.LeaseToken}, nil)
+		switch status {
+		case http.StatusLocked:
 			recovery.waiting, recovery.leaveUnsettled = false, false
+			return store.ErrOwnerStop
+		case http.StatusGone:
+			recovery.waiting, recovery.leaveUnsettled = false, false
+			return store.ErrSourceClosed
 		}
-		return page, errors.New("cannot confirm lease for completed writer turn")
+		if err != nil || status != http.StatusNoContent {
+			return errors.New("cannot confirm lease for completed writer turn")
+		}
+		return nil
 	}
-	if _, err := w.checkpoint(ctx, q.Job, q.Sequence, q.Session); err != nil {
+	if err := confirmLease(); err != nil {
 		return page, err
 	}
-	page, err = w.checkpoint(ctx, q.Job, q.Sequence+1, "")
+	_, err := w.checkpoint(ctx, q.Job, q.Sequence, q.Session)
+	if err == nil {
+		page, err = w.checkpoint(ctx, q.Job, q.Sequence+1, "")
+	}
 	if err != nil {
+		// A checkpoint conflict can also mean the Owner stopped the task after renewal.
+		if ctx.Err() == nil {
+			if leaseErr := confirmLease(); leaseErr != nil {
+				return page, leaseErr
+			}
+		}
 		return page, err
 	}
 	tip, err := checkedWorktreeTip(ctx, q.Job.Workspace, q.GitDir)
