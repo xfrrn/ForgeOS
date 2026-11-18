@@ -4,15 +4,34 @@
 
 ## 当前验收进度
 
-截至运维角色实测提交 `80b8b1a50816647b71e6c06b75c4e657d1b2264f` 及下方的正式回合输入验收，专题 16 的 28 项中，18 项已验收，6 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 `59964ae73cf815e6cfb209e77aeb3fb645fa5297` 的知识工作台复验，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input) | 首份回合记录写入前中断、下一回合开始时中断、接回仍存活进程以及整机重启恢复。 |
-| C.3、C.7 · 进程日志与知识上下文 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。多个独立角色在实际会话使用冻结依据。 | Reviewer 中央日志的原生复验、其余结构化工具输出及尚未核对的角色上下文。 |
+| C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="knowledge-role-matrix"></a>
+
+### 专题 08、16 C.7 · 知识工作台和六类角色的实测对照
+
+2026-11-18，在提交 `59964ae73cf815e6cfb209e77aeb3fb645fa5297` 上启动正式控制面和隔离 PostgreSQL 18，分别运行仓库内的 probe_project_materials.py、probe_project_decisions.py。Chrome 两会话复验均通过。资料 probe-0ef1e61e2b8f4fa997175f697c7e192b 从修订 1 走到 3；决策 probe-cf0bdbbf77294d08a4b3162d502bb4e4 从提案 #1 复验竞争替代、拒绝及失效。两项探针的命令输出保存在 knowledge-owner-regression/latest.json。本轮[跨项目发布与检索](#shared-experience-search)另验证审核、发布、接收方隔离及撤销。
+
+对照专题 08 第 7 节列出的角色，以下会话均已回读。五份 Codex 原生记录包含实际沙箱和审批模式；独立 Reviewer 从原生 Claude 会话核对审查结论。两份开发交付另用 GitHub CLI 查询已合并 PR 的 headRefOid 与 mergeCommit。
+
+| 角色 | 来源及实际结果 | ForgeOS 实现提交 |
+| --- | --- | --- |
+| Management | beta #173 的会话 01a1eae5-e09a-7823-a9d8-bb0d2604d5a7 使用只读沙箱，核对计划引用的 capacity 子项和固定全局规则 Generic queue guide，退回与项目决定冲突的草案。 | `20b8067c71a9a24ae374bee66bc7fed13a152bdb` |
+| Planner | beta #81 的只读会话 01a1e76b-4aec-7243-b97f-7675a1cf6c4a 将冻结规则中特有的名称 Milestone 8bb0a8d811 写入计划。 | `3744ecc3498e25d8214558f13fedf0a7fc65e7d0` |
+| Development | Codex 写入会话 01a1e779-0b9f-76b2-ba5f-394c482e60b0 处理 Owner 指定文档。另回读两次既有交付，[Claude PR #82](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/82) 与 [Codex PR #84](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/84) 均为 MERGED，候选及合并 SHA 与原验收相同。 | `3744ecc3498e25d8214558f13fedf0a7fc65e7d0` |
+| Review | 独立 Claude 会话 064aaa2d-af24-4a8f-9eac-422cf128f2d8 的审查原文包含候选路径 docs/rules-codex02-owner.md 及 Review Owner 4c156e23，对照实现时的规则定位到第 1 行。 | `e566c170ecdb08caae37799dec46fa450f079f59` |
+| Test | 只读会话 01a1e798-616e-7b12-8a39-b51835d43944 的输入含候选 e699b87538bb2765e843f92842c4b07b6aae627e、冻结全局规则及 requirement/1；原生结果为该条标准生成 documentation 用例，控制面归档为 TC-001。 | `da40dd469296d019380fcf59a769d01025ff666a` |
+| Operations | [beta #249 的只读会话](#operations-planner-context)引用恢复手册和本次 Runbook gate 4319de9b，计划保留现场待核实事项；原工作区干净。 | `80b8b1a50816647b71e6c06b75c4e657d1b2264f` |
+
+C.7 的产品管理入口及上述角色已验收。专题 08 其余检索来源和四阶段最终回归按各自记录继续跟踪。独立 Reviewer 的中央日志离线下载仍列在 C.3。
 
 <a id="live-workbench-turn-input"></a>
 
@@ -28,7 +47,7 @@
 | 核对正式执行产出的 Git 候选，退出并重启控制面，在 Chrome 回读 | Owner 输入在同一回合生效；终态可审计，旧请求可重读 | 原生进程退出 0，候选 fb00273f285e11b4c3371dab78383ee1851d4f4e 的 docs/active-turn-receipt.md 仅出现一次 H2 “Harbor 91847850”。终态重报原请求返回 204，新的输入返回 409。重启后 Chrome 显示原文及“原生回合已接受”。 |
 | 分别用新控制面配旧 Worker、旧控制面配新 Worker 实际派发并取消 | 仍显示原生 Turn，只有支持投递的组合显示输入框 | 两组都能从工作台取消，输入框均未出现；直接提交分别为 409、404。 |
 
-操作脚本 turn-input-final-live.py、turn-input-mixed-live.py，回执 turn-input/final.json、oldworker.json、oldcontrol.json。专题 16 的原生工具审批仍待验收。
+实现提交 `59964ae73cf815e6cfb209e77aeb3fb645fa5297`。操作脚本 turn-input-final-live.py、turn-input-mixed-live.py，回执 turn-input/final.json、oldworker.json、oldcontrol.json。专题 16 的原生工具审批仍待验收。
 
 <a id="operations-planner-context"></a>
 
@@ -282,7 +301,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版。跨项目验收问题的批量答复、Owner 按原生审核意见修改并批准指定修订见下文。换基后的三个角色与开发会话各自独立，见 beta #88。原生业务问题、Management 建议和 D1 项目决策查阅见 beta #94–111。已对照[五类 ACP 业务路由](#protocol-route-matrix)，并从审批中心处理[有来源的审核等级](#approval-source-levels)与[原问题的 D2/D3 答复](#approval-questions)。 | `70781ba`、`f8503c5`、`abb5257`、`d9fc283`、`a6f05da`、`85d9c5c`、`2672efc`、`0fad34a`、`5c5657b`、`913caea`、`d329bba` | 原生运行中审批和其余业务操作的 D0–D3 策略 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理。来源关闭取消、工作台取消及暂停后恢复同一候选的 CI 已实测（beta #52、#54、#55）。Owner 从工作台修订、批准并归档计划，beta #67 完成子项及父 Issue 交付 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3`、`a5d2193`、`84758c5`、`a221a0d`、`d9fc283`、`a6f05da`、`616dcb6` | Codex 实现回合暂停和同会话恢复见 beta #137。只读 Planner 主动暂停见 beta #19。只读 Planner 已完成跨 Thread 交接，见页末。Codex 和 Claude 的首轮暂停草稿交接分别见 beta #145、#149。整机重启及其余写入回合交接待验；下一回合指令已验收，原生取消见 beta #131、#132 |
 | 07 Worker 与 Harness | Windows 原生 Codex 和 Claude Code 实现任务、只读规划、失联租约及评论检查点；Ubuntu 非 root systemd。独立探针已验证 Claude Code 会话恢复、Codex App Server 会话恢复和中断。已验收节点登记与普通执行容量、模型终态回执丢失后的恢复、运行中与结束后的进程记录及工具调用（beta #61、#63）。beta #127、#129 的原生 Claude、Codex 实现进程被终止后在原会话继续，beta #19 的只读 Planner 也在同一 Thread 恢复并保存草案；Linux 服务已探测两种原生 CLI。beta #155、#157 已验证等待业务答复时原会话丢失后的交接，beta #159、#161 已验证未主动暂停的写入进程崩溃后的会话交接。已验证[原生运行中输入](#native-steer-probe)、[中断回退](#native-interrupt-fallback)、[工作台的原生回合编号](#worker-app-turn)、[Claude 工作台中断](#claude-worker-interrupt)及[完成写入回合后恢复排队指令](#completed-writer-input)。 | `1a17822`、`cc2011f`、`b4e7c54`、`4d31e7f`、`bd1c734`、`1d9617e`、`fe35218`、`b11089b`、`611850e`、`9f6d396`、`e8a84ea`、`d78ae18`、`9f83fff`、`db6155b`、`3c9226b`、`c18af6d`、`332568f`、`9da6a8e`、`c1b4847`、`a77cf1c`、`cfe0bbc`、`bb78b3c`、`1f31794`、`2023af5`、`2d991f2`、`f8f9e8d` | 正式 Worker 原生工具审批、Claude 暂停恢复后的交付、草稿首次保存前及存活进程接回、整机重启与 Linux 服务身份 |
-| 08 项目知识 | 固定版本工程事实、历史检索、私有资料与跨项目脱敏审批已验收。节点可查询固定需求、计划与依赖；原生实现回合的使用见 beta #69。确认合并及已完成 Goal 的历史检索见 beta #72。资料导入和 Owner 记忆请求已从原生提取到独立审核；提案修改、确认、拒绝及固定来源见 R17、R18 验收。子项引用有效决策见 beta #74，确认合并和 Goal 完成触发原生提取及独立审核见 beta #76、#78；Git 文档变化与全局规则发布见下文双项目实测。规划与实现的规则优先级见 beta #81、#83，独立审查使用的候选依据见下文。测试计划及覆盖审核使用相同的候选依据 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`、`e80e961`、`4713fdc`、`f7a9bbe`、`a6c797e`、`4bfc017`、`4be0ceb`、`2df857e`、`382aa91`、`2359fe3`、`ddbaae2`、`4d1d737`、`44a77fc`、`6237e70`、`8b2dbf1`、`07aeae4`、`a5309b4`、`766d452`、`3744ecc`、`e566c17`、`feba4f4`、`da40dd4`、`e6fb688` | [项目决策](#decision-search)、项目资料及 D1 经验的混合检索、审核回执、固定 Git 版本的工程文档查询已验收，见页末。其他知识来源的语义检索及其他角色上下文待验收 |
+| 08 项目知识 | 固定版本工程事实、历史检索、私有资料与跨项目脱敏审批已验收。节点可查询固定需求、计划与依赖；原生实现回合的使用见 beta #69。确认合并及已完成 Goal 的历史检索见 beta #72。资料导入和 Owner 记忆请求已从原生提取到独立审核；提案修改、确认、拒绝及固定来源见 R17、R18 验收。子项引用有效决策见 beta #74，确认合并和 Goal 完成触发原生提取及独立审核见 beta #76、#78；Git 文档变化与全局规则发布见下文双项目实测。规划与实现的规则优先级见 beta #81、#83，独立审查使用的候选依据见下文。测试计划及覆盖审核使用相同的候选依据 | `cc2011f`、`a31c02c`、`5225e60`、`7ae7254`、`e80e961`、`4713fdc`、`f7a9bbe`、`a6c797e`、`4bfc017`、`4be0ceb`、`2df857e`、`382aa91`、`2359fe3`、`ddbaae2`、`4d1d737`、`44a77fc`、`6237e70`、`8b2dbf1`、`07aeae4`、`a5309b4`、`766d452`、`3744ecc`、`e566c17`、`feba4f4`、`da40dd4`、`e6fb688` | [项目决策](#decision-search)、项目资料及 D1 经验的混合检索、审核回执、固定 Git 版本的工程文档查询已验收，见页末。六类角色已从[原生会话](#knowledge-role-matrix)回核。项目历史和 Git 工程文档已有关键词入口，语义检索仍待验收 |
 | 09 权限与密钥 | Owner/Worker 分权、项目和环境成对授权、OpenBao 真实部署与恢复、状态接口、执行租约与用途绑定、一次性解包、签发与失败审计。具名 Worker 在活动租约中轮换令牌与 mTLS 客户端证书 | `1a17822`、`319aa65`、`70781ba`、`c513401`、`ab013b6`、`72cd89d`、`8c83ac8`、`266f11f`、`40736ea` | 生产专用操作策略及其他节点身份场景 |
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限。任务页跨节点下载 CI 文件（beta #49），中央及 Windows、Linux 节点按策略清理，真实候选 CI 的取消和恢复见专题 06。beta #88 和归档的 #55 已核对实现会话及重验来源 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`、`0420f45`、`6f9b0c1`、`b465048`、`9f0c704`、`84758c5`、`a221a0d`、`85d9c5c` | 其他验证器与独立审核角色场景 |
 | 11 预览与人工验收 | 工作项归档计划、覆盖审核及用例实测；Caddy、静态预览、DOM/Canvas 和同源嵌套 iframe 选择、用例关联、六类 Management 分类、阻塞澄清、按反馈退回和批准、从反馈修订需求及派发独立工作项（beta #19–21）、工作台 PNG 标注与遮挡归档。扩展截图、标签页录屏及归档回放，动态应用预览，隔离网络中的独立 Staging 网关均已实测。测试计划的规则和候选 SHA 在 beta #88、#91 复验 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`、`7565fa6`、`e71b7c8`、`978d184`、`71e6c9a`、`7fe001f`、`ec7a462`、`17bb819`、`c561e40`、`99de4f6`、`bf27241`、`7cbd8a3`、`5a5d685`、`d34260b`、`2b805b4`、`5279f11`、`c382473`、`732a4a8`、`6280acd`、`a6ade1d`、`9a08b44`、`f876721`、`ba4a31d`、`da40dd4`、`36ebbfd` | 真实提供方回调投递、外部 tailnet 设备访问 |
