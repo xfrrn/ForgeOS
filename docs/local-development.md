@@ -357,3 +357,10 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 export 成功时退出码为 0，末行 verified 为 true；truncated 为 true 表示达到本进程容量，不能将其标作完整输出。list 的 available=false 表示旧进程没有归档；expired_at 表示已按策略清理，export 返回错误且保留可查的摘要。JSONL 内部摘要校验使用原始 UTF-8 字节，修改正文或重新格式化后不能沿用原摘要。
 
 可在 Daemon 环境设置 FORGEOS_PROCESS_LOG_MAX_MIB（默认 32）和 FORGEOS_PROCESS_LOG_DAYS（默认 30）。正文仅在执行退出且业务结果已确认、保留期届满后清理；pending 补报、暂停及在途角色作业会阻止清理。prune 返回本次新到期数量，重复执行为零。旧版本 Worker 日志须由新 Daemon 打开升级后才有归档表，不会补造旧输出。完整归档目前从节点 CLI 导出，工作台仍展示最近 8 KiB。
+
+
+### 模型完成后的候选恢复
+
+普通 Worker 写入任务现在会在更新候选 HEAD 前保存节点检查点。保持 FORGEOS_WORKER_STATE_DIR、FORGEOS_WORKER_ID、FORGEOS_API_URL 和仓库／工作区路径不变，重启 Worker 即可在有效租约内恢复候选结算。控制面重启可以同时进行，但更换 API origin 会选择另一份节点日志。不要通过修改 SQLite 租约、候选或结果来强制恢复。
+
+恢复会校验原仓库、HEAD、索引及文件树；已有验证快照时不会再调用模型或重跑检查。原租约失效、文件被外部改动或磁盘错误时日志说明阻断原因，原执行与工作区保留。Owner 核对后可沿用既有结束失联执行／重试入口，新重试仍使用新 Execution 和 Worktree。请保留私有节点目录的访问权限；存在候选恢复记录时使用支持此能力的 Worker。

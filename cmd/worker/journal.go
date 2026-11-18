@@ -117,6 +117,9 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
  lease_hash BLOB NOT NULL, turn INTEGER NOT NULL, session_id TEXT, result BLOB,
  completed_at TEXT, PRIMARY KEY(lease_hash,turn)
  );
+ CREATE TABLE IF NOT EXISTS candidate_finalizations (
+ lease_hash BLOB PRIMARY KEY REFERENCES attempts(lease_hash), checkpoint BLOB NOT NULL
+ );
  CREATE TABLE IF NOT EXISTS parked_questions (
 		lease_hash BLOB PRIMARY KEY REFERENCES attempts(lease_hash), checkpoint BLOB NOT NULL
 	);
@@ -161,7 +164,11 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 
 func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.Time, saved *parkedCheckpoint) error {
 	key := sha256.Sum256([]byte(job.LeaseToken))
-	var err error
+	unlock, err := w.lockAttempt(job.ExecutionID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if saved == nil {
 		_, err = w.journal.ExecContext(ctx, `INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)`,
 			key[:], job.ExecutionID, job.TaskID, job.Workspace)
@@ -209,6 +216,9 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 		return err
 	}
 	if _, err = tx.ExecContext(writeCtx, `DELETE FROM parked_questions WHERE lease_hash=?`, key[:]); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(writeCtx, "DELETE FROM candidate_finalizations WHERE lease_hash=?", key[:]); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {

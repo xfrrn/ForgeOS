@@ -330,6 +330,10 @@ func checkedWorktreeTip(ctx context.Context, workspace string, originalGitDir []
 }
 
 func commitChanges(ctx context.Context, workspace, base, start string, issueNumber int64, originalGitDir []byte) (string, error) {
+	return commitChangesCheckpoint(ctx, workspace, base, start, issueNumber, originalGitDir, nil)
+}
+
+func commitChangesCheckpoint(ctx context.Context, workspace, base, start string, issueNumber int64, originalGitDir []byte, save func(string, string) error) (string, error) {
 	current, err := checkedWorktreeTip(ctx, workspace, originalGitDir)
 	if err != nil {
 		return "", err
@@ -361,6 +365,11 @@ func commitChanges(ctx context.Context, workspace, base, start string, issueNumb
 		return "", errors.New("could not create candidate commit")
 	}
 	candidate := strings.TrimSpace(string(out))
+	if save != nil {
+		if err := save(current, candidate); err != nil {
+			return "", err
+		}
+	}
 	if _, err := localrepo.Git(ctx, workspace, "update-ref", "--no-deref", "HEAD", candidate, current); err != nil {
 		return "", errors.New("could not attach candidate to the execution worktree")
 	}
@@ -381,6 +390,9 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	resumeBudget := func(remaining time.Duration) {
 		deadline = time.Now().Add(remaining)
 		activeTime.Reset(remaining)
+	}
+	if saved := recovery.saved; saved != nil && saved.Finalization != nil {
+		return w.finishCandidate(ctx, repo, saved, recovery)
 	}
 	spec := job.Spec
 	budget := executionResources{worker: w, job: job, recovery: recovery}
@@ -572,7 +584,22 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			break
 		}
 	}
-	if err == nil {
+	if err == nil && w.journal != nil && job.LeaseSeconds > 0 {
+		// shortcut: recovery starts at the saved candidate; earlier Daemon crashes still need native-turn checkpoints.
+		q := parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Remaining: time.Until(deadline), ResourceStep: budget.step}
+		_, err = commitChangesCheckpoint(ctx, workspace, spec.BaseCommit, start, spec.Issue.Number, dir, func(tip, candidate string) error {
+			result.Commit = candidate
+			q.Finalization = &candidateFinalization{Tip: tip, Result: result}
+			if err := w.saveFinalization(ctx, &q); err != nil {
+				return err
+			}
+			recovery.leaveUnsettled = true
+			return nil
+		})
+		if err == nil {
+			return w.finishCandidate(ctx, repo, &q, recovery)
+		}
+	} else if err == nil {
 		result.Commit, err = commitChanges(ctx, workspace, spec.BaseCommit, start, spec.Issue.Number, dir)
 	}
 	if err == nil {

@@ -3393,3 +3393,27 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 | appserver | PID 9756；Session 01a1ec82-ef7e-7271-a7ff-e67235812c52；5 条，1022 字节；摘要 a6a4d2d4235ca1bed0c7bb8261424ef4af27e2723be1db9ddc0095a6244b0d5f。 | beta #222；候选 0b1a736e715f73328d58a17047daf46b6cc9f5d6；[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/223)；合并 f876ae7b9c0f3a439e18afd2c0a7349357d9b412。 |
 
 证据 file_change_output_v2_cli/proof.json、file_change_output_v2_appserver/proof.json 及各目录 process.jsonl；操作脚本 file-change-output-v2-live.py。Windows 受影响专项 28 项、Ubuntu 非 root 专项 9 项测试及子测试通过，零失败、零跳过；报告 file-change-tests.log 和 file-change-linux.log。完成、失败、拒绝、禁用正文采集和转义凭据均有覆盖。Go 静态检查及 git diff 检查通过。本项没有改动前端或数据库合同，未重复上一阶段全包回归；全路线最终回归仍待完成。
+
+上述 Codex 文件改动回执实现与验收对应 ForgeOS 提交 e07cb31c2e6122312881f5416abbee4ac4c18549。
+
+### 专题 07、13、14、16 B.4 · 普通 Worker 候选结算恢复
+
+2026-11-18 使用正式 Worker、真实原生模型、PostgreSQL 18、Chrome 和两个重启检查点验收。验收代理在原生模型退出后阻断 CI 候选登记，节点已经保存候选；核对没有存活原生子进程后仅终止本次 Daemon。随后在本次 SQLite 注入最终回执写入故障，验证已完成 CI 的快照能由另一 Daemon 复用。故障均只针对隔离验收环境。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 模型正常退出后阻断 CI 登记，另起相同身份的 Daemon | 已保存候选，不能并发消费 | Codex、Claude 各保留一个退出 0 的原生进程，第二个 Daemon 被 Execution 文件锁拒绝。 |
+| 结束原 Daemon，重启控制面及 Worker | 在有效租约内接回同一候选，不再运行模型 | 原执行、Worktree、Session、PID 与 SHA 不变；对固定候选取得 CI 名额。 |
+| 让实际 Docker 验证完成，但注入最终结果写入故障，再次重启 | 复用已保存验证结果，不重复 CI | 两种 Harness 各仅领取一次 CI；三个声明检查 format、unit、build 成功，原 Run ID 和结果被复用。 |
+| 清除故障，从 Chrome 按 SHA 验收并完成 GitHub 交付，再重启查询 | 原结果完整，必需检查通过后合并并关闭 Issue | 两项均已通过；节点 candidate_finalizations 清空，原进程及日志仍保留。 |
+
+| Harness | 原生进程与候选 | 交付证据 |
+| --- | --- | --- |
+| codex | PID 27028；Session 01a1ec8e-7ca6-7523-b23d-1a32dcd19a83；候选 8c33cb1aef02c51430f64cea292426fbc25e949a；原 CI ci-run-3032207461。 | beta #224；[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/225)；合并 ba8ff0bd8ac5b165274442b93b2bdc026098c6d9。 |
+| claude | PID 7392；Session 03553cd8-1886-4ad1-afc5-09e420e68169；候选 759ee27df8190c583a803715bb1378d02299a1f3；原 CI ci-run-2021937400。 | beta #226；[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/227)；合并 12e5996c8d8ce0152f1efaa1b00a8855cf3904ee。 |
+
+证据 candidate_recovery_codex/proof.json、candidate_recovery_claude/proof.json；操作脚本 candidate-recovery-live.py。首次 Codex 验收脚本把 Result 的 JSON 字段 commit 错写为 Commit 而停止；原候选检查点未丢失，修正断言后保持原 API origin 和节点日志继续，未重跑模型、未另建执行。测试代理在结束连接时的 Windows 10053／10054 日志属于故障注入，未据此修改业务结果。
+
+整个 Worker 包回归 268 项测试及子测试通过、零失败；4 项依赖 Docker 开关的测试在该命令中跳过，并未记为通过。本次两项真实交付另已实际运行 Docker 验证。随后补入的验证失败保存、最终入队失败、Owner 取消及来源关闭通过最终 Windows 专项 13 项；Ubuntu 非 root 恢复／锁／既有问题与暂停专项 20 项、PostgreSQL 资源名额回归 2 项均通过，零失败、零跳过。报告 candidate-worker-tests.jsonl、candidate-final-tests.log、candidate-linux-tests.log、candidate-pg-tests.log；Go 静态检查和 git diff 检查通过。没有修改控制面数据库合同或前端。
+
+本项未将旧 file_change_output_cli 失联执行反推为已恢复。普通 Daemon 在候选检查点尚未保存时的崩溃、运行中原生流接回、整机重启及全路线最终回归仍待完成；现有外部验收条件保持待验收。

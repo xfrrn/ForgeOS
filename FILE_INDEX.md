@@ -6,6 +6,8 @@
 
 运行基座时从[本地运行指南](docs/local-development.md)开始。两个进程的入口分别是[控制面](cmd/controlplane/main.go)和[Worker](cmd/worker/main.go)，可用[验收脚本](scripts/smoke.ps1)提交并核对首个任务。
 
+核对模型完成后的候选恢复可查看[候选检查点与结算](cmd/worker/candidate_recovery.go)：节点先保存候选 SHA，重启后复用原候选和已保存的验证结果。
+
 跟踪一次派发可依次查看 [HTTP 接口](cmd/controlplane/api.go)、[数据表](internal/store/001_initial.sql)、[状态和租约事务](internal/store/store.go)及 [Git 任务执行](cmd/worker/execute.go)。
 
 核对原生进度可查看[公开消息采集](cmd/worker/model_output.go)、[工具事件和结果采集](cmd/worker/tool_activity.go)、[文件改动结构化结果](cmd/worker/file_change_output.go)、[命令增量输出](cmd/worker/tool_stream.go)、[节点脱敏日志归档](cmd/worker/process_archive.go)、[归档导出入口](cmd/worker/process_archive_cli.go)、[节点进程回报](cmd/worker/live_process.go)和[控制面进程校验](internal/store/live_process.go)。独立计划、共享资料审核、仓库分析、业务问题建议、反馈分类、知识提取审核、候选测试计划生成与覆盖审核及独立 Reviewer 另见[独立角色进程采集](cmd/worker/management_process.go)、[领取重放](cmd/worker/role_claims.go)、[作业恢复与节点锁](cmd/worker/role_assignment.go)、[已完成回合恢复](cmd/worker/role_turn_results.go)、[原生会话恢复与交接](cmd/worker/role_native.go)、[原子分配](internal/store/role_claims.go)、[独立角色结果补报](cmd/worker/role_receipts.go)、[退出观察补报](cmd/worker/role_process_receipts.go)及[审核历史校验](internal/store/management_process.go)和[工作台进程记录](web/src/ManagementProcesses.tsx)。

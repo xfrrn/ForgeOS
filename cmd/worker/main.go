@@ -392,6 +392,11 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 	if err != nil {
 		return err
 	}
+	finalizing, err := w.finalizingExecutions(ctx)
+	if err != nil {
+		return err
+	}
+	parked = append(finalizing, parked...)
 	for ctx.Err() == nil {
 		select {
 		case occupied <- struct{}{}:
@@ -404,7 +409,10 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		if len(parked) > 0 {
 			id := parked[0]
 			parked = parked[1:]
-			saved, err = w.readParkedCheckpoint(ctx, id)
+			saved, err = w.readFinalization(ctx, id)
+			if err == nil && saved == nil {
+				saved, err = w.readParkedCheckpoint(ctx, id)
+			}
 			if err != nil {
 				return err
 			}
