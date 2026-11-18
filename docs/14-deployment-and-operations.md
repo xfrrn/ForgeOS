@@ -250,6 +250,8 @@ pg_restore --dbname='service=forgeos-restore' \
 
 用恢复库的连接启动独立控制面，演练时关闭 GitHub 轮询和交付。通过 Owner API 对照任务列表、任务详情、计划修订、需求版本、评论和检查点。选择已交付任务核对候选、合并 SHA 和事件，再创建一条 `git_head` 任务确认序列可以继续分配。另行恢复项目 Git 对象与配置、Worker 工作区和认证材料后，才可恢复涉及这些资源的操作。
 
+恢复已通过测试计划的候选时，在任务的“验收记录”展开批准依据。按其中的执行号和通过的修订读取 `GET /tasks/{task}/test-plans?execution_id={execution}&revision={revision}`。对照源端的计划摘要、两个角色的会话、每个用例的操作、证据和执行者，再从工作台下载原批准事件核对候选 SHA。上述历史记录可在仓库和节点离线时查阅。[空库恢复与手机工作台实测](acceptance.md#approved-test-plan-restore)
+
 <a id="随数据库备份和恢复反馈截图"></a>
 
 ### 随数据库备份和恢复反馈截图及录屏

@@ -94,6 +94,20 @@ beta Issue #8 规定了 `CanEnqueue` 的业务语义、表驱动测试和四类�
 
 原生测试与覆盖会话分别为 `01a1f07c-d2a4-7283-a4c7-d23e7d907744` 和 `01a1f07d-2aed-7250-8990-5120fc08ae07`。证据在 `approval-basis/old.json`、`new.json`、`plan/cases.json`、`plan/passed.json`。另有 PostgreSQL 测试验证必需审查报告经 Owner 核对后通过，及第二版测试计划通过后保存修订 2。当前 Claude Reviewer 的真实成功审查仍待环境验收。
 
+<a id="approved-test-plan-restore"></a>
+
+### 专题 04、10、13、14 · 从数据库恢复已批准候选的测试证据
+
+在独立 PostgreSQL 18 中恢复 beta #163 的候选和原生测试计划。项目 Runner 对照候选文件完成 TC-001，Owner 批准后重新启用项目必需审查。停写后使用 `pg_dump --format=custom` 备份，核对清单及 SHA-256，再用 `pg_restore --single-transaction` 恢复到另一个空实例。恢复端的仓库根目录为空，未启动节点、模型、轮询或 GitHub 交付。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从恢复端任务 1 的批准记录取得执行号和已通过的测试计划修订，再按两者请求测试计划 | 恢复库可独立读回批准时的计划、用例执行与审核依据 | 执行 1、修订 1、候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`。计划完整响应、批准记录、事件 4 的下载内容及候选 SHA 均与源端逐字段一致。计划 SHA-256 为 `571dea4b35bed1fd68622ec3c86da2d9768c87506729968c35caf32f1fb7c4a2`。 |
+| 在 390 像素宽 Chrome 展开“批准时的审查与测试要求”“查看测试计划”和第一次实测，再下载批准事件 | 能从批准记录追溯实际操作、证据和两位独立角色的原生会话 | 页面显示 TC-001 由 `handbook-check` 实测一次，保留 4 个操作与 4 条证据。测试和覆盖审核会话分别为 `01a1f07c-d2a4-7283-a4c7-d23e7d907744`、`01a1f07d-2aed-7250-8990-5120fc08ae07`；浏览器下载与原事件相同。 |
+| 以 Owner 向已批准的同一执行提交新的测试计划标准 | 已结算的验收证据保持原样 | HTTP 409，再次读取计划与写入前完全相同。 |
+
+数据库备份 SHA-256 为 `c2b1593a43f5e035d0d52cf2afa5bee56f833ed6598cbfd05e606f2a4769b786`。源端与恢复端回执分别为 `approved-plan-restore/before.json`、`approved-plan-restore/restored.json`。批准依据实现为 `83640fa4832a621a55624789dea21e2fbc4d50d1`。
+
 <a id="project-config-restore"></a>
 
 ### 专题 10、14 · 恢复项目配置与策略
