@@ -4,7 +4,7 @@
 
 ## 当前验收进度
 
-在 `bbd7773fac25263b7aa0a78859da961aa78b37c8` 的规则分类验收及下述分类 Agent 复验后，专题 16 的 28 项中，18 项已验收，6 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 ForgeOS `439415c11b344ed97e4f5d04689f738f414d7204`，专题 16 的 28 项中，18 项已验收，6 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
@@ -18,7 +18,7 @@
 
 ### 专题 01 §03、专题 03 · 分类 Agent 与 Owner 决定
 
-2026-11-18，正式 Poller 从 beta 私库同步两条带 `forgeos-agent` 的 Issue。二者均无类型标签，标题也未给出动作词。Management Worker 以禁用工具的只读 Codex 处理，PostgreSQL 18 核对原生回执，Windows Chrome 验证人工决定。
+实现提交 `439415c11b344ed97e4f5d04689f738f414d7204`。2026-11-18，正式 Poller 从 beta 私库同步两条带 `forgeos-agent` 的 Issue。二者均无类型标签，标题也未给出动作词。Management Worker 以禁用工具的只读 Codex 处理，PostgreSQL 18 核对原生回执，Windows Chrome 验证人工决定。
 
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
@@ -26,17 +26,20 @@
 | 领取 [#248](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/248)，另查普通讨论 [#245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245) | 无明确动作时指出需要澄清的内容；普通讨论保留原状 | 会话 `01a1edbf-3f91-7640-b802-afdde3ec43a8` 引用 “The intended outcome and requested action have not been decided.”，请 Owner 指明目标和动作。进程 40624 退出 0。#248 仍在收件箱，#245 无模型建议或任务。未声明分类能力的领取请求返回 204。 |
 | 重启控制面，在 390 像素宽 Chrome 查看 #247 引文，再改选调查 | 转换前须明确选择。转换后仍能区分模型建议和最终决定 | 初始转换按钮禁用。Owner 改选后任务 6 进入只读调查规划，任务详情显示 Owner 确认；打开需求修订 1 仍显示原测试建议、引文和会话。 |
 
+另从 Owner 预算接口配置单槽 `intake-account`，限定项目 1 的 `issue_classification`。Chrome 节点页显示该预算。两项都没有建议且第一项正在执行时，预算占用为 1，第二次分类领取返回 204。原生会话 `01a1edc6-0b88-7ca2-b907-d488d5e94ff3` 与 `01a1edc6-3a8c-7481-b46d-b066d3c0053d` 依次结束，两个进程均退出 0，各自的回执关联该预算，最终占用回到 0。
+
 第一次实测中，模型将 #247 的主题标题当作另一项交付要求，建议澄清。调整分类说明后，以相同 GitHub 来源重新运行并得到表中结果。数据库测试覆盖来源已换版、虚构引文、缺少成功进程、错误会话、重复回报以及运行中配置单槽预算。分类建议本身不会创建工作项。启用 PostgreSQL 18 和 Docker 后，Go 全量回归 533 个具名测试及子测试通过，零跳过、零失败；`go vet ./...` 和前端生产构建通过。
 
 <a id="issue-work-type-rules"></a>
 
 ### 专题 01、03、12 · GitHub Issue 规则分类、澄清与需求修订
 
-2026-11-18，私库 beta、正式控制面、PostgreSQL 18、Windows Worker、原生 Codex 和 Chrome。规则分类实现为 `bbd7773fac25263b7aa0a78859da961aa78b37c8`。五类工作均核对了派发规格。开发、调查两类另运行真实模型；代码审查、测试、运维本次核对到只读规划入口。
+2026-11-18，私库 beta、正式控制面、PostgreSQL 18、Windows Worker、原生 Codex 和 Chrome。规则分类实现为 `bbd7773fac25263b7aa0a78859da961aa78b37c8`。五类工作均核对了派发规格。开发、调查两类另运行真实模型；代码审查、测试、运维随后均完成原生规划并从重启后的工作台回读，见下表。
 
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |
 | 为 [#239 开发](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/239)、[#240 代码审查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/240)、[#241 测试](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/241)、[#242 调查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/242)、[#243 运维](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/243) 配置派发信号，运行 Poller，并对照手动导入 | 五类均有固定分类，非开发型从只读入口开始；反复导入同一来源应得到同一任务 | 五类各关联一项任务。#241 通过标题首词 `Verify` 判定。#242 的只读 Session `01a1eda6-2c0f-7d22-9c8e-af35df07c70a` 在计划中引用 `docs/queue-preview/index.html` 和准确页面标题 `Queue handbook`，工作树干净。 |
+| 从正式导入入口分别派发 #240、#241、#243，运行普通 Worker；重启控制面后在 Chrome 打开三个任务 | 分别按代码审查、测试、运维生成只读计划，保留原类别、固定提交和清洁工作树 | 三项均在 `34c03d512b6018110659bae8742b91286884e5f0` 进入 PLANNING。#240 生成核对手册文件及引用的清单，会话 `01a1edc2-0dbf-7593-bc5b-d0e51fc3f3f2`；#241 计划验证页面标题和一级标题，会话 `01a1edc3-0b99-7891-9764-9092ec0ea603`；#243 制定依据本地检出内容的预览就绪检查，会话 `01a1edc4-21ed-7c00-accd-2f539b1029bf`。三份草案有里程碑、工作项和交付物，工作树无变更。 |
 | 显式选择 Codex 执行开发用例并在 Chrome 按候选验收 | 产生指定文档，通过本地验证和目标分支门禁 | #239 只修改 `docs/work-type-check.md`，候选 `1bb586c3bb66f7991cf12a332c86192eac7c6ec4` 经 [PR #246](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/246) 合并，合并提交 `9da699577a1f8772912f912d6a5124bddc7613dc`。首次试跑继承项目的 Claude 配置，保持 READY；实际交付使用本次明确选择的 Codex。 |
 | 给 [#244](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/244) 设置冲突类型，给 [#245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245) 只声明测试类型；在收件箱打开后修改 #244 正文 | 冲突和普通讨论都没有自动执行。过时的 Owner 选择必须拒绝 | 两项均留在收件箱。#244 未选择类型时按钮不可用；直接导入及过时页面提交均返回 409。刷新后重新选择运维，HTTP 200，任务 13 进入只读规划。同一选择重试回到任务 13，另一个类型返回 409。#245 保持普通讨论。 |
 | 重启控制面；只移除 #244 的冲突标签，再采用新修订 | 新的类型可追溯，采用前保留旧决定 | 重启后第 1 版仍为 Owner 确认的运维。第 2 版为规则识别的调查。采用前任务仍绑定第 1 版，采用后保持只读规划。重新登录及整页刷新后，390 像素宽 Chrome 显示“任务类型 · 调查（GitHub 规则）”。 |
@@ -128,8 +131,8 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 
 | 专题 | 已验证的入口和证据 | 实现 SHA | 仍待补齐或实测 |
 | --- | --- | --- | --- |
-| 00–01 产品与端到端流程 | [规则分类](#issue-work-type-rules)和[原生分类建议](#issue-classification-agent)已在私库、正式节点及 Chrome 验收。两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭。工作台登记、首次检查、固定 SHA 启动验证、版本化初始化报告与 Ruby、Gradle 仓库样例已验收 | `1a17822`、`32c0fa0`、`5447445`、`d57f60d`、`42dee55`、`9a75d9e`、`f724eea`、`d2c094a`、`673295d`、`bbd7773` | 外部设备访问、其他知识归档触发条件、其余初始化场景 |
-| 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行。工作台可打开有租约的动态应用，普通 Worker 分别限制模型与 CI 的名额。站内通知及已读回执见 beta #65；当前独立模型角色均已验证共用名额，最后一项为 beta #125 的问题建议 | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6`、`9a08b44`、`f876721`、`e8a84ea`、`31a46df`、`ff58493` | Telegram、飞书发送及重试已有本机 TLS 证据，真实收件待验收；其余管理协调。普通 Worker 共享账号实测见 alpha #22、beta #115 |
+| 00–01 产品与端到端流程 | [规则分类](#issue-work-type-rules)和[原生分类建议](#issue-classification-agent)已在私库、正式节点及 Chrome 验收。两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭。工作台登记、首次检查、固定 SHA 启动验证、版本化初始化报告与 Ruby、Gradle 仓库样例已验收 | `1a17822`、`32c0fa0`、`5447445`、`d57f60d`、`42dee55`、`9a75d9e`、`f724eea`、`d2c094a`、`673295d`、`bbd7773`、`439415c` | 外部设备访问、其他知识归档触发条件、其余初始化场景 |
+| 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行。工作台可打开有租约的动态应用，普通 Worker 分别限制模型与 CI 的名额。站内通知及已读回执见 beta #65；当前独立模型角色均已验证共用名额，包括 beta #125 的问题建议及 [#247、#248 的 Issue 分类](#issue-classification-agent) | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6`、`9a08b44`、`f876721`、`e8a84ea`、`31a46df`、`ff58493` | Telegram、飞书发送及重试已有本机 TLS 证据，真实收件待验收；其余管理协调。普通 Worker 共享账号实测见 alpha #22、beta #115 |
 | 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要。可下载其他节点的 CI 文件。运行中的 Codex、Claude 在工作台显示节点、PID 与会话，控制面重启后仍可查询（beta #57、#59）。另从[正式节点](#worker-app-turn)对照进程实例、Thread 和 Turn。 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3`、`91a150b`、`39d3f68`、`6f9b0c1`、`db6155b`、`1f31794` | 其他跨节点工件及独立审核角色 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版。跨项目验收问题的批量答复、Owner 按原生审核意见修改并批准指定修订见下文。换基后的三个角色与开发会话各自独立，见 beta #88。原生业务问题、Management 建议和 D1 项目决策查阅见 beta #94–111。已对照[五类 ACP 业务路由](#protocol-route-matrix)，并从审批中心处理[有来源的审核等级](#approval-source-levels)与[原问题的 D2/D3 答复](#approval-questions)。 | `70781ba`、`f8503c5`、`abb5257`、`d9fc283`、`a6f05da`、`85d9c5c`、`2672efc`、`0fad34a`、`5c5657b`、`913caea`、`d329bba` | 原生运行中审批和其余业务操作的 D0–D3 策略 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理。来源关闭取消、工作台取消及暂停后恢复同一候选的 CI 已实测（beta #52、#54、#55）。Owner 从工作台修订、批准并归档计划，beta #67 完成子项及父 Issue 交付 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3`、`a5d2193`、`84758c5`、`a221a0d`、`d9fc283`、`a6f05da`、`616dcb6` | Codex 实现回合暂停和同会话恢复见 beta #137。只读 Planner 主动暂停见 beta #19。只读 Planner 已完成跨 Thread 交接，见页末。Codex 和 Claude 的首轮暂停草稿交接分别见 beta #145、#149。整机重启及其余写入回合交接待验；下一回合指令已验收，原生取消见 beta #131、#132 |
