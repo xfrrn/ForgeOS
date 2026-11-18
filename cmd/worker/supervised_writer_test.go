@@ -14,6 +14,56 @@ import (
 	"forgeos/internal/store"
 )
 
+func TestSupervisedPlannerAssignmentIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	w, job, base := fixture(t)
+	w.superviseWriters = true
+	job.Kind, job.LeaseSeconds = "codex_issue", 300
+	job.ManageResources, job.SupportsCheckpoints, job.RecoverPlannerPause, job.RecordAppTurn = true, true, true, true
+	job.Spec = &store.IssueSpec{Mode: "plan", BaseCommit: base}
+	dir, err := checkedWorktree(ctx, job.RepoPath, job.Workspace, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	w.journal, err = w.openJournal(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.journal.Close()
+	key := sha256.Sum256([]byte(job.LeaseToken))
+	if _, err := w.journal.Exec("INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)", key[:], job.ExecutionID, job.TaskID, job.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	q := parkedCheckpoint{Job: job, GitDir: dir, InitialTip: base, Remaining: time.Minute}
+	recovery := checkpointRecovery{}
+	if _, err := w.journal.Exec("CREATE TRIGGER hold_assignment BEFORE INSERT ON supervised_writers BEGIN SELECT RAISE(ABORT, 'unavailable'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.recordInitialTurn(ctx, &q, &recovery); err == nil || recovery.delegated {
+		t.Fatal("assigned a planner without recording its owner")
+	}
+	if saved, err := w.readFinalization(ctx, job.ExecutionID); err != nil || saved != nil {
+		t.Fatal("orphaned initial planner checkpoint", err)
+	}
+	if _, err := w.journal.Exec("DROP TRIGGER hold_assignment"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.recordInitialTurn(ctx, &q, &recovery); err != nil || !recovery.delegated {
+		t.Fatal("planner assignment failed", err)
+	}
+	if saved, err := w.readFinalization(ctx, job.ExecutionID); err != nil || saved == nil || saved.InitialTip != base || !saved.SupervisedExec {
+		t.Fatal("missing planner starting state", err)
+	}
+	q.InitialTip = "different base"
+	if err := w.saveFinalization(ctx, &q); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.readFinalization(ctx, job.ExecutionID); err == nil {
+		t.Fatal("accepted a different planner base")
+	}
+}
+
 func TestSavedWriterTransport(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))

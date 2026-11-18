@@ -231,10 +231,13 @@ func (w *worker) readFinalization(ctx context.Context, id int64) (*parkedCheckpo
 	}
 	digest := sha256.Sum256([]byte(q.Job.LeaseToken))
 	if !bytes.Equal(digest[:], key) || q.Job.ExecutionID != id || q.Job.TaskID != task || q.Job.Workspace != workspace ||
-		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || q.Job.Spec.Mode == "plan" || q.Job.Spec.VerifyCommit != "" ||
+		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || q.Job.Spec.VerifyCommit != "" ||
 		q.Job.LeaseSeconds <= 0 || q.Remaining <= 0 || q.Remaining > 20*time.Minute || len(q.GitDir) == 0 ||
 		q.ResourceStep < 0 || q.Planner != nil || (q.Writer != nil && q.ReturnedTip == "" && q.Active == nil) {
 		return nil, fmt.Errorf("invalid saved candidate for execution %d", id)
+	}
+	if q.Job.Spec.Mode == "plan" && (q.InitialTip == "" || q.InitialTip != q.Job.Spec.BaseCommit || !q.Job.Spec.ValidHarness() || !q.Job.RecoverPlannerPause || !q.Job.RecordAppTurn) {
+		return nil, fmt.Errorf("invalid initial planner checkpoint for execution %d", id)
 	}
 	if q.Active != nil {
 		if q.InitialTip != "" || q.CompletedTip != "" || q.Finalization != nil ||

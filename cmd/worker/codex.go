@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -446,6 +445,17 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 	}
 	if spec.Mode == "plan" {
+		if recovery.saved == nil && w.superviseWriters && w.planner && job.RecordAppTurn && job.RecoverPlannerPause && job.ManageResources && job.SupportsCheckpoints && job.LeaseSeconds > 0 && w.journal != nil {
+			dir, err := checkedWorktree(ctx, repo, workspace, spec.BaseCommit)
+			if err == nil {
+				q := parkedCheckpoint{Job: job, GitDir: dir, InitialTip: spec.BaseCommit, Version: w.codexVersion, Remaining: time.Until(deadline)}
+				err = w.recordInitialTurn(ctx, &q, recovery)
+			}
+			if err != nil {
+				return failed("record initial planner checkpoint", err)
+			}
+			return result
+		}
 		result = w.planIssue(ctx, repo, workspace, &budget, batch.Comments, stopBudget, resumeBudget)
 		if result.ExitCode == 0 {
 			if _, err = w.checkpoint(ctx, job, 0, result.SessionID); err != nil {
@@ -517,19 +527,9 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		dir, err = checkedWorktree(ctx, repo, workspace, start)
 		if err == nil && job.ManageResources && job.SupportsCheckpoints && job.LeaseSeconds > 0 && w.journal != nil {
 			launchFrom = &parkedCheckpoint{Job: job, GitDir: dir, InitialTip: start, Version: w.nativeVersion(job), Remaining: time.Until(deadline)}
-			launchFrom.Trees, err = checkpointTrees(ctx, workspace)
-			if err == nil {
-				err = w.saveFinalization(ctx, launchFrom)
-			}
-			recovery.waiting = err == nil
-			if err == nil && w.superviseWriters && job.RecordAppTurn && (spec.Harness == "" || spec.Harness == "codex") {
-				key := sha256.Sum256([]byte(job.LeaseToken))
-				_, err = w.journal.ExecContext(ctx, "INSERT INTO supervised_writers(lease_hash) VALUES(?)", key[:])
-				if err == nil {
-					recovery.delegated = true
-					return result
-				}
-				recovery.leaveUnsettled = true
+			err = w.recordInitialTurn(ctx, launchFrom, recovery)
+			if recovery.delegated {
+				return result
 			}
 		}
 	}

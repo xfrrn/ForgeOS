@@ -25,8 +25,40 @@ const (
 
 func (w *worker) marshalWriterCheckpoint(q parkedCheckpoint) ([]byte, error) {
 	// Older supervised checkpoints all belonged to App Server writers.
-	q.SupervisedExec = w.superviseWriters && !w.codexAppServer && q.Job.Spec != nil && q.Job.Spec.Harness != "claude" && q.Job.Spec.Mode != "plan"
+	q.SupervisedExec = w.superviseWriters && !w.codexAppServer && q.Job.Spec != nil && q.Job.Spec.Harness != "claude"
 	return json.Marshal(q)
+}
+
+func (w *worker) recordInitialTurn(ctx context.Context, q *parkedCheckpoint, recovery *checkpointRecovery) error {
+	var err error
+	q.Trees, err = checkpointTrees(ctx, q.Job.Workspace)
+	if err != nil {
+		return err
+	}
+	if !w.superviseWriters || !q.Job.RecordAppTurn || q.Job.Spec.Harness == "claude" {
+		err := w.saveFinalization(ctx, q)
+		recovery.waiting = err == nil
+		return err
+	}
+	raw, err := w.marshalWriterCheckpoint(*q)
+	if err != nil {
+		return err
+	}
+	tx, err := w.journal.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	key := sha256.Sum256([]byte(q.Job.LeaseToken))
+	if _, err = tx.ExecContext(ctx, "INSERT INTO candidate_finalizations(lease_hash,checkpoint) VALUES(?,?)", key[:], raw); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO supervised_writers(lease_hash) VALUES(?)", key[:]); err != nil {
+		return err
+	}
+	err = tx.Commit()
+	recovery.delegated, recovery.waiting = err == nil, err == nil
+	return err
 }
 
 func (w *worker) supervisedWriters(ctx context.Context) ([]int64, error) {

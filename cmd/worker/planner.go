@@ -31,7 +31,16 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 	if budget.recovery != nil {
 		saved = budget.recovery.saved
 	}
-	if saved != nil {
+	starting := saved != nil && saved.InitialTip != ""
+	if starting {
+		page, err := w.readWriterInputs(ctx, saved, budget.recovery)
+		if err != nil {
+			return failed("confirm initial planner checkpoint", err)
+		}
+		identity, comments = saved.GitDir, page.Comments
+		resumeBudget(saved.Remaining)
+		budget.recovery.saved = nil
+	} else if saved != nil {
 		identity, comments = saved.GitDir, saved.Planner.Comments
 	} else {
 		identity, err = checkedWorktree(ctx, repo, workspace, spec.BaseCommit)
@@ -80,6 +89,13 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		}
 	}
 	r.SessionID, err = w.runModelTurn(ctx, budget, 0, "", spec.BaseCommit, identity, stopBudget, resumeBudget, func(turn context.Context, session string, resumed *store.WorktreeTrees) (string, error) {
+		if starting {
+			if err := w.consumeWriterStart(turn, saved, nil); err != nil {
+				budget.recovery.leaveUnsettled = true
+				return session, err
+			}
+			starting, budget.recovery.waiting = false, false
+		}
 		if resumed != nil {
 			if err := preparePlannerResume(turn, workspace, output); err != nil {
 				return session, err
@@ -92,7 +108,7 @@ func (w *worker) planIssue(ctx context.Context, repo, workspace string, budget *
 		return r
 	}
 	var plan *store.Plan
-	if saved != nil && saved.Planner.Finished != nil {
+	if saved != nil && saved.Planner != nil && saved.Planner.Finished != nil {
 		plan = saved.Planner.Finished
 	} else {
 		plan, err = readPlannerOutput(output)
