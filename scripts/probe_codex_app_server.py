@@ -34,7 +34,7 @@ class Client:
         if not line:
             raise RuntimeError("App Server closed the protocol stream")
         msg = json.loads(line)
-        if ("method" in msg and "id" in msg) or msg.get("method") in {"turn/started", "turn/completed", "item/completed"}:
+        if ("method" in msg and "id" in msg) or msg.get("method") in {"turn/started", "turn/completed", "item/started", "item/completed"}:
             self.notifications.append(msg)
         return msg
 
@@ -78,7 +78,7 @@ class Client:
             page_params["cursor"] = cursor
         return thread
 
-    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None, steer=None, client_id=None):
+    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None, steer=None, client_id=None, patch=None):
         self.notifications.clear()
         params = {"threadId": thread, "input": [{"type": "text", "text": prompt}]}
         if client_id:
@@ -87,6 +87,8 @@ class Client:
         message, started = "", False
         input_observed, interrupt_sent = client_id is None, False
         self.approval = None
+        tool = "fileChange" if patch else "commandExecution"
+        patch_item = None
         while True:
             if not self.notifications:
                 self.receive()
@@ -95,11 +97,14 @@ class Client:
             params = event["params"]
             if "id" in event:
                 if (decision not in ("decline", "cancel", "accept") or self.approval is not None
-                        or event["method"] != "item/commandExecution/requestApproval"
+                        or event["method"] != f"item/{tool}/requestApproval"
                         or params.get("threadId") != thread or params.get("turnId") != turn
                         or not params.get("itemId")):
                     raise RuntimeError(f"Unexpected server request: {event['method']}")
-                if (Path(params.get("cwd") or "").resolve() != workspace
+                if patch:
+                    if params["itemId"] != patch_item or params.get("grantRoot") is not None:
+                        raise RuntimeError("Approval did not match the proposed temporary file addition")
+                elif (Path(params.get("cwd") or "").resolve() != workspace
                         or params.get("additionalPermissions") or params.get("networkApprovalContext")
                         or params.get("commandActions") != [{"type": "unknown", "command": command}]):
                     raise RuntimeError("Approval did not match the temporary probe command")
@@ -109,15 +114,25 @@ class Client:
             if params.get("threadId") != thread:
                 continue
             method = event["method"]
+            if patch and method == "item/started" and params.get("turnId") == turn and params["item"]["type"] == tool:
+                item = params["item"]
+                changes = item.get("changes", [])
+                if len(changes) != 1:
+                    raise RuntimeError("Expected one proposed file addition")
+                change = changes[0]
+                if (Path(change["path"]).resolve() != workspace / patch[0] or change.get("kind") != {"type": "add"}
+                        or change.get("diff") != patch[1] or (workspace / patch[0]).exists()):
+                    raise RuntimeError("Unexpected proposed file path or contents")
+                patch_item = item["id"]
             if method == "item/completed" and params.get("turnId") == turn:
                 item = params["item"]
                 if item["type"] == "userMessage" and item.get("clientId") == client_id:
                     input_observed = True
                 if item["type"] == "agentMessage":
                     message = item["text"].strip()
-                if self.approval and item["type"] == "commandExecution" and item["id"] == self.approval["item"]:
+                if self.approval and item["type"] == tool and item["id"] == self.approval["item"]:
                     self.approval["status"] = item["status"]
-                    if decision == "accept":
+                    if decision == "accept" and not patch:
                         self.approval["output"] = (item.get("aggregatedOutput") or "").strip()
             if method == "turn/started" and params["turn"]["id"] == turn:
                 if steer and not started:
@@ -145,8 +160,11 @@ class Client:
                 if not started or params["turn"]["status"] != expected:
                     raise RuntimeError(f"Expected a started then {expected} turn, got {params['turn']['status']}")
                 command_status = "completed" if decision == "accept" else "declined"
-                if decision and (not self.approval or self.approval.get("status") != command_status):
-                    raise RuntimeError(f"The turn ended without a {command_status} command receipt")
+                # File cancellation can interrupt the turn before an item/completed event.
+                if patch and decision == "cancel" and self.approval and "status" not in self.approval:
+                    self.approval["turn_status"] = expected
+                elif decision and (not self.approval or self.approval.get("status") != command_status):
+                    raise RuntimeError(f"The turn ended without a {command_status} {tool} receipt")
                 return turn, message
 
 
@@ -217,6 +235,7 @@ def main():
     parser.add_argument("--model", help="override the configured model for this probe process")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--approvals", action="store_true", help="exercise one-time approval, decline and cancel")
+    modes.add_argument("--file-approvals", action="store_true", help="verify proposed file content before each patch decision")
     modes.add_argument("--reconnect", action="store_true", help="reconnect to an active turn on a private local socket (requires wsproto)")
     modes.add_argument("--steer", action="store_true", help="verify input delivered during an active turn")
     args = parser.parse_args()
@@ -226,6 +245,23 @@ def main():
     version = subprocess.check_output([binary, "--version"], text=True, timeout=10).strip()
     marker = "FORGE-" + secrets.token_hex(8)
     with probe_workspace() as workspace:
+        if args.file_approvals:
+            receipts = []
+            with server(binary, workspace, args.model) as client:
+                thread = client.thread(workspace, approval="untrusted")
+                for decision in ("accept", "decline", "cancel"):
+                    filename = f"probe-{decision}.md"
+                    content = marker + "\n"
+                    prompt = (f"Use apply_patch directly once to add {filename} in the current directory. "
+                              f"The complete file must contain the single line {marker} with its final newline. "
+                              "Use no other tools. If declined, finish without retrying.")
+                    turn, _ = client.turn(thread, prompt, decision=decision, workspace=workspace, patch=(filename, content))
+                    target = workspace / filename
+                    if (target.read_text(encoding="utf-8") if target.exists() else None) != (content if decision == "accept" else None):
+                        raise RuntimeError("File contents did not match the native patch decision")
+                    receipts.append({"thread": thread, "turn": turn, "file": filename, **client.approval})
+            print(json.dumps({"version": version, "sandbox": "read-only", "patches": receipts}))
+            return
         if args.reconnect:
             try:
                 from probe_codex_reconnect import reconnect
