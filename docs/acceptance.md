@@ -4,7 +4,7 @@
 
 ## 当前验收进度
 
-截至 `dd83053` 的全量回归及 `b064477` 的 Reviewer 下载实测，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 `a6197b7` 的全量回归及私库 PR #262 的实际合并，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
@@ -34,6 +34,9 @@
 | 专题 07、16 B.4 原生启动已送达后的回合确认 | [beta #261，首回合、排队指令、取消及错误摘要](#writer-start-confirmation) | `be69180aaddb78015c050cb64b4204427cf20a6d` |
 | 专题 07、16 B.4 原生回合完成后的节点恢复 | [beta #261、#257，完成草稿、业务答复、取消、草稿改变和未知退出码](#writer-terminal-receipt) | `dd83053fb855288fa44c8c2d209e7fb4e51f6b74` |
 | 专题 07、14、16 C.3 独立 Reviewer 中央日志 | [在 Chrome 离线下载失败进程的日志，与节点 CLI 核对全文与摘要](#reviewer-central-log) | 实现 `06bb5fcbc11e2a5bed43193450e3a1327a8b1119`，验收 `b064477acc319d008e76b70768fbfaddebb05ef1` |
+| 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
+
+在 `a6197b7` 上从空 PostgreSQL 18、启用真实 Docker 执行全包回归。568 个具名测试及子测试全部通过，9 个包通过，3 个包无测试，具名测试无跳过。原始记录为 `terminal-deadline-regression.jsonl`。Go 静态检查、TypeScript 检查和工作台生产构建通过。
 
 在 `dd83053` 的产品代码上，以独立 PostgreSQL 18 和真实 Docker 再次执行全量 Go 回归。568 个具名测试及子测试全部通过，9 个包通过，3 个包无测试。具名测试无失败和跳过，原始记录为 `terminal-receipt-regression.jsonl`，`go vet ./...` 通过。
 
@@ -59,6 +62,8 @@
 | 同样丢失退出码，在停机的验收副本中将执行截止时间缩短为 3 秒，等待 4 秒后重启 | 按已耗尽的时限结束执行，保留原进程记录 | Chrome 显示 `context deadline exceeded`，任务为 `FAILED`。原 PID 32776 退出码为 -1，无候选，新增模型进程数为 0。 |
 
 六份验收回执为 `terminal-final-{resume,question,cancel,edited,unknown,expired}/latest.json`。本项从已保存原生完成事件的边界起验证。Windows 与 WSL Ubuntu 均另行验证了成功、失败和未知退出码，覆盖期限内保留与过期拒绝。
+
+从私库 beta 的受保护 `main` 分支重新派发 #261，在同一边界终止 Worker。按原草稿核对候选 `5c55a5f75fa5f383a5289eac43b6611c42736d96`，只有 `docs/interrupted-writer.md` 改动，草稿编号为 `b00485b5d2a8`。原 PID 36104 是唯一的模型进程，退出码 0。在 Chrome 按该 SHA 通过验收后，GitHub 的验收工作流如预设在首次尝试失败，复核失败步骤并重跑，`acceptance-check` 和 `forgeos/local-ci` 均成功。PR 合并为 `44b6b277db8347bcbde3741cebfbda336f0910fc`，工作项为 `DONE`，Issue 已关闭。回执为 `terminal-final-delivery/latest.json`。[beta PR #262](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/262) · [必需 CI](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44319423788)
 
 <a id="writer-start-confirmation"></a>
 
