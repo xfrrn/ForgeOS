@@ -55,8 +55,10 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 		if err := w.recoverActiveWriter(ctx, b, q, base); err != nil {
 			return q.Session, err
 		}
-		session, resumeTrees = q.Session, &q.Trees
-		resumeClock(q.Remaining)
+		if q.ReturnedTip == "" {
+			session, resumeTrees = q.Session, &q.Trees
+			resumeClock(q.Remaining)
+		}
 	}
 	if b.recovery != nil && b.recovery.saved != nil && b.recovery.saved.ReturnedTip != "" {
 		q := b.recovery.saved

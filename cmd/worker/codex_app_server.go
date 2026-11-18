@@ -414,6 +414,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				return session, errors.New("App Server event does not match the active turn")
 			}
 			if m.Method == "turn/completed" {
+				if pendingStart {
+					return session, errors.New("App Server completed a writer before confirming its start")
+				}
 				terminal = true
 				s.mu.Lock()
 				s.turn = ""
@@ -431,6 +434,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 					if err = os.WriteFile(output, []byte(last), 0600); err != nil {
 						return session, err
 					}
+				}
+				if c.onAppCompleted != nil {
+					return session, c.onAppCompleted(store.NativeTurn{Instance: process.id, Session: session, Turn: event.Turn.ID})
 				}
 				return session, nil
 			}

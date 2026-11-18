@@ -97,7 +97,7 @@ func testAppServerProcess() int {
 				continue
 			}
 			scenario = prompt
-			if prompt != "before turn" {
+			if prompt != "before turn" && prompt != "completed without start" {
 				notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "inProgress"}})
 			}
 			_ = out.Encode(map[string]any{"id": req.ID, "result": map[string]any{"turn": map[string]string{"id": "turn-1"}}})
@@ -403,6 +403,7 @@ func TestAppServerPendingStartFailure(t *testing.T) {
 		want   error
 	}{
 		{"lost start response", errPendingWriterStart}, {"rejected start", errRejectedWriterStart},
+		{"completed without start", errPendingWriterStart},
 	} {
 		t.Run(tc.prompt, func(t *testing.T) {
 			var saved []activeWriterTurn
@@ -421,7 +422,8 @@ func TestAppServerPendingStartFailure(t *testing.T) {
 			}))
 			defer server.Close()
 			b := executionResources{worker: &worker{api: server.URL, client: server.Client()}, job: store.Job{ManageResources: true}}
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
 			session, err := withResource(ctx, &b, "model", func() (string, error) {
 				return c.runTurn(ctx, processLog{}, t.TempDir(), tc.prompt, "")
 			})

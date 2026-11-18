@@ -154,6 +154,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 
 type codexCLI struct {
 	onAppTurn        func(activeWriterTurn) error
+	onAppCompleted   func(store.NativeTurn) error
 	appServer        bool
 	disabledFeatures []string
 	bin              string
@@ -556,6 +557,23 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed *store.WorktreeTrees) (string, error) {
 			codex := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
+			saveReturn := func(session string, active *activeWriterTurn) error {
+				q := parkedCheckpoint{Job: job, GitDir: dir, Session: session, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step,
+					Active: active, Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: true}}
+				if question != nil && question.requested {
+					q.Writer.Asked = true
+					q.Question, q.Evidence, q.ReferenceDecisionID = question.Question, question.Evidence, question.ReferenceDecisionID
+				}
+				if err := captureCompletedTree(turn, &q, start); err != nil {
+					return err
+				}
+				q.ReturnedTip, q.CompletedTip = q.CompletedTip, ""
+				if err := w.saveFinalization(turn, &q); err != nil {
+					return err
+				}
+				returned, recovery.waiting = &q, true
+				return nil
+			}
 			if supportsWriterProcessTree && job.RecordAppTurn && job.ManageResources && job.SupportsCheckpoints && job.RecoverWriterPause && job.ModelPause && w.journal != nil && job.LeaseSeconds > 0 {
 				codex.onAppTurn = func(active activeWriterTurn) error {
 					active.Deadline = deadline
@@ -575,6 +593,9 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 					launchFrom = nil
 					recovery.waiting, recovery.leaveUnsettled = active.Turn == "", false
 					return nil
+				}
+				codex.onAppCompleted = func(id store.NativeTurn) error {
+					return saveReturn(id.Session, &activeWriterTurn{NativeTurn: id, Deadline: deadline})
 				}
 			}
 			turnPrompt := prompt
@@ -612,20 +633,17 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			if err != nil || session == "" || !job.ManageResources || !job.SupportsCheckpoints || w.journal == nil || job.LeaseSeconds <= 0 || (job.ModelPause && !job.RecoverWriterPause) {
 				return session, err
 			}
-			q := parkedCheckpoint{Job: job, GitDir: dir, Session: session, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step,
-				Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: true}}
-			if question != nil && question.requested {
-				q.Writer.Asked = true
-				q.Question, q.Evidence, q.ReferenceDecisionID = question.Question, question.Evidence, question.ReferenceDecisionID
+			if returned == nil {
+				return session, saveReturn(session, nil)
 			}
-			if err = captureCompletedTree(turn, &q, start); err == nil {
-				q.ReturnedTip, q.CompletedTip = q.CompletedTip, ""
-				err = w.saveFinalization(turn, &q)
+			if err := verifyWriterDraft(turn, returned); err != nil {
+				recovery.leaveUnsettled = true
+				return session, err
 			}
-			if err == nil {
-				returned = &q
-				recovery.waiting = true
-			}
+			returned.Active = nil
+			returned.Remaining = time.Until(deadline)
+			err = w.saveFinalization(turn, returned)
+			recovery.leaveUnsettled = err != nil
 			return session, err
 		})
 		answeredTrees = nil

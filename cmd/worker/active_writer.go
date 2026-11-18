@@ -42,7 +42,18 @@ func (w *worker) waitForWriterExit(ctx context.Context, q *parkedCheckpoint) err
 		(q.Active.Turn != "" && p.Turn != q.Active.Turn) || p.Session != q.Session {
 		return errors.New("latest process does not match the interrupted writer")
 	}
-	return w.waitWriterTree(ctx, p)
+	if err := w.waitWriterTree(ctx, p); err != nil {
+		return err
+	}
+	if q.ReturnedTip != "" {
+		if p.Exited == nil || p.ExitCode == nil || *p.ExitCode == -1 {
+			return errors.New("original completed writer has no successful process exit receipt")
+		}
+		if *p.ExitCode != 0 {
+			return errTurnFailed
+		}
+	}
+	return nil
 }
 
 // A retained startup receipt means this Worker has not sent turn/start.
@@ -84,10 +95,13 @@ func (w *worker) waitWriterTree(ctx context.Context, p store.HarnessProcess) err
 }
 
 func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources, q *parkedCheckpoint, base string) error {
-	if err := w.waitForWriterExit(ctx, q); err != nil {
+	if err := w.confirmWriterLease(ctx, q, b.recovery); err != nil {
 		return err
 	}
-	if err := w.confirmWriterLease(ctx, q, b.recovery); err != nil {
+	if err := w.waitForWriterExit(ctx, q); err != nil {
+		if errors.Is(err, errTurnFailed) {
+			b.recovery.waiting, b.recovery.leaveUnsettled = false, false
+		}
 		return err
 	}
 	if time.Until(q.Active.Deadline) <= 0 {
@@ -114,7 +128,22 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 			return err
 		}
 	}
-	if !history.interruptedWriter(q) {
+	if q.ReturnedTip != "" {
+		if !history.latestWriter(q, "completed") {
+			return errors.New("native history does not confirm the completed writer as the latest turn")
+		}
+		if err := verifyWriterDraft(ctx, q); err != nil {
+			return err
+		}
+		q.Remaining = min(q.Remaining, time.Until(q.Active.Deadline))
+		if q.Remaining <= 0 {
+			b.recovery.waiting, b.recovery.leaveUnsettled = false, false
+			return context.DeadlineExceeded
+		}
+		q.Active = nil
+		return w.saveFinalization(ctx, q)
+	}
+	if !history.latestWriter(q, "interrupted") {
 		return errors.New("native history does not confirm the interrupted writer as the latest turn")
 	}
 	if err := w.confirmRecovery(ctx, q.Job, base, q.GitDir); err != nil {
@@ -186,8 +215,8 @@ func (h inputHistory) writerStart(q *parkedCheckpoint) string {
 	return latest.ID
 }
 
-func (h inputHistory) interruptedWriter(q *parkedCheckpoint) bool {
+func (h inputHistory) latestWriter(q *parkedCheckpoint, status string) bool {
 	turns := h.Thread.Turns
 	return h.matchesThread(q.Job.Workspace, q.Session) && len(turns) > 0 &&
-		turns[len(turns)-1].ID == q.Active.Turn && turns[len(turns)-1].Status == "interrupted"
+		turns[len(turns)-1].ID == q.Active.Turn && turns[len(turns)-1].Status == status
 }

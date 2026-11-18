@@ -234,14 +234,21 @@ func (w *worker) readFinalization(ctx context.Context, id int64) (*parkedCheckpo
 		return nil, fmt.Errorf("invalid saved candidate for execution %d", id)
 	}
 	if q.Active != nil {
-		if q.InitialTip != "" || q.CompletedTip != "" || q.ReturnedTip != "" || q.Finalization != nil ||
-			q.Writer == nil || q.Writer.Finished || q.Writer.Asked || q.Sequence < 0 || q.ResourceStep < 1 ||
+		if q.InitialTip != "" || q.CompletedTip != "" || q.Finalization != nil ||
+			q.Writer == nil || q.Writer.Finished != (q.ReturnedTip != "") || (q.Writer.Asked && !q.Writer.Finished) || q.Sequence < 0 || q.ResourceStep < 1 ||
 			!q.Job.ManageResources || !q.Job.ModelPause || !q.Job.RecoverWriterPause || !q.Job.SupportsCheckpoints || !q.Job.RecordAppTurn ||
 			(q.Job.Spec.Harness != "" && q.Job.Spec.Harness != "codex") ||
 			q.Active.Instance < 1 || q.Active.Deadline.IsZero() || q.Session != q.Active.Session || !nativeSessionID.MatchString(q.Session) || !q.Active.validReceipt() {
 			return nil, fmt.Errorf("invalid active writer for execution %d", id)
 		}
-	} else if q.ReturnedTip != "" {
+		if q.ReturnedTip == "" {
+			return &q, nil
+		}
+		if q.Active.Turn == "" {
+			return nil, fmt.Errorf("completed writer has no native turn for execution %d", id)
+		}
+	}
+	if q.ReturnedTip != "" {
 		if q.CompletedTip != "" || q.InitialTip != "" || q.Finalization != nil || q.Writer == nil || !q.Writer.Finished || !q.Job.ManageResources || !q.Job.SupportsCheckpoints || q.ResourceStep < 1 || q.Sequence < 0 || q.Session == "" || q.Trees.Index == "" || q.Trees.Worktree == "" {
 			return nil, fmt.Errorf("invalid native writer result for execution %d", id)
 		}

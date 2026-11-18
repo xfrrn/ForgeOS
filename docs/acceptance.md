@@ -9,7 +9,7 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。 | 原生历史缺少唯一启动证据、原生已完成但结果尚未落盘、接回存活进程及整机重启。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | 缺少唯一启动或完成证据时的处置、接回存活进程及整机重启。 |
 | C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
@@ -38,6 +38,22 @@
 在 `9e0ba64` 的产品代码上，使用独立的空 PostgreSQL 18 实例并启用真实 Docker 用例执行全量 Go 回归，557 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试，原始记录为 `input-history-regression.jsonl`。该轮补充的回执断言又单独运行通过。`go vet ./...`、TypeScript 检查和工作台生产构建通过。四阶段最终端到端复验仍待执行。
 
 此前在 `94ad23b` 上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
+
+<a id="writer-terminal-receipt"></a>
+
+### 专题 07、16 B.4 · 原生模型完成后、Worker 保存返回结果前重启
+
+在独立 PostgreSQL 18、真实 Codex App Server、Windows Worker 和 Chrome 上复用 [beta #261](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/261) 和 [beta #257](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/257)。用临时 SQLite 触发器延迟从完成事件转为最终返回记录。读取已冻结的草稿树、当前 Turn 与原进程退出码后终止 Daemon，去掉触发器，以同一身份重启 Worker。未知退出码场景另在原生进程退出记录写盘前终止 Daemon。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 恢复已写完的文档，从 Chrome 查看候选，并用 Git 读取文件 | 使用原草稿，只运行一次模型 | 原 PID 45916 退出码 0，Turn `01a1eee7-1344-7a61-aeab-b3dff1ebc929`。候选 `bd657fc717e0c1c71107ab8a01a89f0e926decf3` 与冻结文件逐字节一致（统一换行），保留草稿编号 `d97c094ec28c`。 |
+| 恢复已经提出业务问题的回合，在 Chrome 填写随机标题 | 原问题保留一次，回答后从原 Session 写入指定标题 | 原 PID 33948 退出码 0。两个回合共用 Session `01a1eee7-0346-7da2-88f2-3523346bb7fb`。候选 `e8a15e4a506160b19ccc9825cc300bdb4de81766` 的 H1 为 `Review dd7cbcab`。 |
+| 在节点停机时从 Chrome 取消 | 任务取消，已完成的工作不生成候选 | 任务为 `CANCELLED`，仅原 PID 49076，退出码 0。 |
+| 停机时修改验收副本的草稿 | 保留检查点，避免交付外部修改 | 原 PID 37964 已退出 0，任务为 `RUNNING`，新增模型进程数为 0。 |
+| 保留原生完成记录，但丢失原进程的退出码 | 成功退出仍待确认，保留检查点 | 原 PID 45104 记为 -1，任务为 `RUNNING`，新增模型进程数为 0。 |
+
+五份验收回执为 `terminal-final-{resume,question,cancel,edited,unknown}/latest.json`。本项从已保存原生完成事件的边界起验证。
 
 <a id="writer-start-confirmation"></a>
 

@@ -38,8 +38,59 @@ func TestInterruptedWriterHistory(t *testing.T) {
 		if err := json.Unmarshal([]byte(tc.turns), &h.Thread.Turns); err != nil {
 			t.Fatal(err)
 		}
-		if h.interruptedWriter(&q) != tc.want {
+		if h.latestWriter(&q, "interrupted") != tc.want {
 			t.Errorf("session %s cwd %s turns %s: want %t", tc.session, tc.cwd, tc.turns, tc.want)
+		}
+	}
+}
+
+func TestCompletedWriterExitReceipt(t *testing.T) {
+	if !supportsWriterProcessTree {
+		t.Skip("requires a supported Worker platform")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	w, job, _ := fixture(t)
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", t.TempDir())
+	var err error
+	w.journal, err = w.openJournal(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.journal.Close()
+	w.codexAppServer, w.codexVersion, job.RecordAppTurn = true, "test", true
+	for _, tc := range []struct {
+		arg string
+		ok  bool
+	}{{"--version", true}, {"--invalid-forgeos-test", false}} {
+		p := w.processLog(ctx, job, "codex", w.codexVersion)
+		cmd := exec.CommandContext(ctx, "git", tc.arg)
+		out, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := p.start(cmd, out); err != nil {
+			t.Fatal(err)
+		}
+		if exit, journal := p.wait(cmd); (exit == nil) != tc.ok || journal != nil {
+			t.Fatal(exit, journal)
+		}
+		q := parkedCheckpoint{Job: job, Session: "thread", Version: w.codexVersion, ReturnedTip: "saved",
+			Active: &activeWriterTurn{NativeTurn: store.NativeTurn{Instance: p.id, Session: "thread", Turn: "turn"}}}
+		if err := p.session(q.Session); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.appTurn(q.Active.Turn); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.waitForWriterExit(ctx, &q); (err == nil) != tc.ok || errors.Is(err, errTurnFailed) == tc.ok {
+			t.Fatal(tc.arg, err)
+		}
+		if _, err := w.journal.Exec("UPDATE harness_processes SET exit_code=-1 WHERE instance=?", p.id); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.waitForWriterExit(ctx, &q); err == nil || errors.Is(err, errTurnFailed) {
+			t.Fatal("unknown exit became a definite outcome", err)
 		}
 	}
 }
