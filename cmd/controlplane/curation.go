@@ -23,6 +23,9 @@ func registerCurator(mux *http.ServeMux, data *store.Store, owner, manager strin
 		return errors.New("set FORGEOS_CURATOR_PROJECT_ID and a distinct FORGEOS_CURATOR_TOKEN")
 	}
 	mux.HandleFunc("POST /internal/curator/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength != 0 && !decode(w, r, &struct{}{}) {
+			return
+		}
 		job, err := data.ClaimCuration(r.Context(), id, false, r.URL.Query().Get("supports_budget_deadline") == "1")
 		if job != nil {
 			job.CaptureProcess = r.URL.Query().Get("supports_process") == "1"
