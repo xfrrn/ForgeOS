@@ -21,6 +21,21 @@
 | 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 从当前提交构建控制面、Worker 与工作台，运行 `go vet ./...`，在非 root Ubuntu 上运行适配器不匹配和活跃写入跟踪专项 | 构建、静态检查和两项跨平台专项成功 | 工作台 TypeScript 和 Vite 生产构建成功。Windows 和 Ubuntu 两项 Worker 专项均通过。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
+| `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
+| 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
+
+<a id="roadmap-remote-receipts"></a>
+
+### 阶段二至四 · 从 GitHub 复核跨仓库交付和复杂 Goal 的回执
+
+2026-11-19 从两座验收私库的 REST API 分别读取 PR、Issue、交付评论、候选状态、合并提交和 Actions 的各次运行。逐项与原验收记录核对候选和合并 SHA，并核对 CI 是否在同一候选重跑、Issue 是否在合并后才关闭。以下是历史交付在远端保留的事实；重新执行四阶段流程仍列在最终验收中。
+
+| 原验收范围 | GitHub 回读结果 | ForgeOS 实现提交 |
+| --- | --- | --- |
+| 单控制面下两个项目独立交付 | 仓库 ID 分别为 1459614967、1459615168。alpha #18 合入 `main`，beta #43 合入 `codex/accept-project-harness-9c4836`。两个候选均为首次 Actions 失败、第二次成功；各自本地 CI 状态成功。两条 Issue 回执所载合并 SHA 与各自 PR 相同。[alpha PR 19](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/19) · [beta PR 44](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/44) | `76499c179711ac2c93fece4c6b4a3aef659ef67f` |
+| 带依赖的 Goal，首项合并后保持父 Issue 开放、末项交付后关闭 | 两个子 PR 均在原候选第二次 Actions 成功，并取得本地 CI 成功状态。首项在 05:36:30 UTC 合并，彼时该 Goal 的原始工作台验收记录为 OPEN。末项在 05:42:52 合并，其唯一父提交为首项合并 SHA。父 Issue 在 05:43:37 关闭，回写注明计划修订 1 的两项交付。[首项 PR 99](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/99) · [末项 PR 100](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/100) · [父 Issue 回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/98#issuecomment-6939813159) | `674a466b10c1f18bdeb8fc455ba39149623aa4a6` |
+
+回读明细为 `roadmap-receipt-audit/latest.json`，含各自的候选、合并 SHA、唯一父提交、运行编号、目标分支和关单时间。
 
 <a id="timeline-decisions-plans"></a>
 
@@ -34,7 +49,7 @@
 | 从任务 API 连续发布并激活两个计划版本，每次重发相同请求。修订 2 修改同一子项目标 | 父任务可追到两次发布和两次激活；子项可追到创建它和修改它的两个版本 | 父任务 1 的四条事件依序对应修订 1、1、2、2；子项 2 的创建和修订事件分别对应父计划 1、2。重放未增加事件 |
 | 重启控制面，从父、子时间线分别点击两个修订，再点击两个问题 | 历史链接打开当时的计划正文或答复；原事件保留 | 390 像素工作台从两条路线都读到对应的 Archive verification 1 或 2，两条历史答复可读。原归档中的 3 条事件逐字段相同 |
 
-回执为 `timeline-evidence/latest.json`。缺少原始编号的旧事件保留其已有字段。其他事件种类的审计载荷仍单独跟踪。
+实现提交 `2891472875e734aac58ed2b63f344b5c11d0e0fe`。回执为 `timeline-evidence/latest.json`。缺少原始编号的旧事件保留其已有字段。其他事件种类的审计载荷仍单独跟踪。
 
 <a id="supervised-claude"></a>
 
@@ -825,7 +840,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限。任务页跨节点下载 CI 文件（beta #49），中央及 Windows、Linux 节点按策略清理，真实候选 CI 的取消和恢复见专题 06。beta #88 和归档的 #55 已核对实现会话及重验来源 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`、`0420f45`、`6f9b0c1`、`b465048`、`9f0c704`、`84758c5`、`a221a0d`、`85d9c5c` | 其他验证器与独立审核角色场景 |
 | 11 预览与人工验收 | 工作项归档计划、覆盖审核及用例实测；Caddy、静态预览、DOM/Canvas 和同源嵌套 iframe 选择、用例关联、六类 Management 分类、阻塞澄清、按反馈退回和批准、从反馈修订需求及派发独立工作项（beta #19–21）、工作台 PNG 标注与遮挡归档。扩展截图、标签页录屏及归档回放，动态应用预览，隔离网络中的独立 Staging 网关均已实测。测试计划的规则和候选 SHA 在 beta #88、#91 复验 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`、`7565fa6`、`e71b7c8`、`978d184`、`71e6c9a`、`7fe001f`、`ec7a462`、`17bb819`、`c561e40`、`99de4f6`、`bf27241`、`7cbd8a3`、`5a5d685`、`d34260b`、`2b805b4`、`5279f11`、`c382473`、`732a4a8`、`6280acd`、`a6ade1d`、`9a08b44`、`f876721`、`ba4a31d`、`da40dd4`、`36ebbfd` | 真实提供方回调投递、外部 tailnet 设备访问 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付。签名 Webhook 原文归档与补充轮询见 beta #51。来源 Issue 关闭后终止候选 CI（beta #52）或正在运行的原生模型及工具（beta #131） | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5`、`4ea0363`、`a5d2193` | 细粒度凭据、第二人审查 |
-| 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照、交付证据链与反馈截图校验回读。已从配套备份恢复节点 SQLite 并补报。中央与节点 CI 文件、反馈截图及录屏均有保留与到期证据。四类独立角色还已验证[冻结输入与私有工作目录到期清理](#role-recovery-retention)。 | `1a17822`、`83ea262`、`5447445`、`c382473`、`ab36ad9`、`75b1495`、`b465048`、`9f0c704`、`b5f3992`、`6280acd`、`2bbf2cc` | 中央进程日志全文、完整审计载荷及其余进程和会话事件缓冲 |
+| 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照、交付证据链与反馈截图校验回读。已从配套备份恢复节点 SQLite 并补报。中央与节点 CI 文件、反馈截图及录屏均有保留与到期证据。四类独立角色还已验证[冻结输入与私有工作目录到期清理](#role-recovery-retention)。 | `1a17822`、`83ea262`、`5447445`、`c382473`、`ab36ad9`、`75b1495`、`b465048`、`9f0c704`、`b5f3992`、`6280acd`、`2bbf2cc` | [普通执行](#central-process-archive)、[独立角色](#role-process-central)和[环境启动](#startup-log-download)的中央日志下载均已验收。[问题与计划事件](#timeline-decisions-plans)可按发生时的记录追查。其他事件的审计载荷与缓冲仍需逐项核对 |
 | 14 部署与运维 | Windows 主机、Docker Linux 引擎、Ubuntu systemd 重启与派发；PostgreSQL、OpenBao 和反馈截图备份恢复；Caddy 双向 TLS 网关。恢复工作区后已用独立 Worker 继续派发。CI 文件与原始回执、Worker SQLite 与配套数据库的恢复见本页。具名节点与独立角色均已实测共享账号名额；Linux 服务重启后能读取实际 CLI 版本 | `1a17822`、`32c0fa0`、`bd1c734`、`06ed00b`、`ab013b6`、`ec7a462`、`42ba820`、`ff5d714`、`ff58493`、`c18af6d` | 普通 Worker 的模型与候选 CI 独立名额见 alpha #20、beta #45。普通 Worker 的跨节点共享预算见本页 alpha #22、beta #115。外部设备私网访问、Linux 模型登录复用、其他工件恢复、失联模型会话恢复待验收 |
 | 15–16 路线与开放项 | 基座、单项目闭环、两子项 Goal 场景、第二个项目交付有以上记录。当前可从[28 项逐项对照](16-open-decisions.md#requirement-status)及[18 份 ADR](adr-acceptance.md)回到实测。 | 本表所列提交、`0899cf3` | [开放事项 A–C](16-open-decisions.md)中其余真实环境与协议要求，以及全路线最终回归 |
 

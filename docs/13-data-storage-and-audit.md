@@ -55,13 +55,13 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 控制面的 management_processes 按任务与计划修订、共享副本 ID、仓库分析任务、问题 ID、预览反馈 ID、知识提取审核 ID 、候选测试计划 ID 或 Reviewer 候选执行 ID，加租约 SHA-256 保存各次作业的节点身份、最近进程窗口及接收时间；API 不暴露租约摘要。当前计划、历史修订以及来源项目的共享回执均通过 review_processes 回读，失败、过期或被新修订替代的尝试仍保留。迁移 099 将原 plan_review_processes 更名并加入互斥的副本身份，迁移 100 加入同样互斥的 analysis_task，迁移 101 再加入 question_id，迁移 102 加入 feedback_id，迁移 103 加入 curation_id、curation_role 和 role_turn，迁移 104 加入 test_plan_id 和 test_plan_role 并外键关联对应角色作业，迁移 105 加入 reviewer_execution 并关联原 code_reviews 记录；每条记录只能关联一种来源。既有记录原样保留，已对真实三版计划和两份共享历史升级回读。仓库分析接口通过 processes 返回全部尝试，重试不删除失败进程；归纳结果仍核对首次归档的固定来源。初始化报告的版本快照保存分析结果，进程历史由原任务的仓库分析入口回读。问题的 management_processes 同时出现在待答队列与任务历史，回答后仍由任务回读，不嵌入建议或 Owner 答复。已回答问题的在途进程在租约有效期内可上报实际退出。反馈页在各条观察下通过 management_processes 回读分类尝试，租约过期重新领取不会覆盖旧进程。知识来源回执分别通过 extraction_processes、review_processes 返回尝试，同一 Curator 租约的两次引文修复不会互相覆盖。候选测试计划回执以 test_processes 和 management_processes 分别返回生成与覆盖审核历史；被替代的修订也保留进程，不将其结果发布到新修订。Reviewer 回执通过 processes 返回各个审查租约的真实 Claude 进程，失败重试不删除旧观察；进程保存在报告之外，原 Git 引文验证和 Owner 核对门禁不变。已发布的项目经验仍只返回经验字段，不附带原生进程、会话或公开消息。共享副本接收方不能读取该私有历史。公开消息沿用节点 harness_model_output 的 8 KiB 脱敏窗口，控制面拒绝旧序号、同序号改写、节点或进程身份替换及退出后修改。
 
-独立 Curator、Management 的 SQLite 与同机普通 Worker 分开，均遵循 FORGEOS_WORKER_STATE_DIR 的私有目录要求。原生退出先记入 SQLite，再上报控制面；控制面不可达且最终回执未确认时不会提交审核结论。该角色尚无 Daemon 重启后的自动补报及原会话恢复，节点记录可用于核对。
+独立 Curator、Management 的 SQLite 与同机普通 Worker 分开，均遵循 FORGEOS_WORKER_STATE_DIR 的私有目录要求。原生退出先记入 SQLite，再上报控制面；控制面不可达且最终回执未确认时不会提交审核结论。重启后先补报已缓冲的回执，再处理冻结的作业。启用独立角色进程托管时，存活的原生进程可完成进行中的回合。[恢复入口与实测条件](acceptance.md#supervised-roles)
 
 ### 本地环境启动日志
 
 启动检查复用 `executions.live_ci_log`，以执行租约、已获 CI 名额、来源清单的固定提交、环境名和 `ci-run-<execution>` 绑定。结束后该临时窗口清除，`result.environment_run.output` 保留脱敏字节数和最近 8 KiB；最终回执不得删除或回退已观察日志。旧控制面未声明 `report_live_ci_log` 时新 Worker 沿用旧协议，旧 Worker 不补造输出。
 
-节点在写入私有 `startup.log` 前处理完整行、已知凭据、轮换后的节点令牌和跨块私钥。未完成行最多缓冲 64 KiB，超长行丢弃并保守遮蔽到明确的私钥结束标记；结束时安全处理未换行尾部。单行脱敏窗口最多 8 KiB，文件上限为 1 MiB 加截断标记；这里的字节数是实际脱敏文件长度，不是原始输出长度。Docker 创建后直接附着启动，立即失败也保留诊断；清理完成再关闭日志文件。CLI 的 `verify-environment` 同样写入日志和 `run.json`。这些有界文件尚无自动中央上传和到期清理，不代表完整无限日志归档。
+节点在写入私有 `startup.log` 前处理完整行、已知凭据、轮换后的节点令牌和跨块私钥。未完成行最多缓冲 64 KiB，超长行丢弃并保守遮蔽到明确的私钥结束标记；结束时安全处理未换行尾部。单行脱敏窗口最多 8 KiB，文件上限为 1 MiB 加截断标记；这里的字节数是实际脱敏文件长度，不是原始输出长度。Docker 创建后直接附着启动，立即失败也保留诊断；清理完成再关闭日志文件。CLI 的 `verify-environment` 同样写入日志和 `run.json`。正式节点和控制面协商中央归档能力后可上传启动日志。Owner 能从工作台读到归档全文，按项目期限到期后只保留元数据。[启动日志下载与到期回执](acceptance.md#startup-log-download)
 
 ## 2. 事件记录
 
@@ -171,7 +171,9 @@ FORGEOS_PROCESS_LOG_MAX_MIB 为每进程容量，默认 32，范围 1–1024；�
 
 清理是幂等事务，到期记录不能重新追加；延长期限不能恢复已经删除的正文。SQLite 启用 secure_delete，空间由后续写入复用，不承诺数据库文件立即缩小。旧备份恢复后，启动或再次 prune 会按当前期限重新清理。导出文件和离线备份仍由运维按自身保留策略管理。
 
-节点 JSONL 已有本地导出与期限控制；中央归档、按项目从工作台下载全文及启动日志的中央传输仍待完成。角色回合达到保留期限后清空 role_native_turns 的 prompt 和 contract，保留回合、原工作目录路径、Harness 和进程关联。role_recovery_expirations 按租约摘要及回合记录实际清理时间，原业务回执、冲突摘要和会话历史仍可核对。原有 CI、截图和录屏策略保持独立。
+节点 JSONL 支持本地导出与期限控制。Owner 也可从工作台按项目下载中央保留的全文。[普通执行](acceptance.md#central-process-archive) · [独立角色](acceptance.md#role-process-central) · [环境启动](acceptance.md#startup-log-download)
+
+角色回合达到保留期限后清空 role_native_turns 的 prompt 和 contract，保留回合、原工作目录路径、Harness 和进程关联。role_recovery_expirations 按租约摘要及回合记录实际清理时间，原业务回执、冲突摘要和会话历史仍可核对。原有 CI、截图和录屏策略保持独立。
 
 文件改动的结构化结果沿用 harness_tool_output 和 harness_log_entries：Codex CLI 的路径清单、App Server 的清单与补丁先格式化为明确的文本，再按原节点凭据与跨块状态脱敏。摘要覆盖最终脱敏记录；调用参数、未知字段及思考内容不进入归档。路径中已知凭据的引号或反斜线转义也会遮蔽。文件结果只解释原生工具回执，正式候选的 Git 证据仍独立保存。
 
