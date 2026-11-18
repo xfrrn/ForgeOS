@@ -1318,7 +1318,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 专题 | 已验证的入口和证据 | 实现 SHA | 仍待补齐或实测 |
 | --- | --- | --- | --- |
 | 00–01 产品与端到端流程 | [规则分类](#issue-work-type-rules)和[原生分类建议](#issue-classification-agent)已在私库、正式节点及 Chrome 验收。两个私有项目均从 Issue 到已合并 PR；复杂 Goal 13 从版本化计划到父 Issue 关闭。工作台登记、首次检查、固定 SHA 启动验证、版本化初始化报告与 Ruby、Gradle 仓库样例已验收 | `1a17822`、`32c0fa0`、`5447445`、`d57f60d`、`42dee55`、`9a75d9e`、`f724eea`、`d2c094a`、`673295d`、`bbd7773`、`439415c` | [项目接入和六类知识更新触发均有逐项证据](#intake-knowledge-matrix)。远程私网外部设备访问仍待验收。 |
-| 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行。工作台可打开有租约的动态应用，普通 Worker 分别限制模型与 CI 的名额。站内通知及已读回执见 beta #65；当前独立模型角色均已验证共用名额，包括 beta #125 的问题建议及 [#247、#248 的 Issue 分类](#issue-classification-agent) | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6`、`9a08b44`、`f876721`、`e8a84ea`、`31a46df`、`ff58493` | Telegram、飞书发送及重试已有本机 TLS 证据，真实收件待验收；其余管理协调。普通 Worker 共享账号实测见 alpha #22、beta #115 |
+| 02–03 系统与模块 | 独立控制面、Worker、PostgreSQL、React 工作台、只读规划、交付器、Management 审核、知识查询和静态预览均从实际入口运行。工作台可打开有租约的动态应用，普通 Worker 分别限制模型与 CI 的名额。站内通知及已读回执见 beta #65；当前独立模型角色均已验证共用名额，包括 beta #125 的问题建议及 [#247、#248 的 Issue 分类](#issue-classification-agent) | `1a17822`、`cc2011f`、`f8503c5`、`a31c02c`、`7fe001f`、`99de4f6`、`9a08b44`、`f876721`、`e8a84ea`、`31a46df`、`ff58493` | Telegram、飞书发送及重试已有本机 TLS 证据，真实收件待验收。[14 个控制面模块、12 个 Worker 模块和 7 项横向能力](03-module-catalog.md)已分别关联实测入口。普通 Worker 共享账号实测见 alpha #22、beta #115 |
 | 04 领域模型 | 同一任务关联历史需求版本、执行、计划修订、候选、验收、子 PR 和 Merge SHA。已归档独立 CI Run ID、检查输出的相对文件名和内容摘要。可下载其他节点的 CI 文件。运行中的 Codex、Claude 在工作台显示节点、PID 与会话，控制面重启后仍可查询（beta #57、#59）。另从[正式节点](#worker-app-turn)对照进程实例、Thread 和 Turn。 | `a7f8b48`、`5d30bcf`、`94b6b08`、`70781ba`、`ee695b3`、`91a150b`、`39d3f68`、`6f9b0c1`、`db6155b`、`1f31794` | 其他跨节点工件及独立审核角色 |
 | 05 角色与决策 | 任务 15 等待业务答复；Goal 16 的 Management 审核退回两版、批准第三版。跨项目验收问题的批量答复、Owner 按原生审核意见修改并批准指定修订见下文。换基后的三个角色与开发会话各自独立，见 beta #88。原生业务问题、Management 建议和 D1 项目决策查阅见 beta #94–111。已对照[五类 ACP 业务路由](#protocol-route-matrix)，并从审批中心处理[有来源的审核等级](#approval-source-levels)与[原问题的 D2/D3 答复](#approval-questions)。 | `70781ba`、`f8503c5`、`abb5257`、`d9fc283`、`a6f05da`、`85d9c5c`、`2672efc`、`0fad34a`、`5c5657b`、`913caea`、`d329bba` | 其余业务操作的 D0–D3 策略 |
 | 06 规划与编排 | 任务 16 从 Planner 草案、独立审核到运行中修订和两次子 PR 合并；Goal 13 显式激活。真实 Issue 评论分批进入回合，预览阻塞问题及候选退回在验收检查点处理。来源关闭取消、工作台取消及暂停后恢复同一候选的 CI 已实测（beta #52、#54、#55）。Owner 从工作台修订、批准并归档计划，beta #67 完成子项及父 Issue 交付 | `cc2011f`、`5d30bcf`、`83ea262`、`94b6b08`、`e981f07`、`f8503c5`、`f519840`、`4d31e7f`、`bf27241`、`7cbd8a3`、`a5d2193`、`84758c5`、`a221a0d`、`d9fc283`、`a6f05da`、`616dcb6`、`f0cd68f` | Codex 实现回合暂停和同会话恢复见 beta #137。只读 Planner 主动暂停见 beta #19。只读 Planner 已完成跨 Thread 交接，见页末。Codex 和 Claude 的首轮暂停草稿交接分别见 beta #145、#149。[Git 结果已生成时的整机断电](#linux-power-loss-worktree)已验。活动模型的整机重启及其余写入回合交接待验；下一回合指令已验收，原生取消见 beta #131、#132 |
@@ -4782,6 +4782,8 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 报告 candidate-lock-before.log 保留了旧版失败。修复后的 Windows 候选／锁专项和 Ubuntu 恢复专项均通过。随后在独立 PostgreSQL 18 和真实 Docker 下执行 `go test -count=1 -json ./...`，487 项测试及子测试通过，零失败、零跳过，报告 candidate-lock-stage-regression.jsonl。此为候选恢复阶段回归。
 
 上述锁内复核及阶段回归对应 ForgeOS 提交 `1e3a1b5444405e62043ece8bff908a69316c1853`。
+
+<a id="notice-channels"></a>
 
 ### 专题 02、03 · 项目外部通知通道与持久重试
 
