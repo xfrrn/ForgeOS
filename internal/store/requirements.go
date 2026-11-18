@@ -23,7 +23,7 @@ type RequirementRevision struct {
 }
 
 // The caller holds the imported task lock. Polling a renamed label or a newer branch tip is not a requirement edit.
-func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issue) error {
+func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issue, origin string) error {
 	var revision int
 	var previous []byte
 	var seen sql.NullTime
@@ -81,7 +81,8 @@ func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issu
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2 WHERE id=$1`, taskID, rid)
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'requirement_observed')`, taskID)
+		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,origin,requirement_version_id)
+			VALUES ($1,'requirement_observed',NULLIF($2,''),$3)`, taskID, origin, rid)
 	}
 	return err
 }
@@ -100,7 +101,7 @@ func (s *Store) ObserveIssue(ctx context.Context, projectID int64, issue Issue) 
 	if err != nil {
 		return 0, err
 	}
-	if err = recordRequirement(ctx, tx, id, issue); err != nil {
+	if err = recordRequirement(ctx, tx, id, issue, "github"); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit()
@@ -171,15 +172,16 @@ func (s *Store) ReviseFromFeedback(ctx context.Context, task int64, preview stri
 		return RequirementRevision{}, ErrConflict
 	}
 	if errors.Is(err, sql.ErrNoRows) {
+		var rid int64
 		err = tx.QueryRowContext(ctx, `INSERT INTO requirement_revisions(task_id,revision,issue,feedback_id)
 			SELECT task_id,revision+1,jsonb_set(issue,'{body}',to_jsonb($3::text)),$4 FROM requirement_revisions
 			WHERE task_id=$1 AND revision=$2 AND issue->>'body'<>$3 AND revision=(SELECT max(revision) FROM requirement_revisions WHERE task_id=$1)
-			RETURNING revision`, parent, f.Previous, f.Body, f.FeedbackID).Scan(&revision)
+			RETURNING revision,id`, parent, f.Previous, f.Body, f.FeedbackID).Scan(&revision, &rid)
 		if errors.Is(err, sql.ErrNoRows) {
 			return RequirementRevision{}, ErrConflict
 		}
 		if err == nil {
-			_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES($1,'requirement_revised_from_feedback')`, parent)
+			_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,requirement_version_id) VALUES($1,'requirement_revised_from_feedback',$2)`, parent, rid)
 		}
 	}
 	if err != nil {
@@ -235,7 +237,7 @@ func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task,
 			ELSE '{}'::jsonb END,status='READY' WHERE id=$1`, id, rid, string(issue), next.WorkType != "" && next.WorkType != "development"); err != nil {
 			return Task{}, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'requirement_adopted')`, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,requirement_version_id) VALUES ($1,'requirement_adopted',$2)`, id, rid); err != nil {
 			return Task{}, err
 		}
 	}

@@ -15,7 +15,8 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                COALESCE(v.origin, CASE
                    WHEN v.type IN ('execution_claimed','execution_completed','execution_failed','planner_completed','ci_paused') THEN 'worker'
                    WHEN v.type IN ('task_created','execution_abandoned','owner_cancel_requested','ci_pause_requested','ci_resumed',
-                                   'decision_answered','acceptance_approved','acceptance_rejected','plan_revised') THEN 'owner'
+                                   'decision_answered','acceptance_approved','acceptance_rejected','plan_revised',
+                                   'requirement_revised_from_feedback','requirement_adopted') THEN 'owner'
                    WHEN v.type='decision_requested' AND q.id IS NOT NULL THEN
                        CASE WHEN q.checkpoint_sequence IS NULL THEN 'owner' ELSE 'worker' END
                    WHEN v.type IN ('management_reviewed','management_decision_answered','management_question_reviewed') THEN 'management'
@@ -39,7 +40,9 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                fb.id AS feedback, fb.body->>'commit' AS feedback_commit,
                CASE WHEN v.type='preview_feedback_classified' THEN fb.classification END AS classification,
                fa.id AS artifact,fa.mime,fa.bytes,fa.sha256,
-               req.id AS requirement_id,req.revision AS requirement_revision,req.issue AS imported_issue
+               req.id AS requirement_id,req.revision AS requirement_revision,req.issue AS issue,
+               rp.task_id AS feedback_task,rp.execution_id AS feedback_execution,rp.commit AS revision_candidate,
+               CASE WHEN rp.id IS NOT NULL THEN req.feedback_id END AS revision_feedback
         FROM task_events v JOIN work_items t ON t.id=v.task_id
         LEFT JOIN executions e ON e.id=v.execution_id AND e.task_id=t.id
         LEFT JOIN decision_questions q ON q.id=v.question_id AND q.task_id=t.id
@@ -54,27 +57,31 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
         LEFT JOIN preview_feedback fb ON fb.id=v.feedback_id AND EXISTS (
                SELECT 1 FROM static_previews p WHERE p.id=fb.preview_id AND p.execution_id=e.id)
         LEFT JOIN feedback_artifacts fa ON fa.id=v.feedback_artifact_id AND fa.feedback_id=fb.id
-        LEFT JOIN requirement_revisions req ON v.type='issue_imported' AND req.task_id=t.id AND req.revision=1
+        LEFT JOIN requirement_revisions req ON req.task_id=t.id AND
+              ((v.type='issue_imported' AND req.revision=1) OR req.id=v.requirement_version_id)
+        LEFT JOIN preview_feedback rf ON rf.id=req.feedback_id
+        LEFT JOIN static_preview_receipts rp ON rp.id=rf.preview_id AND rp.project_id=t.project_id
         WHERE t.project_id=$1 AND t.id=$2 AND v.id=$3
     ) SELECT jsonb_build_object(
         'event_id',id,'sequence',id,'project_id',project_id,'task_id',task_id,'execution_id',execution_id,
         'session_id',COALESCE(NULLIF(result->>'session_id',''),plan_review->>'session_id',classification->>'session_id'),'event_type',type,'timestamp',at,
         'actor',CASE source WHEN 'worker' THEN worker WHEN 'owner' THEN COALESCE(reviewer,'owner') WHEN 'management' THEN 'management' WHEN 'controlplane' THEN 'delivery_manager'
-                            WHEN 'github' THEN CASE WHEN type='issue_imported' THEN 'github_poller' END END,
+                            WHEN 'github' THEN CASE WHEN type IN ('issue_imported','requirement_observed') THEN 'github_poller' END END,
         'source',source,'correlation_id',CASE WHEN execution_id IS NULL THEN format('TASK-%s',task_id) ELSE format('EXECUTION-%s',execution_id) END,
         'payload',jsonb_strip_nulls(jsonb_build_object(
             'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,
             'task_kind',CASE WHEN type='task_created' THEN kind END,
-            'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
+            'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
             'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',
             'validation_profile',result#>>'{validation,profile}','validation_run',result#>>'{validation,run,id}',
             'decision',COALESCE(decision,plan_review->>'verdict'),'decision_level',plan_review->>'effective_level',
             'pr_number',pr_number,'pr_url',pr_url,'target_branch',target_branch,'merge_sha',merge_sha,
             'new_base',refreshed_base,'new_candidate',refreshed_candidate,'completed_goal',completed_goal,
-            'feedback_id',feedback,'category',classification->>'category','artifact_id',artifact,'mime',mime,'bytes',bytes,'sha256',sha256,
-            'requirement_id',requirement_id,'requirement_revision',requirement_revision,'issue_id',imported_issue->'id',
-            'issue_number',imported_issue->'number','issue_url',NULLIF(imported_issue->>'url',''),'repository_id',imported_issue->'repository_id',
-            'work_type',NULLIF(imported_issue->>'work_type',''))))
+            'feedback_id',COALESCE(feedback,revision_feedback),'feedback_task_id',feedback_task,'feedback_execution_id',feedback_execution,
+            'category',classification->>'category','artifact_id',artifact,'mime',mime,'bytes',bytes,'sha256',sha256,
+            'requirement_id',requirement_id,'requirement_revision',requirement_revision,'issue_id',issue->'id',
+            'issue_number',issue->'number','issue_url',NULLIF(issue->>'url',''),'repository_id',issue->'repository_id',
+            'work_type',NULLIF(issue->>'work_type',''))))
         FROM scoped`, project, task, event).Scan(&receipt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

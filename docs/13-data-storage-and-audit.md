@@ -95,6 +95,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 ## 3. 审计
 
+需求变更事件的回执记录被观察、采用或从反馈新建的具体修订。来源是预览反馈时，载荷还给出原反馈、任务、执行和候选 SHA。新建修订与采用修订分别记录。历史观察可按同一事务唯一匹配修订，旧采用事件缺少版本依据时保留未知。[Issue 编辑、工作台采用与反馈修订的实测](acceptance.md#requirement-event-audit)
+
 审计记录：
 - 谁发起；
 - 谁批准；

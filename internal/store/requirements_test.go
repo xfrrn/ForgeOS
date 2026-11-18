@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -251,6 +252,46 @@ func TestAdoptRequirementAfterTurn(t *testing.T) {
 	remote, err := s.RequirementRevision(ctx, task.ID, 5)
 	if err != nil || remote.FeedbackID != 0 || remote.Issue.Body != issue.Body {
 		t.Fatal("missed real GitHub change", remote, err)
+	}
+	current, err = s.Task(ctx, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revisions []int
+	for _, event := range current.Events {
+		if event.Type != "requirement_observed" && event.Type != "requirement_adopted" && event.Type != "requirement_revised_from_feedback" {
+			continue
+		}
+		raw, err := s.EventAudit(ctx, p.ID, task.ID, event.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var receipt struct {
+			Source  string         `json:"source"`
+			Payload map[string]any `json:"payload"`
+		}
+		if err := json.Unmarshal(raw, &receipt); err != nil {
+			t.Fatal(err)
+		}
+		version, ok := receipt.Payload["requirement_revision"].(float64)
+		if !ok {
+			t.Fatal(event.Type, string(raw))
+		}
+		revisions = append(revisions, int(version))
+		wantSource := "owner"
+		if event.Type == "requirement_observed" {
+			wantSource = "github"
+		}
+		if receipt.Source != wantSource {
+			t.Fatal(event.Type, string(raw))
+		}
+		if event.Type == "requirement_revised_from_feedback" && (receipt.Payload["feedback_id"] != float64(fid) ||
+			receipt.Payload["feedback_execution_id"] != float64(job.ExecutionID) || receipt.Payload["commit"] != candidate) {
+			t.Fatal("lost feedback candidate", string(raw))
+		}
+	}
+	if !slices.Equal(revisions, []int{2, 3, 3, 4, 5}) {
+		t.Fatalf("unexpected requirement events: %v", revisions)
 	}
 	change.Body = "different replay"
 	if _, err = s.ReviseFromFeedback(ctx, task.ID, preview.ID, change); !errors.Is(err, ErrConflict) {

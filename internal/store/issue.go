@@ -139,7 +139,7 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 	if err != nil {
 		return Task{}, err
 	}
-	if err = recordRequirement(ctx, tx, id, issue); err != nil {
+	if err = recordRequirement(ctx, tx, id, issue, spec.ImportOrigin); err != nil {
 		return Task{}, err
 	}
 	if len(sources) == 1 {

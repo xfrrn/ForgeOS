@@ -34,6 +34,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="requirement-event-audit"></a>
+
+### 专题 06、12、13 · 观察、采用和从预览反馈修订需求
+
+2026-11-19，在空 PostgreSQL 18、正式 Windows 控制面和 390 像素 Chrome 中逐条下载回执，另恢复实际候选进行反馈操作。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 使用旧控制面导入验收 Issue，编辑正文，重新导入并在工作台采用修订 2，然后升级 | 能恢复有明确依据的旧修订；缺失的历史关联保持未知 | 升级前两份回执均缺修订编号。升级后，观察事件 2 关联修订 2，原发起方未知。采用事件 3 的来源为 Owner，采用版本仍未知。[beta #273](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/273) |
+| 两次编辑同一 Issue 正文，通过 Owner 手动同步和 GitHub 轮询分别观察新版本；在 Chrome 采用各版、重放采用、重启 | 工作台文件与 API 相同，每次只采用一次；较早回执仍指向各自版本 | 事件 4、5 关联修订 3，均由 Owner 发起。事件 19、20 关联修订 4，发起方分别为 GitHub 轮询器和 Owner。重启后六份回执逐字段相同。 |
+| 还原实际候选，在正式预览提交容量规则变更，等待原生 Management 分类，在 Chrome 保存修订、重放并重启 | 可从需求修订查到反馈、执行和候选，保存操作归属 Owner | 反馈 1 由 Session `01a1efbd-732b-7662-9a8e-28e6f75f48b3` 判为需求变更。事件 6 指向修订 2、任务 1、执行 1、候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`。重放沿用同一修订，只有一条新建事件。下载未包含私有正文或预览访问标识。[beta #163](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/163) |
+
+原始回执为 `requirement-event-live/latest.json`、`requirement-feedback-live/latest.json`。PostgreSQL 18 和真实 Docker 全包回归 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件；报告为 `requirement-event-regression.jsonl`。Go 静态检查通过。
+
 <a id="feedback-backup-restore"></a>
 
 ### 专题 13、14 · 从同一套备份恢复反馈 PNG、WebM 和过期回执
