@@ -94,6 +94,7 @@ func (p *processLog) codexTool(kind string, raw []byte) error {
 		Item struct {
 			ID, Type, Status string
 			Changes          []nativeFileChange
+			Result, Error    json.RawMessage
 			Output           string `json:"aggregated_output"`
 		}
 	}
@@ -110,6 +111,9 @@ func (p *processLog) codexTool(kind string, raw []byte) error {
 	output := e.Item.Output
 	if e.Item.Type == "file_change" && phase != "started" && p.toolOutput != nil {
 		output = fileChangeOutput(e.Item.Changes)
+	}
+	if e.Item.Type == "mcp_tool_call" && phase != "started" && p.toolOutput != nil {
+		output = mcpToolOutput(e.Item.Result, e.Item.Error)
 	}
 	return p.recordTool(e.Item.ID, e.Item.Type, phase, output)
 }

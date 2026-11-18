@@ -8,6 +8,9 @@ import (
 )
 
 func TestRedactedLogHidesQuotedKnownCredentials(t *testing.T) {
+	if got := RedactedLog([]byte(`{"value":"x<&\u0007y"}`+"\n"), []string{"x<&\ay"}); got != "[redacted]\n" {
+		t.Fatal("JSON-escaped credential exposed")
+	}
 	for _, secret := range []string{"embedded\\separator", "embedded\"quote", "embedded\nline"} {
 		raw := "add " + strconv.Quote("docs/"+secret+".md") + "\n"
 		if got := RedactedLog([]byte(raw), []string{secret}); got != "[redacted]\n" {

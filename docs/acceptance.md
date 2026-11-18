@@ -10,9 +10,24 @@
 | --- | --- | --- |
 | B.2 · 适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。[原生命令](#workbench-native-commands)与[文件补丁](#workbench-file-patches)的单次决定、执行回执及受保护分支交付均已验收。 | Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | 缺少唯一启动或完成证据时的处置、接回存活进程及整机重启。 |
-| C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | 其余结构化工具输出。 |
+| C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)已取得双协议原生回执，并经工作台回放核对。网页搜索等其余结构化输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="mcp-public-output"></a>
+
+### 专题 07、16 C.3 · 核对 Codex MCP 公开输出
+
+使用 Codex 0.169.0-alpha.11.1 在临时只读工作区调用节点的测试工具 `forgeos_receipt.sample`。测试工具无参数，固定返回两段文本、一份公开 JSON 和一条私有元数据。生产角色的 MCP 配置沿用现有权限策略。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 用原生 App Server 单次批准指定工具和空参数；用 CLI 调用声明只读的同一测试工具 | 两个适配器取得公开正文，工具声明与权限决定可区分 | 两者均返回 completed、两段有序文本及 `{"receipt":"public-receipt"}`。App Server 字段名为 `structuredContent`，CLI 为 `structured_content`。 |
+| 在原生 CLI 的 `never` 策略下调用需要批准的版本 | 保留拒绝原因 | 原生状态 failed，错误消息为 `MCP tool call requires approval, but approval policy is never`。 |
+| 在独立 PostgreSQL 18 库向普通 Worker 回放以上三份原生回执，从 390 像素宽的 Chrome 任务页展开“最近完成的工具输出”，再运行 `process-logs export` | 运行窗口、最终进程记录与归档正文一致；不含调用参数和私有元数据 | 两个成功窗口均依次显示两段文本及公开 JSON，拒绝窗口显示原始原因。三份归档各有三条记录，末行均为 `verified:true`。 |
+| 向节点日志入口送入混合文本、助手专用块、嵌入资源、大整数和节点凭据 | 已知凭据脱敏，保留公开数据的精度，排除非公开块 | Worker 与脱敏测试通过，归档保留 `9007199254740993` 和公开文本。 |
+
+原生输入文件为 `native-tool-app-local.json`、`native-tool-annotated-exec.json`、`native-tool-exec.json`。工作台回放程序自报版本 `0.0.1-replay`，操作记录见 `structured-tool-replay/{app,cli-positive,cli}.json`，各运行目录有截图和 JSONL 导出。此记录验证原生协议和产品日志入口，生产角色直接调用 MCP 仍受原权限策略约束。
 
 <a id="workbench-file-patches"></a>
 

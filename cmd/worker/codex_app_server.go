@@ -537,6 +537,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				Item     struct {
 					ID, Type, Status, Text, AggregatedOutput string
 					Changes                                  []nativeFileChange
+					Result, Error                            json.RawMessage
 				}
 			}
 			isTurn := strings.HasPrefix(m.Method, "turn/")
@@ -639,6 +640,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				output := event.Item.AggregatedOutput
 				if name == "file_change" && phase != "started" && process.toolOutput != nil {
 					output = fileChangeOutput(event.Item.Changes)
+				}
+				if name == "mcp_tool_call" && phase != "started" && process.toolOutput != nil {
+					output = mcpToolOutput(event.Item.Result, event.Item.Error)
 				}
 				if err = process.recordTool(event.Item.ID, name, phase, output); err != nil {
 					return session, err

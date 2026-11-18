@@ -2,6 +2,7 @@ package validation
 
 import (
 	"bytes"
+	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,6 +22,12 @@ func RedactedLog(data []byte, secrets []string) string {
 		quoted := strconv.Quote(secret)
 		if quoted[1:len(quoted)-1] != secret {
 			matches = append(matches, quoted[1:len(quoted)-1])
+			var buf bytes.Buffer
+			enc := json.NewEncoder(&buf)
+			enc.SetEscapeHTML(false)
+			if enc.Encode(secret) == nil {
+				matches = append(matches, buf.String()[1:buf.Len()-2])
+			}
 		}
 	}
 	// Only publish complete lines. Classify them before cutting the display window.
