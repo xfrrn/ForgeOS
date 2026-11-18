@@ -240,6 +240,11 @@ func (w *worker) post(ctx context.Context, path string, body any, out any) (int,
 		return 0, err
 	}
 	defer resp.Body.Close()
+	return decodeJobResponse(resp, out)
+}
+
+func decodeJobResponse(resp *http.Response, out any) (int, error) {
+	var err error
 	if out != nil && resp.StatusCode == http.StatusOK {
 		maxJob := int64(2 << 20)
 		switch out.(type) {

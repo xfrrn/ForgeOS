@@ -153,12 +153,12 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 }
 
 // A nil transaction means the worker must wait. The caller records its lease before committing.
-func (s *Store) beginManagementClaim(ctx context.Context, project int64, role string, supportsDeadline bool) (*sql.Tx, sql.NullString, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+func (s *Store) beginManagementClaim(ctx context.Context, project int64, role string, supportsDeadline bool) (*roleClaimTransaction, sql.NullString, error) {
+	tx, err := s.beginRoleClaim(ctx)
 	if err != nil {
 		return nil, sql.NullString{}, err
 	}
-	pool, available, err := modelSlot(ctx, tx, "codex", "", role, project)
+	pool, available, err := modelSlot(ctx, tx.Tx, "codex", "", role, project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		tx.Rollback()
 		return nil, pool, err

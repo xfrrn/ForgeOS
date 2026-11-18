@@ -22,7 +22,7 @@ func registerCurator(mux *http.ServeMux, data *store.Store, owner, manager strin
 		slices.Contains([]string{owner, manager, os.Getenv("FORGEOS_TEST_AGENT_TOKEN"), os.Getenv("FORGEOS_REVIEWER_TOKEN")}, token) {
 		return errors.New("set FORGEOS_CURATOR_PROJECT_ID and a distinct FORGEOS_CURATOR_TOKEN")
 	}
-	mux.HandleFunc("POST /internal/curator/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /internal/curator/claim", authorized(token, idempotentRoleClaim(data, id, "curator", func(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength != 0 && !decode(w, r, &struct{}{}) {
 			return
 		}
@@ -35,7 +35,7 @@ func registerCurator(mux *http.ServeMux, data *store.Store, owner, manager strin
 			return
 		}
 		respond(w, 200, job, err)
-	}))
+	})))
 	mux.HandleFunc("POST /internal/curator/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var report store.ManagementProcessReport
 		if decodeLimited(w, r, &report, 64<<10) {

@@ -19,7 +19,7 @@ func (w *worker) runCurator(ctx context.Context) error {
 			return err
 		}
 		var job store.CurationJob
-		status, err := w.post(ctx, "/internal/curator/claim?supports_process=1&supports_budget_deadline=1", struct{}{}, &job)
+		status, err := w.claimRole(ctx, "curator", "/internal/curator/claim?supports_process=1&supports_budget_deadline=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {
 			wait(ctx)
 			continue

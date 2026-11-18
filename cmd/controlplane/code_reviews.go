@@ -71,7 +71,7 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 	if err != nil || project < 1 || strings.TrimSpace(token) == "" || token == owner || token == manager || workers.match(token) != nil {
 		return errors.New("set FORGEOS_REVIEWER_PROJECT_ID and a distinct FORGEOS_REVIEWER_TOKEN")
 	}
-	mux.HandleFunc("POST /internal/reviewer/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /internal/reviewer/claim", authorized(token, idempotentRoleClaim(data, project, "reviewer", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			SupportsContext bool `json:"supports_candidate_context"`
 		}
@@ -88,7 +88,7 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 			job.RepoRelativePath = localrepo.RelativePath(root, job.Repo)
 		}
 		respond(w, 200, job, err)
-	}))
+	})))
 	mux.HandleFunc("POST /internal/reviewer/process", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var report store.ManagementProcessReport
 		if decodeLimited(w, r, &report, 64<<10) {

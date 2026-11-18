@@ -20,7 +20,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 			return err
 		}
 		var job store.ReviewJob
-		status, err := w.post(ctx, "/internal/reviewer/claim?supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
+		status, err := w.claimRole(ctx, "reviewer", "/internal/reviewer/claim?supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue

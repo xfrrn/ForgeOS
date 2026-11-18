@@ -17,7 +17,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 	if err != nil || id <= 0 || strings.TrimSpace(token) == "" || owner == token || workers.match(token) != nil {
 		return errors.New("set FORGEOS_MANAGEMENT_PROJECT_ID and a distinct FORGEOS_MANAGEMENT_TOKEN")
 	}
-	mux.HandleFunc("POST /internal/management/claim", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /internal/management/claim", authorized(token, idempotentRoleClaim(data, id, "management", func(w http.ResponseWriter, r *http.Request) {
 		var capabilities struct {
 			RepositoryAnalysis bool `json:"supports_repository_analysis"`
 			Shares             bool `json:"supports_shares"`
@@ -80,7 +80,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			return
 		}
 		respond(w, http.StatusOK, job, err)
-	}))
+	})))
 	mux.HandleFunc("POST /internal/management/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			ShareID  int64                  `json:"share_id"`

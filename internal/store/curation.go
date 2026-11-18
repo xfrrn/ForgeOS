@@ -37,12 +37,12 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 		role = "curation_review"
 		pending, lease, until = "extraction IS NOT NULL AND jsonb_array_length(extraction->'facts')>0 AND review IS NULL", "review_lease", "review_until"
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginRoleClaim(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "codex", "", role, project)
+	pool, available, err := modelSlot(ctx, tx.Tx, "codex", "", role, project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		return nil, err
 	}

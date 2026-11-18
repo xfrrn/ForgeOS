@@ -142,12 +142,12 @@ func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, s
 	if role != "test" && role != "management" {
 		return nil, ErrConflict
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginRoleClaim(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "codex", "", role, project)
+	pool, available, err := modelSlot(ctx, tx.Tx, "codex", "", role, project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		return nil, err
 	}

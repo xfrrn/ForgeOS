@@ -70,12 +70,12 @@ func (s *Store) RequestCodeReview(ctx context.Context, task, execution int64, co
 }
 
 func (s *Store) ClaimCodeReview(ctx context.Context, project int64, supportsContext, supportsDeadline bool) (*ReviewJob, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginRoleClaim(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx, "claude", "", "reviewer", project)
+	pool, available, err := modelSlot(ctx, tx.Tx, "claude", "", "reviewer", project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		return nil, err
 	}
