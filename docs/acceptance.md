@@ -3656,3 +3656,26 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 切到旧控制面查看同一资料，再重启当前控制面 | 旧接口仍可阅读审核；恢复当前版本后收到同一事件 | Chrome 在旧版显示原审核，当前版本的完整事件逐字段匹配重启前记录。 |
 
 专项用正式 AgentMessage Schema 校验实际 PostgreSQL 生成的事件。脚本 curation-event-live.py，证据 curation_owner_event_a/result.json、owner-event.png。
+
+<a id="protocol-route-matrix"></a>
+
+### 专题 16 B.3 · 五类消息的正式路由复验
+
+2026-11-18，使用当前控制面和四组真实作业记录，从原检查点的 Owner 消息查询、原 Management 节点的幂等领取请求、以及 Owner 的资料审核回执读取 10 条消息。按仓库 AgentMessage 1.0 的 Draft 2020-12 Schema 验证完整对象和日期格式，逐条核对发送方、接收方、业务范围、信任等级和幂等键。每组均重启控制面后再读一次。
+
+| 类型与场景 | 预期 | 实际消息编号 | 完整消息 SHA-256 |
+| --- | --- | --- | --- |
+| REQUEST · Owner 答复 | 绑定提问检查点 | `QUESTION-1-REQUEST` | `a0ec6333427e5a8a210e866a03748954e3942d98cc4fd07e679c3b9164197f43` |
+| RESPONSE · Owner 答复 | 关联原请求，返回提问节点 | `QUESTION-1-RESPONSE` | `2881bf4ad7761e6c84a7e8d275b7b5c128d8cdc3cc000c3585a5250ada8cd647` |
+| COMMAND · Owner 答复 | 由 Owner 排入原执行的下一检查点 | `EXEC-1-CHECKPOINT-1-COMMAND-676ec8c3-b285-47b3-847c-994d26179047` | `198734bdad1f360278db01810d87d3602cfb9caa868870ebe8c9c7069ba93fc8` |
+| COMMAND · Owner 答复 | 由 Owner 排入原执行的下一检查点 | `EXEC-1-CHECKPOINT-2-COMMAND-4d086944-0817-4cdb-b1c9-8332a7123c2a` | `04ed590e9bdd144e16b92447e09fc626861da24a2b3567f43ec06ffca0248e39` |
+| REQUEST · Management 查阅 | 绑定提问检查点 | `QUESTION-1-REQUEST` | `321ad7eb4a2fc07d6831c5c5746a9edce4f6fadde094c8cb9ba933e6d42aa2e1` |
+| RESPONSE · Management 查阅 | 关联原请求，返回提问节点 | `QUESTION-1-RESPONSE` | `d659a5f19a26e7b73ca7dd7792038f93872e3000c23044298555df498ba90125` |
+| COMMAND · Management 查阅 | 由 Owner 排入原执行的下一检查点 | `EXEC-1-CHECKPOINT-1-COMMAND-b3af4f7a-59fe-4e59-96b9-87815271ef54` | `6d815169c13961c842e19fe1286fc9ddfb1bd0bada1c47e6e941d0c1ac91f91e` |
+| COMMAND · Management 查阅 | 由 Owner 排入原执行的下一检查点 | `EXEC-1-CHECKPOINT-2-COMMAND-8dc7d7a2-9e1d-4105-8fa9-b0ccb168d0ca` | `e83366a2477a5f51b0f2d39dc4bfa797ad1d602716daf9c224fa0b6ddc7e7b5a` |
+| RESULT · 角色审核 | 同项目 Management 接收原 Curator 事实 | `CURATION-1-RESULT` | `f3745b9c1c27442caff46e26e0a77bd3249e892289f11ce25211449d7a85231d` |
+| EVENT · 知识工作台 | Owner 读取已完成的知识审核 | `CURATION-1-REVIEWED` | `970008374116e8c090f0e730bc9738e1d09988b17f95539bf54823e8ed1a8288` |
+
+两种 REQUEST/RESPONSE 均核对了原请求 ID。四个 COMMAND 各绑定自己的接收检查点。RESULT 与 EVENT 共享知识记录的关联编号，分别保留提取与审核的业务时间。所有 10 条均通过 Schema 并在重启后逐字段一致。普通 Worker 令牌访问对应的 Owner 或 Management 接口均收到 401。摘要以 UTF-8 对键排序的 JSON 计算（Python json.dumps，sort_keys=True，ensure_ascii=False，默认分隔符）。
+
+原始端到端证据包括 [Owner 指令](#check-b-3)、[角色结果及新旧版本的真实组合](#curator-result-route)、[Owner 在 Chrome 查看审核事件](#curation-review-event)。实现与验收提交见[专题 16 的原始事项对照](16-open-decisions.md#requirement-status)。此次复验脚本 protocol-type-matrix.py，每组 proof.json 保留消息身份、幂等关联及完整消息摘要。

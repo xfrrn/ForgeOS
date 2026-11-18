@@ -105,6 +105,16 @@ Management 领取知识审核时可协商 `curation_acp=1.0`。控制面把 Cura
 
 在项目资料、确认决策、交付事件或仓库文档的“知识提取与审核”中，Owner 可展开“审核事件回执”。控制面从已结算的 Management 审核生成只读 EVENT，关联同一知识记录的 RESULT；审核时间、原生会话、有效来源摘要及审阅意见来自固定回执。[工作台验收](acceptance.md#curation-review-event)
 
+每类消息通过执行该业务操作的入口流转。下表记录已上线的路由、认证来源及接收端可执行的动作。[五类消息实测](acceptance.md#protocol-route-matrix)
+
+| 类型 | 已认证的业务来源与接收方 | 作用范围与处理规则 |
+| --- | --- | --- |
+| REQUEST | 实现节点 → Owner 或 Management | 控制面按原执行和检查点登记业务问题。查阅已确认决策时另绑定项目决策编号。 |
+| RESPONSE | Owner 或 Management → 原实现节点 | 答复引用原请求。Management 只能对核实仍适用的既有决策给出 D1 引用；Owner 答复保留自己的身份。 |
+| COMMAND | Owner → 已分配的实现节点 | 只在接收检查点执行已冻结的 queue_next 指令，节点核对身份、顺序、正文和幂等键。 |
+| RESULT | Curator → 同项目 Management | 审核固定提取事实，接收端核对原生会话格式、来源正文摘要与逐字引用。 |
+| EVENT | Management → Owner | 从已结算的项目知识审核回执生成，供 Owner 回读。提案确认和共享发布各自需要对应的 Owner 操作。 |
+
 ## 6. 知识来源优先级
 
 普通规则冲突：
