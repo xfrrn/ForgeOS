@@ -1,6 +1,6 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, type ApiRequest } from './shared'
+import { ApiError, formatTime, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Receipt = {
@@ -19,6 +19,7 @@ type Receipt = {
   decisions?: {fact: number; id: number; status: string}[]
   extraction: { session: string; facts: { statement: string; quote: string }[]; profile?: StructuredProfile } | null
   review: { level: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile } | null
+  review_event?: { message_id: string; correlation_id: string; timestamp: string; from: { id: string }; to: { id: string } }
 }
 
 export function KnowledgeCuration({project, path, request}: {project: number; path: string; request: ApiRequest}) {
@@ -104,6 +105,11 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
         })}</>}
       {saveError && <p role="alert">{saveError}</p>}
       {review && <><p>Management 审核 · {review.level} · <code>{review.session_id}</code></p>
+        {receipt?.review_event && <details><summary>审核事件回执</summary>
+          <p>消息编号 · <code>{receipt.review_event.message_id}</code></p>
+          <p>关联编号 · <code>{receipt.review_event.correlation_id}</code></p>
+          <p>{receipt.review_event.from.id} → {receipt.review_event.to.id} · <time dateTime={receipt.review_event.timestamp}>{formatTime(receipt.review_event.timestamp)}</time></p>
+        </details>}
         {review.profile && <RolePermissions role="Management" profile={review.profile}/>}
         <p>{review.rationale}</p><p>{review.evidence}</p></>}
       <button className="button" onClick={() => setRefresh(n => n + 1)}>刷新审核记录</button>

@@ -103,6 +103,8 @@ Owner 可用 `GET /tasks/{id}/questions/{question}/messages` 回读原生实现�
 
 Management 领取知识审核时可协商 `curation_acp=1.0`。控制面把 Curator 的已结算提取结果路由为项目级 RESULT，以提取回执时间、知识记录编号和来源 SHA-256 绑定原始资料。Management 在启动独立原生会话前验证发送方、接收方、信任级别、项目、幂等键及逐字引用。旧节点和旧控制面仍可使用原提取格式。[真实路由与版本兼容验收](acceptance.md#curator-result-route)
 
+在项目资料、确认决策、交付事件或仓库文档的“知识提取与审核”中，Owner 可展开“审核事件回执”。控制面从已结算的 Management 审核生成只读 EVENT，关联同一知识记录的 RESULT；审核时间、原生会话、有效来源摘要及审阅意见来自固定回执。[工作台验收](acceptance.md#curation-review-event)
+
 ## 6. 知识来源优先级
 
 普通规则冲突：

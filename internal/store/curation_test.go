@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"forgeos/schemas"
 )
 
 func TestCurationAccountAcrossExtractionAndReview(t *testing.T) {
@@ -415,6 +417,7 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 	}
 	raw, err := s.MaterialCuration(ctx, p.ID, "queue", 1)
 	var receipt struct {
+		Event      json.RawMessage `json:"review_event"`
 		Review     ManagementReview
 		Extraction Extraction
 		Decisions  []struct {
@@ -425,6 +428,15 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 	}
 	if err != nil || json.Unmarshal(raw, &receipt) != nil || receipt.Review.Level != "D2" || receipt.Extraction.Session != out.Session {
 		t.Fatal(string(raw), err)
+	}
+	var event schemas.AgentMessage
+	if err := schemas.ValidateAgentMessage(receipt.Event); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(receipt.Event, &event); err != nil || event.Type != "EVENT" || event.Trust != "agent_generated" ||
+		event.From.ID != "management" || event.To.Type != "owner" || event.Payload["session"] != r.SessionID ||
+		event.Payload["level"] != "D2" || event.Payload["verdict"] != "approve" || event.IdempotencyKey != event.ID {
+		t.Fatal("invalid owner review event", event, err)
 	}
 	if len(receipt.Decisions) != 1 || receipt.Decisions[0].ID != decision.ID || receipt.Decisions[0].Fact != 1 || receipt.Decisions[0].Status != "REJECTED" {
 		t.Fatal("missing disposition", string(raw))

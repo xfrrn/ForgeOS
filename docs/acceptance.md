@@ -3642,3 +3642,17 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 在测试中改变项目、知识记录、参与角色、信任级别、关联范围、消息类型、来源绑定或引用 | Management 在启动原生审核前拒绝无效消息 | 接收端专项通过。携带新旧两套提取内容的歧义输入也被拒绝。 |
 
 脚本 curation-acp-live.py，三组证据为 curator_acp_current、curator_acp_oldworker、curator_acp_oldcontrol 中的 result.json。
+
+<a id="curation-review-event"></a>
+
+### 专题 05、16 B.3 · Owner 从工作台接收 Management 知识审核事件
+
+2026-11-18，在独立 PostgreSQL 18 控制面登记两个项目，导入重启检查记录，启动正式 Curator 和 Management 完成原生审核。在生产构建的 Chrome 工作台对照审核前后、控制面重启以及旧版控制面。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 审核前读取资料回执，审核完成后展开“审核事件回执” | 仅完成审核后出现 EVENT，并绑定原审核 | 浏览器显示 CURATION-1-REVIEWED、CURATION-1 和 management → owner。事件时间等于审核落库时间，来源 SHA-256、等级、结论及原生会话与原回执一致。 |
+| 普通节点读取原项目回执，Owner 以另一项目编号读取同名资料 | 保持身份与项目隔离 | 普通节点收到 401；另一项目返回 404。 |
+| 切到旧控制面查看同一资料，再重启当前控制面 | 旧接口仍可阅读审核；恢复当前版本后收到同一事件 | Chrome 在旧版显示原审核，当前版本的完整事件逐字段匹配重启前记录。 |
+
+专项用正式 AgentMessage Schema 校验实际 PostgreSQL 生成的事件。脚本 curation-event-live.py，证据 curation_owner_event_a/result.json、owner-event.png。
