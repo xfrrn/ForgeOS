@@ -57,6 +57,17 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="feedback-timeline-labels"></a>
+
+### 专题 11、13 · 从工作台时间线识别预览反馈、分类和录屏
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在原工作台打开已有预览任务，提交两条反馈，归档 PNG、WebM 并等待独立 Management 完成分类 | 时间线能区分反馈接收、分类、截图和录屏 | 截图有中文标题。反馈接收、分类及录屏分别显示内部名称 `preview_feedback_received`、`preview_feedback_classified`、`feedback_recording_saved`。 |
+| 在新库还原该任务，用当前生产构建分别在手机宽度和桌面宽度的 Chrome 打开任务，逐条下载回执 | 标题可读，每一行的下载能定位原事件 | 6 条“已收到预览反馈”、6 条“Management 已完成反馈分类”、2 条“已归档预览反馈截图”和 1 条“已归档预览反馈录屏”均可辨认。两种宽度分别下载 15 份，均与对应 Owner API 的事件类型、编号和完整正文一致。 |
+
+前后回执分别为 `feedback-timeline-labels/baseline.json` 和 `feedback-timeline-labels/verified.json`。TypeScript 类型检查与 Vite 生产构建通过。
+
 <a id="ci-pause-event-audit"></a>
 
 ### 专题 06、10、13 · 从 CI 暂停与恢复事件核对固定候选
