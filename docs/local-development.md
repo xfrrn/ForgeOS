@@ -366,3 +366,20 @@ export 成功时退出码为 0，末行 verified 为 true；truncated 为 true �
 恢复会校验原仓库、HEAD、索引及文件树；已有验证快照时不会再调用模型或重跑检查。原租约失效、文件被外部改动或磁盘错误时日志说明阻断原因，原执行与工作区保留。Owner 核对后可沿用既有结束失联执行／重试入口，新重试仍使用新 Execution 和 Worktree。请保留私有节点目录的访问权限；存在候选恢复记录时使用支持此能力的 Worker。
 
 租约自然过期后，任务详情提供“核对失联执行”。先检查页面所示节点和工作区，核对已有 PR、合并记录和原 Worker 是否已停止。勾选确认后点击“结束失联执行”。操作会记录人工结束时间并释放名额。工作区保留供检查，是否重试由 Owner 根据已有结果决定。
+
+### 外部通知
+
+在控制面的 FORGEOS_NOTIFICATION_CHANNELS_FILE 中设置私有 JSON 文件的绝对路径，重启后生效。Linux 文件权限设为 0600，Windows 通过 ACL 限制为服务身份及维护者可读。配置按 project_id 路由，每个项目的每种通道可配置一个接收方。以下值为示例占位。
+
+```json
+[
+  {"project_id":1,"channel":"telegram","token":"123:EXAMPLE","chat_id":"-123"},
+  {"project_id":2,"channel":"feishu","token":"example-hook-key","signing_secret":"example-signing-secret"}
+]
+```
+
+Telegram 使用机器人的 token 和数字聊天 ID。飞书的 token 填自定义机器人地址中 /hook/ 后的标识；启用签名校验时填写 signing_secret。提供方设置见 [Telegram Bot API](https://core.telegram.org/bots/api#sendmessage) 和[飞书自定义机器人指南](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)。
+
+每个通道每 3 秒检查一条本项目仍待处理、未读且尚未确认送达的通知。首次启用也会检查现有未读事项。发生网络错误、HTTP 错误或业务拒绝时，按 15 秒起的指数退避重试，通常最长 1 小时；接收方返回更长的重试秒数时最多等待 24 小时。发送进程退出后，未确认的预留在 1 分钟后可重领。若接收方已处理但成功响应丢失，可能收到相同通知编号两次。确认送达后重启会跳过该条。阅读或处理事项后，后续领取会跳过它；已发出的网络请求可能仍在途。
+
+可在 PostgreSQL 核对 external_notification_deliveries 的 event_id、channel、attempt、next_attempt 和 delivered_at。通知编号对应工作台的站内记录，成功投递保持人工阅读状态。更换聊天目标时，已确认送达的旧事件沿用原记录。

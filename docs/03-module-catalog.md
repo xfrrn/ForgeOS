@@ -25,6 +25,9 @@
 
 `GET /tasks/notifications` 返回待处理项，`?scope=history` 包含已离开处理阶段的记录。每页最多 30 条，用 `next_before` 读取更早记录。`GET /tasks/notifications/unread` 返回待处理未读数。`POST /tasks/notifications/{event_id}/read` 将首次阅读时间持久化到 PostgreSQL。工作台只有一个 Owner 身份，各浏览器共享已读状态。重复标记保留首次时间。任务处理状态取自执行、问题、计划及其修订。
 
+### 外部通知
+
+控制面可给指定项目的 Telegram 聊天和飞书自定义机器人发送待处理且未读的站内事项。消息携带项目、任务、事件种类和通知编号，Owner 回到工作台查看正文及处理事项。PostgreSQL 按事件和通道保存尝试次数、下次可领取时间和成功回执时间。配置与重试行为见[本地运行指南](local-development.md#外部通知)。真实账号收件待验收。
 
 ## 2. Worker 模块
 

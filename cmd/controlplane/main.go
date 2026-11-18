@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -39,6 +40,10 @@ func run(ctx context.Context) error {
 		return errors.New("FORGEOS_LISTEN_ADDR must use a loopback IP and port")
 	}
 	owner := os.Getenv("FORGEOS_OWNER_TOKEN")
+	channels, err := loadNoticeChannels(os.Getenv("FORGEOS_NOTIFICATION_CHANNELS_FILE"))
+	if err != nil {
+		return err
+	}
 	manager := os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
 	workers, err := loadWorkers(os.Getenv("FORGEOS_WORKERS_FILE"), os.Getenv("FORGEOS_WORKER_TOKEN"), owner, manager)
 	if err != nil {
@@ -171,7 +176,16 @@ func run(ctx context.Context) error {
 		defer stopDelivery()
 	}
 	sweepCtx, stopSweep := context.WithCancel(ctx)
+	var notices sync.WaitGroup
+	defer notices.Wait()
 	defer stopSweep()
+	for _, channel := range channels {
+		notices.Add(1)
+		go func() {
+			defer notices.Done()
+			channel.run(sweepCtx, data)
+		}()
+	}
 	go sweepArtifacts(sweepCtx, data)
 	go watchDocuments(sweepCtx, data, root)
 	log.Printf("ForgeOS control plane listening on %s", listener.Addr())

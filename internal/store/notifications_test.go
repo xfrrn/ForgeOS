@@ -6,6 +6,75 @@ import (
 	"testing"
 )
 
+func TestExternalNoticeOwnership(t *testing.T) {
+	db := isolatedDatabase(t)
+	s := New(db)
+	ctx := context.Background()
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.CreateTask(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := s.Claim(ctx, "notice-node", t.TempDir())
+	if err != nil || job == nil {
+		t.Fatal(err)
+	}
+	if err := s.Complete(ctx, job.ExecutionID, job.LeaseToken, Result{ExitCode: 1, Error: "test failure"}); err != nil {
+		t.Fatal(err)
+	}
+	type claim struct {
+		n       Notification
+		attempt int64
+		err     error
+	}
+	claims := make(chan claim, 2)
+	for range 2 {
+		go func() { n, a, e := s.ClaimExternalNotice(ctx, p.ID, "telegram"); claims <- claim{n, a, e} }()
+	}
+	var won claim
+	for range 2 {
+		c := <-claims
+		if c.err != nil {
+			t.Fatal(c.err)
+		}
+		if c.attempt > 0 {
+			if won.attempt != 0 {
+				t.Fatal("concurrent senders both claimed")
+			}
+			won = c
+		}
+	}
+	if won.attempt != 1 || won.n.TaskID != task.ID {
+		t.Fatal(won)
+	}
+	if _, err := db.Exec("UPDATE external_notification_deliveries SET next_attempt=now() WHERE event_id=$1", won.n.ID); err != nil {
+		t.Fatal(err)
+	}
+	n, attempt, err := s.ClaimExternalNotice(ctx, p.ID, "telegram")
+	if err != nil || attempt != 2 || n.ID != won.n.ID {
+		t.Fatal(n, attempt, err)
+	}
+	if err := s.FinishExternalNotice(ctx, n.ID, "telegram", 1, true, 15); !errors.Is(err, ErrConflict) {
+		t.Fatal("stale sender settled", err)
+	}
+	if err := s.ReadNotification(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishExternalNotice(ctx, n.ID, "telegram", 2, false, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, a, err := s.ClaimExternalNotice(ctx, p.ID, "telegram")
+	if err != nil || a != 0 {
+		t.Fatal("read notice was retried", a, err)
+	}
+}
+
 func TestOwnerNotificationsPageAndReadReceipts(t *testing.T) {
 	s := New(isolatedDatabase(t))
 	ctx := context.Background()
