@@ -438,6 +438,18 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 
 证据为 `central-restore-execution/latest.json`、`central-restore-execution-ready/latest.json` 和 `central-restore-role/latest.json`。普通执行的 GitHub 交付见[PR #274 的实测](#single-project-273)。
 
+<a id="single-project-287"></a>
+
+### 阶段二 · 从空库交付 beta #287，合并后从工作台核对原批准
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在空 PostgreSQL 18 登记私库，导入 Issue，由正式 Worker 修改并运行候选验证 | 单工作项只修改指定文件，记录原生会话和验证运行 | 候选 `657123aae578c6e6ab3fc536310cc9734ba75454` 只新增 `docs/candidate-approval.md`，内容逐字符合需求。原生会话 `01a1f080-ef21-7db2-87ac-0b7a946245bf`，本地运行 `ci-run-3808802608` 退出 0。 |
+| 从 390 像素 Chrome 批准，等候 PR 的必需检查，失败后在同一候选重跑 | 检查失败应保持 PR 和 Issue 开放，通过后合并、回写、关闭 | PR #288 的首次检查失败，控制面记录阻塞，远端 PR 尚未合并且 Issue 仍开放。运行 44399302832 的第二次检查成功，任务 DONE，合并 SHA 为 `372b09f0d906414c349276909af6d028e2e3c2bd`，Issue 已关闭。 |
+| 重启控制面，展开历史验收并下载事件 4，再与交付前回执比较 | 同一批准始终关联原候选和批准依据 | 验收记录 1、候选和三项审查及测试要求前后一致，浏览器下载与原 JSON 逐字段相同。 |
+
+ForgeOS 版本 `83640fa4832a621a55624789dea21e2fbc4d50d1`。原始记录为 `approval-stage2-current/stage2/receipt.json`。[Issue #287](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/287) · [PR #288](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/288) · [必需检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44399302832)
+
 <a id="single-project-273"></a>
 
 ### 路线二 · 从空库重新交付 beta #273
