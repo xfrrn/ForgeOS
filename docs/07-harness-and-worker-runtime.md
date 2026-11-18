@@ -314,6 +314,8 @@ HTTP 204 表示已确认，409 表示结果与当前状态冲突，两者均结�
 
 普通 Codex 写入回合收到匹配的 `turn/started` 后，Worker 保存原租约、进程实例、Session、Turn、当前回合输入和截止时间。重启时先等待原进程和工具停止，再读取原生历史。只有最新回合在同一工作目录中确认为 `interrupted`，才会检查 Git 基线、保存现有草稿的索引树和工作树，并在原 Session 中继续。停机时间计入执行时限。Windows 用 Job Object 约束工具子进程，Linux 检查原进程组。原进程退出码无法取得时，节点记为 `-1`。停机期间发出的取消或暂停指令仍然生效。[真实草稿中断验收](acceptance.md#active-writer-recovery)
 
+首回合和后续排队输入的启动记录会保留到 App Server 即将收到 `turn/start`。如果 Worker 在初始化原生进程期间退出，替代节点先等同租约、同版本的旧进程退出，再核对工作树并消费这份启动记录。已经登记过 Turn 的进程不能走这条启动恢复路径。[从正式 Worker 验证启动中断](acceptance.md#writer-startup-recovery)
+
 对于启用评论检查点的普通写入回合，模型完成且没有提出业务问题时，Worker 在确认当前检查点前保存原生 Session、回合序号、剩余时间、Git HEAD、索引树和草稿树。重启后先确认原租约，再按原序号向控制面确认回合并重新读取下一批输入。树和 HEAD 一致时，有评论或 Owner 指令就以原 Session 开始下一回合；输入为空就从已记录的树生成候选。排队等待下一回合的模型名额期间保留上一回合的恢复记录；即使控制面已经分配名额、节点尚未收到回执，也可重报同一资源步骤。真正交给适配器前再次核对 HEAD、暂存区和草稿树，并消费一次恢复记录。[模型名额回执丢失实测](acceptance.md#queued-model-grant-recovery)。[两次中断与实际交付](acceptance.md#completed-writer-input)
 
 写入回合完成并处理完当前检查点输入后，Worker 生成候选对象，先将冻结作业、原 Worktree 身份、候选 SHA、原 Session 和资源步骤写入私有 SQLite，再把 HEAD 附到候选。重启同节点身份、同控制面 origin 的 Daemon 时，在领取新工作前检查这些候选，确认原租约仍有效、原仓库与工作目录相符、HEAD 是原位置或已记录候选、索引和文件树均等于候选。任一检查失败保留记录供核对，不重新运行模型或生成其他候选 SHA。

@@ -153,6 +153,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 }
 
 type codexCLI struct {
+	beforeAppTurn    func() error
 	onAppTurn        func(store.NativeTurn) error
 	appServer        bool
 	disabledFeatures []string
@@ -474,6 +475,11 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		dir = saved.GitDir
 		budget.step = saved.ResourceStep
 		result.SessionID = saved.Session
+		if saved.InitialTip != "" || saved.CompletedTip != "" {
+			if err := w.finishWriterStartup(ctx, saved); err != nil {
+				return failed("confirm previous writer startup", err)
+			}
+		}
 		if saved.InitialTip != "" {
 			if saved.InitialTip != start {
 				return failed("unstarted writer base changed", nil)
@@ -563,11 +569,6 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 					return nil
 				}
 			}
-			var adapter harnessAdapter = codex
-			if spec.Harness == "claude" {
-				result.Harness, result.HarnessVersion = "claude", w.claude.version
-				adapter = w.claude
-			}
 			turnPrompt := prompt
 			if resumed != nil {
 				turnPrompt = "Continue the interrupted turn. Inspect existing changes and finish only the remaining authorized work.\n" + prompt
@@ -584,12 +585,28 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				checkpoint = &writerCheckpoint{sequence: seq}
 			}
 			if launchFrom != nil {
-				if err := w.consumeWriterStart(turn, launchFrom); err != nil {
-					recovery.leaveUnsettled = true
+				consume := func() error {
+					if launchFrom == nil {
+						return nil
+					}
+					if err := w.consumeWriterStart(turn, launchFrom); err != nil {
+						recovery.leaveUnsettled = true
+						return err
+					}
+					launchFrom = nil
+					recovery.waiting, recovery.leaveUnsettled = false, false
+					return nil
+				}
+				if codex.appServer && codex.onAppTurn != nil && spec.Harness != "claude" {
+					codex.beforeAppTurn = consume
+				} else if err := consume(); err != nil {
 					return previous, err
 				}
-				launchFrom = nil
-				recovery.waiting, recovery.leaveUnsettled = false, false
+			}
+			var adapter harnessAdapter = codex
+			if spec.Harness == "claude" {
+				result.Harness, result.HarnessVersion = "claude", w.claude.version
+				adapter = w.claude
 			}
 			session, err := w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
 			if err != nil || session == "" || !job.ManageResources || !job.SupportsCheckpoints || w.journal == nil || job.LeaseSeconds <= 0 || (job.ModelPause && !job.RecoverWriterPause) {

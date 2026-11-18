@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -28,6 +29,28 @@ func (w *worker) waitForWriterExit(ctx context.Context, q *parkedCheckpoint) err
 	if p.PID <= 0 || p.Harness != "codex" || p.Version != q.Version || p.Instance != q.Active.Instance || p.Turn != q.Active.Turn || p.Session != q.Session {
 		return errors.New("latest process does not match the interrupted writer")
 	}
+	return w.waitWriterTree(ctx, p)
+}
+
+// A retained startup receipt means this Worker has not sent turn/start.
+func (w *worker) finishWriterStartup(ctx context.Context, q *parkedCheckpoint) error {
+	key := sha256.Sum256([]byte(q.Job.LeaseToken))
+	p, err := scanHarnessProcess(w.journal.QueryRowContext(ctx, readHarnessProcess+
+		" WHERE lease_hash=? AND exited_at IS NULL ORDER BY instance DESC LIMIT 1", key[:]))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !supportsWriterProcessTree || !w.codexAppServer || p.PID <= 0 || p.Harness != "codex" ||
+		p.Version != q.Version || p.Version != w.codexVersion || p.Turn != "" || (q.Session != "" && p.Session != "" && p.Session != q.Session) {
+		return errors.New("cannot confirm unfinished writer startup")
+	}
+	return w.waitWriterTree(ctx, p)
+}
+
+func (w *worker) waitWriterTree(ctx context.Context, p store.HarnessProcess) error {
 	for {
 		alive, err := writerTreeAlive(p.PID)
 		if err != nil {

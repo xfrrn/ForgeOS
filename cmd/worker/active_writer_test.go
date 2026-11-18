@@ -113,8 +113,16 @@ func TestWriterProcessTree(t *testing.T) {
 	if err := p.session(q.Session); err != nil {
 		t.Fatal(err)
 	}
+	startup, stopStartup := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer stopStartup()
+	if err := w.finishWriterStartup(startup, &q); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("live startup was allowed to overlap: %v", err)
+	}
 	if err := p.appTurn(q.Active.Turn); err != nil {
 		t.Fatal(err)
+	}
+	if err := w.finishWriterStartup(ctx, &q); err == nil {
+		t.Fatal("treated a registered model turn as an unstarted writer")
 	}
 	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()

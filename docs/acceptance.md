@@ -9,7 +9,7 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。 | Turn 登记前、原生已完成但结果尚未落盘、接回存活进程及整机重启。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。 | 消费启动记录至登记原生 Turn 之间、原生已完成但结果尚未落盘、接回存活进程及整机重启。 |
 | C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
@@ -28,10 +28,26 @@
 | 专题 07、16 A.1/B.2 恢复运行中输入的回执 | [beta #250，两次独立写盘故障，补报与保留待确认](#native-input-history-recovery) | `9e0ba64249e7d936b6ecf55007de51f96b1d1bc9` |
 | 专题 07、16 A.1/B.2 进程报告过期后关闭实时输入 | [beta #250，报告中断、恢复及数据库升级](#stale-turn-input) | `5b28e20d0bdeedadc701162507b1fac76a99748a` |
 | 专题 07、16 B.4 普通 Worker 在写入中途恢复 | [beta #258，首回合、后续排队指令、暂停和取消](#active-writer-recovery) | `8d8ad70e8a35a91d97d2096b225108d902be63c4` |
+| 专题 07、16 A.1 稳定版 App Server 的正式 Worker 交付 | [beta #258、PR #259，按节点选模型、原会话恢复、必需 CI、合并与 Issue 关闭](#stable-worker-delivery) | `7a52344c587d9f5ff984effcd1008db44b630f89` |
 
 在 `9e0ba64` 的产品代码上，使用独立的空 PostgreSQL 18 实例并启用真实 Docker 用例执行全量 Go 回归，557 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试，原始记录为 `input-history-regression.jsonl`。该轮补充的回执断言又单独运行通过。`go vet ./...`、TypeScript 检查和工作台生产构建通过。四阶段最终端到端复验仍待执行。
 
 此前在 `94ad23b` 上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
+
+<a id="writer-startup-recovery"></a>
+
+### 专题 07、16 B.4 · 启动原生进程后、发送模型请求前终止 Worker
+
+2026-11-18，从私库 Issue 派发到正式 Windows Worker 和 Codex App Server。验收程序只挂起本次任务的原生子进程，终止原 Worker，启动替代节点并观察进程数，再放行旧进程自行退出。每个场景使用独立 PostgreSQL 18、克隆、Worktree 和节点目录，成功候选从 Chrome 与 Git 逐项核对。[beta #260](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/260)
+
+| 中断点及操作 | 预期 | 实际结果 |
+| --- | --- | --- |
+| 首回合已有 PID，Session 和 Turn 仍为空 | 旧进程挂起期间不能新增写入进程，旧进程退出后执行原任务 | PID 13304 退出码未知，两个原生编号均为空。替代 PID 39224 正常完成，候选 `da1051b2d1ec56015fcbb30b6e42633f672adbb1` 只含一份要求的标题与正文。 |
+| 首回合的 Session 已登记，模型请求尚未发送 | 保留旧 Session 记录，只有替代进程实际启动模型回合 | PID 14228 保留 Session、没有 Turn，退出码 -1。PID 37152 的新 Session 完成唯一模型回合，候选为 `e54bc9fc11ce203773d1aecc439ba5eee8187719`。 |
+| 从 Chrome 将指令排入下一回合，在第二次模型启动时终止 Worker | 第一回合的草稿与原 Session 保留，指令只由一个模型回合执行 | 三条进程记录的退出码为 0、-1、0，中间一条没有 Turn。首末进程属于同一 Session。候选 `1d9140229906b773663d5773a125cd882c9cb663` 含原句和一个 Owner 指定的标题。 |
+| 首回合启动中断，停机期间从 Chrome 取消 | 替代节点结算取消，没有新的模型回合和候选 | 状态为 `CANCELLED`，只保留 PID 47260，候选为空。 |
+
+四份回执分别为 `writer-startup-final-initial/latest.json`、`writer-startup-final-session/latest.json`、`writer-startup-final-next/latest.json` 和 `writer-startup-final-cancel/latest.json`。Windows 及非 root Ubuntu 另验收了对存活进程的等待，以及拒绝将已经登记的 Turn 当作未启动进程。消费启动记录后到确认新 Turn 之前发生的故障，继续列为待验收。
 
 <a id="active-writer-recovery"></a>
 
@@ -96,6 +112,8 @@
 | 检查受保护分支的 PR、专门设计为首轮失败的 Actions 和本地 CI | 必需检查全绿后才允许合并，远端 PR 的候选应等于 Owner 批准的 SHA | [Actions 44310333580](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44310333580) 第二次通过。`acceptance-check` 与 `forgeos/local-ci` 均成功，[PR #259](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/259) 以 `8cabaf5771c8808301ebc63d1cf5b5f181ecd472` 合入验收分支。 |
 
 交付完成后，GitHub 回读 [Issue #258](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/258) 已关闭，留有一条交付评论。控制面最终状态是 `DONE`。本机回执为 `active-writer-stable-delivery/latest.json`。较新版本从原生实现回合到受保护分支的交付可核对 [PR #169](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/169)。
+
+使用独立 PostgreSQL 18 和真实 Docker 执行全量 Go 回归，562 个具名测试及子测试全部通过，9 个包通过、3 个包无测试。报告为 `stable-delivery-regression.jsonl`。原生参数核对、旧版恢复、正常退出与中断兜底专项及 `go vet ./...` 通过。
 
 <a id="native-version-matrix"></a>
 

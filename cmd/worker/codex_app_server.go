@@ -305,6 +305,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if schema != nil {
 		start["outputSchema"] = schema
 	}
+	if c.beforeAppTurn != nil {
+		if err := c.beforeAppTurn(); err != nil {
+			return session, err
+		}
+	}
 	if err = s.call("turn/start", start, &turn); err != nil {
 		return session, err
 	}
