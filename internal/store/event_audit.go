@@ -43,10 +43,13 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                CASE WHEN v.type='preview_feedback_classified' THEN fb.classification END AS classification,
                fa.id AS artifact,fa.mime,fa.bytes,fa.sha256,
                req.id AS requirement_id,req.revision AS requirement_revision,req.issue AS issue,
+               to_jsonb(cl) AS source_closure,
                rp.task_id AS feedback_task,rp.execution_id AS feedback_execution,rp.commit AS revision_candidate,
                CASE WHEN rp.id IS NOT NULL THEN req.feedback_id END AS revision_feedback
         FROM task_events v JOIN work_items t ON t.id=v.task_id
         LEFT JOIN executions e ON e.id=v.execution_id AND e.task_id=t.id
+        LEFT JOIN github_issue_closures cl ON cl.task_id=t.source_closure_id
+              AND v.type IN ('source_cancel_requested','source_issue_cancelled')
         LEFT JOIN decision_questions q ON q.id=v.question_id AND q.task_id=t.id
         LEFT JOIN plan_revisions pr ON v.type='management_reviewed' AND pr.task_id=t.id AND pr.revision=v.plan_revision
         LEFT JOIN acceptance_reviews ar ON ar.task_id=t.id AND ar.execution_id=e.id AND
@@ -70,10 +73,10 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
         'event_id',id,'sequence',id,'project_id',project_id,'task_id',task_id,'execution_id',execution_id,
         'session_id',COALESCE(NULLIF(result->>'session_id',''),plan_review->>'session_id',classification->>'session_id'),'event_type',type,'timestamp',at,
         'actor',CASE source WHEN 'worker' THEN worker WHEN 'owner' THEN COALESCE(reviewer,'owner') WHEN 'management' THEN 'management' WHEN 'controlplane' THEN 'delivery_manager'
-                            WHEN 'github' THEN CASE WHEN type IN ('issue_imported','requirement_observed') THEN 'github_poller' END END,
+                            WHEN 'github' THEN CASE WHEN type IN ('issue_imported','requirement_observed','source_cancel_requested','source_issue_cancelled') THEN 'github_poller' END END,
         'source',source,'correlation_id',CASE WHEN execution_id IS NULL THEN format('TASK-%s',task_id) ELSE format('EXECUTION-%s',execution_id) END,
         'payload',jsonb_strip_nulls(jsonb_build_object(
-            'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,
+            'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,'source_closure',source_closure,
             'task_kind',CASE WHEN type='task_created' THEN kind END,
             'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
             'abandoned_at',abandoned_at,'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',

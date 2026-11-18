@@ -54,6 +54,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="source-closure-audit"></a>
+
+### 专题 06、12、13 · 从父子任务的取消事件追溯原 Issue 关闭
+
+在空 PostgreSQL 18 登记 alpha 私库，将 #40 激活为含两个相依工作项的 Goal。正式 Worker 完成首项并保存结果，验收代理暂时对回报返回 503。通过 GitHub 以「not planned」关闭父 Issue，再让正式 Poller 观测，最后允许原 Worker 补报。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 用旧控制面读取关闭后的三个任务，再用当前版本读取相同事件 | 能从每项取消事件定位原 Issue；记录观察者与执行节点 | 升级前事件 8、9、7 均记来源 GitHub，操作者为空，载荷中无关闭回执。升级后三项均记 `github_poller`，指向仓库 1459614967、Issue 6474949009 和父任务 1。GitHub 关闭时间为 2026-11-19 03:23:44 +08:00，Poller 约 6 秒后记录，原因为 `not_planned`。 |
+| 在首个子项仍为 RUNNING 时恢复结果回报 | 原执行完成结算后子项取消，保留实际退出状态；另一个子项无需启动 | 事件 9 记录关闭请求。事件 10 记录节点 `closure-node`、执行 1、原生 Session `01a1f01d-0d11-7101-b666-498e4b82cf45` 和退出码 0。父任务和未启动子项已取消，子项 2 补报后也为 CANCELLED。 |
+| 在 390 像素 Chrome 从三条任务时间线分别下载回执，重启后再读 | 每份文件绑定原事件，关闭信息只出现在相关事件上 | 四份下载逐份与项目 API 相同，均指向同一条关闭记录；此前的事件均无此字段。重启后四份回执逐字段相同。 |
+
+原始回执为 `source-closure-live/latest.json`。[私库 Issue #40](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/40)
+
 <a id="native-issue-dispatch-origin"></a>
 
 ### 专题 06、07、12 · 原生规划读取 Issue 的首次派发来源

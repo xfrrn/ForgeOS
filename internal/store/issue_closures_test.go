@@ -1,7 +1,9 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -71,6 +73,26 @@ func TestSourceClosureKeepsSlotUntilReceipt(t *testing.T) {
 	again, err := s.ImportIssue(ctx, p.ID, spec)
 	if err != nil || again.ID != task.ID || again.Status != "CANCELLED" || again.Events[len(again.Events)-1].Type != "source_issue_cancelled" {
 		t.Fatal("cancellation lost on reopen", err)
+	}
+	for _, event := range again.Events {
+		raw, err := s.EventAudit(ctx, p.ID, task.ID, event.ID)
+		var receipt struct {
+			Actor   string
+			Payload struct {
+				Closure json.RawMessage `json:"source_closure"`
+			}
+		}
+		if err != nil || json.Unmarshal(raw, &receipt) != nil {
+			t.Fatal(err, string(raw))
+		}
+		actor := map[string]string{"source_cancel_requested": "github_poller", "source_issue_cancelled": "worker"}[event.Type]
+		if actor == "" {
+			if receipt.Payload.Closure != nil {
+				t.Fatal("earlier event included the later closure", string(raw))
+			}
+		} else if receipt.Actor != actor || !bytes.Equal(receipt.Payload.Closure, again.SourceClosure) {
+			t.Fatal("incorrect closure attribution or receipt", string(raw))
+		}
 	}
 	next, err := s.Claim(ctx, "another", root, true)
 	if err != nil || next == nil || next.TaskID != nextTask.ID {
