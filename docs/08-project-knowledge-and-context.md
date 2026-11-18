@@ -158,6 +158,8 @@ Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revisi
 
 列表入口 `GET /projects/{id}/materials` 可按 `kind` 筛选。传入 `q` 返回相关度最高的 30 条当前版本记录和摘要；不传关键词时按 key 浏览，用 `after=<末项 key>` 翻页。项目节点使用同样的读取路径，在前面加 `/internal`，只允许访问授权项目。项目工程文档仍由 Agent 在对应 Git 版本按需读取。
 
+未启用向量检索时，正文中连续命中查询文本的结果会展示首次命中及其前最多 64 个字符。仅命中标题或分散词项时展示正文开头。Agent 可按结果的 key 和修订号回读原文，用 Unicode 字符区间核对引句。[画像与环境资料验收](acceptance.md#material-literal-source)
+
 ### 项目资料混合检索
 
 控制面默认提供全文和子串检索。启用语义排序时，在 ForgeOS 数据库安装 `vector` 扩展，并将扩展 schema 加入连接角色的 `search_path`。为控制面同时设置以下两项，再重启服务。

@@ -77,9 +77,14 @@ func (s *Store) SearchMaterials(ctx context.Context, project int64, kind, query,
 		FROM latest m WHERE ($2='' OR kind=$2)
 	), page AS (
 		SELECT project_id,key,revision,kind,title,source,imported_at,content_sha256,'current'::text AS status,
-		       0 AS start_char,least(length(content),500) AS end_char,left(content,500) AS excerpt,
+		       start_char,least(length(content),start_char+width) AS end_char,
+		       substring(content FROM start_char+1 FOR width) AS excerpt,
 		       ts_rank(words,terms) AS rank
-		FROM matches WHERE $3='' OR words @@ terms OR strpos(lower(title || ' ' || content),lower($3))>0
+		FROM matches CROSS JOIN LATERAL (
+			SELECT CASE WHEN $3='' THEN 0 ELSE greatest(0,regexp_instr(content,$3,1,1,0,'iq')-65) END AS start_char,
+			       greatest(500,length($3)+64) AS width
+		) snippet
+		WHERE $3='' OR words @@ terms OR strpos(lower(title || ' ' || content),lower($3))>0
 		ORDER BY rank DESC,key LIMIT 30
 	) SELECT COALESCE(jsonb_agg(to_jsonb(p)-'rank' ORDER BY rank DESC,key),'[]') FROM page p`, project, kind, query, after).Scan(&doc)
 	return doc, err

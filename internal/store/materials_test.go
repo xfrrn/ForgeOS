@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +67,46 @@ func TestMaterialRevisionIsolation(t *testing.T) {
 	}
 	if err != nil || json.Unmarshal(results, &hits) != nil || len(hits) != 1 || hits[0].Revision != 2 || hits[0].ProjectID != p.ID {
 		t.Fatal(hits, err)
+	}
+}
+
+func TestMaterialLiteralExcerptReferencesOriginalCharacters(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(ctx, "source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	longQuery := strings.Repeat("a", 512)
+	prefix := strings.Repeat("文🚀", 400)
+	body := prefix + "DEP[17].v2 " + longQuery
+	_, err = s.SaveMaterial(ctx, p.ID, "setup", MaterialInput{Kind: "environment", Title: "Setup", Source: "inventory", Content: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"dep[17].V2", longQuery, "Setup", ""} {
+		rows, err := s.SearchMaterials(ctx, p.ID, "environment", query, "")
+		var hits []struct {
+			Start   int `json:"start_char"`
+			End     int `json:"end_char"`
+			Excerpt string
+		}
+		if err != nil || json.Unmarshal(rows, &hits) != nil || len(hits) != 1 {
+			t.Fatalf("query %q: %s, %v", query, rows, err)
+		}
+		hit := hits[0]
+		if hit.Excerpt != string([]rune(body)[hit.Start:hit.End]) {
+			t.Fatalf("excerpt differs from original characters [%d,%d)", hit.Start, hit.End)
+		}
+		if query == "" || query == "Setup" {
+			if hit.Start != 0 || hit.End != 500 {
+				t.Fatalf("expected opening excerpt, got [%d,%d)", hit.Start, hit.End)
+			}
+		} else if !strings.Contains(strings.ToLower(hit.Excerpt), strings.ToLower(query)) {
+			t.Fatalf("excerpt omits %q", query)
+		}
 	}
 }
