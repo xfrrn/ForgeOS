@@ -20,14 +20,17 @@ func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJ
 }
 
 func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.ManagementProcessReport, contract, prompt string, limit int64, dest any) (string, error) {
+	if session, found, err := w.completedRoleTurn(target, dest); found || err != nil {
+		return session, err
+	}
 	if !capture {
-		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, processLog{beforeStart: w.roleStartHook(roleForProcess(target), target.Lease)})
+		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, processLog{beforeStart: w.roleStartHook(roleForProcess(target), target.Lease, target.Turn)})
 	}
 	version, err := readCodexVersion(w.codex)
 	if err != nil {
 		return "", err
 	}
-	return w.roleProcessTurn(ctx, target, "codex", version, func(ctx context.Context, process processLog) (string, error) {
+	return w.roleProcessTurn(ctx, target, "codex", version, dest, func(ctx context.Context, process processLog) (string, error) {
 		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, process)
 	})
 }
@@ -46,7 +49,7 @@ func roleForProcess(target store.ManagementProcessReport) string {
 	return role
 }
 
-func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
+func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, dest any, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
 	role := roleForProcess(target)
 	db, node, err := w.openRoleJournal(ctx, role)
 	if err != nil {
@@ -98,7 +101,7 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		}
 	}()
 	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, harness, version)
-	process.beforeStart = func() error { return w.markRoleStarted(db, key[:]) }
+	process.beforeStart = func() error { return w.markRoleStarted(db, key[:], target.Turn) }
 	session, turnErr := run(reporting, process)
 	stop()
 	<-done
@@ -107,7 +110,20 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		return session, errors.Join(turnErr, err)
 	}
 	target.Process = p
-	if err = bufferRoleProcess(db, target); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
+		return session, errors.Join(turnErr, err)
+	}
+	defer tx.Rollback()
+	if err = bufferRoleProcess(tx, target); err != nil {
+		return session, errors.Join(turnErr, err)
+	}
+	if turnErr == nil {
+		if err = w.bufferCompletedRoleTurn(tx, target, session, dest); err != nil {
+			return session, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		return session, errors.Join(turnErr, err)
 	}
 	// Delivery failure must not discard a completed model result; its receipt waits for this exit.

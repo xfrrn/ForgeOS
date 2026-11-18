@@ -3280,3 +3280,31 @@ PostgreSQL 18／真实 Docker 全包 445 项测试及子测试通过，零失败
 证据为 role_assignment_current/proof.json、role-assignment-live.py、assignment-gates.py、assignment-evidence-check.py；旧日志升级为 role_claim_current/assignment-node-upgrade-proof.json，Linux 输出为 assignment-linux.log，全包报告为 role-assignment-regression.jsonl。受控结束 Daemon 时代理的空闲连接被关闭，业务退出与结果已逐项核对为 204。最初直接通过 PowerShell 传递 Linux 测试参数被拆分，改用 Python 参数数组后实际执行通过。
 
 仍待补齐已启动回合的原生 Session 恢复、最终结果入队前的恢复、完整归档及全路线最终端到端验收。已有启动标记的跨 Daemon 作业保留日志并明确停止，不将其记为自动恢复。外部设备、受限 GitHub 身份及独立审查者继续待验收；总工作包估算不因本次细分项单独扣减。
+
+上述模型启动前的作业恢复实现与验收对应 ForgeOS 提交 9564a1adb1869d4a51494328509dc59a948c387d。
+
+### 专题 07、13、16 C.3 · 已完成回合在最终结果入队前的恢复
+
+2026-11-18 在独立 PostgreSQL 18 库还原 beta #163，经 Chrome 导入 completed-lab 资料、生成测试计划及请求独立审查。正式四类角色分别调用本机原生 Codex 0.169.0-alpha.11.1／Claude Code 2.1.310。代理阻断实际退出报告，节点已有成功回合快照、尚无最终结果记录时结束 Daemon。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 核对成功快照及实际退出，在最终结果入队前结束 Daemon | 完成输出在私有日志保留，最终回执确实尚未保存 | 四类角色各有一个成功进程、一个回合快照和待发退出；role_receipts 尚无该结果。 |
+| 重启控制面及同身份 Daemon | 先补退出，再使用原输出提交业务结果，不调用新模型 | Curator、Reviewer 的退出与结果均为 204；Management 的退出第一次已被接收但确认丢失，重报幂等，原审核结果随后获 204。 |
+| Test Agent 退出后从 Chrome 建立修订 2，再恢复旧作业 | 保留原输出，不能覆盖新计划 | 原退出获 204、原结果获 409；两个修订均未被该旧输出覆盖。冲突归档中的用例正文与保存草案相同，仅按既有 Bind 逻辑补编号及 pending 状态。 |
+| 再次重启控制面，从 Chrome 展开资料、旧计划及审查历史 | 原会话与固定来源仍可追溯 | 四类原生会话均可回读；任务保持 WAITING_ACCEPTANCE，无额外 GitHub 交付。 |
+| 使用新 Worker 打开上一项四份真实 SQLite | 新表不改变已有历史或重跑模型 | 原进程、已结算退出与最终结果逐项相同；新增回合表正常，未重发旧结果。 |
+| 核对完成恢复后的节点日志 | 临时输出随已结算作业清理，审计记录保留 | 四份日志的 role_assignment 和 role_turn_results 均为空；原进程及 204／409 回执保留。 |
+
+| 原生角色 | 原生证据 | 恢复结果 |
+| --- | --- | --- |
+| Curator | PID 39024，会话 01a1ec36-7b58-7ef3-be4f-bc98ae4c5d50，退出码 0 | 退出 204；最终结果 204；没有新模型进程。 |
+| Management 知识审核 | PID 46988，会话 01a1ec36-b5eb-7051-810c-2747cee4fcc5，退出码 0 | 退出 204；最终结果 204；没有新模型进程。 |
+| Test Agent | PID 40680，会话 01a1ec36-ebd4-7160-86dd-eda1a27ac39f，退出码 0 | 退出 204；最终结果 409；没有新模型进程。 |
+| Reviewer | PID 47344，会话 783d5465-0395-438d-ba9c-d694e67730ad，退出码 0 | 退出 204；最终结果 204；没有新模型进程。 |
+
+专项用实际测试子进程验证四类日志的“成功快照已保存、最终回执未入队”状态，并在替代 Daemon 配置不存在的模型路径后复用原输出，确认没有新模型进程。事务故障注入使快照更新失败，退出补报与完成快照一起回滚，实际进程退出历史仍保留，重启不能误判为成功。Curator 首回合已完成但第二回合未完成时继续阻断；重复启动同一回合曾复现覆盖快照，改为唯一键拒绝后复测通过。
+
+真实证据 role_completed_current/proof.json、role-completed-live.py、completed-proof-check.py；升级证据 role_assignment_current/completed-node-upgrade-proof.json。测试计划额外核对最初把模型草案与完成绑定的计划直接比较，因正常添加用例 ID 和 pending 状态而失败；按既有 Bind 合同分别核对新增字段及原正文后通过，未重跑原生模型。
+
+PostgreSQL 18／真实 Docker 最终全包 452 项测试及子测试通过，零失败、零跳过，报告 role-completed-final-regression.jsonl；Go 静态检查通过。Ubuntu 非 root 身份实际执行角色恢复、结果补报及本次完成快照专项，80 项测试及子测试通过，报告 completed-linux.log。旧协议继续由回归覆盖，但没有进程采集的旧控制面不提供本项完成快照保证。仍未覆盖原生模型运行中的 Daemon 恢复、输出尚未保存的中断、原 Session 恢复、完整归档与全路线最终验收。外部条件继续保持待验收，本项不单独扣减总工作包估算。

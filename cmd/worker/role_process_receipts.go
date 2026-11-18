@@ -10,7 +10,9 @@ import (
 	"forgeos/internal/store"
 )
 
-func bufferRoleProcess(db *sql.DB, report store.ManagementProcessReport) error {
+func bufferRoleProcess(db interface {
+	Exec(string, ...any) (sql.Result, error)
+}, report store.ManagementProcessReport) error {
 	if !report.Process.Valid() || report.Process.Exited == nil || len(report.Lease) != 36 {
 		return errors.New("cannot buffer an unconfirmed role process exit")
 	}

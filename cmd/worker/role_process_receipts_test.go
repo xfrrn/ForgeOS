@@ -58,7 +58,7 @@ func TestRoleExitDeliveryFailurePreservesCompletedResult(t *testing.T) {
 			}
 			var result json.RawMessage
 			// This real test subprocess supplies a structured result; native role identity is covered separately.
-			session, err := w.roleProcessTurn(context.Background(), target, "codex", "1.2.3", func(ctx context.Context, p processLog) (string, error) {
+			session, err := w.roleProcessTurn(context.Background(), target, "codex", "1.2.3", &result, func(ctx context.Context, p processLog) (string, error) {
 				return recordedJSONTurn(ctx, w.codex, reviewSchema, "SIMULATED_MANAGEMENT_PROCESS success", 12<<10, &result, p)
 			})
 			if err != nil || session != "planner-test" || !strings.Contains(string(result), "Handbook") {

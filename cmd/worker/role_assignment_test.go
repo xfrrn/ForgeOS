@@ -43,7 +43,7 @@ func TestRoleAssignmentRestartsBeforeNativeTurn(t *testing.T) {
 			if n != 1 {
 				t.Fatal("allocated again", n)
 			}
-			if err := second.roleStartHook(role, lease)(); err != nil {
+			if err := second.roleStartHook(role, lease, 0)(); err != nil {
 				t.Fatal(err)
 			}
 			third := worker{api: server.URL, client: server.Client(), id: "assigned-node"}
@@ -79,7 +79,7 @@ func TestRoleAssignmentSettledResultDoesNotRunAgain(t *testing.T) {
 	if status, err := w.claimRole(context.Background(), "curator", "/internal/curator/claim", struct{}{}, &out); err != nil || status != 200 {
 		t.Fatal(status, err)
 	}
-	if err := w.roleStartHook("curator", lease)(); err != nil {
+	if err := w.roleStartHook("curator", lease, 0)(); err != nil {
 		t.Fatal(err)
 	}
 	if status, err := w.roleReceipt(context.Background(), "/internal/curator/result", map[string]any{"id": 7, "lease": lease}); err != nil || status != 204 {

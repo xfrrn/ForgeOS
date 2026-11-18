@@ -62,8 +62,13 @@ func (w *worker) runReviewer(ctx context.Context) error {
 
 func (w *worker) reviewJob(ctx context.Context, job store.ReviewJob) (review.Report, error) {
 	input := candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement, CandidateContext: job.CandidateContext}
+	target := store.ManagementProcessReport{ReviewerExecution: job.ExecutionID, Lease: job.Lease}
+	var report review.Report
+	if _, found, err := w.completedRoleTurn(target, &report); found || err != nil {
+		return report, err
+	}
 	if !job.CaptureProcess {
-		return reviewCandidate(ctx, input, processLog{beforeStart: w.roleStartHook("reviewer", job.Lease)})
+		return reviewCandidate(ctx, input, processLog{beforeStart: w.roleStartHook("reviewer", job.Lease, 0)})
 	}
 	name := os.Getenv("FORGEOS_CLAUDE_BIN")
 	if name == "" {
@@ -78,8 +83,7 @@ func (w *worker) reviewJob(ctx context.Context, job store.ReviewJob) (review.Rep
 	if err != nil || len(version) != 2 {
 		return review.Report{}, fmt.Errorf("cannot identify the Claude Code reviewer version")
 	}
-	var report review.Report
-	_, err = w.roleProcessTurn(ctx, store.ManagementProcessReport{ReviewerExecution: job.ExecutionID, Lease: job.Lease}, "claude", version[1], func(ctx context.Context, p processLog) (string, error) {
+	_, err = w.roleProcessTurn(ctx, target, "claude", version[1], &report, func(ctx context.Context, p processLog) (string, error) {
 		var e error
 		report, e = reviewCandidate(ctx, input, p)
 		return report.Session, e

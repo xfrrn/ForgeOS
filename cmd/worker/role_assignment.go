@@ -66,17 +66,33 @@ func (w *worker) resumeRoleAssignment(db *sql.DB, out any) (bool, error) {
 		return false, err
 	}
 	if owner == w.roleRunID || settled {
-		_, err = db.Exec("DELETE FROM role_assignment WHERE id=1")
-		return false, err
+		tx, err := db.Begin()
+		if err != nil {
+			return false, err
+		}
+		defer tx.Rollback()
+		if _, err = tx.Exec("DELETE FROM role_turn_results WHERE lease_hash=?", key); err != nil {
+			return false, err
+		}
+		if _, err = tx.Exec("DELETE FROM role_assignment WHERE id=1"); err != nil {
+			return false, err
+		}
+		return false, tx.Commit()
 	}
-	// shortcut: Started turns remain blocked until native session recovery is implemented.
 	if started {
-		return false, errors.New("saved role assignment has started a native turn; preserve its journal for session recovery")
+		var completed bool
+		if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM role_turn_results WHERE lease_hash=?) AND NOT EXISTS(SELECT 1 FROM role_turn_results WHERE lease_hash=? AND result IS NULL)", key, key).Scan(&completed); err != nil {
+			return false, err
+		}
+		// shortcut: Unfinished turns remain blocked until native session recovery is implemented.
+		if !completed {
+			return false, errors.New("saved role assignment has started a native turn; preserve its journal for session recovery")
+		}
 	}
 	if err = json.Unmarshal(raw, out); err != nil {
 		return false, err
 	}
-	result, err := db.Exec("UPDATE role_assignment SET run_id=? WHERE id=1 AND run_id=? AND started=0", w.roleRunID, owner)
+	result, err := db.Exec("UPDATE role_assignment SET run_id=? WHERE id=1 AND run_id=?", w.roleRunID, owner)
 	if err != nil {
 		return false, err
 	}
@@ -84,11 +100,16 @@ func (w *worker) resumeRoleAssignment(db *sql.DB, out any) (bool, error) {
 	return n == 1, err
 }
 
-func (w *worker) markRoleStarted(db *sql.DB, key []byte) error {
+func (w *worker) markRoleStarted(db *sql.DB, key []byte, turn int) error {
 	if w.roleRunID == "" {
 		return nil
 	}
-	result, err := db.Exec("UPDATE role_assignment SET started=1 WHERE id=1 AND lease_hash=? AND run_id=?", key, w.roleRunID)
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec("UPDATE role_assignment SET started=1 WHERE id=1 AND lease_hash=? AND run_id=?", key, w.roleRunID)
 	if err != nil {
 		return err
 	}
@@ -98,17 +119,19 @@ func (w *worker) markRoleStarted(db *sql.DB, key []byte) error {
 	}
 	if n == 0 {
 		var active bool
-		if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM role_assignment)").Scan(&active); err != nil {
+		if err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM role_assignment)").Scan(&active); err != nil {
 			return err
 		}
 		if active {
 			return errors.New("native turn does not own the saved role assignment")
 		}
+	} else if _, err = tx.Exec("INSERT INTO role_turn_results(lease_hash,turn) VALUES(?,?)", key, turn); err != nil {
+		return err
 	}
-	return nil
+	return tx.Commit()
 }
 
-func (w *worker) roleStartHook(role, lease string) func() error {
+func (w *worker) roleStartHook(role, lease string, turn int) func() error {
 	if w.roleRunID == "" {
 		return nil
 	}
@@ -119,7 +142,7 @@ func (w *worker) roleStartHook(role, lease string) func() error {
 		}
 		defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
 		key := sha256.Sum256([]byte(lease))
-		return w.markRoleStarted(db, key[:])
+		return w.markRoleStarted(db, key[:], turn)
 	}
 }
 
