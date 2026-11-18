@@ -1287,8 +1287,6 @@ Owner 主动取消运行中任务对应 ForgeOS 提交 `84758c5b8d561b37ddefc2a1
 
 项目资料工作台对应 ForgeOS 提交 `e80e961bd779abc241c28b2f9d75a83ca37e18ce`。
 
-<a id="adr-evidence-004"></a>
-
 ## 专题 08 · 从工作台管理项目决策
 
 PostgreSQL 18 schema `decisionprobe_f48f0d3e`，两个 Git 项目、正式控制面和独立 Chrome 会话。原决定为 #1，工作台验收的提案前缀为 `probe-1833d8e23972413cb32fa20b24f5e48e`。
@@ -3520,3 +3518,17 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 在 Chrome 批准并激活修订，重启控制面后读取父子两项 | 保留原执行及来源事件，生成可派发子项 | Goal 仍为任务 1，生效修订 1。工作项 2 的 goal_id 为 1。原执行 1 逐字段相同，导入、领取及失败三个原始事件均存在。 |
 
 操作记录 adr-goal-live.py、adr-publish-live.py；回执 adr_decision_goal/proof.json。对应 ForgeOS 实现 `5d30bcf451d838fae10d684d5c6bd718f5a4f73a`、`94b6b0845c7bbb370701110c1ab2f841fffdc953`。同一实现版本启用 PostgreSQL 18 与 Docker 的全量 Go 回归得到 498 项通过、零跳过、零失败（issue-outcomes-stage-regression.jsonl）。
+
+<a id="adr-evidence-004"></a>
+
+### ADR-004 · 将 Owner 确认的工程决策写入项目仓库
+
+2026-11-18，使用私有 beta 仓库的 [Issue #229](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/229) 和正式 Worker。操作脚本 adr-goal-live.py、adr-publish-live.py、adr-revert-live.py；证据 adr_decision_goal/proof.json。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Owner 确认队列预览必须记录完整来源 SHA 的工程决策，把决策引用加入 Goal 子项 | Worker 获得来源、原文与适用条件 | 工作项 2 的执行 2 保存决策快照。原生 Codex 将原文、适用条件和 `/projects/1/decisions/2` 写入 `docs/adr/queue-preview-source.md`。 |
+| 从 Chrome 核对候选，批准后等待远端检查 | 只改该文档，仓库门禁通过后才合并 | 固定候选 `7b5484c22dee55f942628c1426ae95aa48553aee` 的文档验证退出 0。Actions 预设失败项重跑后成功，两项必需检查通过，[PR #230](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/230) 合并为 `aa59e90be074a63476136edc119afc802fc4ed76`。 |
+| 从登记克隆按合并提交查询工程文档，并回读项目决策 | 工程文件和运营索引可分别复核 | API、GitHub 和本地 Git 返回同一 blob `9fda8b0a63058b2b0dd8fd22d3a5e70efa06849a`。文档含确认原文和适用条件，中台决定仍为 CONFIRMED。 |
+
+在同一项目中复用计划引用和已有交付流程。主要实现为 `ddbaae25eb110553bcc3d958bd268117ea57331d`。

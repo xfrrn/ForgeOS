@@ -85,6 +85,8 @@ Owner 向 `POST /projects/{id}/decisions` 提交提案。必填字段为 `reques
 
 Owner 用 `GET /projects/{id}/decisions` 查询，项目节点用 `GET /internal/projects/{id}/decisions` 查询。默认只返回当前有效的已确认决定。使用 `status=ALL` 或一个状态名查历史。按 ID 倒序每页最多 30 条，下一页传 `before=<本页最后一个 ID>`。
 
+已确认的重要工程决策需要进入仓库时，在项目决策页复制“计划引用”，粘贴到文档工作项的上下文引用。将目标 ADR 路径、原文和适用条件列为验收条件；在任务页核对候选后批准。合并后用固定 Merge SHA 查询工程文档，并用决策编号回读确认历史。[完整实测](acceptance.md#adr-evidence-004)
+
 ## 5. 检索方式
 
 混合检索：
