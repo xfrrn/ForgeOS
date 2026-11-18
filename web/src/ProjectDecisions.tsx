@@ -11,7 +11,8 @@ type Decision = {
 
 export function ProjectDecisions({ project, decision, request }: { project: number; decision?: number; request: ApiRequest }) {
   const base = `/projects/${project}/decisions`
-  const [page, setPage] = useState({ status: 'CONFIRMED', before: 0 })
+  const [page, setPage] = useState({ status: 'CONFIRMED', before: 0, query: '' })
+  const [query, setQuery] = useState('')
   const [rows, setRows] = useState<Decision[]>([])
   const [more, setMore] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -26,16 +27,17 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
   useEffect(() => {
     const controller = new AbortController()
     const q = new URLSearchParams({ status: page.status })
+    if (page.query) q.set('q', page.query)
     if (page.before) q.set('before', String(page.before))
     setReadError(''); setLoading(true); setMore(false)
     if (!page.before) setRows([])
     const read = decision
       ? request<Decision>(base + '/' + decision, { signal: controller.signal }).then(row => [row])
-      : request<Decision[]>(base + '?' + q, { signal: controller.signal })
+      : request<Decision[]>(base + (page.query ? '/search?' : '?') + q, { signal: controller.signal })
     read.then(items => {
       if (controller.signal.aborted) return
       setRows(old => page.before ? [...old, ...items.filter(i => !old.some(row => row.id === i.id))] : items)
-      setMore(items.length === 30)
+      setMore(!page.query && items.length === 30)
     }).catch(e => { if (!controller.signal.aborted) setReadError(e.message) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -46,10 +48,10 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
       .map(r => Date.parse(r.valid_until!)).filter(Number.isFinite)
     if (!deadlines.length) return
     const delay = Math.max(2000, Math.min(...deadlines) - Date.now() + 250)
-    const timer = setTimeout(() => setPage(p => ({ status: p.status, before: 0 })), Math.min(delay, 2147483647))
+    const timer = setTimeout(() => setPage(p => ({ ...p, before: 0 })), Math.min(delay, 2147483647))
     return () => clearTimeout(timer)
   }, [rows, loading, readError])
-  function refresh(status = page.status) { setPage({ status, before: 0 }) }
+  function refresh(status = page.status) { setPage(p => ({ ...p, status, before: 0 })) }
   function start(replaces?: Decision) {
     retry.current = null
     setProposal({ replaces }); setNotice(''); setError('')
@@ -106,6 +108,10 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
         <div className="detail-actions"><button className="button">保存提案</button><button className="button" type="button" onClick={() => { setProposal(undefined); setError('') }}>取消编辑</button></div>
       </fieldset></form>}
     <section className="panel detail-card">{decision ? <a href={'#' + base}>查看本项目全部决策</a> : <div className="project-input">
+      <form onSubmit={e => { e.preventDefault(); setPage(p => ({ ...p, query: query.trim(), before: 0 })) }}>
+        <input type="search" aria-label="检索项目决策" placeholder="检索项目决策" value={query} onChange={e => setQuery(e.target.value)}/>
+        <button className="button">检索</button>
+      </form>
       <select aria-label="决策状态" value={page.status} onChange={e => refresh(e.target.value)}>
         {Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}<option value="ALL">全部状态</option>
       </select><button className="button" disabled={loading} onClick={() => refresh()}>刷新</button>

@@ -54,7 +54,7 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
     const materialPath = /^\/projects\/[1-9]\d*\/(?:experience\?q=[^&#]+|materials(?:\?[^#]*|\/[^/?#\\]+(?:\?revision=[1-9]\d*|\/revisions\/[1-9]\d*\/curation)?)?)$/.test(path)
     const documentPath = /^\/projects\/[1-9]\d*\/document-changes(?:\?before=[1-9]\d*|\/[1-9]\d*\/curation(?:\?part=[1-9]\d*)?)?$/.test(path)
     const eventCurationPath = /^\/projects\/[1-9]\d*\/tasks\/[1-9]\d*\/events\/[1-9]\d*\/curation$/.test(path)
-    const decisionPath = /^\/projects\/[1-9]\d*\/decisions(?:\?[^#]*|\/[1-9]\d*(?:\/(?:status|curation))?)?$/.test(path)
+    const decisionPath = /^\/projects\/[1-9]\d*\/decisions(?:\?[^#]*|\/search\?status=[A-Z]+&q=[^&#]+|\/[1-9]\d*(?:\/(?:status|curation))?)?$/.test(path)
     const sharePath = /^\/projects\/[1-9]\d*\/(?:shares(?:\/[1-9]\d*(?:\/publication)?)?|shared-experience)(?:\?before=[1-9]\d*)?$/.test(path)
     if (!globalRulesPath && !documentPath && !eventCurationPath && !sharePath && !decisionPath && !materialPath && path !== '/workers' && path !== '/workers/model-budgets' && !/^\/executions\/[1-9]\d*\/(?:abandon|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|issues\/[1-9]\d*))?$/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)

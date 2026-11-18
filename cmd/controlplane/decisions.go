@@ -3,11 +3,41 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"forgeos/internal/store"
 )
 
+func decisionStatus(w http.ResponseWriter, r *http.Request) (string, bool) {
+	switch status := r.URL.Query().Get("status"); status {
+	case "":
+		return "CONFIRMED", true
+	case "ALL":
+		return "", true
+	case "PROPOSED", "CONFIRMED", "REJECTED", "SUPERSEDED", "EXPIRED":
+		return status, true
+	default:
+		problem(w, 400, "invalid decision status")
+		return "", false
+	}
+}
+
 func registerDecisions(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	registerProjectRead(mux, "decisions/search", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+		status, ok := decisionStatus(w, r)
+		if !ok {
+			return
+		}
+		q := r.URL.Query()
+		query := strings.TrimSpace(q.Get("q"))
+		if query == "" || q.Has("before") || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
+			problem(w, 400, "invalid decision search query or cursor")
+			return
+		}
+		out, err := data.SearchDecisions(r.Context(), id, status, query)
+		respond(w, 200, out, err)
+	})
 	registerProjectRead(mux, "decisions/{decision}", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
 		id, err := strconv.ParseInt(r.PathValue("decision"), 10, 64)
 		if err != nil || id < 1 {
@@ -19,15 +49,8 @@ func registerDecisions(mux *http.ServeMux, data *store.Store, owner string, work
 	})
 	registerProjectRead(mux, "decisions", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		q := r.URL.Query()
-		status := q.Get("status")
-		switch status {
-		case "":
-			status = "CONFIRMED"
-		case "ALL":
-			status = ""
-		case "PROPOSED", "CONFIRMED", "REJECTED", "SUPERSEDED", "EXPIRED":
-		default:
-			problem(w, 400, "invalid decision status")
+		status, ok := decisionStatus(w, r)
+		if !ok {
 			return
 		}
 		var before int64
