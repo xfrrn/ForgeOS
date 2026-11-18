@@ -483,6 +483,7 @@ type Event struct {
 }
 
 type Job struct {
+	IssueImportOrigin     string          `json:"issue_import_origin,omitempty"`
 	ModelPause            bool            `json:"model_pause,omitempty"`
 	RecoverPlannerPause   bool            `json:"recover_planner_pause,omitempty"`
 	PlannerHandoff        bool            `json:"planner_handoff,omitempty"`
@@ -855,7 +856,9 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND (status = 'RUNNING' OR waiting_execution_id IS NOT NULL))
-		RETURNING id, kind, spec, goal_id IS NOT NULL, nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.ExecutionID)
+		RETURNING id, kind, spec, goal_id IS NOT NULL,
+		    COALESCE((SELECT v.origin FROM task_events v WHERE v.task_id=work_items.id AND v.type='issue_imported' ORDER BY v.id LIMIT 1),''),
+		    nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.IssueImportOrigin, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

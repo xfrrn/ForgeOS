@@ -20,8 +20,13 @@ func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := strings.Repeat("a", 40)
-	task, err := s.ImportIssue(ctx, p.ID, IssueSpec{Mode: "plan", ChildHarness: "claude", ProjectConfigBlob: base, Issue: Issue{ID: 17, Number: 2, RepositoryID: 9}, BaseCommit: base, Validation: "docs"})
+	spec := IssueSpec{ImportOrigin: "owner", Mode: "plan", ChildHarness: "claude", ProjectConfigBlob: base, Issue: Issue{ID: 17, Number: 2, RepositoryID: 9}, BaseCommit: base, Validation: "docs"}
+	task, err := s.ImportIssue(ctx, p.ID, spec)
 	if err != nil {
+		t.Fatal(err)
+	}
+	spec.ImportOrigin = "github"
+	if _, err := s.ImportIssue(ctx, p.ID, spec); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
@@ -29,7 +34,7 @@ func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
 		t.Fatalf("legacy worker: %v %v", legacy, err)
 	}
 	job, err := s.Claim(ctx, "planner", root, true, true, true)
-	if err != nil || job == nil {
+	if err != nil || job == nil || job.IssueImportOrigin != "owner" {
 		t.Fatal(job, err)
 	}
 	candidate := strings.Repeat("b", 40)

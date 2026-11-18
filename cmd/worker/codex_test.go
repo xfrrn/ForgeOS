@@ -54,6 +54,18 @@ func TestImplementationPromptUsesOnlyAssignedIssueAndGoalEvidence(t *testing.T) 
 	}
 }
 
+func TestIssuePromptIdentifiesOriginalDispatch(t *testing.T) {
+	for _, origin := range []string{"owner", "github", ""} {
+		job := store.Job{IssueImportOrigin: origin, Spec: &store.IssueSpec{Issue: store.Issue{Body: "explicit Owner dispatch"}}}
+		prompt, err := issuePrompt(job, "", store.CheckpointPage{}, nil)
+		instructions, _, found := strings.Cut(prompt, "Issue JSON:\n")
+		if err != nil || !found || strings.Contains(instructions, "explicit Owner dispatch") != (origin == "owner") ||
+			strings.Contains(instructions, "GitHub Agent trigger") != (origin == "github") {
+			t.Fatalf("incorrect dispatch instructions for %q", origin)
+		}
+	}
+}
+
 func TestOnlyFinalMessageCanRequestOwnerDecision(t *testing.T) {
 	var q nativeQuestion
 	q.read(`{"forgeos_question":"Which title?","evidence":"No title in the issue."}`)
@@ -227,6 +239,9 @@ func TestMain(m *testing.M) {
 		if strings.Contains(string(body), "Plan fixture") {
 			operations := strings.Contains(string(body), `"work_type":"operations"`)
 			if operations != strings.HasPrefix(string(body), "Prepare an operations plan using read-only discovery") {
+				os.Exit(2)
+			}
+			if !strings.Contains(string(body), "explicit Owner dispatch") {
 				os.Exit(2)
 			}
 		}
@@ -503,6 +518,7 @@ func TestReadOnlyPlanner(t *testing.T) {
 			w.codex, _ = os.Executable()
 			w.planner = true
 			job.Kind = "codex_issue"
+			job.IssueImportOrigin = "owner"
 			job.Spec = &store.IssueSpec{Issue: store.Issue{Number: 42, Title: "Plan fixture", WorkType: workType}, Mode: "plan", BaseCommit: base, Validation: "docs"}
 			res := w.execute(context.Background(), job)
 			if res.ExitCode != 0 || res.Plan == nil || res.Commit != "" || res.Validation != nil || res.SessionID != "planner-test" || res.BaseCommit != base {

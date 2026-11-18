@@ -47,6 +47,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="native-issue-dispatch-origin"></a>
+
+### 专题 06、07、12 · 原生规划读取 Issue 的首次派发来源
+
+在一次 beta #245 规划失败后核对原生会话 `01a1effd-1fc4-7133-8a3e-6c408fdedefd`。Planner 明确报告缺少 Owner 转换普通讨论的证据，返回了空里程碑。控制面已记下 Owner 派发，但当时的领取回执和原生输入都未携带这一事实。[来源 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在空 PostgreSQL 18 以 Owner 身份再次导入 #245，用正式 Worker 启动只读 Planner，检查原生输入并从 390 像素 Chrome 打开草案 | 原始 Issue 仍是讨论，模型可识别已由 Owner 派发；计划须另行批准 | 事件 1 的来源为 Owner，原生 Session `01a1f004-b7c6-7890-a8d3-7f27433feb6b` 的输入在 Issue 正文之外记录了显式派发。执行 1 退出 0，基线 `39a8b8b996ab319ff9a266f941c77933c85d6b83` 和工作树均未改变。修订 1 含两个里程碑、两个工作项，未激活，子任务数为零。重启后事件和草案相同。 |
+| 停止 Worker 后启用该库的实际 Poller，并从节点入口领取标签触发的另一条 Issue | 自动触发的工作保留 GitHub 来源 | beta #240 成为任务 2，执行 2 的领取回执和导入事件 4 均为 `github`。 |
+| 另用旧控制面导入 #245，切到当前控制面后读取原事件并领取任务 | 缺少首次派发来源时保留未知 | 原事件的来源、操作者均为空；领取回执省略 `issue_import_origin`，原 Issue 规格逐字段相同。 |
+
+运行回执位于 `dispatch-origin-live/owner.json`、`github.json` 和 `legacy.json`。数据库回归另覆盖 Owner 首次导入后再次被轮询时，领取仍使用首次事件。
+
 <a id="workbench-failed-execution-retry"></a>
 
 ### 专题 06、13、16 B.5 · 从工作台重试失败的 Issue 执行
