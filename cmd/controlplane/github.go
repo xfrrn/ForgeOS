@@ -212,6 +212,7 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			return
 		}
 		spec := source.spec(issue, input.Validation, input.Mode, policy)
+		spec.ImportOrigin = "owner"
 		if input.Harness != "" && spec.Mode == "plan" && input.Mode != "plan" {
 			spec.ChildHarness = input.Harness
 		} else if input.Harness != "" {

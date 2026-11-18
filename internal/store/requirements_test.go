@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,12 +20,29 @@ func TestIssueWorkTypeRevisionAndClarification(t *testing.T) {
 		t.Fatal(err)
 	}
 	issue := Issue{ID: 10, Number: 1, RepositoryID: 12, Title: "Release", WorkType: "development", OwnerClassified: true, UpdatedAt: "2026-01-01T00:00:00Z"}
-	spec := IssueSpec{Issue: issue, Harness: "claude", BaseCommit: strings.Repeat("a", 40), Validation: "docs"}
+	spec := IssueSpec{ImportOrigin: "owner", Issue: issue, Harness: "claude", BaseCommit: strings.Repeat("a", 40), Validation: "docs"}
 	task, err := s.ImportIssue(ctx, project.ID, spec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	other := spec
+	other.ImportOrigin = "github"
+	if _, err = s.ImportIssue(ctx, project.ID, other); err != nil {
+		t.Fatal(err)
+	}
+	importEvent := task.Events[0].ID
+	original, err := s.EventAudit(ctx, project.ID, task.ID, importEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt struct {
+		Source  string         `json:"source"`
+		Payload map[string]any `json:"payload"`
+	}
+	if err = json.Unmarshal(original, &receipt); err != nil || receipt.Source != "owner" || receipt.Payload["work_type"] != "development" ||
+		receipt.Payload["requirement_revision"] != float64(1) || receipt.Payload["issue_number"] != float64(issue.Number) {
+		t.Fatal(string(original), err)
+	}
 	other.Issue.WorkType, other.Mode, other.Harness = "testing", "plan", "codex"
 	if _, err := s.ImportIssue(ctx, project.ID, other); !errors.Is(err, ErrConflict) {
 		t.Fatal("conflicting concurrent Owner decision accepted", err)
@@ -66,6 +84,10 @@ func TestIssueWorkTypeRevisionAndClarification(t *testing.T) {
 	observed, err := s.RequirementRevision(ctx, task.ID, 5)
 	if err != nil || observed.Issue.WorkTypeLabels != issue.WorkTypeLabels {
 		t.Fatal("different conflicting labels lost their revision", err)
+	}
+	after, err := s.EventAudit(ctx, project.ID, task.ID, importEvent)
+	if err != nil || !bytes.Equal(original, after) {
+		t.Fatal("later revisions changed the import receipt", string(after), err)
 	}
 }
 

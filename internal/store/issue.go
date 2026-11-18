@@ -36,6 +36,7 @@ func ValidWorkType(value string) bool {
 }
 
 type IssueSpec struct {
+	ImportOrigin      string             `json:"-"`
 	ProjectConfigBlob string             `json:"project_config_blob,omitempty"`
 	ChildHarness      string             `json:"child_harness,omitempty"`
 	Harness           string             `json:"harness,omitempty"`
@@ -98,7 +99,8 @@ func (s *Store) FeedbackDispatch(ctx context.Context, project, number int64, src
 
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec, sources ...FeedbackSource) (Task, error) {
 	issue := spec.Issue
-	if issue.WorkType != "" && !ValidWorkType(issue.WorkType) || issue.OwnerClassified && issue.WorkType == "" ||
+	if spec.ImportOrigin != "" && spec.ImportOrigin != "owner" && spec.ImportOrigin != "github" ||
+		issue.WorkType != "" && !ValidWorkType(issue.WorkType) || issue.OwnerClassified && issue.WorkType == "" ||
 		issue.WorkType != "" && issue.WorkType != "development" && spec.Mode != "plan" ||
 		len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
 		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
@@ -124,8 +126,8 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		    VALUES ($1, 'codex_issue', 'READY', $2, $3)
 		    ON CONFLICT (project_id, github_issue_id) DO NOTHING RETURNING id
 		)
-		INSERT INTO task_events(task_id, type) SELECT id, 'issue_imported' FROM created
-		RETURNING task_id`, projectID, issue.ID, string(snapshot)).Scan(&id)
+		INSERT INTO task_events(task_id, type, origin) SELECT id, 'issue_imported', NULLIF($4,'') FROM created
+		RETURNING task_id`, projectID, issue.ID, string(snapshot), spec.ImportOrigin).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		var frozenWorkType string
 		err = tx.QueryRowContext(ctx, `SELECT id,COALESCE(spec->'issue'->>'work_type','') FROM work_items WHERE project_id = $1 AND github_issue_id = $2 FOR UPDATE`,

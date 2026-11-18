@@ -24,6 +24,19 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="issue-import-audit"></a>
+
+### 专题 12、13 · 核对 GitHub Issue 的首次派发来源
+
+2026-11-19，分别在空 PostgreSQL 18 启动修复前、后的正式控制面，登记同一私有验收仓库的全新克隆。Owner 使用派发 API，再从 390 像素 Chrome 下载回执。GitHub 操作均为读取。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 手动导入同一 Issue 两次，比较修复前后的首次事件 | 仓库、Issue、原始需求和发起方可核查；重复导入只创建一个事件 | 修复前事件 1 的来源为空，载荷为 `{}`。修复后事件 1 归属 Owner，指向仓库 1459615168、Issue 6469826743、需求记录 1 的修订 1，类型为 development。[beta #267](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/267) |
+| 开启正式 GitHub 轮询，再用 Owner 身份手动导入已由标签派发的 Issue，重启控制面 | 首次派发方保持为轮询器，每项只留一条导入事件 | 任务 6 的事件 5 记录来源 github、发起方 github_poller、Issue 6462305130、需求记录 5 的修订 1，类型为 operations。两份下载均匹配 API 和 GitHub，重启后回执相同。数据库专项还验证了采用修订 3、观察修订 5 后，首次回执逐字节保持一致。[beta #243](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/243) |
+
+原始回执位于 `issue-import-audit-before/latest.json` 和 `issue-import-audit-after/latest.json`。
+
 <a id="feedback-event-audit"></a>
 
 ### 专题 11、13 · 从反馈事件查到当次截图、录屏和分类
@@ -38,6 +51,8 @@
 | 将截图、录屏保留期限各设为一秒，到期后读取工件并重启控制面 | 文件到期仍可核查原事件 | 两个工件均返回 HTTP 410。到期后及控制面重启后，七份事件回执逐字段保持一致。 |
 
 升级前记录为 `feedback-audit-baseline/latest.json`，七份回执、空关联验证及重启结果为 `feedback-audit-verified/latest.json`。外部设备经 Tailscale 访问预览仍待验收。
+
+实现提交 `160605d02773f1971161d045746ac613a89743bc`。PostgreSQL 18 与真实 Docker 全包回归 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。报告为 `feedback-audit-final-regression.jsonl`。
 
 <a id="delivery-event-audit"></a>
 

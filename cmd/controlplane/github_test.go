@@ -142,7 +142,7 @@ func TestImportSelectedGitHubIssue(t *testing.T) {
 				return
 			}
 			s := data.spec
-			if calls != 2 || s == nil || s.Issue.ID != 367 || s.Issue.RepositoryID != 88 ||
+			if calls != 2 || s == nil || s.ImportOrigin != "owner" || s.Issue.ID != 367 || s.Issue.RepositoryID != 88 ||
 				s.Issue.Body != "Edit one example" || s.Validation != "docs" || s.BaseCommit != base {
 				t.Fatalf("missing task evidence: %+v", s)
 			}

@@ -183,7 +183,9 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 				discussions = append(discussions, item)
 			} else if err == nil {
 				var task store.Task
-				task, err = data.ImportIssue(ctx, p.projectID, repo.spec(issue, p.validation, "", validation.Policy{}))
+				spec := repo.spec(issue, p.validation, "", validation.Policy{})
+				spec.ImportOrigin = "github"
+				task, err = data.ImportIssue(ctx, p.projectID, spec)
 				taskID = task.ID
 			}
 			if err == nil && taskID > 0 && raw.Comments > 0 {

@@ -91,6 +91,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 预览反馈的四种时间线回执均关联原反馈编号和候选 SHA。Owner 提交反馈或上传媒体，Management 分类时记录类别和原生 Session。截图和录屏的回执包含工件编号、MIME、字节数和 SHA-256，文件到期后仍可核对。升级时仅回填能与同一事务中的历史记录唯一匹配的关联。[归档升级、重复上传、分类及到期验证](acceptance.md#feedback-event-audit)
 
+导入 Issue 时，回执记录首次派发来自 Owner 还是 GitHub 标签轮询。载荷从需求修订 1 读取仓库和 Issue 的编号、原链接、工作类型及修订编号；后来轮询、重新派发或采用新需求仍可查到首次导入的依据。旧事件可查原需求，首次派发者未知时保留空值。[手动导入和标签轮询实测](acceptance.md#issue-import-audit)
+
 ## 3. 审计
 
 审计记录：

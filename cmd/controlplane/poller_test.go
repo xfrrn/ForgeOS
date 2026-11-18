@@ -208,7 +208,7 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 		t.Fatal("ordinary discussion was dispatched or omitted", data.observed[6], data.received[6])
 	}
 	if reads != 8 || len(data.inbox) != pageSize-6 || data.inbox[0].Number != 6 || len(data.received) != 3 || data.received[5] != 2 || data.received[int64(pageSize+1)] != 2 ||
-		data.spec.BaseCommit != base || data.spec.Validation != "docs" || data.spec.Issue.RepositoryID != 88 {
+		data.spec.BaseCommit != base || data.spec.Validation != "docs" || data.spec.Issue.RepositoryID != 88 || data.spec.ImportOrigin != "github" {
 		t.Fatalf("reads=%d received=%v spec=%+v", reads, data.received, data.spec)
 	}
 }
