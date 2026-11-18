@@ -43,6 +43,7 @@
 | 专题 06、13、16 B.5，从工作台重试失败的 Issue 并追溯原执行 | [两次浏览器提交、一次排队及后续失败后重读原回执](#workbench-failed-execution-retry) | `6b56a2c59dc4364bdfc1cb094f5167b4ca0b3adb` |
 | 专题 06、07、12，规划和实现回合读取首次派发来源 | [原生只读规划、GitHub 标签领取和旧数据升级](#native-issue-dispatch-origin) | `b93d5ae0e888c3facdc03f0a62a0dcd1c4cca068` |
 | 专题 00、01、12，Owner 按 Issue 编号派发工作项 | [私库中的类型澄清、重复派发和原生开发任务交付](#web-issue-number) | `effbc78c7256789fb20ddd30ea3513a35ebcbaa9` |
+| 专题 01、11、12，从工作台和预览反馈派发无类型的普通讨论 | [修复前后的派发结果与旧调用兼容](#untyped-owner-dispatch) | `9a46086d73b9f5b0c35329c73f72dad67cfadf4e` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
@@ -105,6 +106,10 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 | 重放已声明和需澄清的两个编号，再使用原 API 请求格式导入无声明的 #236 | 两个网页入口维持类型检查，原 API 调用保持既有兼容行为 | #245 重放仍对应一个任务，#247 澄清前没有新任务；未传新字段的独立 API 调用仍按原格式成功导入 #236。 |
 
 原始回执为 `untyped-owner-baseline.json`、`untyped-owner-fixed.json`、`untyped-feedback-live/latest.json`、`require-work-type-replay.json`。TypeScript 和前端生产构建、Go 静态检查通过。[普通讨论 #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235)
+
+在新的空库从网页派发无类型的 beta #280，预期只有 Owner 选「开发」后才允许写入。实际首次提交返回 409，任务数为零；选择后记录 `owner_classified: true`。正式 Worker 会话 `01a1f015-82d1-70b3-99fb-01bdacc50d2f` 只新增需求指定的 `docs/issue-types.md`，文件内容逐字匹配。Owner 核对候选后在网页通过验收。PR #281 首次必需检查失败，第二次通过；合并候选 `6be5ad0cfb4eb4f5af796f52c0460596cc4b94fc` 后关闭 Issue。重启后仍为 DONE、一次执行，合并 SHA 与 GitHub 同为 `a6b689c851f53d8e8db68b91bd5dccafbc8c1968`。回执为 `untyped-writer-delivery/current/receipt.json`。[Issue #280](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/280) · [PR #281](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/281) · [必需检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44378723002)
+
+提交 `9a46086d73b9f5b0c35329c73f72dad67cfadf4e` 在空 PostgreSQL 18 与真实 Docker 上执行全包回归：9 个包共 586 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。回执为 `untyped-owner-regression.jsonl`。
 
 <a id="workbench-failed-execution-retry"></a>
 
