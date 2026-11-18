@@ -589,6 +589,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
   const [loading, setLoading] = useState(true)
   const [revision, setRevision] = useState(0)
   const [sendingCommand, setSendingCommand] = useState(false)
+  const [checkedExecution, setCheckedExecution] = useState<number | null>(null)
   const generation = useRef(0)
 
   useEffect(() => {
@@ -642,7 +643,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
       setSendingCommand(false)
     }
   }
-  async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci' | 'pause-model' | 'resume-model', instance?: number) {
+  async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci' | 'pause-model' | 'resume-model' | 'abandon', instance?: number) {
     setSendingCommand(true)
     try {
       await request(`/executions/${execution}/${action}`, { method: 'POST', ...(instance ? {headers: {'Content-Type':'application/json'},body:JSON.stringify({instance})} : {}) })
@@ -658,6 +659,7 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
     {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
   const issue = task.spec?.issue
   const last = task.execution
+  const expired = last?.lease_expired && last.status === 'RUNNING' && !last.result && !last.abandoned_at
   const result = last?.result
   const delivery = task.delivery
   const reviews = task.reviews ?? []
@@ -680,7 +682,17 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
     </div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
-    {last && (['RUNNING','PAUSED'].includes(task.status) || (task.status === 'WAITING_INPUT' && last.status === 'RUNNING')) && !task.source_closure && <section aria-label="执行控制">
+    {last && expired && <section className="panel detail-card" aria-label="核对失联执行">
+      <h2>执行 #{last.id} 租约已过期</h2>
+      <dl className="detail-facts"><Fact label="节点">{last.worker}</Fact><Fact label="工作区" code>{last.workspace}</Fact></dl>
+      <p>请核对节点进程、工作区改动及已有 PR 和合并记录。结束后将释放执行名额，保留本次工作区与历史。</p>
+      <label><input type="checkbox" checked={checkedExecution === last.id} onChange={e => setCheckedExecution(e.target.checked ? last.id : null)}/> 我已确认原 Worker 停止，并核对了工作区和交付记录</label>
+      <button className="button" disabled={loading || sendingCommand || checkedExecution !== last.id} onClick={() => {
+        setCheckedExecution(null)
+        void controlExecution(last.id, 'abandon')
+      }}>结束失联执行 #{last.id}</button>
+    </section>}
+    {last && !expired && (['RUNNING','PAUSED'].includes(task.status) || (task.status === 'WAITING_INPUT' && last.status === 'RUNNING')) && !task.source_closure && <section aria-label="执行控制">
       {last.ci_candidate && <p>CI 候选提交 · <code>{last.ci_candidate}</code></p>}
       {last.owner_cancel_requested_at ? <p role="status">已请求取消执行 #{last.id}，等待 Worker 回执。</p> : <>
         {task.status === 'PAUSED' && last.ci_candidate

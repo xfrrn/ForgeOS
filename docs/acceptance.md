@@ -3417,3 +3417,18 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 整个 Worker 包回归 268 项测试及子测试通过、零失败；4 项依赖 Docker 开关的测试在该命令中跳过，并未记为通过。本次两项真实交付另已实际运行 Docker 验证。随后补入的验证失败保存、最终入队失败、Owner 取消及来源关闭通过最终 Windows 专项 13 项；Ubuntu 非 root 恢复／锁／既有问题与暂停专项 20 项、PostgreSQL 资源名额回归 2 项均通过，零失败、零跳过。报告 candidate-worker-tests.jsonl、candidate-final-tests.log、candidate-linux-tests.log、candidate-pg-tests.log；Go 静态检查和 git diff 检查通过。没有修改控制面数据库合同或前端。
 
 本项未将旧 file_change_output_cli 失联执行反推为已恢复。普通 Daemon 在候选检查点尚未保存时的崩溃、运行中原生流接回、整机重启及全路线最终回归仍待完成；现有外部验收条件保持待验收。
+
+上述普通 Worker 候选结算恢复对应 ForgeOS 提交 `2ea9a0f5ab1666d48c42ec1f7d4c29a9ca8621a0`。
+
+### 专题 07、14 · 从任务页核对并结束过期执行
+
+2026-11-18 用原 file_change_output_cli 库和工作区复验。旧执行 1 的租约自然过期，节点日志保留了 PID 22380 的正常退出，最终结果为空。另一次独立执行已完成 [PR #221](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/221) 并关闭 Issue #220，故本次处置无需重新派发。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 核对原 Worker、工作区、GitHub 状态 | 能判断是否已有交付或未保存的修改 | 原 Worker 已停，工作区 HEAD 为 9cdf1e06，仍暂存 docs/file-change-cli.md。另一次执行已合并为 d8ddd6551685fad9a5083ca2b075d681a3310769。 |
+| 从 Chrome 打开任务并撤回核对勾选，用 Worker 身份请求结束 | 勾选前无法提交，Worker 无权结束 | 按钮禁用，任务仍为 RUNNING，Worker 请求返回 401。 |
+| Owner 核对后勾选并结束，再次提交同一请求 | 只结束一次，保留证据 | 两次返回 204，任务为 FAILED，原执行仍无最终结果，只有一条 execution_abandoned 事件。 |
+| 重启控制面，再次从 Chrome 回读 | 处置结果和原工作区持久保留 | 页面显示失败，原退出记录、HEAD、暂存文件和人工结束时间一致，仍只有一次执行。 |
+
+首次页面实测发现浏览器请求白名单遗漏 abandon，点击未送出请求。补入执行编号受限的路径后，用同一旧执行完成以上验证。证据为 file_change_output_cli/abandon-proof.json 和 abandon-ui-live.py。TypeScript 编译、Vite 构建与 diff 检查通过。旧执行按人工结束失联记录，候选检查点落盘之前的自动恢复仍待补齐。
