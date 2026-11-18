@@ -1,0 +1,26 @@
+# ADR 验收对照
+
+按原始 18 份架构决策核对，基线为 ForgeOS `b430a3ce654795d5b277443ff8bb6b77052e377d`。已验收表示该决策有对应场景的实测记录。专题 00–16 与四阶段端到端验收另见[全路线记录](acceptance.md)。提交列列出本地 ForgeOS 实现或修复，验收项目的业务提交在操作记录内。
+
+| 原始要求 | 当前状态 | 验收结果及缺口 | 操作、预期和实际 | ForgeOS 提交 |
+| --- | --- | --- | --- | --- |
+| [ADR-001 环境凭据隔离](adr/ADR-001-environment-isolation.md) | 已验收 | 登记两项目的不同环境需求；节点跨项目被拒，授权执行只取得本项目的限时包装凭据。 | [实测](acceptance.md#adr-evidence-001) | `72cd89d8f6ddeb4e5674805a2ee61afcd5225ac8`、`8c83ac81ca46585cac3e17588ec19f1e6fd04a03`、`6e51e433ac87e43f8b432d968908e5eca7bc1b22` |
+| [ADR-002 模板触发与收件箱](adr/ADR-002-issue-trigger.md) | 已验收 | 同一控制面轮询两个私库；模板进入任务队列，普通讨论留在收件箱，重复转换只产生一个任务。 | [实测](acceptance.md#adr-evidence-002) | `319aa65526b5e5e84fb04caca0300a939ee9a34c` |
+| [ADR-003 检查点与事件合并](adr/ADR-003-checkpoint-event-batching.md) | 已验收 | 运行中追加 Issue 评论，在同一 Codex Thread 的下一检查点读取；保留原始事件。暂停、取消有独立控制入口。 | [实测](acceptance.md#adr-evidence-003) | `391309e8d50e1e8b4c73b4eab55c961b149c9e69`、`4d31e7f037108b1d4a9ad891e81ceb0adb1b662d`、`20c30e659097fcd5cb6de838d5f8deb0be1238cb` |
+| [ADR-004 知识双源与工程决策](adr/ADR-004-project-knowledge-sources.md) | 部分验收 | 项目页保存明确确认的决策，节点按提交查询工程文档。还需把一条已确认的工程决策实际写入仓库正式文档，核对两端版本。 | [实测](acceptance.md#adr-evidence-004) | `4713fdc9d8139e3e9f92609f44ee4651876b8e16`、`5225e601300177bc0a768fbc5d144c3a72c1e4f0` |
+| [ADR-005 知识隔离与共享](adr/ADR-005-knowledge-isolation.md) | 已验收 | Owner 选择固定资料版本，审核后发布脱敏副本；接收项目回读副本，撤销后访问失效。 | [实测](acceptance.md#adr-evidence-005) | `e80e961bd779abc241c28b2f9d75a83ca37e18ce`、`2359fe38c621b41eeff8922e2f8a7c399102021f` |
+| [ADR-006 动态任务层级](adr/ADR-006-dynamic-task-hierarchy.md) | 部分验收 | 简单任务和带依赖的多子项 Goal 已交付。首次计划支持 FAILED 或 WAITING_ACCEPTANCE 检查点；仍需从已有执行的简单任务实际升级并核对原执行和后续子项。 | [实测](acceptance.md#adr-evidence-006) | `5d30bcf451d838fae10d684d5c6bd718f5a4f73a`、`94b6b0845c7bbb370701110c1ab2f841fffdc953`、`f519840024cf437b589da98060059c364568d7f1` |
+| [ADR-007 全过程追溯](adr/ADR-007-traceability.md) | 部分验收 | 已关联任务、计划、执行、候选、验证、人工验收、PR 和合并 SHA；尚需在同一场景实际回退 Git 并核对原运行历史。 | [实测](acceptance.md#adr-evidence-007) | `39d3f6899ab5c2a75bf72e635b349788e2ae1b64`、`544744520aeb6ea13724c7aaf4166ebf0a5c09b0`、`b430a3ce654795d5b277443ff8bb6b77052e377d` |
+| [ADR-008 正式计划双重留痕](adr/ADR-008-plan-storage.md) | 已验收 | 在工作台归档固定修订，用 git show 对照 API，重复归档取得相同提交，保留原工作区与索引。 | [实测](acceptance.md#adr-evidence-008) | `83ea26272aebbb001a4ef0a521075fc0580a1e52`、`616dcb6508a47061f2118a98c31bfb821609870b` |
+| [ADR-009 专用 Linux 用户复用认证](adr/ADR-009-harness-auth-reuse.md) | 待环境验收 | 非 root systemd 身份重启后探测到两种真实 CLI。仍需以该身份登录 Codex 和 Claude Code 并完成实际模型调用与复用。 | [实测](acceptance.md#adr-evidence-009) | `bd1c734d80413c87e032cb250c12baea9ad314cc`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |
+| [ADR-010 进程与会话生命周期](adr/ADR-010-process-session-lifecycle.md) | 已验收 | 等待 Owner 时释放名额，答复后恢复原生会话。原会话丢失时交接；真实进程退出、重启控制面和过期执行对账已有记录。整机重启演练在专题 14 单列。 | [实测](acceptance.md#adr-evidence-010) | `2ea9a0f5ab1666d48c42ec1f7d4c29a9ca8621a0`、`c4b68dfd13ffefd1cde3f03c3887ba186bededb7`、`1e3a1b5444405e62043ece8bff908a69316c1853` |
+| [ADR-011 项目级并发](adr/ADR-011-concurrency-policy.md) | 已验收 | 节点按项目和容量领取，写入串行，失联占位可核对；不同项目并行，模型与候选 CI 独立计数，等待与暂停释放名额。 | [实测](acceptance.md#adr-evidence-011) | `9f6d39672a24da8ee6b989f722b5b779df49f276`、`e8a84ea087fd7d6d4ff1c40db93c5727d2c50352`、`4eaf44a273aa9b2bec2f9ea0ab126b714921d69c` |
+| [ADR-012 仓库声明验证、中台授权](adr/ADR-012-validation-ownership.md) | 已验收 | 真实 Issue 触发仓库检查，隔离容器产生结果、日志和产物。执行按平台门禁核对仓库配置。 | [实测](acceptance.md#adr-evidence-012) | `35866baa5cd8635d4a5906fd21a4016c90bf48bd`、`ee695b39ca1d61ec7d3d8bfd0ebaefe1681cfaf6`、`80836d649574426c6e6984c66aaff5feab0e2da3` |
+| [ADR-013 动态验证等级](adr/ADR-013-dynamic-validation-level.md) | 已验收 | 从 Issue 和固定候选选 V1–V4，在容器执行；Management 可提高门槛，缺少必需检查时阻塞交付。 | [实测](acceptance.md#adr-evidence-013) | `48a32f2110a4e1818fe42dbab7f62f89b80ef3bd`、`0420f455c76949ddb9d5240e1632b53f594bcd40` |
+| [ADR-014 私网预览与反馈](adr/ADR-014-remote-preview-feedback.md) | 待环境验收 | 已从 Chrome、Caddy 和固定候选登记元素、截图、录屏与 Bug；第二台设备经 Tailscale 访问仍待验收。 | [实测](acceptance.md#adr-evidence-014) | `ec7a462baf075e210456a364a0d697777773695c`、`c382473c31775ebcc074682f8f55ce59adbad745`、`a6ade1d1aeed649685ad1b858cc556c774171f57` |
+| [ADR-015 验收后集成代码](adr/ADR-015-code-delivery-scope.md) | 待环境验收 | 私库 PR 经 Owner 候选验收与必需 CI 后合并；独立模型审查已实测。受限 GitHub 身份和第二位维护者审批仍待验收。 | [实测](acceptance.md#adr-evidence-015) | `32c0fa07cc09eaf98750e588682d0f9701dd92f4`、`51a440d38d10221003094a16793e5a560509dcc0` |
+| [ADR-016 默认 Squash Merge](adr/ADR-016-squash-merge.md) | 已验收 | 按项目固定默认分支或指定目标；Actions 失败时等待，通过后执行 squash 并保存远端 Merge SHA。 | [实测](acceptance.md#adr-evidence-016) | `32c0fa07cc09eaf98750e588682d0f9701dd92f4`、`977910ee99f313832a367dd4ccd3cc17aee2c7ac` |
+| [ADR-017 按层级回写 Issue](adr/ADR-017-issue-close-policy.md) | 已验收 | 简单项合并后关闭，父 Issue 等全部必需子项完成。beta #228 的失败与取消各回写一次，重启重领后仍为 OPEN。 | [实测](acceptance.md#adr-evidence-017) | `319aa65526b5e5e84fb04caca0300a939ee9a34c`、`544744520aeb6ea13724c7aaf4166ebf0a5c09b0`、`b430a3ce654795d5b277443ff8bb6b77052e377d` |
+| [ADR-018 知识更新权威性](adr/ADR-018-knowledge-update-authority.md) | 已验收 | 运营记录自动留痕。Management 核对知识来源，Owner 确认重要决策及共享；失效决策保留历史。 | [实测](acceptance.md#adr-evidence-018) | `2df857ecb236b45d48f64d8d1a4f367a6e1facf6`、`2359fe38c621b41eeff8922e2f8a7c399102021f`、`36b88b4f7d5787517ff6aeb5cbd5def1180a3bf2` |
+
+另列的环境验收还有 Telegram、飞书真实收件，外部提供方回调，以及整机重启后的模型执行恢复。通知重试、服务进程重启和本机 HTTPS 证据均可独立复核。

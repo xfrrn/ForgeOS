@@ -1,10 +1,10 @@
 # 全路线验收记录
 
-状态按当前工作树的实测结果记录。下表中的历史运行可作交叉核对，真实环境要求仍需按当前版本复验。验收仓库的合并提交与 ForgeOS 实现提交分别记录。
+状态按当前工作树的实测结果记录。下表中的历史运行可作交叉核对，真实环境要求仍需按当前版本复验。验收仓库的合并提交与 ForgeOS 实现提交分别记录。[18 份 ADR 验收对照](adr-acceptance.md)列出原始决策、验收入口与实现提交。
 
 ## 剩余范围估算（2026-11-18）
 
-目前粗估还余 **13–23 个工作包**，另有三项外部验收。下表是起始估算，各次扣减和验收依据列在表后。
+下表保留历史工作包估算；此后的实测结果按专题追加。当前 ADR 状态见页首对照表。
 
 四个阶段均有真实运行记录。空库派发、单项目交付、带依赖的双子项 Goal、两个项目分别交付的操作、结果与提交列在下面两张表中。截至 `30515200fcfede6f692292d0c3ec49b15ee55ace`，按可以分别开发、复验和提交的工作粗估，余下约 20–30 项。各项规模不同；同一场景同时验证多个专题时只计一次。
 
@@ -31,7 +31,7 @@ beta #137 已验证暂停 Codex 实现回合、其他项目借用模型名额、
 
 beta #155、#157 已验证等待业务答复期间的原生会话交接。#159、#161 已验证没有主动暂停时，Claude 和 Codex 写入进程异常退出且原会话不可恢复，保留草稿并在新会话完成交付。扣除会话交接工作包，当前约余 13–23 个工作包。整机重启后的真实模型恢复仍在估算内。
 
-另有三项由 Owner 确认保留待验收，单独计数：从第二台设备经 Tailscale 访问预览、使用 GitHub App 或细粒度凭据实测最小权限、第二位维护者批准受保护分支的 PR。全路线最终回归仍待执行。
+另有四类由 Owner 确认保留待验收，单独计数：Telegram 和飞书的真实通知投递、从第二台设备经 Tailscale 访问预览、使用 GitHub App 或细粒度凭据实测最小权限、第二位维护者批准受保护分支的 PR。全路线最终回归仍待执行。
 
 | 路线要求 | 已有实现或证据 | 待补齐或待验收 |
 | --- | --- | --- |
@@ -101,6 +101,8 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 从固定提交 `469cef06b81601ac2f382e230157c2e125787e39` 核实两个文件，将摘录和检查步骤纳入修订 3 | D1 批准后派发独立项并阻塞依赖项 | 会话 `01a1e330-3dec-73d2-bb84-d017aa401852` 批准，Goal ACTIVE，一个 READY、一个 BLOCKED。Chrome 的任务详情显示 D1、依据和同一会话 ID |
 | PostgreSQL 集成测试提交过期租约、旧版结果、跨项目结果、重复结果和试图降低 D3 的建议 | 过期和越权写入被拒；重放不重复派发，D3 留待 Owner | 全部通过。启用 PostgreSQL 与 Docker 的回归 52 项通过、零跳过；Go vet、前端生产构建通过 |
 
+<a id="adr-evidence-006"></a>
+
 ## 专题 06 · 已激活 Goal 的滚动修订
 
 | 操作 | 预期 | 实际 |
@@ -111,6 +113,8 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 完成第一个子项 | 保留原执行，父 Issue 保持开放 | 任务 17 的 PR 已合并，Merge SHA 为 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`；任务 18 开始执行时父 Issue 仍为 OPEN。[PR #5](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/5) |
 | 从旧的依赖检查返回结果、覆盖已交付子项、在关闭租约期间再提交计划 | 各次写入被拒，旧结果不能放行已改版任务 | PostgreSQL 集成测试通过，已交付子项的执行 ID 和 Merge SHA 保留。全套 PostgreSQL/Docker 回归 53 项通过、零跳过 |
 | 完成修订后的任务 18 | 从前置 Merge SHA 开始验证，两个必需子项交付后关闭父 Issue | 执行 15 基于 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`，候选 `8ee909d7b313ca88cb3877ced22b44102ff69d65` 经 docs 验证与必需 CI 后合并为 `b179f04fec439a392af1fe1504450931f9f1f203`。Goal 16 为 DONE，Issue 已关闭，回写计数为 2。[PR #6](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/6) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43823799864) · [父 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/4) |
+
+<a id="adr-evidence-007"></a>
 
 ## 专题 04、12 · 来源需求修订与执行绑定
 
@@ -223,6 +227,8 @@ Claude Code 原生探测对应提交 `1d9617e11095434c41f68956f6e8a0d45c014108`�
 
 上述 App Server 协议验收对应提交 `fe35218b32cf0bb296173ef0bc18b9a8a7e17d4a`。
 
+<a id="adr-evidence-018"></a>
+
 ## 专题 08、ADR-018 · 有明确确认和依据的项目决策索引
 
 在已有真实项目和交付记录的 PostgreSQL 18 实例上升级迁移，从控制面 HTTP API 执行以下操作。提案依据为 beta 任务 15 的第 1 个业务问题及其交付记录。[依据 PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/6)
@@ -316,6 +322,8 @@ OpenBao 部署及恢复对应 `ab013b603c4bb3368e1daf777dcae7b6f3599b02`。
 
 只读候选审查对应 ForgeOS 提交 `85cd1cb0b3763e160f24bff722531c99cfce0469`。
 
+<a id="adr-evidence-015"></a>
+
 ## 专题 07、10、12 · 独立审查参与真实 GitHub 交付
 
 | 操作 | 预期 | 实际 |
@@ -365,6 +373,8 @@ PostgreSQL 和 Docker 全套 Go 回归为 82 项通过、零跳过。额外覆�
 
 离线容器 Runner 对应 ForgeOS 提交 `ee695b39ca1d61ec7d3d8bfd0ebaefe1681cfaf6`。
 
+<a id="adr-evidence-012"></a>
+
 ## 专题 10、12 · 从真实 Issue 发起仓库检查并交付
 
 在 beta 私有验收仓库通过 PR #7 引入 Go 包及验证配置，合并后的基础为 `9d0213cfa67f8fded11bda56d7c4a6fc86713981`。随后通过 Owner 接口按编号导入 Issue #8，选 V2。[配置 PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/7) · [需求](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/8)
@@ -389,6 +399,8 @@ Issue 仓库检查和交付对应 ForgeOS 提交 `80836d649574426c6e6984c66aaff5
 含 PostgreSQL 和 Docker 的 84 项 Go 测试全部通过，零跳过。原生测试还覆盖超时映射为 error、未知远端 SHA 和远端写入后丢失响应。前端生产构建与 `go vet ./...` 通过。
 
 GitHub Commit Status 对应 ForgeOS 提交 `749351cf484cb665f275355fc25e67912651fb8c`。
+
+<a id="adr-evidence-013"></a>
 
 ## 专题 10、11 · 固定候选的风险判定与 V3、V4 容器实测
 
@@ -711,6 +723,8 @@ iframe 选择对应提交 `5279f11e3f93b6eb557580e570c054d9bcb46fd0`。该版本
 
 节点登记与心跳对应提交 `611850ea12f91417f6e2b5e5167a7eb1acc36a7c`。
 
+<a id="adr-evidence-011"></a>
+
 ## 阶段四、专题 06、07、14 · 跨项目节点容量与失联占位
 
 | 操作 | 预期 | 实际 |
@@ -836,6 +850,8 @@ Codex 实现与只读规划的进程回执对应提交 `39d3f6899ab5c2a75bf72e63
 
 Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066ec6d73578ac424834b`。
 
+<a id="adr-evidence-003"></a>
+
 ## 阶段三、专题 06、07 · 在原 Codex Thread 处理运行中的 Issue 评论
 
 | 操作 | 预期 | 实际 |
@@ -847,6 +863,8 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 验收代理在下一批次请求前等正式轮询器读取评论，以复现实测时序。原生 Codex 直接由 Worker 启动。启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、123 项通过，零跳过。Go 静态检查通过。
 
 普通评论沿用原生 Thread 对应提交 `97b20b20cb962ecfdc441244dae880858fa3d6b5`。
+
+<a id="adr-evidence-001"></a>
 
 ## 阶段四、专题 09 · 两个交付项目的执行与业务凭据隔离
 
@@ -864,6 +882,8 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 
 双项目凭据隔离与交付验收对应提交 `81e2b1139c30e61856aa2b81db6fd1e43f265f97`。
 
+<a id="adr-evidence-016"></a>
+
 ## 阶段四、专题 12 · 单控制面按项目选择交付分支
 
 2026-11-17，通过一份操作员配置让同一个控制面同时负责 alpha 的 main 和 beta 的 codex/accept-project-harness-9c4836。使用各自项目的节点、真实 Codex、Chrome Owner 工作台和受保护的 GitHub 分支。
@@ -878,6 +898,8 @@ Codex 终态传输丢失后恢复原 Thread 对应提交 `9f83fff323be37a01b9066
 两库实际使用同一个 GitHub CLI 账号。每项目 GitHub App 身份和多项目自动轮询仍待验收。启用 PostgreSQL 18 和真实 Docker 后，全量 Go 回归 9 个包、125 项通过，零跳过。Go 静态检查通过。
 
 单控制面多项目交付对应提交 `977910ee99f313832a367dd4ccd3cc17aee2c7ac`。
+
+<a id="adr-evidence-002"></a>
 
 ## 阶段四、专题 12、ADR-002 · 单控制面同时轮询两个私有仓库
 
@@ -1267,6 +1289,8 @@ Owner 主动取消运行中任务对应 ForgeOS 提交 `84758c5b8d561b37ddefc2a1
 
 项目资料工作台对应 ForgeOS 提交 `e80e961bd779abc241c28b2f9d75a83ca37e18ce`。
 
+<a id="adr-evidence-004"></a>
+
 ## 专题 08 · 从工作台管理项目决策
 
 PostgreSQL 18 schema `decisionprobe_f48f0d3e`，两个 Git 项目、正式控制面和独立 Chrome 会话。原决定为 #1，工作台验收的提案前缀为 `probe-1833d8e23972413cb32fa20b24f5e48e`。
@@ -1280,6 +1304,8 @@ PostgreSQL 18 schema `decisionprobe_f48f0d3e`，两个 Git 项目、正式控制
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 151 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
 
 项目决策工作台对应 ForgeOS 提交 `4713fdc9d8139e3e9f92609f44ee4651876b8e16`。
+
+<a id="adr-evidence-005"></a>
 
 ## 专题 08、09 · 在工作台发布和撤销项目间共享副本
 
@@ -1373,6 +1399,8 @@ Worker 本地 CI 文件保留策略对应 ForgeOS 提交 `9f0c70425ac15942d093bc
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 156 项通过，零测试跳过。Go 静态检查、TypeScript 检查与 Web 生产构建通过。
 
 反馈录屏归档与保留期限对应 ForgeOS 提交 `6280acdf49459b731cf283087e677a281fce251b`。
+
+<a id="adr-evidence-014"></a>
 
 ## 专题 11、ADR-014 · 从候选标签页录制交互并绑定反馈
 
@@ -1562,6 +1590,8 @@ PostgreSQL 回归还覆盖跨页、结果重报、并发标记和拒绝标记普
 | 核对修订 2 的范围、验收条件及两条上下文引用，等待原生审核，再从工作台激活并重启控制面 | 审核和激活分开，子任务只绑定获准版本 | 会话 `01a1e6d3-83d4-7d10-9c96-3f01145b7cb9` 批准，最低等级 D2。激活前无子项，激活后仅任务 2 为 READY，绑定修订 2。重启后任务详情逐字段一致 |
 
 TypeScript、Web 生产构建通过。本场景验收至子任务就绪，来源 Issue 保持原状态。
+
+<a id="adr-evidence-008"></a>
 
 ### ADR-008、专题 06、13 · 从工作台归档固定修订
 
@@ -2287,6 +2317,8 @@ ForgeOS 实现提交 `ff584935cede64bfa9cb1d6aa9006eb27f44fe0f`。
 
 全包 Go 回归在 PostgreSQL 18 和 Docker 上通过 238 项测试及子测试，零跳过。数据库覆盖在途配置、过期重领、D1 决策查阅、错误项目、D3 下限及结果重放。Go vet 和 Web 生产构建通过。
 
+<a id="adr-evidence-009"></a>
+
 ### 专题 07、14、16 A.4 · Linux 服务身份的原生 CLI 探测和节点重启
 
 ForgeOS 验收提交 `c18af6d27c6e054d50a79959e43ed28d71963f66`。
@@ -2540,6 +2572,8 @@ PostgreSQL 18 和 Docker 上全量 Go 回归通过 255 项测试及子测试，�
 | 核对候选，批准后回查必需 CI、合并、Issue 和任务页历史 | 一个执行只交付指定文件，保留决定和两条指令的结果 | 候选 `0d336241dac4bea9a78c3016a484ac8f158aa4da` 仅新增 decision-review.md。唯一 H1 为 “Queue e8ed3446”，两个 H2 各一次，引用的页面和交接标题正确。必需 CI 通过，合并 `3a47d7c57010dc678410e357ca586083f2168e1f`，任务 DONE、Issue 已关闭。重启后 Chrome 仍可展开五条进程记录。[PR #154](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/154) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44121359700) |
 
 上述 Codex 检查点 2 与独立 Management 答复的 ForgeOS 验收提交为 `9b8a480d31a83ecb62f27e479bbe6ac5962a04e4`。
+
+<a id="adr-evidence-010"></a>
 
 ### 专题 06、07、13、16 B.4 · 等待 Owner 答复期间原生会话丢失
 
@@ -3459,6 +3493,8 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 正式 Windows 控制面将原失联处置验收库从 108 升级至 109。升级前后均有 3 条任务事件、1 条通知、1 次人工结束。任务页 API 仍返回 FAILED，未配置外部通道时投递记录为 0。证据 notice-upgrade-proof.json。
 
 上述外部通知通道实现、本机 TLS 验收与数据库升级对应 ForgeOS 提交 `656375c8e668678ca08f105ee02d917f1b8a061e`。
+
+<a id="adr-evidence-017"></a>
 
 ### 专题 12、ADR-017 · 失败与取消的 Issue 回写
 
