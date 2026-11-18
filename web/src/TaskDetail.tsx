@@ -22,7 +22,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'output' | 'completed' | 'failed'; at: number }
-type HarnessProcess = { tool_output?: { seq: number; call: number; tool: string; text: string; partial?: boolean }; output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; turn_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
+type HarnessProcess = { archive?: { records: number; bytes: number; dropped_records: number; dropped_bytes: number; chain_sha256?: string }; tool_output?: { seq: number; call: number; tool: string; text: string; partial?: boolean }; output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; turn_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
 function ToolActivity({events}: {events?: ToolEvent[]}) {
   if (!events?.length) return null
   const phases = {started: '开始', output: '输出更新', completed: '完成', failed: '失败'}
@@ -439,6 +439,9 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         {p.session_id && <Fact label="原生会话" code>{p.session_id}</Fact>}
         {p.turn_id && <Fact label="原生回合" code>{p.turn_id}</Fact>}
         {p.handoff_from && <Fact label="交接来源会话" code>{p.handoff_from}</Fact>}
+        {p.archive && <><Fact label="节点进程归档">实例 {p.instance} · {p.archive.records} 条 · {p.archive.bytes} 字节</Fact>
+          {p.archive.chain_sha256 && <Fact label="归档链 SHA-256" code>{p.archive.chain_sha256}</Fact>}
+          {p.archive.dropped_records > 0 && <Fact label="超出归档容量">{p.archive.dropped_records} 条 · {p.archive.dropped_bytes} 字节</Fact>}</>}
       </dl><ToolActivity events={p.tools}/><ModelOutput output={p.output}/><ToolOutput output={p.tool_output}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}

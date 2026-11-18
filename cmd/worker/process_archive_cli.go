@@ -13,28 +13,25 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"forgeos/internal/store"
 )
 
 type processArchiveInfo struct {
-	Type           string `json:"type"`
-	Instance       int64  `json:"instance"`
-	Task           int64  `json:"task_id,omitempty"`
-	Execution      int64  `json:"execution_id,omitempty"`
-	Harness        string `json:"harness"`
-	Version        string `json:"version"`
-	PID            int    `json:"pid"`
-	Session        string `json:"session_id,omitempty"`
-	Started        string `json:"started_at"`
-	Exited         string `json:"exited_at,omitempty"`
-	ExitCode       *int   `json:"exit_code,omitempty"`
-	Available      bool   `json:"available"`
-	Bytes          int64  `json:"bytes"`
-	Records        int64  `json:"records"`
-	DroppedRecords int64  `json:"dropped_records"`
-	DroppedBytes   int64  `json:"dropped_bytes"`
-	LimitBytes     int64  `json:"limit_bytes"`
-	Digest         string `json:"chain_sha256,omitempty"`
-	Expired        string `json:"expired_at,omitempty"`
+	Type      string `json:"type"`
+	Instance  int64  `json:"instance"`
+	Task      int64  `json:"task_id,omitempty"`
+	Execution int64  `json:"execution_id,omitempty"`
+	Harness   string `json:"harness"`
+	Version   string `json:"version"`
+	PID       int    `json:"pid"`
+	Session   string `json:"session_id,omitempty"`
+	Started   string `json:"started_at"`
+	Exited    string `json:"exited_at,omitempty"`
+	ExitCode  *int   `json:"exit_code,omitempty"`
+	Available bool   `json:"available"`
+	store.ProcessArchive
+	Expired string `json:"expired_at,omitempty"`
 }
 
 const processArchiveQuery = `SELECT p.instance,COALESCE(a.task_id,0),COALESCE(a.execution_id,0),p.harness,p.version,p.pid,

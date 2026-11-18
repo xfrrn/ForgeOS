@@ -21,19 +21,40 @@ type ToolOutput struct {
 }
 
 type HarnessProcess struct {
-	Instance    int64        `json:"instance"`
-	PID         int          `json:"pid"`
-	Harness     string       `json:"harness"`
-	Version     string       `json:"version"`
-	Session     string       `json:"session_id,omitempty"`
-	Turn        string       `json:"turn_id,omitempty"`
-	HandoffFrom string       `json:"handoff_from,omitempty"`
-	Started     time.Time    `json:"started_at"`
-	Exited      *time.Time   `json:"exited_at,omitempty"`
-	ExitCode    *int         `json:"exit_code"`
-	Tools       []ToolEvent  `json:"tools,omitempty"`
-	Output      *ModelOutput `json:"output,omitempty"`
-	ToolOutput  *ToolOutput  `json:"tool_output,omitempty"`
+	Archive     *ProcessArchive `json:"archive,omitempty"`
+	Instance    int64           `json:"instance"`
+	PID         int             `json:"pid"`
+	Harness     string          `json:"harness"`
+	Version     string          `json:"version"`
+	Session     string          `json:"session_id,omitempty"`
+	Turn        string          `json:"turn_id,omitempty"`
+	HandoffFrom string          `json:"handoff_from,omitempty"`
+	Started     time.Time       `json:"started_at"`
+	Exited      *time.Time      `json:"exited_at,omitempty"`
+	ExitCode    *int            `json:"exit_code"`
+	Tools       []ToolEvent     `json:"tools,omitempty"`
+	Output      *ModelOutput    `json:"output,omitempty"`
+	ToolOutput  *ToolOutput     `json:"tool_output,omitempty"`
+}
+
+type ProcessArchive struct {
+	Bytes          int64  `json:"bytes"`
+	Records        int64  `json:"records"`
+	DroppedRecords int64  `json:"dropped_records"`
+	DroppedBytes   int64  `json:"dropped_bytes"`
+	LimitBytes     int64  `json:"limit_bytes"`
+	Digest         string `json:"chain_sha256,omitempty"`
+}
+
+func (a ProcessArchive) valid() bool {
+	if a.LimitBytes < 1<<20 || a.LimitBytes > 1<<30 || a.Bytes < 0 || a.Bytes > a.LimitBytes || a.Records < 0 || a.Records > a.Bytes ||
+		a.DroppedRecords < 0 || a.DroppedBytes < a.DroppedRecords || (a.DroppedRecords == 0) != (a.DroppedBytes == 0) {
+		return false
+	}
+	if a.Records == 0 {
+		return a.Bytes == 0 && a.Digest == "" && a.DroppedRecords > 0
+	}
+	return len(a.Digest) == 64 && strings.Trim(a.Digest, "0123456789abcdef") == ""
 }
 
 func ValidAppTurnID(id string) bool {
@@ -41,6 +62,9 @@ func ValidAppTurnID(id string) bool {
 }
 
 func (p HarnessProcess) Valid() bool {
+	if p.Archive != nil && (p.Exited == nil || !p.Archive.valid()) {
+		return false
+	}
 	if p.Turn != "" && (p.Harness != "codex" || p.Session == "" || !ValidAppTurnID(p.Turn)) {
 		return false
 	}

@@ -78,6 +78,8 @@ func TestInterruptedWriterRequiresBothOriginalExitReceipts(t *testing.T) {
 	must(err)
 	next := HarnessProcess{Instance: missing.Instance + 1, PID: 12, Harness: "codex", Version: src.Version, Session: "next", HandoffFrom: "first", Started: at, Exited: &at, ExitCode: &zero}
 	history := ProcessHistory{src, missing, next}
+	// The journal publishes archive digests after checkpoint evidence was frozen.
+	history[0].Archive = &ProcessArchive{Bytes: 120, Records: 1, LimitBytes: 1 << 20, Digest: strings.Repeat("a", 64)}
 	result := Result{BaseCommit: base, ExitCode: 1, Error: "later failure", Harness: "codex", HarnessVersion: src.Version, SessionID: next.Session, Processes: &history}
 	history[1].PID++
 	conflict(s.Complete(ctx, job.ExecutionID, job.LeaseToken, result))

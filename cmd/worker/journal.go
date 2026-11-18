@@ -198,6 +198,11 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 			return fmt.Errorf("read process receipts for execution %d: %w", job.ExecutionID, err)
 		}
 		if result.Processes != nil {
+			if job.RecordArchiveDigests {
+				if err = w.attachProcessArchives(context.WithoutCancel(ctx), key[:], *result.Processes); err != nil {
+					return fmt.Errorf("read process archives for execution %d: %w", job.ExecutionID, err)
+				}
+			}
 			first := (*result.Processes)[0]
 			result.Harness, result.HarnessVersion = first.Harness, first.Version
 		}

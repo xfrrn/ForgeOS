@@ -291,6 +291,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		if job != nil {
 			job.RepoRelativePath = localrepo.RelativePath(root, job.RepoPath)
+			job.RecordArchiveDigests = job.RecordProcesses && r.URL.Query().Get("supports_archive_digests") == "1"
 		}
 		respond(w, http.StatusOK, job, err)
 	}))

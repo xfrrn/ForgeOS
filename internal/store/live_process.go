@@ -70,7 +70,7 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 
 func (s *Store) ObserveProcess(ctx context.Context, execution int64, report ProcessReport) error {
 	p := report.Process
-	if !p.Valid() || len(report.LeaseToken) != 64 {
+	if !p.Valid() || p.Archive != nil || len(report.LeaseToken) != 64 {
 		return ErrConflict
 	}
 	if !p.outputExcludes(report.LeaseToken) {

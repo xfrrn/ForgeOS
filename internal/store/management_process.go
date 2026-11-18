@@ -72,7 +72,7 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	if report.ReviewerExecution != 0 {
 		harness = "claude"
 	}
-	if !p.Valid() || p.Harness != harness || report.ResumedFrom < 0 || len(p.Tools) != 0 || p.ToolOutput != nil ||
+	if !p.Valid() || p.Archive != nil || p.Harness != harness || report.ResumedFrom < 0 || len(p.Tools) != 0 || p.ToolOutput != nil ||
 		!p.outputExcludes(report.Lease) || len(report.Lease) != 36 || report.Node == "" || len(report.Node) > 128 ||
 		strings.Trim(report.Node, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" {
 		return ErrConflict

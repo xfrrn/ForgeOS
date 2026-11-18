@@ -442,46 +442,47 @@ type Event struct {
 }
 
 type Job struct {
-	ModelPause          bool            `json:"model_pause,omitempty"`
-	RecoverPlannerPause bool            `json:"recover_planner_pause,omitempty"`
-	PlannerHandoff      bool            `json:"planner_handoff,omitempty"`
-	WriterHandoff       bool            `json:"writer_handoff,omitempty"`
-	CheckpointHandoff   bool            `json:"checkpoint_handoff,omitempty"`
-	QuestionHandoff     bool            `json:"question_handoff,omitempty"`
-	InterruptedHandoff  bool            `json:"interrupted_handoff,omitempty"`
-	RecoverWriterPause  bool            `json:"recover_writer_pause,omitempty"`
-	ProjectID           int64           `json:"project_id,omitempty"`
-	DecisionLookups     bool            `json:"decision_lookups,omitempty"`
-	DecisionProtocol    string          `json:"decision_protocol,omitempty"`
-	InstructionProtocol string          `json:"instruction_protocol,omitempty"`
-	CheckpointWorktrees bool            `json:"checkpoint_worktrees,omitempty"`
-	ResumeQuestions     bool            `json:"resume_questions,omitempty"`
-	OwnerClarifications json.RawMessage `json:"owner_clarifications,omitempty"`
-	GlobalRules         json.RawMessage `json:"global_rules,omitempty"`
-	GoalContext         json.RawMessage `json:"goal_context,omitempty"`
-	RecordToolActivity  bool            `json:"record_tool_activity,omitempty"`
-	RecordModelOutput   bool            `json:"record_model_output,omitempty"`
-	RecordToolOutput    bool            `json:"record_tool_output,omitempty"`
-	RecordToolStream    bool            `json:"record_tool_stream,omitempty"`
-	RecordAppTurn       bool            `json:"record_app_turn,omitempty"`
-	ReportLiveProcess   bool            `json:"report_live_process,omitempty"`
-	ReportLiveCILog     bool            `json:"report_live_ci_log,omitempty"`
-	ReportCICandidate   bool            `json:"report_ci_candidate,omitempty"`
-	Startup             *StartupSpec    `json:"startup,omitempty"`
-	ManageResources     bool            `json:"manage_resources,omitempty"`
-	RecordProcesses     bool            `json:"record_processes,omitempty"`
-	LeaseSeconds        int             `json:"lease_seconds,omitempty"`
-	SupportsCheckpoints bool            `json:"supports_checkpoints,omitempty"`
-	RuntimeQuestions    bool            `json:"runtime_questions,omitempty"`
-	Kind                string          `json:"kind"`
-	Spec                *IssueSpec      `json:"spec,omitempty"`
-	Rework              *Review         `json:"rework,omitempty"`
-	ExecutionID         int64           `json:"execution_id"`
-	TaskID              int64           `json:"task_id"`
-	RepoPath            string          `json:"repo_path"`
-	RepoRelativePath    string          `json:"repo_relative_path,omitempty"`
-	Workspace           string          `json:"workspace"`
-	LeaseToken          string          `json:"lease_token"`
+	ModelPause           bool            `json:"model_pause,omitempty"`
+	RecoverPlannerPause  bool            `json:"recover_planner_pause,omitempty"`
+	PlannerHandoff       bool            `json:"planner_handoff,omitempty"`
+	WriterHandoff        bool            `json:"writer_handoff,omitempty"`
+	CheckpointHandoff    bool            `json:"checkpoint_handoff,omitempty"`
+	QuestionHandoff      bool            `json:"question_handoff,omitempty"`
+	InterruptedHandoff   bool            `json:"interrupted_handoff,omitempty"`
+	RecoverWriterPause   bool            `json:"recover_writer_pause,omitempty"`
+	ProjectID            int64           `json:"project_id,omitempty"`
+	DecisionLookups      bool            `json:"decision_lookups,omitempty"`
+	DecisionProtocol     string          `json:"decision_protocol,omitempty"`
+	InstructionProtocol  string          `json:"instruction_protocol,omitempty"`
+	CheckpointWorktrees  bool            `json:"checkpoint_worktrees,omitempty"`
+	ResumeQuestions      bool            `json:"resume_questions,omitempty"`
+	OwnerClarifications  json.RawMessage `json:"owner_clarifications,omitempty"`
+	GlobalRules          json.RawMessage `json:"global_rules,omitempty"`
+	GoalContext          json.RawMessage `json:"goal_context,omitempty"`
+	RecordToolActivity   bool            `json:"record_tool_activity,omitempty"`
+	RecordModelOutput    bool            `json:"record_model_output,omitempty"`
+	RecordToolOutput     bool            `json:"record_tool_output,omitempty"`
+	RecordToolStream     bool            `json:"record_tool_stream,omitempty"`
+	RecordAppTurn        bool            `json:"record_app_turn,omitempty"`
+	ReportLiveProcess    bool            `json:"report_live_process,omitempty"`
+	ReportLiveCILog      bool            `json:"report_live_ci_log,omitempty"`
+	ReportCICandidate    bool            `json:"report_ci_candidate,omitempty"`
+	Startup              *StartupSpec    `json:"startup,omitempty"`
+	ManageResources      bool            `json:"manage_resources,omitempty"`
+	RecordProcesses      bool            `json:"record_processes,omitempty"`
+	RecordArchiveDigests bool            `json:"record_archive_digests,omitempty"`
+	LeaseSeconds         int             `json:"lease_seconds,omitempty"`
+	SupportsCheckpoints  bool            `json:"supports_checkpoints,omitempty"`
+	RuntimeQuestions     bool            `json:"runtime_questions,omitempty"`
+	Kind                 string          `json:"kind"`
+	Spec                 *IssueSpec      `json:"spec,omitempty"`
+	Rework               *Review         `json:"rework,omitempty"`
+	ExecutionID          int64           `json:"execution_id"`
+	TaskID               int64           `json:"task_id"`
+	RepoPath             string          `json:"repo_path"`
+	RepoRelativePath     string          `json:"repo_relative_path,omitempty"`
+	Workspace            string          `json:"workspace"`
+	LeaseToken           string          `json:"lease_token"`
 }
 
 type Result struct {
@@ -1098,7 +1099,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	err = tx.QueryRowContext(ctx, `UPDATE executions SET result=$1 WHERE id=$2 AND NOT EXISTS(
 		SELECT 1 FROM interrupted_writer_turns c WHERE c.execution_id=$2 AND NOT EXISTS(
 			SELECT 1 FROM jsonb_array_elements($1::jsonb->'processes') WITH ORDINALITY p(process,idx)
-			WHERE p.process=c.source_process AND ($1::jsonb->'processes')->(p.idx::integer)=c.missing_process
+			WHERE p.process-'archive'=c.source_process AND (($1::jsonb->'processes')->(p.idx::integer))-'archive'=c.missing_process
 			AND (c.handoff_instance IS NULL OR (($1::jsonb->'processes')->(p.idx::integer+1)->>'instance')::bigint=c.handoff_instance)))
 		RETURNING id`, string(data), id).Scan(&settled)
 	if errors.Is(err, sql.ErrNoRows) {

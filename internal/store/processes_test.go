@@ -1,9 +1,33 @@
 package store
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestProcessArchiveReceipt(t *testing.T) {
+	a := ProcessArchive{Bytes: 80, Records: 1, LimitBytes: 1 << 20, Digest: strings.Repeat("a", 64)}
+	if !a.valid() {
+		t.Fatal("complete archive rejected")
+	}
+	for _, change := range []func(*ProcessArchive){
+		func(a *ProcessArchive) { a.Digest = "incorrect" }, func(a *ProcessArchive) { a.Bytes = a.LimitBytes + 1 },
+		func(a *ProcessArchive) { a.Records = 0 }, func(a *ProcessArchive) { a.DroppedRecords = 1 },
+		func(a *ProcessArchive) { a.LimitBytes = 1 << 31 },
+	} {
+		bad := a
+		change(&bad)
+		if bad.valid() {
+			t.Fatal("invalid archive accepted", bad)
+		}
+	}
+	a.Bytes, a.Records, a.Digest = 0, 0, ""
+	a.DroppedBytes, a.DroppedRecords = a.LimitBytes+1, 1
+	if !a.valid() {
+		t.Fatal("valid omitted oversized first record rejected")
+	}
+}
 
 func TestHarnessProcessHistory(t *testing.T) {
 	now := time.Now().UTC()

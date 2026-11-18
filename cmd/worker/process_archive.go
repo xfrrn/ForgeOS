@@ -12,7 +12,34 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"forgeos/internal/store"
 )
+
+func (w *worker) attachProcessArchives(ctx context.Context, key []byte, processes store.ProcessHistory) error {
+	rows, err := w.journal.QueryContext(ctx, `SELECT p.instance,l.bytes,l.records,l.dropped_records,l.dropped_bytes,l.limit_bytes,l.digest
+ FROM harness_processes p JOIN harness_log_archives l USING(instance) WHERE p.lease_hash=? AND l.expired_at IS NULL ORDER BY p.instance`, key)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	index := 0
+	for rows.Next() {
+		var id int64
+		var a store.ProcessArchive
+		if err = rows.Scan(&id, &a.Bytes, &a.Records, &a.DroppedRecords, &a.DroppedBytes, &a.LimitBytes, &a.Digest); err != nil {
+			return err
+		}
+		for index < len(processes) && processes[index].Instance < id {
+			index++
+		}
+		if index == len(processes) || processes[index].Instance != id {
+			return errors.New("archive process missing from execution history")
+		}
+		processes[index].Archive = &a
+	}
+	return rows.Err()
+}
 
 func archiveSetting(name string, fallback, maximum int64) (int64, error) {
 	raw := os.Getenv(name)

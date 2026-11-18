@@ -85,6 +85,18 @@ func TestProcessArchiveKeepsLongOutputAndStreamOrder(t *testing.T) {
 	if len(messages) != 7 || messages[0].Stream != "model" || messages[4].Phase != "output" || messages[5].Phase != "output" || messages[6].Text != "" {
 		t.Fatal("wrong archive sequence", len(messages))
 	}
+	var exported processArchiveInfo
+	if err := json.Unmarshal(bytes.SplitN(result.Bytes(), []byte("\n"), 2)[0], &exported); err != nil {
+		t.Fatal(err)
+	}
+	history := store.ProcessHistory{{Instance: p.id}, {Instance: p.id + 1}}
+	if err := w.attachProcessArchives(context.Background(), p.lease[:], history); err != nil {
+		t.Fatal(err)
+	}
+	receipt := history[0].Archive
+	if receipt == nil || receipt.Digest != exported.Digest || receipt.Bytes != exported.Bytes || receipt.Records != exported.Records || history[1].Archive != nil {
+		t.Fatal("execution receipt differs from node export", history)
+	}
 	var window string
 	if err := w.journal.QueryRow("SELECT text FROM harness_model_output WHERE instance=?", p.id).Scan(&window); err != nil || len(window) > 8192 || strings.Contains(window, "model-begin") {
 		t.Fatal("live window changed", err)

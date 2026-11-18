@@ -15,7 +15,7 @@ type InterruptedWriterTurn struct {
 
 func recordInterruptedWriter(ctx context.Context, tx *sql.Tx, id int64, seq int, proof InterruptedWriterTurn) error {
 	source, missing, trees := proof.Source, proof.Missing, proof.Trees
-	if !source.Valid() || !missing.Valid() || source.Session == "" || source.ExitCode == nil || *source.ExitCode == 0 ||
+	if !source.Valid() || !missing.Valid() || source.Archive != nil || missing.Archive != nil || source.Session == "" || source.ExitCode == nil || *source.ExitCode == 0 ||
 		missing.Session != "" || missing.ExitCode == nil || *missing.ExitCode != 1 || missing.Instance <= source.Instance ||
 		missing.Started.Before(*source.Exited) || missing.Harness != source.Harness || missing.Version != source.Version ||
 		!validCommit(trees.Index) || !validCommit(trees.Worktree) || len(trees.Index) != len(trees.Worktree) {
