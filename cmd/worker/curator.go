@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,6 +14,9 @@ import (
 const extractionSchema = `{"type":"object","additionalProperties":false,"required":["facts"],"properties":{"facts":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["statement","quote"],"properties":{"statement":{"type":"string"},"quote":{"type":"string"}}}}}}`
 
 func (w *worker) runCurator(ctx context.Context) error {
+	if err := w.replayRoleReceipts(ctx, "curator"); err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		var job store.CurationJob
 		status, err := w.post(ctx, "/internal/curator/claim?supports_process=1&supports_budget_deadline=1", struct{}{}, &job)
@@ -72,21 +74,8 @@ func (w *worker) curate(ctx context.Context, job store.CurationJob, review bool)
 		log.Printf("curation %d model turn failed: %v", job.ID, err)
 		return nil
 	}
-	for ctx.Err() == nil {
-		status, err := w.post(ctx, path, report, nil)
-		if status == http.StatusNoContent {
-			return nil
-		}
-		if status == http.StatusConflict {
-			log.Printf("curation %d receipt conflicted; check source or lease", job.ID)
-			return nil
-		}
-		if !temporary(status) {
-			return fmt.Errorf("curation result rejected (HTTP %d): %v", status, err)
-		}
-		wait(ctx)
-	}
-	return ctx.Err()
+	_, err = w.roleReceipt(ctx, path, report)
+	return err
 }
 
 func (w *worker) extractFacts(ctx context.Context, job store.CurationJob) (store.Extraction, error) {

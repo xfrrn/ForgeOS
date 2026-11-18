@@ -114,6 +114,9 @@ func managementTurn(ctx context.Context, until *time.Time) (context.Context, con
 }
 
 func (w *worker) runManagement(ctx context.Context) error {
+	if err := w.replayRoleReceipts(ctx, "management"); err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		var job store.ManagementJob
 		status, err := w.post(ctx, "/internal/management/claim?supports_test_plan_process=1&supports_curation_process=1&supports_feedback_process=1&supports_question_process=1&supports_analysis_process=1&supports_share_review_process=1&supports_plan_review_process=1&supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
@@ -166,7 +169,7 @@ func (w *worker) runManagement(ctx context.Context) error {
 				profile := store.StructuredCodexProfile()
 				advice.Profile = &profile
 			}
-			status, err = w.managementReceipt(ctx, "/internal/management/questions/result", map[string]any{"id": job.Question.ID, "lease": job.Lease, "advice": advice})
+			status, err = w.roleReceipt(ctx, "/internal/management/questions/result", map[string]any{"id": job.Question.ID, "lease": job.Lease, "advice": advice})
 			if err != nil {
 				return err
 			}
@@ -194,7 +197,7 @@ func (w *worker) runManagement(ctx context.Context) error {
 		if job.Share != nil {
 			report.ShareID = job.Share.ID
 		}
-		status, err = w.managementReceipt(ctx, "/internal/management/result", report)
+		status, err = w.roleReceipt(ctx, "/internal/management/result", report)
 		if err != nil {
 			return err
 		}
@@ -205,20 +208,6 @@ func (w *worker) runManagement(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (w *worker) managementReceipt(ctx context.Context, path string, report any) (int, error) {
-	for ctx.Err() == nil {
-		status, _ := w.post(ctx, path, report, nil)
-		if !temporary(status) {
-			if status != http.StatusNoContent && status != http.StatusConflict {
-				return status, fmt.Errorf("management result failed (HTTP %d)", status)
-			}
-			return status, nil
-		}
-		wait(ctx)
-	}
-	return 0, nil
 }
 
 func (w *worker) adviseOwner(ctx context.Context, job store.ManagementJob) (store.QuestionAdvice, error) {

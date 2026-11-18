@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"forgeos/internal/store"
@@ -34,15 +33,6 @@ func (w *worker) classifyFeedback(ctx context.Context, job store.FeedbackJob) er
 		c.Profile = &profile
 	}
 	report := map[string]any{"id": job.ID, "lease": job.Lease, "classification": c}
-	for ctx.Err() == nil {
-		status, _ := w.post(ctx, "/internal/management/feedback/result", report, nil)
-		if status == 204 || status == 409 {
-			return nil
-		}
-		if !temporary(status) {
-			return fmt.Errorf("feedback classification rejected (HTTP %d)", status)
-		}
-		wait(ctx)
-	}
-	return nil
+	_, err = w.roleReceipt(ctx, "/internal/management/feedback/result", report)
+	return err
 }

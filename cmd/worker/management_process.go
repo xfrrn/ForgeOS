@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"forgeos/internal/store"
@@ -33,16 +32,6 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 }
 
 func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
-	var err error
-	node := w.id
-	if node == "" {
-		node, err = os.Hostname()
-		if err != nil {
-			return "", err
-		}
-	}
-	// Separate role journals even when a host also runs an ordinary Worker.
-	recorder := *w
 	role := "management"
 	if target.CurationRole == "curator" {
 		role = "curator"
@@ -53,12 +42,12 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 	if target.ReviewerExecution != 0 {
 		role = "reviewer"
 	}
-	recorder.id = role + "-" + node
-	db, err := recorder.openJournal(ctx)
+	db, node, err := w.openRoleJournal(ctx, role)
 	if err != nil {
 		return "", err
 	}
 	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	recorder := *w
 	recorder.journal = db
 	updates := make(chan struct{}, 1)
 	reporting, stop := context.WithCancel(context.WithValue(ctx, processUpdatesKey{}, updates))

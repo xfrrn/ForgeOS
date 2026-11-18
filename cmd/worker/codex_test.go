@@ -112,6 +112,7 @@ func TestManagementAdviceSendsFrozenQuestionEvidence(t *testing.T) {
 }
 
 func TestManagementFeedbackSendsCandidateEvidence(t *testing.T) {
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	var report struct{ Classification store.FeedbackClassification }
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/internal/management/feedback/result" || json.NewDecoder(r.Body).Decode(&report) != nil {
@@ -121,7 +122,7 @@ func TestManagementFeedbackSendsCandidateEvidence(t *testing.T) {
 	}))
 	defer server.Close()
 	w := worker{api: server.URL, client: server.Client(), codex: os.Args[0]}
-	for _, rules := range []json.RawMessage{nil, json.RawMessage(`{"requirement":{"revision":1},"rules":{"global_rules":{"revision":2}}}`)} {
+	for index, rules := range []json.RawMessage{nil, json.RawMessage(`{"requirement":{"revision":1},"rules":{"global_rules":{"revision":2}}}`)} {
 		source := map[string]any{"feedback": map[string]string{"note": "SIMULATED_FEEDBACK_CONTEXT"}}
 		want := "no-context"
 		if rules != nil {
@@ -133,7 +134,7 @@ func TestManagementFeedbackSendsCandidateEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 		report.Classification = store.FeedbackClassification{}
-		if err = w.classifyFeedback(context.Background(), store.FeedbackJob{ID: 1, Lease: "private-feedback-lease", Source: raw}); err != nil || report.Classification.Rationale != want || report.Classification.Context != nil || report.Classification.Session == "" {
+		if err = w.classifyFeedback(context.Background(), store.FeedbackJob{ID: 1, Lease: fmt.Sprintf("00000000-0000-0000-0000-%012d", index), Source: raw}); err != nil || report.Classification.Rationale != want || report.Classification.Context != nil || report.Classification.Session == "" {
 			t.Fatal("lost feedback evidence", report, err)
 		}
 	}

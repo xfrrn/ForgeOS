@@ -310,3 +310,9 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 ## 查看独立 Reviewer 进程
 
 在候选执行中请求独立审查后打开“查看审查记录”，展开“Reviewer 审查进程”。待完成记录每八秒刷新，也可从任务“刷新”立即重读。核对节点、PID、Claude 版本、Session、最近上报、实际退出及最近 8 KiB 脱敏公开消息。没有公开文本的回合不补造消息。异常退出后使用“重试审查”，同一候选下可查看两次进程；成功报告仍需按原门禁处理发现与 Owner 验收。FORGEOS_WORKER_STATE_DIR 中的 reviewer 角色日志与普通开发节点分开。
+
+## 恢复独立角色的待发结果
+
+重启 Management、Curator、Test Agent 或 Reviewer 时，保持原 FORGEOS_API_URL、FORGEOS_WORKER_ID 和 FORGEOS_WORKER_STATE_DIR，并配置该角色当前有效的凭据。节点先补报本身份已写入 SQLite 的结果，再领取作业。凭据错误时不要删除日志；修复角色令牌后重启。控制面接收的重复结果保持幂等，过时结果按 409 冲突结束，不覆盖新修订。需要排查时，在私有角色 SQLite 的 role_receipts 查看 path、buffered_at、settled_at、status；不要把待发正文中的租约复制到公开日志。
+
+这个入口仅恢复已持久化的最终结果。运行中的模型会话中断及尚未记录的领取仍按原租约处理，不能宣称会自动接回原会话。

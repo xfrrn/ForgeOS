@@ -15,6 +15,9 @@ import (
 )
 
 func (w *worker) runReviewer(ctx context.Context) error {
+	if err := w.replayRoleReceipts(ctx, "reviewer"); err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		var job store.ReviewJob
 		status, err := w.post(ctx, "/internal/reviewer/claim?supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
@@ -47,15 +50,8 @@ func (w *worker) runReviewer(ctx context.Context) error {
 			}
 			out["report"] = report
 		}
-		for ctx.Err() == nil {
-			status, _ = w.post(ctx, "/internal/reviewer/result", out, nil)
-			if status == http.StatusNoContent || status == http.StatusConflict {
-				break
-			}
-			if !temporary(status) {
-				return fmt.Errorf("review %d result rejected (HTTP %d)", job.ExecutionID, status)
-			}
-			wait(ctx)
+		if _, err = w.roleReceipt(ctx, "/internal/reviewer/result", out); err != nil {
+			return err
 		}
 	}
 	return nil

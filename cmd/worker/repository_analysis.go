@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"forgeos/internal/store"
 )
@@ -40,15 +39,6 @@ func (w *worker) analyzeRepository(ctx context.Context, job store.AnalysisJob) e
 	default:
 		r.Analysis = &a
 	}
-	for ctx.Err() == nil {
-		status, err := w.post(ctx, "/internal/management/repository-analysis/result", r, nil)
-		if status == 204 || status == 409 {
-			return nil
-		}
-		if !temporary(status) {
-			return fmt.Errorf("repository analysis rejected (HTTP %d): %w", status, err)
-		}
-		wait(ctx)
-	}
-	return ctx.Err()
+	_, err = w.roleReceipt(ctx, "/internal/management/repository-analysis/result", r)
+	return err
 }

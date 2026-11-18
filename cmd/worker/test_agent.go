@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"forgeos/internal/store"
 	"log"
-	"net/http"
 	"time"
 )
 
 func (w *worker) runTestAgent(ctx context.Context) error {
+	if err := w.replayRoleReceipts(ctx, "test-agent"); err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		var job store.TestPlanJob
 		status, err := w.post(ctx, "/internal/test-agent/claim?supports_process=1&supports_candidate_context=1&supports_budget_deadline=1", struct{}{}, &job)
@@ -75,15 +77,6 @@ func (w *worker) finishTestJob(ctx context.Context, job store.TestPlanJob, manag
 		profile := store.StructuredCodexProfile()
 		out.Profile = &profile
 	}
-	for ctx.Err() == nil {
-		status, _ := w.post(ctx, path, out, nil)
-		if status == http.StatusNoContent || status == http.StatusConflict {
-			return nil
-		}
-		if !temporary(status) {
-			return fmt.Errorf("test plan job %d rejected (HTTP %d)", job.ID, status)
-		}
-		wait(ctx)
-	}
-	return nil
+	_, err = w.roleReceipt(ctx, path, out)
+	return err
 }
