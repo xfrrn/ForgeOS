@@ -73,4 +73,6 @@ beta #289 在保留批准依据的版本上从空库复验。两次 PR 合并之
 
 alpha #14 与 beta #39 已分别完成交付，并在同名凭据、相同版本和用途下验证两个项目只能取得自己的 OpenBao 包装响应。pool-alpha 与 pool-beta 在离线状态下核对了另一组工作项的原执行、候选、PR 和合并结果，两项都无需重试。2026-11-19 另从 alpha #38 的交付备份验证撤销原节点的项目授权可立即阻止归档补传。当前版本从空库重跑双项目交付仍待验收。[双项目交付与凭据隔离](acceptance.md#two-project-broker-delivery) · [离线对账](acceptance.md#offline-node-deliveries) · [归档补传授权](acceptance.md#ci-archive-worker-scope)
 
+在同一控制面登记 alpha PR #23 和 beta PR #116 的原合并版本，已验证两份同名文件的检索结果、HEAD 检查和完成回执分别绑定本项目；交换项目号或提交后，两方向查询均被拒绝。[双项目同名文档与执行回执](acceptance.md#two-project-merged-documents)
+
 每次进入新阶段，根据上一阶段的实测结果补齐该阶段的范围、依赖、数据与 API、风险、恢复办法和验收记录，并更新相关专题文档。[滚动规划原则](06-orchestration-and-planning.md)

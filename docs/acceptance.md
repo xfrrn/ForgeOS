@@ -439,6 +439,21 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 | 在旧版本派发反馈 1，升级后派发反馈 2 | 目标工作项复用，只有新事件能给出准确的反馈编号 | 两次均返回任务 2。旧事件 9 可确认由 Owner 发起，具体反馈关联保持为空。新事件 10 明确指向反馈 2、执行 1、候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`、目标任务 2 及 GitHub Issue ID `6462306042`。 |
 | 从时间线下载新事件，重复派发并重启 | 浏览器与 API 回执一致，重放不会增加关系或事件 | 下载 JSON 与 API 完全相同，未包含反馈正文或预览访问标识。目标任务保留反馈 1 和 2 两个来源；重启前后事件均只有 9 和 10，再次提交返回任务 2。回执为 `feedback-dispatch-live/latest.json`。 |
 
+<a id="two-project-merged-documents"></a>
+
+### 阶段四、专题 08、13 · 从两个已合并的项目读取同名文档和执行回执
+
+在空 PostgreSQL 18 启动控制面，从两个私库各取回一项既有交付的合并提交。两项交付都增加了 `docs/shared-model-budget.md`，含有相同的占用查询说明，但标题不同。在手机尺寸 Chrome 的“项目接入”中分别运行 HEAD 检查，由一个普通 Worker 完成。以 Owner 身份在同一控制面查询两个项目。
+
+| 项目和原始交付 | 检查、完结事件和 HEAD | 从本项目固定提交查回的文档 |
+| --- | --- | --- |
+| alpha，[PR #23](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/23) | 任务 1、执行 1、事件 4，HEAD `fdd4caf85c2cb00ce93725649c85dcc16b6386dd` | 标题 `# alpha model account`；blob `469f491623e9d5713ffeae538970bfa699e350cb`。 |
+| beta，[PR #116](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/116) | 任务 2、执行 2、事件 6，HEAD `679168aaab7bc6c401cc0f5994f7360c8d533f21` | 标题 `# beta model account`；blob `0a9f939673a2ae75ff9930a010fc734bf4ed61d8`。 |
+
+用相同的句子分别检索两座仓库，返回的引用路径相同，两个 blob、提交和原文分别与各自 Git 对象一致。控制面重启后再查询，结果逐字段相同；Chrome 下载的两份完成回执分别指向各自执行和合并提交。交换项目号查询对方的任务事件，两方向均为 HTTP 404。将对方提交传给本项目文档查询，两方向均为 422；在本项目查对方标题均返回零条。
+
+回执为 `delivered-project-knowledge/latest.json`。本项验收 Owner 查询的项目范围和已合并版本，重用了历史 PR。当前版本的双项目新交付、跨项目凭据及资源隔离仍待最终复验。
+
 <a id="offline-node-deliveries"></a>
 
 ### 阶段四 · 节点离线时按原项目核对执行与远端交付
