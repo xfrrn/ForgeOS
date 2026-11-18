@@ -46,6 +46,7 @@
 | 专题 01、11、12，从工作台和预览反馈派发无类型的普通讨论 | [修复前后的派发结果与旧调用兼容](#untyped-owner-dispatch) | `9a46086d73b9f5b0c35329c73f72dad67cfadf4e` |
 | 专题 06、12、13，父 Goal 与子项的取消回执关联原 Issue 关闭 | [三个任务、一次节点补报和四份工作台下载](#source-closure-audit) | `404ca391c279ca2289a9c48553ade03257814509` |
 | 阶段一、专题 07、14、16 B.4，节点整机断电后按原执行补报并核对工作树 | [旧版本故障与修复后的两次 Linux 整机启动](#linux-power-loss-worktree) | `f0cd68f57114bf087dcdc83cacbc39a26f448b73` |
+| 阶段三、专题 06、13，后续子项解除阻塞的计划和基线 | [升级 beta #275，交付 beta #282 的两项依赖工作](#dependency-release-audit) | `c3ac432452b2b886c8503b6e729ccde7754345ad` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
