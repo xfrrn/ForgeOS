@@ -13,13 +13,14 @@ import (
 )
 
 type Review struct {
-	FeedbackIDs []int64   `json:"feedback_ids,omitempty"`
-	ExecutionID int64     `json:"execution_id"`
-	Commit      string    `json:"commit"`
-	Decision    string    `json:"decision"`
-	Note        string    `json:"note"`
-	Actor       string    `json:"actor"`
-	At          time.Time `json:"at"`
+	ApprovalBasis *json.RawMessage `json:"approval_basis,omitempty"`
+	FeedbackIDs   []int64          `json:"feedback_ids,omitempty"`
+	ExecutionID   int64            `json:"execution_id"`
+	Commit        string           `json:"commit"`
+	Decision      string           `json:"decision"`
+	Note          string           `json:"note"`
+	Actor         string           `json:"actor"`
+	At            time.Time        `json:"at"`
 }
 
 type ReviewFeedback struct {
@@ -106,13 +107,14 @@ func (s *Store) Review(ctx context.Context, taskID, executionID int64, commit, d
 	if !result.succeeded() || result.Commit != commit || !issue.accepts(result) {
 		return Task{}, ErrConflict
 	}
+	var basis *json.RawMessage
 	if decision == "approve" {
-		if err = canApproveReview(ctx, tx, taskID, executionID, result.manualPlanRequired()); err != nil {
+		if basis, err = approvalBasis(ctx, tx, taskID, executionID, result.manualPlanRequired()); err != nil {
 			return Task{}, err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO acceptance_reviews(task_id,execution_id,"commit",decision,note)
-		VALUES ($1,$2,$3,$4,$5)`, taskID, executionID, commit, decision, note); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO acceptance_reviews(task_id,execution_id,"commit",decision,note,approval_basis)
+		VALUES ($1,$2,$3,$4,$5,$6)`, taskID, executionID, commit, decision, note, basis); err != nil {
 		return Task{}, err
 	}
 	if len(feedbackIDs) > 0 {

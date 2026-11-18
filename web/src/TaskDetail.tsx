@@ -62,7 +62,8 @@ type Attempt = {
   uses_checkpoints?: boolean; requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
 }
 type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string; work_type?: string; owner_classified?: boolean }
-type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
+type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[];
+  approval_basis?: { project_review_required: boolean; code_review_present: boolean; manual_plan_required: boolean; passed_plan_revision?: number } }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; question_id?: number; plan_revision?: number; type: string; at: string; issue_feedback_at?: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; trees?: { index: string; worktree: string }; management_processes?: ReviewProcess[]; management_advice?: Advice; withdrawn_at?: string; answer?: string; answered_by?: string; answered_at?: string }
@@ -797,6 +798,12 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
         {task.spec && <section className="panel detail-card"><h2><Icon name="ListChecks" size={18} />验收记录<span className="detail-count">{reviews.length}</span></h2>
           {reviews.length ? <ol className="detail-reviews">{[...reviews].reverse().map(review =>
             <li key={review.execution_id}><strong>验收记录 #{review.execution_id} · {review.decision === 'approve' ? '已通过' : '已退回'}</strong><span>执行 #{review.execution_id} · {review.actor}</span>
+              {review.approval_basis && <details><summary>批准时的审查与测试要求</summary>
+                <dl><Fact label="项目要求代码审查">{review.approval_basis.project_review_required ? '是' : '否'}</Fact>
+                  <Fact label="候选代码审查">{review.approval_basis.code_review_present ? '已满足审查要求' : '未请求'}</Fact>
+                  <Fact label="候选要求人工测试计划">{review.approval_basis.manual_plan_required ? '是' : '否'}</Fact>
+                  {review.approval_basis.passed_plan_revision && <Fact label="已通过的测试计划">修订 {review.approval_basis.passed_plan_revision}</Fact>}</dl>
+              </details>}
               <code>{review.commit}</code>{Boolean(review.feedback_ids?.length) && <p>引用反馈　{review.feedback_ids?.map(id => '#' + id).join('、')}</p>}
               {review.note && <p>{review.note}</p>}<time dateTime={review.at}>{formatTime(review.at)}</time></li>)}</ol>
             : <p className="detail-empty-text">暂无验收决定。</p>}</section>}

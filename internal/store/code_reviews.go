@@ -218,18 +218,20 @@ const codeReviewState = `CASE WHEN r.execution_id IS NULL THEN ''
 		WHERE (f->>'blocking')::boolean OR NOT (f->>'evidence_verified')::boolean) THEN 'needs_check'
 	ELSE 'clear' END`
 
-func canApproveReview(ctx context.Context, tx *sql.Tx, task, execution int64, requiresPlan bool) error {
-	var allowed bool
-	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.execution_id IS NULL THEN NOT p.requires_code_review
-		ELSE (`+codeReviewState+`)='clear'
-		END AND COALESCE((SELECT execution_state='passed' FROM candidate_test_plan_status WHERE execution_id=$2 ORDER BY revision DESC LIMIT 1),NOT $3)
+func approvalBasis(ctx context.Context, tx *sql.Tx, task, execution int64, requiresPlan bool) (*json.RawMessage, error) {
+	var basis json.RawMessage
+	err := tx.QueryRowContext(ctx, `SELECT jsonb_strip_nulls(jsonb_build_object(
+		'project_review_required',p.requires_code_review,'code_review_present',r.execution_id IS NOT NULL,
+		'manual_plan_required',$3::boolean,'passed_plan_revision',plan.revision))
 		FROM work_items t JOIN projects p ON p.id=t.project_id LEFT JOIN code_reviews r ON r.task_id=t.id AND r.execution_id=$2
-		WHERE t.id=$1 FOR SHARE OF p`, task, execution, requiresPlan).Scan(&allowed)
+		LEFT JOIN LATERAL (SELECT revision,execution_state FROM candidate_test_plan_status WHERE execution_id=$2 ORDER BY revision DESC LIMIT 1) plan ON true
+		WHERE t.id=$1 AND CASE WHEN r.execution_id IS NULL THEN NOT p.requires_code_review ELSE (`+codeReviewState+`)='clear' END
+		AND COALESCE(plan.execution_state='passed',NOT $3) FOR SHARE OF p`, task, execution, requiresPlan).Scan(&basis)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrConflict
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !allowed {
-		return ErrConflict
-	}
-	return nil
+	return &basis, nil
 }

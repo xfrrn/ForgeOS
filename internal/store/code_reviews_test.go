@@ -198,6 +198,18 @@ func testCodeReviewGate(t *testing.T, capture bool) {
 	must(s.CheckReviewFindings(ctx, task.ID, ex, commit, "Read the referenced line and confirmed the proposed finding does not apply."))
 	must(approve())
 	checkState("clear")
+	must(s.SetCodeReviewPolicy(ctx, project.ID, false))
+	must(approve()) // A replay retains the policy used for the original approval.
+	approved, err := s.Task(ctx, task.ID)
+	must(err)
+	if len(approved.Reviews) != 1 || approved.Reviews[0].ApprovalBasis == nil {
+		t.Fatal("missing original approval basis")
+	}
+	var basis map[string]bool
+	must(json.Unmarshal(*approved.Reviews[0].ApprovalBasis, &basis))
+	if !basis["project_review_required"] || !basis["code_review_present"] {
+		t.Fatalf("changed approval basis after policy update: %v", basis)
+	}
 	receipt, err := s.ReviewReceipt(ctx, task.ID, ex)
 	must(err)
 	if capture {

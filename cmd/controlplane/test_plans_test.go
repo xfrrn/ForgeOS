@@ -356,5 +356,14 @@ func testCandidatePlanRoles(t *testing.T, published, refresh, capture bool) {
 	caseResult.Commit = sha
 	must(record("human", "owner"))
 	must(approve())
+	approved, err := data.Task(ctx, task.ID)
+	must(err)
+	basis := approved.Reviews[len(approved.Reviews)-1].ApprovalBasis
+	var snapshot struct {
+		Revision int `json:"passed_plan_revision"`
+	}
+	if basis == nil || json.Unmarshal(*basis, &snapshot) != nil || snapshot.Revision != 2 {
+		t.Fatalf("approval did not retain passed test plan 2: %v", basis)
+	}
 	must(record("human", "owner"))
 }
