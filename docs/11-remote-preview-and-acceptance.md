@@ -196,6 +196,8 @@ Owner 使用 `GET /tasks/{id}/previews/{preview}/feedback` 读取预览上下文
 
 对于“新工作项”，点击“派发独立工作项”。Owner 可从表单在当前仓库新建 GitHub Issue，也可选用已有的独立开放 Issue。核对 Issue 编号与正文，选择验证方式后确认派发。Worker 执行目标 Issue 的授权范围。来源反馈与新任务提供双向链接。已导入的目标复用原工作项，同一条反馈只能指向一个独立目标。
 
+「目标 Issue 工作类型」默认沿用 GitHub Issue 的类型。类型待澄清时，在此选择开发、代码审查、测试、调查或运维，再确认派发。更换 Issue 编号会清空这次选择。已明确的 Issue 与所选类型冲突时，表单保留反馈，允许更正后重试。[两种目标的浏览器验收](acceptance.md#feedback-dispatch-work-type)
+
 这个操作复用 `POST /projects/{id}/issues/{number}`。请求增加 `feedback_source`，其中包含 `feedback_id`、`task_id`、`preview`、`execution_id` 和 `commit`。控制面核对项目、观察来源、分类和独立目标后，将来源关系和派发写在同一事务中。重复请求优先读取本地回执，已交付并关闭的目标仍可查询。
 
 任务页的“候选验收”列出本次执行各预览下已分类的验收、Bug 和 UI 反馈。Owner 可勾选一条或多条并核对原始依据。验收类可随“通过验收”提交，Bug 和 UI 类可随“退回修改”提交。退回时填写给 Worker 的修订说明。控制面把反馈编号和验收决定一起保存。新执行从退回候选开始修订，Worker 读取 Owner 的说明。原预览仍能查到对应决定。

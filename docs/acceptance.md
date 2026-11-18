@@ -42,6 +42,19 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="feedback-dispatch-work-type"></a>
+
+### 专题 03、11、12 · 从反馈派发时澄清独立 Issue 类型
+
+在 beta #163 的真实预览候选提交两条独立测试需求，原生 Management 均归类为新工作项。在 390 像素 Chrome 从各自反馈表单操作。来源与目标的事件关联对应提交 `d3e79b0c63e1eedc0c0abb9f9ab9051985071c5d`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 对已标为 Testing 的 #245 选择开发，再将编号改为尚待澄清的 #247，按默认类型派发 | 冲突须更正；前一目标的类型选择不会带到新目标 | 第一次返回 409，指明类型与 GitHub Issue 冲突。改号后选择恢复默认，第二次 409 要求选择工作类型。两次均未产生派发事件。 |
+| 核对 #247 的正文并选择测试，确认后，从另一条反馈按默认类型派发 #245，重启控制面 | 两项目标均按测试类型规划，能区分 Owner 澄清和 Issue 自带类型 | #247 成为任务 2，`owner_classified=true`；#245 成为任务 3，沿用已有类型。两者均为 `work_type=testing`、`mode=plan`。两份来源回执指向各自的目标，重启后相同。[#247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247) · [#245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245) |
+
+浏览器回执为 `feedback-dispatch-type-live/latest.json`。生产工作台构建通过，底层派发回执版本在 PostgreSQL 18 与 Docker 回归中 583 项通过、0 失败、0 跳过，回执为 `feedback-dispatch-current-regression.jsonl`。
+
 <a id="feedback-dispatch-audit"></a>
 
 ### 专题 11–13 · 独立工作项派发回执绑定原反馈

@@ -1,6 +1,7 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, type ApiRequest } from './shared'
+import { workTypes } from './workTypes'
 import { FeedbackRecordings } from './FeedbackRecordings'
 import { FeedbackScreenshots, type FeedbackArtifactReceipt } from './FeedbackScreenshots'
 
@@ -132,13 +133,14 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     } catch (e) { setVersion(n => n + 1); setError(e instanceof Error ? e.message : '无法保存需求修订。') }
     finally { setBusy(false) }
   }
-  async function dispatch(e: FormEvent) {
+  async function dispatch(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!page || busy || !dispatching || !/^[1-9]\d*$/.test(issueNumber)) return
+    const workType = new FormData(e.currentTarget).get('work_type') || undefined
     setBusy(true); setError(''); setMessage('')
     try {
       const item = await request<{ id: number }>(`/projects/${page.preview.project_id}/issues/${issueNumber}`, { method: 'POST',
-        body: JSON.stringify({ validation, harness, feedback_source: { feedback_id: dispatching, task_id: task, preview,
+        body: JSON.stringify({ validation, harness, work_type: workType, feedback_source: { feedback_id: dispatching, task_id: task, preview,
           execution_id: page.preview.execution_id, commit: page.preview.commit } }) })
       setDispatching(0); setVersion(n => n + 1); setMessage(`已关联工作项 T-${item.id}。`)
     } catch (e) { setError(e instanceof Error ? e.message : '派发失败。') }
@@ -184,6 +186,9 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
               <a href={`https://github.com/${page.repository}/issues/new`} target="_blank" rel="noreferrer">在 {page.repository} 新建 Issue</a>
               <label>独立 Issue 编号<input required inputMode="numeric" pattern="[1-9][0-9]*" value={issueNumber} onChange={e => setIssueNumber(e.target.value)} /></label>
               {/^[1-9]\d*$/.test(issueNumber) && <a href={`https://github.com/${page.repository}/issues/${issueNumber}`} target="_blank" rel="noreferrer">核对 Issue #{issueNumber}</a>}
+              <label>目标 Issue 工作类型<select key={issueNumber} name="work_type" defaultValue="">
+                <option value="">沿用 Issue 类型</option>
+                {Object.entries(workTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
               <label>执行 Harness<select value={harness} onChange={e => setHarness(e.target.value)}>
                 <option value="">项目默认</option><option value="codex">Codex</option><option value="claude">Claude Code</option></select></label>
               <label>验证方式<select value={validation} onChange={e => setValidation(e.target.value)}>
