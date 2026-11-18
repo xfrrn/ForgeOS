@@ -3721,6 +3721,8 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 
 证据为 native-steer-final-0.json、native-steer-final-1.json、native-steer-final-2.json。重复投递的独立实验脚本为 native-steer-repeat.py。
 
+另用真实只读回合测试丢失发送回执后的核对。仅发送一次追加输入，客户端忽略对应 RPC 响应，转用 thread/read 按原 Thread、Turn、clientId 和完整输入正文查找。预期是从原生历史确认唯一输入。实际在同一运行中回合的前两次读取分别找到 0 条和 1 条；回合结束后及新开 App Server 均读到同一条。首次查不到不能作为重发依据。Turn 为 01a1ed13-b341-7bb0-bb2e-1a196e59a339，输入项为 01a1ed13-c8c5-7552-a9d8-e40f1c36f5af，记录为 steer-reconciliation-live.json。
+
 <a id="native-interrupt-fallback"></a>
 
 ### 专题 07、16 A.1/B.2 · App Server 中断的退出码与强制终止顺序
@@ -3748,3 +3750,5 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 对同一个已观测进程尝试省略或替换已登记 Turn，另测错误格式与携带执行凭据的编号 | 拒绝不一致报告，保留原始回合 | PostgreSQL 专项通过；Worker 的实际协议子进程在运行中和结算时读到相同的 Turn。 |
 
 程序 app-turn-live.py、app-turn-final-live.py，证据 app_turn_final_current、app_turn_id_oldworker、app_turn_id_oldcontrol 下的 proof.json。工作台向运行中原生回合发送 Owner 输入另行验收。
+
+此版使用空 PostgreSQL 18 数据库和真实 Docker 运行全量 Go 测试。worker-turn-final-regression.jsonl 中有 9 个测试包通过、3 个包没有测试；506 项具名测试和子测试全部通过。go vet、TypeScript 检查与工作台生产构建通过。全路线最终端到端验收仍待功能补齐后执行。
