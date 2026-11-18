@@ -38,6 +38,9 @@ func (c WorkerCapabilities) Profiles(harness string) map[string]AgentProfile {
 	switch {
 	case harness == "codex" && c.SupportsCodex:
 		profiles["implementation"] = AgentProfile{Version: 1, Sandbox: CodexImplementationSandbox, Permission: CodexApproval}
+		if c.CommandApprovalProject > 0 {
+			profiles["implementation_with_approval"] = AgentProfile{Version: 1, Sandbox: CodexImplementationSandbox, Permission: "untrusted"}
+		}
 		if c.SupportsPlanner {
 			profiles["planner"] = AgentProfile{Version: 1, Sandbox: CodexPlannerSandbox, Permission: CodexApproval}
 		}

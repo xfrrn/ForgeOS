@@ -11,6 +11,31 @@ import (
 )
 
 func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	workers.handle(mux, "POST /internal/executions/{id}/native-command-receipts", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var receipt store.NativeCommandReceipt
+		if ok && decode(w, r, &receipt) {
+			respond(w, 204, nil, data.ConfirmNativeCommand(r.Context(), id, receipt))
+		}
+	}))
+	mux.HandleFunc("POST /native-approvals/{id}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var input struct {
+			Decision string `json:"decision"`
+		}
+		if ok && decode(w, r, &input) {
+			respond(w, 204, nil, data.DecideNativeCommand(r.Context(), id, input.Decision))
+		}
+	}))
+	workers.handle(mux, "POST /internal/executions/{id}/native-approvals", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var req store.NativeCommandRequest
+		if !ok || !decodeLimited(w, r, &req, 32<<10) {
+			return
+		}
+		d, err := data.PollNativeCommand(r.Context(), id, req)
+		respond(w, 200, map[string]string{"decision": d}, err)
+	}))
 	mux.HandleFunc("POST /executions/{id}/turn-inputs", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var input store.NativeTurnInput

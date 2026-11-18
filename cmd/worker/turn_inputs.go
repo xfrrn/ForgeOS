@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"forgeos/internal/store"
@@ -92,7 +93,11 @@ func (w *worker) publishTurnInputReceipts(ctx context.Context) {
 		if err == nil {
 			after = row
 			call, cancel := context.WithTimeout(ctx, 5*time.Second)
-			status, postErr := w.post(call, turnInputPath(execution), body, nil)
+			path := turnInputPath(execution)
+			if strings.HasPrefix(key, "command:") {
+				path = fmt.Sprintf("/internal/executions/%d/native-command-receipts", execution)
+			}
+			status, postErr := w.post(call, path, body, nil)
 			cancel()
 			if postErr == nil && status == http.StatusNoContent {
 				_, err = w.journal.ExecContext(ctx, `DELETE FROM turn_input_receipts WHERE execution_id=? AND key=?`, execution, key)

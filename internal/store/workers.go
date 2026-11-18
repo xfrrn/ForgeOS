@@ -74,6 +74,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
+	CommandApprovalProject   int64 `json:"command_approval_project,omitempty"`
 	SupportsModelPause       bool  `json:"supports_model_pause,omitempty"`
 	SupportsPlannerPause     bool  `json:"supports_planner_pause,omitempty"`
 	SupportsReworkAnswers    bool  `json:"supports_rework_answers,omitempty"`
@@ -96,12 +97,17 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 	if integrated != node.StartupIntegratedProject {
 		integrated = 0
 	}
+	approvals := c.CommandApprovalProject
+	if approvals != node.CommandApprovalProject {
+		approvals = 0
+	}
 	return WorkerCapabilities{
-		SupportsModelPause:    c.SupportsModelPause && node.SupportsModelPause,
-		SupportsPlannerPause:  c.SupportsPlannerPause && node.SupportsPlannerPause,
-		SupportsReworkAnswers: c.SupportsReworkAnswers && node.SupportsReworkAnswers,
-		SupportsGlobalRules:   c.SupportsGlobalRules && node.SupportsGlobalRules,
-		SupportsStartup:       c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,
+		CommandApprovalProject: approvals,
+		SupportsModelPause:     c.SupportsModelPause && node.SupportsModelPause,
+		SupportsPlannerPause:   c.SupportsPlannerPause && node.SupportsPlannerPause,
+		SupportsReworkAnswers:  c.SupportsReworkAnswers && node.SupportsReworkAnswers,
+		SupportsGlobalRules:    c.SupportsGlobalRules && node.SupportsGlobalRules,
+		SupportsStartup:        c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,
 		SupportsResources:      c.SupportsResources && node.SupportsResources,
 		SupportsCodex:          c.SupportsCodex && node.SupportsCodex,
 		SupportsClaude:         c.SupportsClaude && node.SupportsClaude,
@@ -162,7 +168,7 @@ func (h WorkerHeartbeat) Valid() bool {
 			}
 		}
 	}
-	return h.Capabilities.StartupIntegratedProject >= 0 && (h.Capabilities.StartupIntegratedProject == 0 || h.Capabilities.SupportsStartup) &&
+	return h.Capabilities.CommandApprovalProject >= 0 && (h.Capabilities.CommandApprovalProject == 0 || (h.Capabilities.SupportsCodex && h.Capabilities.SupportsCheckpoints && h.Capabilities.SupportsResources)) && h.Capabilities.StartupIntegratedProject >= 0 && (h.Capabilities.StartupIntegratedProject == 0 || h.Capabilities.SupportsStartup) &&
 		strings.TrimSpace(h.Worker) != "" && len(h.Worker) <= 128 && !strings.ContainsAny(h.Worker, "\x00\r\n") &&
 		platformName.MatchString(h.OS) && platformName.MatchString(h.Arch) &&
 		((h.ModelSlots == 0 && h.CISlots == 0 && !h.Capabilities.SupportsResources) ||

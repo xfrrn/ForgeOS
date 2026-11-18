@@ -31,6 +31,7 @@ type worker struct {
 	api, token, id, repoRoot, workspaceRoot string
 	tokenFile                               string
 	codex, codexVersion                     string
+	commandPolicy                           commandPolicy
 	codexAppServer                          bool
 	claude                                  claudeCLI
 	planner                                 bool
@@ -188,6 +189,10 @@ func fromEnv(role string) (*worker, error) {
 			w.codex, w.planner = "", false
 		}
 	}
+	w.commandPolicy, err = configuredCommandPolicy(os.Getenv("FORGEOS_CODEX_COMMAND_APPROVALS"), w.codexAppServer)
+	if err != nil {
+		return nil, err
+	}
 	w.claude, err = findClaude(os.Getenv("FORGEOS_CLAUDE_BIN"))
 	if err != nil {
 		return nil, err
@@ -306,7 +311,8 @@ func (w *worker) run(ctx context.Context) error {
 	w.journal = journal
 	defer journal.Close()
 	writer := w.codex != "" || w.claude.bin != ""
-	caps := store.WorkerCapabilities{SupportsGlobalRules: true, SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
+	caps := store.WorkerCapabilities{CommandApprovalProject: w.commandPolicy.Project,
+		SupportsGlobalRules: true, SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
 	caps.SupportsStartup = os.Getenv("FORGEOS_STARTUP_IMAGE") != ""
 	if caps.SupportsStartup && os.Getenv("FORGEOS_STARTUP_NETWORK") != "" && os.Getenv("FORGEOS_STARTUP_PROJECT_ID") != "" {

@@ -33,15 +33,16 @@ type codexServerMessage struct {
 }
 
 type codexServer struct {
-	mu           sync.Mutex
-	input        *json.Encoder
-	scanner      *bufio.Scanner
-	pending      []codexServerMessage
-	seq          int
-	resume       string
-	thread, turn string
-	interrupt    bool
-	steering     map[string]bool
+	allowCommandRequests bool
+	mu                   sync.Mutex
+	input                *json.Encoder
+	scanner              *bufio.Scanner
+	pending              []codexServerMessage
+	seq                  int
+	resume               string
+	thread, turn         string
+	interrupt            bool
+	steering             map[string]bool
 }
 
 func (s *codexServer) write(message any) error {
@@ -132,7 +133,9 @@ func (s *codexServer) read() (codexServerMessage, error) {
 		return m, errors.New("invalid App Server event")
 	}
 	if m.Method != "" && len(m.ID) != 0 && string(m.ID) != "null" {
-		// These roles use never approval and communicate business questions at turn boundaries.
+		if s.allowCommandRequests && m.Method == nativeApprovalMethod {
+			return m, nil
+		}
 		return m, errors.New("App Server requested approval or tool input outside this role's permissions")
 	}
 	return m, nil
@@ -149,7 +152,7 @@ func (s *codexServer) call(method string, params, result any) error {
 		if err != nil {
 			return err
 		}
-		if string(m.ID) == strconv.Itoa(s.seq) {
+		if m.Method == "" && string(m.ID) == strconv.Itoa(s.seq) {
 			if m.Error != nil {
 				if method == "turn/start" {
 					return fmt.Errorf("%w (code %d)", errRejectedWriterStart, m.Error.Code)
@@ -310,8 +313,12 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if err != nil {
 		return "", err
 	}
+	policy := store.CodexApproval
+	if len(c.approvalCommands) > 0 && c.sandbox == store.CodexImplementationSandbox && process.turnInputs != nil {
+		policy = "untrusted"
+	}
 	method := "thread/start"
-	params := map[string]any{"cwd": workspace, "sandbox": c.sandbox, "approvalPolicy": store.CodexApproval,
+	params := map[string]any{"cwd": workspace, "sandbox": c.sandbox, "approvalPolicy": policy,
 		"config":           map[string]any{"mcp_servers": disabledMCP},
 		"baseInstructions": "You are a coding agent executing a ForgeOS work item. Follow its supplied scope, requirements and permissions.", "developerInstructions": ""}
 	model := os.Getenv("FORGEOS_CODEX_APP_SERVER_MODEL")
@@ -351,7 +358,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if expectedErr != nil || actualErr != nil || !os.SameFile(expected, actual) {
 		return "", errors.New("App Server selected a different workspace")
 	}
-	if !nativeSessionID.MatchString(thread.Thread.ID) || (resume != "" && thread.Thread.ID != resume) || thread.ApprovalPolicy != store.CodexApproval || thread.Sandbox.NetworkAccess {
+	if !nativeSessionID.MatchString(thread.Thread.ID) || (resume != "" && thread.Thread.ID != resume) || thread.ApprovalPolicy != policy || thread.Sandbox.NetworkAccess {
 		return "", errors.New("App Server returned an unexpected thread or permission policy")
 	}
 	wantSandbox := "readOnly"
@@ -395,6 +402,8 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			}
 		}()
 	}
+	s.allowCommandRequests = policy == "untrusted"
+	seenApproval := map[string]bool{}
 	if err = s.call("turn/start", start, &turn); err != nil {
 		return session, err
 	}
@@ -418,6 +427,36 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			m, s.pending = s.pending[0], s.pending[1:]
 		} else if m, err = s.read(); err != nil {
 			return session, err
+		}
+		if m.Method == nativeApprovalMethod {
+			var params nativeCommandParams
+			if !s.allowCommandRequests || len(m.ID) == 0 || string(m.ID) == "null" || json.Unmarshal(m.Params, &params) != nil || inputPoll.Instance == 0 ||
+				params.ThreadID != inputPoll.Session || params.TurnID != inputPoll.Turn || !store.ValidAppTurnID(params.ItemID) {
+				return session, errors.New("native command request does not identify the active turn")
+			}
+			decision := "decline"
+			_, seen := seenApproval[params.ItemID]
+			if !seen {
+				seenApproval[params.ItemID] = false
+			}
+			if !seen && params.allowed(c.approvalCommands, workspace) {
+				decision = process.turnInputs.awaitCommand(ctx, store.NativeCommandRequest{NativeTurn: inputPoll.NativeTurn, Lease: inputPoll.Lease,
+					Item: params.ItemID, Command: params.Command, Cwd: workspace})
+				seenApproval[params.ItemID] = decision != ""
+				if decision == "" {
+					decision = "cancel"
+				}
+			}
+			s.mu.Lock()
+			if ctx.Err() != nil || s.turn != params.TurnID || s.interrupt {
+				decision = "cancel"
+			}
+			err = s.input.Encode(map[string]any{"id": m.ID, "result": map[string]string{"decision": decision}})
+			s.mu.Unlock()
+			if err != nil {
+				return session, err
+			}
+			continue
 		}
 		var responseID string
 		if len(m.ID) > 0 && json.Unmarshal(m.ID, &responseID) == nil && strings.HasPrefix(responseID, "forgeos-steer-") {
@@ -534,6 +573,18 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				}
 				if process.question != nil {
 					process.question.read(last)
+				}
+			}
+			if m.Method == "item/completed" && event.Item.Type == "commandExecution" && seenApproval[event.Item.ID] {
+				receipt := store.NativeCommandReceipt{NativeTurn: inputPoll.NativeTurn, Lease: inputPoll.Lease, Item: event.Item.ID, Status: event.Item.Status}
+				body, marshalErr := json.Marshal(receipt)
+				if marshalErr != nil {
+					return session, marshalErr
+				}
+				// Ordinary Owner input keys are UUIDs. Command receipts share their durable native outbox.
+				key := fmt.Sprintf("command:%d:%s", process.id, event.Item.ID)
+				if _, err = process.db.Exec("INSERT INTO turn_input_receipts(execution_id,key,receipt) VALUES(?,?,?) ON CONFLICT DO NOTHING", process.turnInputs.execution, key, body); err != nil {
+					return session, err
 				}
 			}
 			if process.tools != nil && strings.HasPrefix(m.Method, "item/") {

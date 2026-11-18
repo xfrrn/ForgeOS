@@ -39,6 +39,7 @@ type Result = { environment_run?: { id: string; output?: { bytes: number; text: 
 type ModelPause = { instance: number; session_id: string; requested_at: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
 type NativeTurn = { instance: number; session_id: string; turn_id: string }
 type Attempt = {
+  command_approvals?: (NativeTurn & { id: number; item_id: string; command: string; valid_until: string; decided_at?: string; decision?: 'accept' | 'decline' | 'cancel'; native_status?: 'completed' | 'declined' | 'failed' })[]
   steerable_instance?: number
   turn_inputs?: (NativeTurn & { key: string; body: string; claimed_at: string | null; outcome: 'accepted' | 'rejected' | null })[]
   queue_sequence?: number
@@ -452,6 +453,17 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         <ToolActivity events={p.tools}/><ModelOutput output={p.output}/><ToolOutput output={p.tool_output}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
+    {!!attempt.command_approvals?.length && <details><summary>原生命令审批记录（{attempt.command_approvals.length}）</summary>
+      {attempt.command_approvals.map(a => <dl className="detail-facts" key={a.id}>
+        <Fact label={'命令请求 #' + a.id} code>{a.command}</Fact>
+        <Fact label="原生会话 / 回合" code>{a.session_id} / {a.turn_id}</Fact>
+        <Fact label="进程 / 调用" code>{a.instance} / {a.item_id}</Fact>
+        <Fact label="Owner 决定">{a.decision ? {accept:'仅允许本次', decline:'拒绝本次', cancel:'取消回合'}[a.decision] : '尚无决定'}</Fact>
+        <Fact label="原生执行回执">{a.native_status ? {completed:'已完成',declined:'已拒绝执行',failed:'执行失败'}[a.native_status] : '尚未收到'}</Fact>
+        {a.decided_at && <Fact label="决定时间">{formatTime(a.decided_at)}</Fact>}
+        <Fact label="截止时间">{formatTime(a.valid_until)}</Fact>
+      </dl>)}
+    </details>}
     {!!attempt.model_pauses?.length && <details><summary>模型暂停记录（{attempt.model_pauses.length}）</summary>
       {attempt.model_pauses.map(p => <dl className="detail-facts" key={p.instance}>
         <Fact label="进程实例" code>{p.instance}</Fact><Fact label="原生会话" code>{p.session_id}</Fact>

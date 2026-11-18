@@ -25,7 +25,7 @@ export function Overview({request, onCounts}: {request: ApiRequest; onCounts: (c
         const [tasks, notices, approvals] = await Promise.all([
           request<{counts: Record<string, number>}>('/tasks?limit=1', options),
           request<{items: Notice[]}>('/tasks/notifications?scope=pending', options),
-          request<{items: ApprovalItem[]}>('/tasks/approvals?include_questions=1', options),
+          request<{items: ApprovalItem[]}>('/tasks/approvals?include_questions=1&include_commands=1', options),
         ])
         if (stop.signal.aborted) return
         setData({ counts: tasks.counts, notices: notices.items.slice(0, 5), approvals: approvals.items.slice(0, 5), at: new Date().toISOString() })
