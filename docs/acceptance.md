@@ -14,6 +14,14 @@
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
 
+### 本轮回归与基座复验
+
+| 操作 | 预期 | 实际 | ForgeOS 提交 |
+| --- | --- | --- | --- |
+| 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
+| 从当前提交构建控制面、Worker 与工作台，运行 `go vet ./...`，在非 root Ubuntu 上运行适配器不匹配和活跃写入跟踪专项 | 构建、静态检查和两项跨平台专项成功 | 工作台 TypeScript 和 Vite 生产构建成功。Windows 和 Ubuntu 两项 Worker 专项均通过。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
+| 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
+
 <a id="supervised-cli-writer"></a>
 
 ### 专题 07、16 B.4 · Codex CLI 写入进程在 Daemon 替换后继续运行
@@ -169,6 +177,7 @@
 | 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
 | 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
+| 专题 07、16 B.4 · 存活的普通 CLI 写入进程 | [工作台排入下一回合、取消、切换适配器与受保护 PR #272](#supervised-cli-writer) | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 专题 07、16 B.4 · 存活的普通 App Server 写入进程 | [双版本、活动输入、容量、执行进程故障与受保护 PR #270](#supervised-writer) | `a9a4181557b26aca690eab3eb8454a73b7f6d046` |
 | 专题 07、16 B.4 · 启动及退出证据缺失 | [beta #268 的两种取消与两种执行到期](#writer-evidence-deadline) | `5d15472d41fad287101a392041d59e786e9fb667` |
 | 专题 07、16 C.3 · 搜索文本结果 | [原生 CLI 和 App Server 各 15 项文本与归档逐字核对](#web-search-public-output) | `d892eec9c46fa458cc656be9e9df7daedee2f0a7` |
