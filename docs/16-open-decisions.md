@@ -66,7 +66,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 | 编号与原始要求 | 状态 | 实际结果与剩余条件 | 操作记录 | ForgeOS 提交 |
 | --- | --- | --- | --- | --- |
-| A.1 Codex App Server 目标版本、协议与事件 | 部分验收 | 实现、恢复、中断和原生追加输入已实测；正式 Worker 的审批及运行中输入待验。 | [适配器](acceptance.md#check-a-1) · [运行中输入](acceptance.md#native-steer-probe) | `74e856fd9319af075704668556c5b5560c11d8d6`、`af79a557af1fe91f328aeed8b18a2412b3d9fd89` |
+| A.1 Codex App Server 目标版本、协议与事件 | 部分验收 | 实现、恢复、中断和原生追加输入已实测；正式 Worker 的审批及运行中输入待验。 | [适配器](acceptance.md#check-a-1) · [运行中输入](acceptance.md#native-steer-probe) | `74e856fd9319af075704668556c5b5560c11d8d6`、`af79a557af1fe91f328aeed8b18a2412b3d9fd89`、`cfe0bbcbf37bb817e33421353a2a07a0981c5217` |
 | A.2 Claude Headless 会话、交互及权限事件 | 已验收 | Windows 原生登录下的拒绝、问答、恢复与交付。Linux 账号见 A.3–4。 | [实测](acceptance.md#check-a-2) | `1d9617e11095434c41f68956f6e8a0d45c014108`、`402936239a5c25e1412c93239878bb385fde5746` |
 | A.3 同一 Linux 用户的认证复用与限额 | 待环境验收 | Windows 两节点争用名额已验证。Linux 双 CLI 的真实登录、并发和供应方限额待验。 | [实测](acceptance.md#check-a-3) | `4eaf44a273aa9b2bec2f9ea0ab126b714921d69c`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |
 | A.4 systemd 的身份、PATH、登录与代理 | 待环境验收 | 非 root 节点已读取实际 CLI 版本；该身份的模型登录和经代理请求待验。 | [实测](acceptance.md#adr-evidence-009) | `bd1c734d80413c87e032cb250c12baea9ad314cc`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |

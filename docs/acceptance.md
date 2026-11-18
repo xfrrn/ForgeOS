@@ -3708,3 +3708,17 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 重新执行默认生命周期探针和 --approvals | 启动、恢复、中断、批准、拒绝及取消可重复运行 | 两种模式均成功；批准的临时命令输出与随机数匹配，两次拒绝和一次取消均有原生回执。 |
 
 证据为 native-steer-final-0.json、native-steer-final-1.json、native-steer-final-2.json。重复投递的独立实验脚本为 native-steer-repeat.py。
+
+<a id="native-interrupt-fallback"></a>
+
+### 专题 07、16 A.1/B.2 · App Server 中断的退出码与强制终止顺序
+
+2026-11-18，审批中心变更的全量回归暴露一次已有中断测试失败。模拟服务器拒绝中断，随后收到管道 EOF 并先于强制终止以 0 退出。节点将管道关闭移至强制终止之后。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Windows、非 root Ubuntu 各运行 40 次拒绝中断专项，核对真实子进程的 SQLite 退出码 | 拒绝中断的子进程每次通过强制终止退出 | 两个系统共 80 次通过，未再记录退出码 0。 |
+| 用正式适配器启动本机已登录的 Codex，分别在 Thread 建立前和工具运行中取消 | 建立前强制终止；正在运行的回合先使用原生中断 | 真实进程分别记录退出码 1 和 0。后者保留原生会话 01a1ed05-4546-7583-8589-f2415bd921be。 |
+| 使用正式控制面和 Worker，从 Chrome 取消正在运行的实现回合；再派发本机连通性任务 | 工作项取消、原回合正常中断、资源可复用；来源 Issue 保持打开 | [beta Issue #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235) 的 Codex PID 35464 和工具子进程均退出。原会话退出码为 0，无候选、PR 或合并。随后本机任务完成，节点模型占用归零。 |
+
+操作记录为 interrupt-fallback-worker.py、interrupt_fallback_real/proof.json、interrupt-fallback-native.log 及 interrupt-rejection-repeat.jsonl。

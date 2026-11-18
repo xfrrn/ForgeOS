@@ -81,6 +81,8 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 同一探测命令加 `--steer` 可实测运行中输入。在只读 Thread 的 turn/started 后，探针先核对不匹配回合的拒绝，再用 expectedTurnId 和 clientUserMessageId 将随机文本送入当前回合。第二个 App Server 从 thread/read 核对原生输入和回复。当前安装版本允许同一 clientUserMessageId 多次进入同一回合，响应丢失后的恢复需要先对账。普通 Worker 的 Owner 运行中输入仍待验收。[协议实测](acceptance.md#native-steer-probe)
 
+原生回合确认完成或中断时，Worker 正常关闭输入并等待进程退出。App Server 拒绝中断或超时、需要强制终止时，Worker 先终止自己启动的进程，再关闭协议管道，避免 EOF 使强制终止被记录为正常退出。[中断回归与真实节点操作](acceptance.md#native-interrupt-fallback)
+
 ## 5. Claude Code 接入建议
 
 第一版可评估 Headless CLI + stream-json + Session Resume；复杂交互可后续评估 Agent SDK。必须通过真实环境验证会话恢复、问题交互和权限事件。

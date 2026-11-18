@@ -165,7 +165,12 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	s := codexServer{input: json.NewEncoder(input), scanner: bufio.NewScanner(stream), resume: resume}
 	s.scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	done, cancelDone := make(chan struct{}), make(chan struct{})
-	forceStop := func() { kill(); input.Close(); stream.Close() }
+	forceStop := func() {
+		// EOF can make a server that rejected the interrupt exit successfully.
+		_ = cmd.Cancel()
+		input.Close()
+		stream.Close()
+	}
 	stop := context.AfterFunc(ctx, func() {
 		defer close(cancelDone)
 		// Bound both an unresponsive server and a blocked write to its stdin.
@@ -187,10 +192,10 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	})
 	terminal := false
 	defer func() {
-		input.Close()
 		if resultErr != nil && !terminal {
-			stream.Close()
-			_ = cmd.Cancel()
+			forceStop()
+		} else {
+			input.Close()
 		}
 		timeout := time.AfterFunc(5*time.Second, func() { _ = cmd.Cancel() })
 		exit, journalErr := process.wait(cmd)
