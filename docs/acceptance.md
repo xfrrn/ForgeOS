@@ -28,7 +28,7 @@
 | 用 [beta #267](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/267) 在独立验收克隆中一次新增、修改、删除和移动，核对既有文件摘要并批准或拒绝 | 一个决定绑定整份补丁，候选树与各操作一致 | 0.147.0 的工具项 `exec-689ab564-3d4f-4cc1-b4b4-14532889aa70` 执行成功。候选 `abf88953562ea0e2097b871d8510266ccf99c6bb` 逐一核对了三个输出文件及两个消失的路径。0.169.0-alpha.11.1 的独立拒绝回执为 declined，新增目标未出现。测试用原始文件由验收克隆的本地种子提交提供。 |
 | 从任务页批准 #263 的候选并等待 GitHub 交付 | 必需 CI 通过、保护分支合并、Issue 关闭 | 候选 `12a27e4106140c91561f1f4308ab7c6ba1248611` 经 [PR #266](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/266) 合并为 `64c07a0334923c740d7845568f15d948f2c4349c`。演练的首次失败检查重跑后，两项必需状态均 SUCCESS，任务 DONE，Issue CLOSED。 |
 
-操作脚本为 `workbench-native-patch.py` 和 `workbench-native-multi.py`，回执为 `workbench-native-patch/{latest,stale,cancel,stable,decline}.json`。各轮运行目录保留审批与任务回读截图。独立协议探针的实现为 `8490cdd`，双版本探针结果见[原生协议验收](#native-file-approval-probe)。
+实现提交 `d46b0c5`。PostgreSQL 18 与 Docker 环境运行 `go test -count=1 -json ./...`，576 项测试及子测试通过，0 项失败；另有 3 个包无测试文件。工作台生产构建通过。全量结果为 `workbench-native-patch/regression.jsonl`。操作脚本为 `workbench-native-patch.py` 和 `workbench-native-multi.py`，回执为 `workbench-native-patch/{latest,stale,cancel,stable,decline}.json`。各轮运行目录保留审批与任务回读截图。独立协议探针的实现为 `8490cdd`，双版本探针结果见[原生协议验收](#native-file-approval-probe)。
 
 <a id="native-file-approval-probe"></a>
 
@@ -83,6 +83,7 @@
 | 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
 | 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
+| 专题 05、07、16 A.1/B.2/C.5 · 文件补丁审批 | [双版本、多文件修改、过时基线与受保护 PR #266](#workbench-file-patches) | `d46b0c5` · [原生探针](#native-file-approval-probe) `8490cdd` |
 | 专题 07、16 B.4 按已收到的输入回执验收原生中断 | [两版从独立进程核对中断及完整输入](#thread-mcp-isolation) | `c1ded60ddec9683e0ba5d379f3d994ce3178a761` |
 
 在 `2f82f7b` 的产品代码上，从空 PostgreSQL 18 并启用真实 Docker 执行 `go test -count=1 -json ./...`。573 个具名测试及子测试全部通过，9 个包通过，3 个包无测试，具名测试无跳过。`go vet ./...` 通过，原始记录为 `mcp-policy-regression.jsonl`。随后仅改进了原生验证探针，并在两个受支持版本实际复测。
