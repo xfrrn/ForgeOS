@@ -51,7 +51,7 @@ func TestCompletedWriterExitReceipt(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	w, job, _ := fixture(t)
-	t.Setenv("FORGEOS_WORKER_STATE_DIR", t.TempDir())
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	var err error
 	w.journal, err = w.openJournal(ctx)
 	if err != nil {
@@ -76,7 +76,7 @@ func TestCompletedWriterExitReceipt(t *testing.T) {
 			t.Fatal(exit, journal)
 		}
 		q := parkedCheckpoint{Job: job, Session: "thread", Version: w.codexVersion, ReturnedTip: "saved",
-			Active: &activeWriterTurn{NativeTurn: store.NativeTurn{Instance: p.id, Session: "thread", Turn: "turn"}}}
+			Active: &activeWriterTurn{NativeTurn: store.NativeTurn{Instance: p.id, Session: "thread", Turn: "turn"}, Deadline: time.Now().Add(time.Minute)}}
 		if err := p.session(q.Session); err != nil {
 			t.Fatal(err)
 		}
@@ -91,6 +91,10 @@ func TestCompletedWriterExitReceipt(t *testing.T) {
 		}
 		if err := w.waitForWriterExit(ctx, &q); err == nil || errors.Is(err, errTurnFailed) {
 			t.Fatal("unknown exit became a definite outcome", err)
+		}
+		q.Active.Deadline = time.Now().Add(-time.Second)
+		if err := w.waitForWriterExit(ctx, &q); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal("unknown exit outlasted the execution budget", err)
 		}
 	}
 }

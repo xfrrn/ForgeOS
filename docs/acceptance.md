@@ -56,8 +56,9 @@
 | 在节点停机时从 Chrome 取消 | 任务取消，已完成的工作不生成候选 | 任务为 `CANCELLED`，仅原 PID 49076，退出码 0。 |
 | 停机时修改验收副本的草稿 | 保留检查点，避免交付外部修改 | 原 PID 37964 已退出 0，任务为 `RUNNING`，新增模型进程数为 0。 |
 | 保留原生完成记录，但丢失原进程的退出码 | 成功退出仍待确认，保留检查点 | 原 PID 45104 记为 -1，任务为 `RUNNING`，新增模型进程数为 0。 |
+| 同样丢失退出码，在停机的验收副本中将执行截止时间缩短为 3 秒，等待 4 秒后重启 | 按已耗尽的时限结束执行，保留原进程记录 | Chrome 显示 `context deadline exceeded`，任务为 `FAILED`。原 PID 32776 退出码为 -1，无候选，新增模型进程数为 0。 |
 
-五份验收回执为 `terminal-final-{resume,question,cancel,edited,unknown}/latest.json`。本项从已保存原生完成事件的边界起验证。
+六份验收回执为 `terminal-final-{resume,question,cancel,edited,unknown,expired}/latest.json`。本项从已保存原生完成事件的边界起验证。Windows 与 WSL Ubuntu 均另行验证了成功、失败和未知退出码，覆盖期限内保留与过期拒绝。
 
 <a id="writer-start-confirmation"></a>
 

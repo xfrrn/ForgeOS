@@ -47,6 +47,9 @@ func (w *worker) waitForWriterExit(ctx context.Context, q *parkedCheckpoint) err
 	}
 	if q.ReturnedTip != "" {
 		if p.Exited == nil || p.ExitCode == nil || *p.ExitCode == -1 {
+			if !q.Active.Deadline.After(time.Now()) {
+				return context.DeadlineExceeded
+			}
 			return errors.New("original completed writer has no successful process exit receipt")
 		}
 		if *p.ExitCode != 0 {
@@ -99,7 +102,7 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 		return err
 	}
 	if err := w.waitForWriterExit(ctx, q); err != nil {
-		if errors.Is(err, errTurnFailed) {
+		if errors.Is(err, errTurnFailed) || (ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded)) {
 			b.recovery.waiting, b.recovery.leaveUnsettled = false, false
 		}
 		return err
