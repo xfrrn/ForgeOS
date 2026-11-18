@@ -33,6 +33,10 @@ func testAppServerProcess() int {
 				Cwd, Sandbox, ApprovalPolicy, ThreadID, TurnID string
 				ExpectedTurnID, ClientUserMessageID            string
 				Input                                          []struct{ Text string }
+				Config                                         struct {
+					MCP map[string]map[string]bool `json:"mcp_servers"`
+				}
+				Cursor string
 			}
 		}
 		if in.Decode(&req) != nil {
@@ -46,8 +50,13 @@ func testAppServerProcess() int {
 		case "initialized":
 			continue
 		case "initialize":
+		case "config/read":
+			result = map[string]any{"config": map[string]any{"mcp_servers": map[string]any{"account.fixture": map[string]any{}}}}
 		case "thread/start", "thread/resume":
 			cwd = req.Params.Cwd
+			if enabled, ok := req.Params.Config.MCP["account.fixture"]["enabled"]; !ok || enabled {
+				return 12
+			}
 			if req.Params.ApprovalPolicy != "never" {
 				return 9
 			}
@@ -84,6 +93,28 @@ func testAppServerProcess() int {
 			}
 			result = map[string]any{"cwd": cwd, "model": model, "thread": map[string]string{"id": thread}, "approvalPolicy": policy, "sandbox": map[string]any{
 				"type": sandbox, "writableRoots": roots, "networkAccess": filepath.Base(req.Params.Cwd) == "network", "excludeTmpdirEnvVar": true, "excludeSlashTmp": true}}
+		case "mcpServerStatus/list":
+			if req.Params.ThreadID != thread {
+				return 12
+			}
+			entry := map[string]any{"name": "account.fixture", "tools": map[string]any{}, "resources": []any{}, "resourceTemplates": []any{}}
+			switch filepath.Base(cwd) {
+			case "mcp resource":
+				entry["resources"] = []any{map[string]any{}}
+			case "mcp connected":
+				entry["runtimeStatus"] = "connected"
+			case "mcp unknown":
+				entry["name"] = "new-server"
+			case "mcp absent inventory":
+				delete(entry, "resourceTemplates")
+			case "mcp late tool":
+				if req.Params.Cursor == "" {
+					_ = out.Encode(map[string]any{"id": req.ID, "result": map[string]any{"data": []any{entry}, "nextCursor": "second"}})
+					continue
+				}
+				entry["tools"] = map[string]any{"another": map[string]any{}}
+			}
+			result = map[string]any{"data": []any{entry}}
 		case "turn/start":
 			prompt := req.Params.Input[0].Text
 			switch prompt {
@@ -452,7 +483,7 @@ func TestAppServerTurnIdentityAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"complete", "slow exit", "resume", "stable resume", "other model", "missing session", "missing terminal", "failed", "foreign thread", "missing turn", "unsafe", "network", "roots", "policy", "workspace", "approval"} {
+	for _, scenario := range []string{"complete", "slow exit", "resume", "stable resume", "other model", "missing session", "missing terminal", "failed", "foreign thread", "missing turn", "unsafe", "network", "roots", "policy", "workspace", "approval", "mcp resource", "mcp connected", "mcp unknown", "mcp absent inventory", "mcp late tool"} {
 		t.Run(scenario, func(t *testing.T) {
 			root := filepath.Join(t.TempDir(), scenario)
 			if err = os.Mkdir(root, 0700); err != nil {
@@ -486,6 +517,9 @@ func TestAppServerTurnIdentityAndPermissions(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("accepted invalid native result")
+			}
+			if strings.HasPrefix(scenario, "mcp ") && !strings.Contains(err.Error(), "MCP permission policy") {
+				t.Fatal("wrong rejection for inherited MCP access", err)
 			}
 			if (scenario == "missing terminal") != errors.Is(err, errTurnInterrupted) ||
 				(scenario == "failed") != errors.Is(err, errTurnFailed) || (scenario == "missing session") != errors.Is(err, errSessionMissing) {

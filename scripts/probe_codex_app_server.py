@@ -49,7 +49,10 @@ class Client:
                 return msg["result"]
 
     def thread(self, workspace, existing=None, approval="never"):
-        params = {"cwd": str(workspace), "sandbox": "read-only", "approvalPolicy": approval}
+        settings = self.call("config/read", {"cwd": str(workspace), "includeLayers": False})["config"]
+        disabled = {name: {"enabled": False} for name in settings.get("mcp_servers", {})}
+        params = {"cwd": str(workspace), "sandbox": "read-only", "approvalPolicy": approval,
+                  "config": {"mcp_servers": disabled}}
         if existing:
             params["threadId"] = existing
         result = self.call("thread/resume" if existing else "thread/start", params)
@@ -58,6 +61,21 @@ class Client:
         thread = result["thread"]["id"]
         if existing and existing != thread:
             raise RuntimeError("App Server resumed a different thread")
+        page_params = {"threadId": thread}
+        seen = set()
+        while True:
+            page = self.call("mcpServerStatus/list", page_params)
+            for entry in page["data"]:
+                if (entry["name"] not in disabled or entry.get("runtimeStatus") not in (None, "disabled")
+                        or entry["tools"] != {} or entry["resources"] != [] or entry["resourceTemplates"] != []):
+                    raise RuntimeError("App Server did not isolate the probe from account MCP servers")
+            cursor = page.get("nextCursor")
+            if cursor is None:
+                break
+            if not cursor or cursor in seen:
+                raise RuntimeError("Invalid MCP inventory cursor")
+            seen.add(cursor)
+            page_params["cursor"] = cursor
         return thread
 
     def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None, steer=None, client_id=None):

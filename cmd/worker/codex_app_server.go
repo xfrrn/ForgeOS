@@ -50,6 +50,64 @@ func (s *codexServer) write(message any) error {
 	return s.input.Encode(message)
 }
 
+// App Server merges the account's MCP table with overrides, including an empty table.
+func (s *codexServer) disableMCP(workspace string) (map[string]map[string]bool, error) {
+	var settings struct {
+		Config *struct {
+			Servers map[string]struct{} `json:"mcp_servers"`
+		}
+	}
+	if err := s.call("config/read", map[string]any{"cwd": workspace, "includeLayers": false}, &settings); err != nil {
+		return nil, err
+	}
+	if settings.Config == nil {
+		return nil, errors.New("App Server did not report its effective configuration")
+	}
+	disabled := make(map[string]map[string]bool, len(settings.Config.Servers))
+	for name := range settings.Config.Servers {
+		disabled[name] = map[string]bool{"enabled": false}
+	}
+	return disabled, nil
+}
+
+func (s *codexServer) verifyMCPDisabled(thread string, disabled map[string]map[string]bool) error {
+	params := map[string]any{"threadId": thread}
+	seen := make(map[string]bool)
+	for {
+		var page struct {
+			NextCursor *string
+			Data       []struct {
+				Name, RuntimeStatus          string
+				Tools                        map[string]json.RawMessage
+				Resources, ResourceTemplates []json.RawMessage
+			}
+		}
+		if err := s.call("mcpServerStatus/list", params, &page); err != nil {
+			return err
+		}
+		if page.Data == nil {
+			return errors.New("App Server did not report its thread MCP inventory")
+		}
+		for _, entry := range page.Data {
+			_, configured := disabled[entry.Name]
+			if !configured || (entry.RuntimeStatus != "" && entry.RuntimeStatus != "disabled") ||
+				entry.Tools == nil || entry.Resources == nil || entry.ResourceTemplates == nil ||
+				len(entry.Tools)+len(entry.Resources)+len(entry.ResourceTemplates) != 0 {
+				return errors.New("App Server thread has an unconfirmed MCP permission policy")
+			}
+		}
+		if page.NextCursor == nil {
+			return nil
+		}
+		cursor := *page.NextCursor
+		if cursor == "" || seen[cursor] {
+			return errors.New("App Server returned an invalid MCP inventory cursor")
+		}
+		seen[cursor] = true
+		params["cursor"] = cursor
+	}
+}
+
 func checkCodexAppServer(bin string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -248,8 +306,13 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if err = s.initialize(); err != nil {
 		return "", err
 	}
+	disabledMCP, err := s.disableMCP(workspace)
+	if err != nil {
+		return "", err
+	}
 	method := "thread/start"
 	params := map[string]any{"cwd": workspace, "sandbox": c.sandbox, "approvalPolicy": store.CodexApproval,
+		"config":           map[string]any{"mcp_servers": disabledMCP},
 		"baseInstructions": "You are a coding agent executing a ForgeOS work item. Follow its supplied scope, requirements and permissions.", "developerInstructions": ""}
 	model := os.Getenv("FORGEOS_CODEX_APP_SERVER_MODEL")
 	if model != "" {
@@ -302,6 +365,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		return "", errors.New("App Server returned an unexpected sandbox")
 	}
 	session = thread.Thread.ID
+	if err = s.verifyMCPDisabled(session, disabledMCP); err != nil {
+		return "", err
+	}
 	if err = process.session(session); err != nil {
 		return session, err
 	}

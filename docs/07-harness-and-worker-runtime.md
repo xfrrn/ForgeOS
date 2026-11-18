@@ -77,6 +77,8 @@ App Server 节点可用 `FORGEOS_CODEX_APP_SERVER_MODEL` 指定本机客户端�
 
 App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 审批和沙箱。进程禁用 apps、plugins、hooks、MCP 和网页搜索，设置本次基础指令与空开发者指令，关闭自动载入项目指令。beta #168 已从正式 Worker 完成实现、Owner 退回、返工期间原生进程被终止后的同 Thread 恢复，以及 PR #169 的必需 CI、合并和 Issue 关闭。只读 Planner 已返回固定计划并在 Chrome 回读。该接入已验证版本为 `0.169.0-alpha.11.1`；正式运行中输入已由 beta #250 验收，原生工具审批仍待验收。[逐项证据](acceptance.md)
 
+新建或恢复 Thread 时，Worker 从当前工作目录的有效配置读取 MCP 服务名，逐项设置 `enabled=false`。发送模型输入前，它按 Thread 分页核对原生 MCP 清单。每个返回的服务都必须属于已禁用的集合，工具、资源和资源模板均为空；提供运行状态的版本还必须报告 `disabled`。原生清单缺失或不一致时，该回合停止。配置值和工具描述不写入进程日志。[两个版本的隔离与正常交付入口](acceptance.md#thread-mcp-isolation)
+
 工作台暂停或取消 App Server 回合时，适配器在已核对 `turn/started` 后向当前 Thread 和 Turn 发送 `turn/interrupt`。收到匹配终态后关闭进程，沿用原来的暂停检查点或取消结算。尚未确认活动回合、请求失败或五秒内未退出时，使用进程终止兜底；取消后的输出不会成为候选。beta #170 已从 Chrome 暂停、重启控制面、恢复原 Thread，并经 PR #171 完成交付；只读 Planner 同样恢复到原 Thread 产出草案。beta #172 从 Chrome 取消，工具子进程退出，后续任务取得已释放资源。三次原生会话均记录了 `turn_aborted`、原因 `interrupted`，正常中断进程的退出码均为 0。
 
 在已登录的 Harness 用户下执行 `python scripts/probe_codex_app_server.py --bin <原生可执行文件>`，通过本地 stdio 启动两个独立 App Server。探测核对服务返回的只读 sandbox，完成首轮后关闭进程，在第二个进程恢复原 Thread 并读取随机标识，再中断第三轮。以返回的 Turn ID 和 `turn/completed` 状态核对中断。当前实测版本要求先接收 `turn/started` 通知，再调用 `turn/interrupt`。可用 `codex app-server generate-json-schema --out <目录>` 对照安装版本的字段。[App Server 协议说明](https://developers.openai.com/codex/app-server/)
