@@ -47,6 +47,9 @@
 | 专题 06、12、13，父 Goal 与子项的取消回执关联原 Issue 关闭 | [三个任务、一次节点补报和四份工作台下载](#source-closure-audit) | `404ca391c279ca2289a9c48553ade03257814509` |
 | 阶段一、专题 07、14、16 B.4，节点整机断电后按原执行补报并核对工作树 | [旧版本故障与修复后的两次 Linux 整机启动](#linux-power-loss-worktree) | `f0cd68f57114bf087dcdc83cacbc39a26f448b73` |
 | 阶段三、专题 06、13，后续子项解除阻塞的计划和基线 | [升级 beta #275，交付 beta #282 的两项依赖工作](#dependency-release-audit) | `c3ac432452b2b886c8503b6e729ccde7754345ad` |
+| 专题 07、13，暂停和恢复事件关联原会话及其检查点 | [新库三份回执及旧库同一 Session 的两次暂停](#model-pause-audit) | `562b666cff9888733a26928e0416aa4125d66f71` |
+| 专题 06、10、13，暂停和恢复 CI 使用同一候选 | [beta #55 历史回读及 alpha #41 至 PR #42 实际交付](#ci-pause-event-audit) | `9428f07d2792dc5f104c12374151f39c5d59fe22` |
+| 专题 11、13，预览反馈接收、分类和媒体归档在时间线可辨认 | [手机与桌面各 15 份下载](#feedback-timeline-labels) | `be4c84920ad9d963e6d72199c7a112bf63981bc1` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
@@ -77,7 +80,7 @@
 | 还原 beta #55 实际暂停 Docker CI 的 PostgreSQL 18 备份，从任务 1 下载原执行的三份事件回执，再重启回读 | 两次 Owner 请求与 Worker 回报都指向同一候选。工作台显示各事件当时可确认的原生会话和结果 | 修复前，事件 4 的暂停请求和事件 8 的恢复请求缺少候选。修复后三份回执均含 `aae51b5ff79b882a489d52e9869bd11aa3e47c11`。事件 4 的早期登记未保存 Session。事件 5、8 均可核对已回报的 `01a1e604-db7d-7882-9d40-5cccf796c57d`。两个 Owner 请求均无验证退出码。390 像素宽的 Chrome 下载与重启前的 API 一致。 |
 | 从 alpha #41 的工作台在执行 2 运行 Docker 验证期间暂停，重启后恢复，并重新下载回执 | 复验沿用原候选，仅运行 CI。请求和恢复回执可追溯到实际编写候选的原生会话 | 事件 6、7、8 指向原执行 2、候选 `b263797e01d00d9805f8775019c3e77867b43918` 和 Session `01a1f04e-fc8b-73f0-9ccf-4894120ef53f`。执行 3 在同一提交上验证通过，退出码为 0，没有新模型 Session。三份工作台下载逐份与 API 一致。 |
 
-首轮执行 1 验证通过时，验收脚本按工作树路径定位容器，错过了暂停时点。Owner 退回并要求添加一句说明后，按 Worker 的子进程定位实际 Docker 验证。上述回执来自执行 2 和后续复验。PR #42 通过必需检查后合并为 `05cb32b4f4024d4d3f2a6a7f9f38de41a2f00f9f`，Issue #41 已关闭。控制面重启后仍能下载三份原回执。旧备份与新任务证据为 `ci-pause-event/archive.json` 和 `ci-pause-event/live.json`。空 PostgreSQL 18 与真实 Docker 全包回归共 586 项具名测试及子测试通过，零失败、零具名跳过，另有三个包无测试文件。Go 静态检查通过。[Issue #41](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/41) · [PR #42](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/42)
+首轮执行 1 验证通过时，验收脚本按工作树路径定位容器，错过了暂停时点。Owner 退回并要求添加一句说明后，按 Worker 的子进程定位实际 Docker 验证。上述回执来自执行 2 和后续复验。PR #42 通过必需检查后合并为 `05cb32b4f4024d4d3f2a6a7f9f38de41a2f00f9f`，Issue #41 已关闭。控制面重启后仍能下载三份原回执。旧备份与新任务证据为 `ci-pause-event/archive.json` 和 `ci-pause-event/live.json`。完整回归逐项记录为 `ci-pause-event-final-regression.jsonl`。空 PostgreSQL 18 与真实 Docker 全包回归共 586 项具名测试及子测试通过，零失败、零具名跳过，另有三个包无测试文件。Go 静态检查通过。[Issue #41](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/41) · [PR #42](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/42)
 
 <a id="model-pause-audit"></a>
 
@@ -91,7 +94,7 @@
 | 在旧版同一执行中连续暂停、恢复两次，待计划完成后升级到迁移 127，下载六份旧事件 | 同一 Session 的不同进程分别关联各自的检查点，保存原事件编号与时间 | 旧版六份回执的发起方、来源和 Session 均为空。升级后，事件 3–5 指向实例及步骤 1，事件 6–8 指向实例及步骤 2，原生 Session 均为 `01a1f044-5c0c-7530-8e2f-d063f2d723d2`。工作台下载与 API 逐份一致，编号和原时间保持一致。 |
 | 在隔离的 PostgreSQL 测试库移除一条旧请求，再执行同一迁移 | 历史证据不齐时，不给剩余请求指定进程 | 剩余请求的关联为空，两个能核对的检查点与恢复事件都指向原实例 4。 |
 
-两次工作台实测的逐项 JSON 为 `model-pause-audit/current.json` 和 `model-pause-audit/upgrade.json`。缺失历史的迁移测试结果见 `model-pause-audit/migration-test.jsonl`。
+两次工作台实测的逐项 JSON 为 `model-pause-audit/current.json` 和 `model-pause-audit/upgrade.json`。缺失历史的迁移测试结果见 `model-pause-audit/migration-test.jsonl`。使用 PostgreSQL 18 和真实 Docker 的全包回归中，586 项具名测试及子测试通过，零失败、零具名跳过，另有三个包无测试文件。原始结果为 `pause-event-regression.jsonl`。
 
 <a id="dependency-release-audit"></a>
 
