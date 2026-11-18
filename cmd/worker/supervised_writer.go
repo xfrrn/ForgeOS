@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -21,6 +22,12 @@ const (
 	writerBusyExit  = 75
 	writerErrorExit = 70
 )
+
+func (w *worker) marshalWriterCheckpoint(q parkedCheckpoint) ([]byte, error) {
+	// Older supervised checkpoints all belonged to App Server writers.
+	q.SupervisedExec = w.superviseWriters && !w.codexAppServer && q.Job.Spec != nil && q.Job.Spec.Harness != "claude" && q.Job.Spec.Mode != "plan"
+	return json.Marshal(q)
+}
 
 func (w *worker) supervisedWriters(ctx context.Context) ([]int64, error) {
 	rows, err := w.journal.QueryContext(ctx, "SELECT a.execution_id FROM supervised_writers JOIN attempts a USING(lease_hash) ORDER BY a.execution_id")
@@ -114,6 +121,10 @@ func runSavedWriter(ctx context.Context, arg string) error {
 		return err
 	}
 	defer w.journal.Close()
+	return w.resumeAssignedWriter(ctx, id)
+}
+
+func (w *worker) resumeAssignedWriter(ctx context.Context, id int64) error {
 	unlock, err := w.lockAttempt(id)
 	if err != nil {
 		return err
@@ -146,9 +157,15 @@ func runSavedWriter(ctx context.Context, arg string) error {
 		return nil
 	}
 	digest := sha256.Sum256([]byte(q.Job.LeaseToken))
-	if !bytes.Equal(digest[:], key) || q.Job.ExecutionID != id || !w.codexAppServer ||
+	if !bytes.Equal(digest[:], key) || q.Job.ExecutionID != id ||
 		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || (q.Job.Spec.Harness != "" && q.Job.Spec.Harness != "codex") {
 		return fmt.Errorf("execution %d does not match its assigned Codex writer", id)
 	}
+	runningExec := !w.codexAppServer
+	if q.SupervisedExec != runningExec {
+		log.Printf("execution %d requires its original Codex transport; retaining the writer checkpoint", id)
+		return nil
+	}
+	w.superviseWriters = true
 	return w.runLockedAttempt(ctx, q.Job, time.Now(), q)
 }

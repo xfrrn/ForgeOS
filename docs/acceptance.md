@@ -9,10 +9,25 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | B.2 · 适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。[原生命令](#workbench-native-commands)与[文件补丁](#workbench-file-patches)的单次决定、执行回执及受保护分支交付均已验收。 | Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。[普通 Codex App Server 写入回合的存活进程接回](#supervised-writer)已验。其他适配器、独立角色及整机重启仍待验。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。Claude、只读规划与独立角色的存活进程接回，以及整机重启仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="supervised-cli-writer"></a>
+
+### 专题 07、16 B.4 · Codex CLI 写入进程在 Daemon 替换后继续运行
+
+在 Windows 的正式 Worker 上使用默认的 `codex exec --json` 和 `FORGEOS_SUPERVISE_WRITERS=1`。真实模型写出随机草稿后，终止 Daemon 并以原节点身份启动另一个 Daemon。从 Chrome 任务页核对候选、取消和排队输入。CLI 提供 Session ID，未返回原生 Turn ID。每个场景使用独立的 PostgreSQL 18 数据库和工作树。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 [beta #271](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/271) 的任务页批准恢复后的候选 | 原 PID 和 Session 持续运行，原草稿仅出现一次，受保护分支检查和交付完成 | Daemon 40208 → 45900，执行进程 41196、原生 PID 28404，候选 `32b21c088b831d225f334d5b06047814c3142c60`。[PR #272](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/272) 在预设失败的 Actions 检查重跑成功后合并为 `541f6ed65bd71ab70d557b468cb5a6cd9b7dcb97`。两项必需检查成功，任务 DONE，Issue CLOSED，交付评论一条。 |
+| 在替代 Daemon 运行期间，从 Chrome 为下一回合排入唯一标记 | 首个 CLI 进程继续完成，第二个进程在原 Session 中消费一次指令 | 原生 PID 38072 保持运行。PID 46024 在 Session `01a1ef55-7e9d-7d90-be5a-9f653cf98d53` 执行新输入。候选 `b467fcfb48790a7822cfeb1ac840e39f58da6968` 含一条 `queued-90556c350e`，状态 WAITING_ACCEPTANCE。 |
+| 替换 Daemon 后从 Chrome 取消原执行 | 原 CLI 进程退出，任务取消，工作台无候选 | Daemon 39100 → 12896，原生 PID 48056 退出，退出码 1，任务 CANCELLED。 |
+| 中止首次模型启动，改用 App Server 启动节点，再切回原 CLI | 错误适配器保留原检查点，节点剩余名额可用；恢复原配置后可结算取消 | 在 [beta #267](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/267) 的双名额节点上，检查点字节保持相同，摘要为 `d130845f861f4021480288aa15d240686691b077fabddfef1571992e4f5454df`。另一项目的任务 2 使用剩余名额并 DONE。从 Chrome 取消首项，恢复 CLI 后状态 CANCELLED，原生进程启动数为 0。 |
+
+回执位于 `supervised-exec-{delivery,queued,cancel,changed}/latest.json`。如果持有管道的 CLI 执行进程也退出且没有可确认的检查点，节点保留该执行供核对。整机重启后的恢复另列待验。
 
 <a id="supervised-writer"></a>
 
@@ -154,6 +169,7 @@
 | 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
 | 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
+| 专题 07、16 B.4 · 存活的普通 App Server 写入进程 | [双版本、活动输入、容量、执行进程故障与受保护 PR #270](#supervised-writer) | `a9a4181557b26aca690eab3eb8454a73b7f6d046` |
 | 专题 07、16 B.4 · 启动及退出证据缺失 | [beta #268 的两种取消与两种执行到期](#writer-evidence-deadline) | `5d15472d41fad287101a392041d59e786e9fb667` |
 | 专题 07、16 C.3 · 搜索文本结果 | [原生 CLI 和 App Server 各 15 项文本与归档逐字核对](#web-search-public-output) | `d892eec9c46fa458cc656be9e9df7daedee2f0a7` |
 | 专题 07、16 C.3 · MCP 公开输出 | [原生 CLI 与 App Server 的成功与拒绝、工作台回放及归档](#mcp-public-output) | `cfe87cadc422c399bfee899644520c66c5c6d386` |

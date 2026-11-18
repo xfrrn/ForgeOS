@@ -184,8 +184,8 @@ func fromEnv(role string) (*worker, error) {
 	switch os.Getenv("FORGEOS_SUPERVISE_WRITERS") {
 	case "", "0":
 	case "1":
-		if !supportsWriterProcessTree || !w.codexAppServer {
-			return nil, errors.New("supervised writers require a supported Codex App Server Worker")
+		if !supportsWriterProcessTree || w.codex == "" {
+			return nil, errors.New("supervised writers require a supported Worker with Codex")
 		}
 		w.superviseWriters = true
 	default:
@@ -194,7 +194,7 @@ func fromEnv(role string) (*worker, error) {
 	if w.codex != "" {
 		w.codexVersion, err = readCodexVersion(w.codex)
 		if err != nil {
-			if os.Getenv("FORGEOS_CODEX_BIN") != "" || w.codexAppServer {
+			if os.Getenv("FORGEOS_CODEX_BIN") != "" || w.codexAppServer || w.superviseWriters {
 				return nil, err
 			}
 			log.Printf("skipping discovered Codex: %v", err)

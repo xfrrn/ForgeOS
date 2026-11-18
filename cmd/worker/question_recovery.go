@@ -16,6 +16,7 @@ import (
 
 // The journal binds each recoverable boundary to its original lease and worktree.
 type parkedCheckpoint struct {
+	SupervisedExec                       bool                   `json:",omitempty"`
 	Active                               *activeWriterTurn      `json:",omitempty"`
 	ReturnedTip                          string                 `json:",omitempty"`
 	InitialTip                           string                 `json:",omitempty"`
@@ -115,7 +116,7 @@ func (w *worker) verifyQuestionWorkspace(ctx context.Context, job store.Job, sta
 }
 
 func (w *worker) saveParkedCheckpoint(ctx context.Context, q parkedCheckpoint) error {
-	raw, err := json.Marshal(q)
+	raw, err := w.marshalWriterCheckpoint(q)
 	if err != nil {
 		return err
 	}

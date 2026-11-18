@@ -185,7 +185,7 @@ func (w *worker) lockAttempt(id int64) (func(), error) {
 }
 
 func (w *worker) saveFinalization(ctx context.Context, q *parkedCheckpoint) error {
-	raw, err := json.Marshal(q)
+	raw, err := w.marshalWriterCheckpoint(*q)
 	if err != nil {
 		return err
 	}

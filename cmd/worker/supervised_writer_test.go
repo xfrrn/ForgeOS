@@ -1,13 +1,64 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
 	"time"
+
+	"forgeos/internal/store"
 )
+
+func TestSavedWriterTransport(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	w := worker{superviseWriters: true}
+	var err error
+	w.journal, err = w.openJournal(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.journal.Close()
+	job := store.Job{ExecutionID: 1, TaskID: 3, Kind: "codex_issue", Workspace: "work", LeaseToken: "lease",
+		LeaseSeconds: 300, ManageResources: true, SupportsCheckpoints: true, Spec: &store.IssueSpec{Harness: "codex"}}
+	key := sha256.Sum256([]byte(job.LeaseToken))
+	if _, err := w.journal.Exec("INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)", key[:], job.ExecutionID, job.TaskID, job.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.journal.Exec("INSERT INTO supervised_writers VALUES(?)", key[:]); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := parkedCheckpoint{Job: job, InitialTip: "base", GitDir: []byte("git"), Remaining: time.Minute, Trees: store.WorktreeTrees{Index: "index", Worktree: "tree"}}
+	for _, useExec := range []bool{false, true} {
+		w.codexAppServer = !useExec
+		if err := w.saveFinalization(ctx, &checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		var raw []byte
+		if err := w.journal.QueryRow("SELECT checkpoint FROM candidate_finalizations").Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(raw, []byte(`"SupervisedExec"`)) != useExec {
+			t.Fatal("App Server checkpoint encoding changed")
+		}
+		var q parkedCheckpoint
+		if err := json.Unmarshal(raw, &q); err != nil || q.SupervisedExec != useExec {
+			t.Fatal("wrong saved Codex transport", err)
+		}
+		w.codexAppServer = useExec
+		if err := w.resumeAssignedWriter(ctx, job.ExecutionID); err != nil {
+			t.Fatal("changing transports stopped the worker", err)
+		}
+		if saved, err := w.readFinalization(ctx, job.ExecutionID); err != nil || saved == nil || saved.SupervisedExec != useExec {
+			t.Fatal("replacement lost the original transport", err)
+		}
+	}
+}
 
 func TestSupervisedWriterFollowsOwnerUntilReceipt(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
