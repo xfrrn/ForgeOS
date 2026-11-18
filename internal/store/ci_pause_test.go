@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -73,7 +74,7 @@ func testCIPausePinsResumedExecution(t *testing.T, lost bool) {
 		ok(err)
 		ok(s.Abandon(ctx, first.ExecutionID))
 	} else {
-		ok(s.Complete(ctx, first.ExecutionID, first.LeaseToken, Result{Commit: sha, ExitCode: 1, Error: "stopped"}))
+		ok(s.Complete(ctx, first.ExecutionID, first.LeaseToken, Result{Commit: sha, SessionID: "s1", ExitCode: 1, Error: "stopped"}))
 	}
 	_, err = s.PublishGlobalRules(ctx, 1, "Future CI instructions")
 	ok(err)
@@ -100,6 +101,41 @@ func testCIPausePinsResumedExecution(t *testing.T, lost bool) {
 	paused, err := s.Task(ctx, task.ID)
 	if err != nil || paused.Status != "PAUSED" {
 		t.Fatal(paused.Status, err)
+	}
+	if !lost {
+		// Older nodes recorded the model session only in their final report.
+		_, err = s.db.ExecContext(ctx, "UPDATE executions SET ci_candidate_session=NULL WHERE id=$1", first.ExecutionID)
+		ok(err)
+	}
+	for _, event := range paused.Events {
+		switch event.Type {
+		case "execution_claimed", "ci_pause_requested", "ci_paused", "ci_resumed":
+		default:
+			continue
+		}
+		raw, err := s.EventAudit(ctx, p.ID, task.ID, event.ID)
+		ok(err)
+		var receipt struct {
+			Session string `json:"session_id"`
+			Payload struct {
+				Commit string
+				Exit   *int `json:"exit_code"`
+			}
+		}
+		ok(json.Unmarshal(raw, &receipt))
+		wantCommit, wantSession := sha, "s1"
+		if event.ExecutionID == nil {
+			t.Fatalf("missing execution ID for %s", event.Type)
+		}
+		if *event.ExecutionID == second.ExecutionID || (!lost && event.Type == "ci_pause_requested") {
+			wantSession = ""
+		}
+		if event.Type == "execution_claimed" {
+			wantCommit, wantSession = "", ""
+		}
+		if receipt.Payload.Commit != wantCommit || receipt.Session != wantSession || (receipt.Payload.Exit != nil) != (event.Type == "ci_paused") {
+			t.Fatalf("wrong CI evidence for %s: %s", event.Type, raw)
+		}
 	}
 	ok(s.CloseSourceIssue(ctx, p.ID, 8, TrackedIssue{ID: 11, Number: 1}, spec.Issue.URL, "not_planned", now, now))
 	reject(s.ControlCI(ctx, second.ExecutionID, true))

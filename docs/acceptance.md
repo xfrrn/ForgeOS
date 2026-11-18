@@ -57,6 +57,17 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="ci-pause-event-audit"></a>
+
+### 专题 06、10、13 · 从 CI 暂停与恢复事件核对固定候选
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 还原 beta #55 实际暂停 Docker CI 的 PostgreSQL 18 备份，从任务 1 下载原执行的三份事件回执，再重启回读 | 两次 Owner 请求与 Worker 回报都指向同一候选。工作台显示各事件当时可确认的原生会话和结果 | 修复前，事件 4 的暂停请求和事件 8 的恢复请求缺少候选。修复后三份回执均含 `aae51b5ff79b882a489d52e9869bd11aa3e47c11`。事件 4 的早期登记未保存 Session。事件 5、8 均可核对已回报的 `01a1e604-db7d-7882-9d40-5cccf796c57d`。两个 Owner 请求均无验证退出码。390 像素宽的 Chrome 下载与重启前的 API 一致。 |
+| 从 alpha #41 的工作台在执行 2 运行 Docker 验证期间暂停，重启后恢复，并重新下载回执 | 复验沿用原候选，仅运行 CI。请求和恢复回执可追溯到实际编写候选的原生会话 | 事件 6、7、8 指向原执行 2、候选 `b263797e01d00d9805f8775019c3e77867b43918` 和 Session `01a1f04e-fc8b-73f0-9ccf-4894120ef53f`。执行 3 在同一提交上验证通过，退出码为 0，没有新模型 Session。三份工作台下载逐份与 API 一致。 |
+
+首轮执行 1 验证通过时，验收脚本按工作树路径定位容器，错过了暂停时点。Owner 退回并要求添加一句说明后，按 Worker 的子进程定位实际 Docker 验证。上述回执来自执行 2 和后续复验。PR #42 通过必需检查后合并为 `05cb32b4f4024d4d3f2a6a7f9f38de41a2f00f9f`，Issue #41 已关闭。控制面重启后仍能下载三份原回执。旧备份与新任务证据为 `ci-pause-event/archive.json` 和 `ci-pause-event/live.json`。空 PostgreSQL 18 与真实 Docker 全包回归共 586 项具名测试及子测试通过，零失败、零具名跳过，另有三个包无测试文件。Go 静态检查通过。[Issue #41](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/41) · [PR #42](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/42)
+
 <a id="model-pause-audit"></a>
 
 ### 专题 07、13 · 从模型暂停事件追溯操作者、原生会话和工作树

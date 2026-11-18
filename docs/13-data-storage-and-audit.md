@@ -87,6 +87,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 领取回执标明节点，执行结果回执可含退出码、提交、Session 和验证信息。Owner 验收关联原决定与候选 SHA。取消请求与 Worker 最终回报分别归属各自的发起方，计划激活时记录 Owner 或 Management。历史记录按已保存的事实读取。旧取消记录无法区分发起方时保留未知，领取时亦不会附上事后才出现的结果。[操作、重放与下载核对](acceptance.md#task-event-audit)
 
+CI 的暂停请求、Worker 暂停回报、Owner 恢复请求均关联原执行已登记的候选 SHA。登记时保存了模型 Session 的执行可在三份回执中查到该会话。较早版本只在结算时记录 Session 的执行，可以在暂停回报与恢复时查到。只运行 CI 的执行保留自己的执行号，模型 Session 为空。[暂停与恢复的候选回执](acceptance.md#ci-pause-event-audit)
+
 模型暂停请求和恢复请求的发起方是 Owner，确认已暂停的发起方是保存检查点的 Worker。三种事件的下载回执按原执行关联原生 Session、进程实例及资源步骤。Worker 确认时，回执才开始显示当时保存的暂存区和工作树的 Git 树 SHA。若执行历史中某类事件的数量与该类暂停记录不符，该类旧事件的 Session 和实例保持未知。[工作台暂停、恢复及升级回读](acceptance.md#model-pause-audit)
 
 来源 Issue 关闭时，父任务和受影响子项的取消回执均可从 `payload.source_closure` 查到原 Issue、GitHub 关闭原因与时间、轮询观测时间。记录关闭的操作者为 `github_poller`，执行结算的操作者为回报节点。[父 Goal 及两个子项的四份回执](acceptance.md#source-closure-audit)

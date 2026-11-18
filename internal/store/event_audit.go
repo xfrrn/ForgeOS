@@ -28,6 +28,9 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                       OR (v.origin='worker' AND v.type IN ('owner_cancelled','source_issue_cancelled'))
                     THEN e.result END AS result,
                CASE WHEN v.type='execution_retry_requested' THEN e.abandoned_at END AS abandoned_at,
+               CASE WHEN v.type IN ('ci_pause_requested','ci_paused','ci_resumed') THEN e.ci_candidate END AS ci_commit,
+               CASE WHEN v.type IN ('ci_pause_requested','ci_paused','ci_resumed') THEN COALESCE(NULLIF(e.ci_candidate_session,''),
+                    CASE WHEN v.type='ci_resumed' AND e.result->>'commit'=e.ci_candidate THEN NULLIF(e.result->>'session_id','') END) END AS ci_session,
                CASE WHEN v.type='management_reviewed' THEN pr.review END AS plan_review,
                ar.decision,ar."commit" AS reviewed_commit,ar.actor AS reviewer,
                COALESCE(d."commit",f.old_delivery->>'commit') AS delivery_commit,
@@ -75,7 +78,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
         WHERE t.project_id=$1 AND t.id=$2 AND v.id=$3
     ) SELECT jsonb_build_object(
         'event_id',id,'sequence',id,'project_id',project_id,'task_id',task_id,'execution_id',execution_id,
-        'session_id',COALESCE(pause_session,NULLIF(result->>'session_id',''),plan_review->>'session_id',classification->>'session_id'),'event_type',type,'timestamp',at,
+        'session_id',COALESCE(pause_session,ci_session,NULLIF(result->>'session_id',''),plan_review->>'session_id',classification->>'session_id'),'event_type',type,'timestamp',at,
         'actor',CASE source WHEN 'worker' THEN worker WHEN 'owner' THEN COALESCE(reviewer,'owner') WHEN 'management' THEN 'management' WHEN 'controlplane' THEN 'delivery_manager'
                             WHEN 'github' THEN CASE WHEN type IN ('issue_imported','requirement_observed','source_cancel_requested','source_issue_cancelled') THEN 'github_poller' END END,
         'source',source,'correlation_id',CASE WHEN execution_id IS NULL THEN format('TASK-%s',task_id) ELSE format('EXECUTION-%s',execution_id) END,
@@ -83,7 +86,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
             'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,'source_closure',source_closure,
             'model_pause_instance',model_pause_instance,'resource_step',pause_step,'index_tree',pause_index,'worktree_tree',pause_worktree,
             'task_kind',CASE WHEN type='task_created' THEN kind END,
-            'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,NULLIF(result->>'commit','')),'base_commit',COALESCE(dependency_base,NULLIF(result->>'base_commit','')),
+            'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,ci_commit,NULLIF(result->>'commit','')),'base_commit',COALESCE(dependency_base,NULLIF(result->>'base_commit','')),
             'abandoned_at',abandoned_at,'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',
             'validation_profile',result#>>'{validation,profile}','validation_run',result#>>'{validation,run,id}',
             'decision',COALESCE(decision,plan_review->>'verdict'),'decision_level',plan_review->>'effective_level',
