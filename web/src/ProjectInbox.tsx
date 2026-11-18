@@ -31,19 +31,18 @@ export function ProjectInbox({ project, request }: { project: number; request: A
     return () => controller.abort()
   }, [before, project, request, revision])
 
-  async function convert(number: number, workType?: string, sourceDigest?: string) {
+  async function convert(number: number, selection: { work_type?: string; source_digest?: string; require_work_type?: boolean }) {
     if (conversion.current) return
     const controller = new AbortController()
     conversion.current = controller
     setConverting(number); setError('')
     try {
-      const input = { validation: 'auto', work_type: workType, source_digest: sourceDigest }
       const task = await request<{ id: number }>(`/projects/${project}/issues/${number}`, {
-        method: 'POST', body: JSON.stringify(input), signal: controller.signal,
+        method: 'POST', body: JSON.stringify({ validation: 'auto', ...selection }), signal: controller.signal,
       })
       if (!controller.signal.aborted) location.hash = '/tasks/' + task.id
     } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof ApiError && e.status === 409 && sourceDigest ? '来源 Issue 或任务类型已变化。请刷新讨论并核对。' : e instanceof Error ? e.message : '无法转换讨论。')
+      if (!controller.signal.aborted) setError(e instanceof ApiError && e.status === 409 && selection.source_digest ? '来源 Issue 或任务类型已变化。请刷新讨论并核对。' : e instanceof Error ? e.message : '无法转换讨论。')
     } finally {
       conversion.current = null
       if (!controller.signal.aborted) setConverting(0)
@@ -57,7 +56,7 @@ export function ProjectInbox({ project, request }: { project: number; request: A
     <form onSubmit={e => {
       e.preventDefault()
       const workType = new FormData(e.currentTarget).get('work_type')
-      void convert(Number(issueNumber), typeof workType === 'string' && workType ? workType : undefined)
+      void convert(Number(issueNumber), { require_work_type: true, work_type: typeof workType === 'string' && workType ? workType : undefined })
     }}>
       <fieldset disabled={!!converting}><legend>按编号派发 Issue</legend>
         <label>本项目 Issue 编号<input type="text" inputMode="numeric" pattern="[1-9][0-9]*" required value={issueNumber} onChange={e => {
@@ -88,7 +87,7 @@ export function ProjectInbox({ project, request }: { project: number; request: A
           <option value="">请选择并澄清类型</option>
           {Object.entries(workTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </select></label>}
-        <button className="button" disabled={loading || !!converting || !choice} onClick={() => void convert(row.number, row.source_digest ? choice : undefined, row.source_digest || undefined)}>
+        <button className="button" disabled={loading || !!converting || !choice} onClick={() => void convert(row.number, row.source_digest ? { work_type: choice, source_digest: row.source_digest } : {})}>
           {converting === row.number ? '正在转换…' : choice === 'development' ? '转为实现任务' : '转为规划任务'}</button>
       </div>
     </article>})}

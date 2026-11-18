@@ -140,7 +140,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     setBusy(true); setError(''); setMessage('')
     try {
       const item = await request<{ id: number }>(`/projects/${page.preview.project_id}/issues/${issueNumber}`, { method: 'POST',
-        body: JSON.stringify({ validation, harness, work_type: workType, feedback_source: { feedback_id: dispatching, task_id: task, preview,
+          body: JSON.stringify({ validation, harness, work_type: workType, require_work_type: true, feedback_source: { feedback_id: dispatching, task_id: task, preview,
           execution_id: page.preview.execution_id, commit: page.preview.commit } }) })
       setDispatching(0); setVersion(n => n + 1); setMessage(`已关联工作项 T-${item.id}。`)
     } catch (e) { setError(e instanceof Error ? e.message : '派发失败。') }

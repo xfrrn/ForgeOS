@@ -80,6 +80,7 @@ func TestImportSelectedGitHubIssue(t *testing.T) {
 	}{
 		{"selected", 200}, {"wrong-role", 401}, {"no-profile", 400}, {"remote-mismatch", 409},
 		{"issue-mismatch", 409}, {"pull-request", 409}, {"closed", 409}, {"missing", 404}, {"timeout", 504},
+		{"require-type", 409},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := &importFixture{path: project}
@@ -122,6 +123,9 @@ func TestImportSelectedGitHubIssue(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc("POST /projects/{id}/issues/{number}", authorized("owner-token", importIssue(data, root, get)))
 			body, token := `{"validation":"docs"}`, "owner-token"
+			if tc.name == "require-type" {
+				body = `{"validation":"docs","require_work_type":true}`
+			}
 			if tc.name == "no-profile" {
 				body = `{}`
 			}

@@ -11,7 +11,7 @@
 - 本地 Poller 为主，Webhook 为补充。
 - GitHub 事件需要身份验证、去重和原始记录。
 
-Owner 可在项目的「讨论收件箱」按编号派发本仓库的开放 Issue，无需等待轮询。默认沿用远端声明的类型；遇到待澄清的 Issue，选定工作类型后再提交。重复派发会打开原工作项。[工作台验收](acceptance.md#web-issue-number)
+Owner 可在项目的「讨论收件箱」按编号派发本仓库的开放 Issue，无需等待轮询。默认沿用远端声明的类型。远端没有类型或类型冲突时，表单提示 Owner 选定工作类型后再提交。重复提交相同的派发会打开原工作项。按编号派发和预览反馈表单都向导入接口传入 `require_work_type: true`。[工作台验收](acceptance.md#web-issue-number) · [普通讨论的类型确认](acceptance.md#untyped-owner-dispatch)
 
 启用 Webhook 的项目逐条保存已验证的原始 JSON 字节、事件名、投递 UUID、仓库 ID、接收时间和 SHA-256。Owner 从 `GET /projects/{id}/github-events` 查看摘要，按最后一条的数字 `id` 传入 `?before=` 可继续翻页，每页最多 100 条。访问 `GET /projects/{id}/github-events/{delivery_uuid}` 可读回原文。原文可能包含私有 Issue 与评论内容，随项目数据库一起备份。
 

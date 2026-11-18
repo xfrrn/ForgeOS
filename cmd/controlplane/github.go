@@ -124,14 +124,15 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			return
 		}
 		var input struct {
-			Validation   string                `json:"validation"`
-			Mode         string                `json:"mode"`
-			Harness      string                `json:"harness"`
-			TaskType     string                `json:"task_type"`
-			WorkType     string                `json:"work_type"`
-			SourceDigest string                `json:"source_digest"`
-			Target       string                `json:"target"`
-			Feedback     *store.FeedbackSource `json:"feedback_source"`
+			Validation      string                `json:"validation"`
+			Mode            string                `json:"mode"`
+			Harness         string                `json:"harness"`
+			TaskType        string                `json:"task_type"`
+			WorkType        string                `json:"work_type"`
+			RequireWorkType bool                  `json:"require_work_type"`
+			SourceDigest    string                `json:"source_digest"`
+			Target          string                `json:"target"`
+			Feedback        *store.FeedbackSource `json:"feedback_source"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -207,7 +208,7 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			}
 			issue.WorkType = input.WorkType
 		}
-		if issue.WorkType == "clarification" {
+		if issue.WorkType == "clarification" || (input.RequireWorkType && !store.ValidWorkType(issue.WorkType)) {
 			problem(w, http.StatusConflict, "select an Issue work type before dispatch")
 			return
 		}

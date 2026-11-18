@@ -92,6 +92,20 @@
 
 运行回执为 `owner-web-writer-delivery/current/receipt.json`。[来源 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/278) · [PR #279](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/279) · [必需检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44376900317)
 
+<a id="untyped-owner-dispatch"></a>
+
+### 专题 01、11、12 · 普通讨论没有工作类型时由 Owner 决定
+
+beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按编号派发、保留「沿用 Issue 类型」，控制面返回 HTTP 200 并将其作为写入任务排队。此次复现未启动 Worker。修复后在独立 PostgreSQL 18 和 390 像素 Chrome 复验。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在空收件箱按编号再次派发 #235 | 先提示明确工作类型，Owner 可以选只读调查 | 默认提交返回 409，任务数为零；选「调查」后创建任务 1，类型为 `investigation`、模式为 `plan`，重启后规格相同。 |
+| 从两条已由 Management 分类的预览反馈派发 #235 和 #245 | 无类型的讨论须明确选择，有类型的 Issue 可沿用。发生冲突时不写派发回执 | #235 默认提交返回 409；选「测试」后创建任务 2 并记录 Owner 定类。#245 选择相冲的「开发」返回 409，沿用其声明的「测试」后创建任务 3。两个目标都是只读规划，重启后两份关联回执一致。 |
+| 重放已声明和需澄清的两个编号，再使用原 API 请求格式导入无声明的 #236 | 两个网页入口维持类型检查，原 API 调用保持既有兼容行为 | #245 重放仍对应一个任务，#247 澄清前没有新任务；未传新字段的独立 API 调用仍按原格式成功导入 #236。 |
+
+原始回执为 `untyped-owner-baseline.json`、`untyped-owner-fixed.json`、`untyped-feedback-live/latest.json`、`require-work-type-replay.json`。TypeScript 和前端生产构建、Go 静态检查通过。[普通讨论 #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235)
+
 <a id="workbench-failed-execution-retry"></a>
 
 ### 专题 06、13、16 B.5 · 从工作台重试失败的 Issue 执行
