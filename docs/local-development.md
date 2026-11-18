@@ -316,3 +316,5 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 重启 Management、Curator、Test Agent 或 Reviewer 时，保持原 FORGEOS_API_URL、FORGEOS_WORKER_ID 和 FORGEOS_WORKER_STATE_DIR，并配置该角色当前有效的凭据。节点先补报本身份已写入 SQLite 的结果，再领取作业。凭据错误时不要删除日志；修复角色令牌后重启。控制面接收的重复结果保持幂等，过时结果按 409 冲突结束，不覆盖新修订。需要排查时，在私有角色 SQLite 的 role_receipts 查看 path、buffered_at、settled_at、status；不要把待发正文中的租约复制到公开日志。
 
 这个入口仅恢复已持久化的最终结果。运行中的模型会话中断及尚未记录的领取仍按原租约处理，不能宣称会自动接回原会话。
+
+若模型已经退出而控制面暂时不可达，同时检查 role_process_receipts 与 role_receipts。重启会先补报退出、再提交原结果；401／403 时修复同一角色的授权后重启，不删除私有日志。409 退出冲突保留在 conflicting_report 中，最终结果仍按自己的端点结算；不要把退出冲突解释为任务完成。

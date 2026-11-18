@@ -15,10 +15,10 @@ import (
 )
 
 func (w *worker) runReviewer(ctx context.Context) error {
-	if err := w.replayRoleReceipts(ctx, "reviewer"); err != nil {
-		return err
-	}
 	for ctx.Err() == nil {
+		if err := w.replayRoleReceipts(ctx, "reviewer"); err != nil {
+			return err
+		}
 		var job store.ReviewJob
 		status, err := w.post(ctx, "/internal/reviewer/claim?supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
 		if status == http.StatusNoContent || temporary(status) {

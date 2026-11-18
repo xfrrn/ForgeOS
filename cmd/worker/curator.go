@@ -14,10 +14,10 @@ import (
 const extractionSchema = `{"type":"object","additionalProperties":false,"required":["facts"],"properties":{"facts":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["statement","quote"],"properties":{"statement":{"type":"string"},"quote":{"type":"string"}}}}}}`
 
 func (w *worker) runCurator(ctx context.Context) error {
-	if err := w.replayRoleReceipts(ctx, "curator"); err != nil {
-		return err
-	}
 	for ctx.Err() == nil {
+		if err := w.replayRoleReceipts(ctx, "curator"); err != nil {
+			return err
+		}
 		var job store.CurationJob
 		status, err := w.post(ctx, "/internal/curator/claim?supports_process=1&supports_budget_deadline=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {

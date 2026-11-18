@@ -87,6 +87,11 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
  buffered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, settled_at TEXT, status INTEGER,
  conflicting_result TEXT, PRIMARY KEY(lease_hash,path)
  );
+ CREATE TABLE IF NOT EXISTS role_process_receipts (
+ instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance), report BLOB,
+ buffered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, settled_at TEXT, status INTEGER,
+ conflicting_report TEXT
+ );
  CREATE TABLE IF NOT EXISTS parked_questions (
 		lease_hash BLOB PRIMARY KEY REFERENCES attempts(lease_hash), checkpoint BLOB NOT NULL
 	);

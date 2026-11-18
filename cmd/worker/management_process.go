@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"forgeos/internal/store"
@@ -47,6 +48,10 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		return "", err
 	}
 	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	// A quote-repair turn cannot overtake the previous turn's exit observation.
+	if err = w.replayRoleProcesses(ctx, db, role); err != nil {
+		return "", err
+	}
 	recorder := *w
 	recorder.journal = db
 	updates := make(chan struct{}, 1)
@@ -91,9 +96,19 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 	session, turnErr := run(reporting, process)
 	stop()
 	<-done
-	// Persist the actual exit before allowing the role result to advance its source.
+	p, err := scanHarnessProcess(db.QueryRow(readHarnessProcess+" WHERE lease_hash=? ORDER BY instance DESC LIMIT 1", key[:]))
+	if err != nil {
+		return session, errors.Join(turnErr, err)
+	}
+	target.Process = p
+	if err = bufferRoleProcess(db, target); err != nil {
+		return session, errors.Join(turnErr, err)
+	}
+	// Delivery failure must not discard a completed model result; its receipt waits for this exit.
 	call, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err = report(call)
-	return session, errors.Join(turnErr, err)
+	if err = w.replayRoleProcesses(call, db, role); err != nil {
+		log.Printf("%s process exit remains buffered: %v", role, err)
+	}
+	return session, turnErr
 }

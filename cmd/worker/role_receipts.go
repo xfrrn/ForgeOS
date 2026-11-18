@@ -83,6 +83,9 @@ func (w *worker) roleReceipt(ctx context.Context, path string, body any) (status
 }
 
 func (w *worker) sendRoleReceipt(ctx context.Context, db *sql.DB, key []byte, path string, raw json.RawMessage) (int, error) {
+	if err := w.replayRoleProcesses(ctx, db, roleForReceipt(path)); err != nil {
+		return 0, err
+	}
 	for ctx.Err() == nil {
 		status, _ := w.post(ctx, path, raw, nil)
 		if status == 204 || status == 409 {
@@ -105,6 +108,9 @@ func (w *worker) replayRoleReceipts(ctx context.Context, role string) (resultErr
 		return err
 	}
 	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	if err = w.replayRoleProcesses(ctx, db, role); err != nil {
+		return err
+	}
 	for ctx.Err() == nil {
 		var key, raw []byte
 		var path string

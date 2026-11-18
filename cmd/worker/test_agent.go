@@ -10,10 +10,10 @@ import (
 )
 
 func (w *worker) runTestAgent(ctx context.Context) error {
-	if err := w.replayRoleReceipts(ctx, "test-agent"); err != nil {
-		return err
-	}
 	for ctx.Err() == nil {
+		if err := w.replayRoleReceipts(ctx, "test-agent"); err != nil {
+			return err
+		}
 		var job store.TestPlanJob
 		status, err := w.post(ctx, "/internal/test-agent/claim?supports_process=1&supports_candidate_context=1&supports_budget_deadline=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {
