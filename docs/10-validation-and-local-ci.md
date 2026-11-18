@@ -150,16 +150,18 @@ Runner 读取基础提交的配置，在候选文件的隔离副本中运行。�
 
 ## 6. 失败分类
 
-- CODE_FAILURE；
-- BUILD_FAILURE；
-- TEST_ENV_FAILURE；
-- INFRA_FAILURE；
-- TIMEOUT；
-- CANCELLED（执行上下文已取消）；
-- CONFIG_FAILURE；
-- SECURITY_FAILURE。
+| 失败分类 | 实际操作与结果 | 验收运行 | ForgeOS 提交 |
+| --- | --- | --- | --- |
+| `CODE_FAILURE` | 静态检查退出 17，后续构建通过 | `ci-run-2039370869` | `ee695b3` |
+| `BUILD_FAILURE` | 静态检查通过，构建退出 3 | `ci-run-463143553` | `ee695b3` |
+| `TEST_ENV_FAILURE` | 本地引擎可用，指定镜像不存在，未启动检查 | `ci-run-4054238225` | `e91fcfd` |
+| `INFRA_FAILURE` | 本地引擎不可连接，未启动检查 | `ci-run-322250927` | `e91fcfd` |
+| `TIMEOUT` | 检查超过 2 秒期限，退出码为空，后续构建通过 | `ci-run-2997616261` | `ee695b3` |
+| `CANCELLED` | Owner 取消执行上下文，build 保留空退出码，已完成项与 5 份文件可核验 | `ci-run-2538423736` | `84758c5` |
+| `CONFIG_FAILURE` | 对只有 fast 方案的配置请求 V4，检查列表为空 | `ci-run-3724755984` | `ee695b3` |
+| `SECURITY_FAILURE` | 必需的安全检查未找到 NOTICE，退出 1 | `ci-run-1881127115` | `e91fcfd` |
 
-基础设施故障不应被当成代码缺陷。 固定候选运行声明检查时，本地 Docker 引擎不可连接记为 INFRA_FAILURE；引擎可用并确认缺少所配镜像时记为 TEST_ENV_FAILURE。必需的 security 检查返回失败则记为 SECURITY_FAILURE，并保留实际退出码。[三种场景的正式 Runner 回执](acceptance.md#ci-engine-failure-classification)
+基础设施故障不应被当成代码缺陷。固定候选运行声明检查时，本地 Docker 引擎不可连接记为 INFRA_FAILURE；引擎可用并确认缺少所配镜像时记为 TEST_ENV_FAILURE。必需的 security 检查返回失败则记为 SECURITY_FAILURE，并保留实际退出码。[八类失败的回执与复核方式](acceptance.md#ci-eight-failures)
 
 关闭来源 Issue 时，已开始的容器检查会随 Worker 中断。运行和被中断的检查记录 CANCELLED，该检查的退出码为空。已完成的检查、候选 SHA 和写入的日志仍可按运行回执读取。
 

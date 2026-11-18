@@ -135,6 +135,14 @@ beta Issue #8 规定了 `CanEnqueue` 的业务语义、表驱动测试和四类�
 
 原始证据为 `project-config-restore/latest.json` 与同目录 `single-v1/config-sources.json`。固定提交验证方案、风险选级与归档仓库清单分别见 `35866ba`、`fdc4192`、`e73088c`。
 
+<a id="ci-eight-failures"></a>
+
+### 专题 10 · 八类 CI 失败的逐项核对
+
+使用 `e91fcfd` 的正式 Worker 在 Windows 与本机 Linux 容器上运行七种失败场景。静态检查退出 17、构建退出 3、静态检查超过 2 秒期限，分别得到 CODE_FAILURE、BUILD_FAILURE 和 TIMEOUT，其他检查的通过结果仍可回读。对同一份仅声明 fast 方案的 Git 配置请求 V4，得到 CONFIG_FAILURE，零个检查启动。另三项为[引擎不可连接、缺少镜像与必需安全检查失败](#ci-engine-failure-classification)。
+
+第八项使用[Owner 在工作台取消活动 CI 的原始执行](#owner-cancel-active-ci)。以当前 `worker verify-ci-run` 核对原候选 `b2bf1acda60f9adfa8eef62c527a75cfb75e26e9` 的 `ci-run-2538423736`。format 和 unit 均退出 0；build 与整次运行为 CANCELLED，build 退出码为空。5 份文件均通过校验。该项是本版回读已取消的真实运行。逐项运行号与实现 SHA 见[失败分类对照表](10-validation-and-local-ci.md#6-失败分类)，回执为 `ci-failure-classes/after.json`、`ci-failure-classes/other-classes.json`。
+
 <a id="ci-engine-failure-classification"></a>
 
 ### 专题 10 · 区分本地 Docker 引擎故障、缺少镜像与安全检查失败
@@ -2637,6 +2645,8 @@ Cargo 工作区清单对应 ForgeOS 提交 `9e9e55269894dcb65e904c1906e07d539b73
 启用 PostgreSQL 18 和 Docker 的全量 Go 回归 149 项通过，零测试跳过。Go 静态检查、TypeScript 检查和 Web 生产构建通过。
 
 Maven 清单对应 ForgeOS 提交 `9e88bdd57971956e382d9141057b4ed9861e6fe7`。
+
+<a id="owner-cancel-active-ci"></a>
 
 ## 专题 06、10 · Owner 从工作台取消运行中的 CI
 
