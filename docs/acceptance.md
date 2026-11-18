@@ -14,7 +14,7 @@
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。[Claude 原生失败和工作台取消](#supervised-claude)已验。[Linux 断电后的工作树与结果补报](#linux-power-loss-worktree)已验。Claude 成功交付、Reviewer 成功审查及活动模型的整机重启恢复仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方、独立 Staging 接收外部提供方的真实回调。 |
-| 路线一至四最终复验 | 已重新执行[基座的中断补报](#foundation-before-report)、[单项目交付](#single-project-273)和[双子项 Goal](#dependent-goal-275)。阶段四已将[两个离线节点的原始回执与 GitHub 交付记录](#offline-node-deliveries)逐项核对。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
+| 路线一至四最终复验 | 已在候选批准依据实现版本 `83640fa` 重新执行[基座的中断补报](#foundation-before-report)、[单项目交付](#single-project-287)和[双子项 Goal](#dependent-goal-289)。阶段四已将[两个离线节点的原始回执与 GitHub 交付记录](#offline-node-deliveries)逐项核对。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
 
 2026-11-19 再以只读权限启动原生 Claude，会话 `93b56ffe-419e-40cf-9e17-bc02ce26dd03` 收到五个事件，提供方报告 HTTP 403 和余额不足。未取得成功读取工具的回执，B.2、B.4、C.3 维持部分验收。脱敏回执为 `native-claude-tool-20261119-025122.json`。
 
@@ -56,12 +56,20 @@
 | 专题 04、ADR-007，返工前后的验收记录各自关联原候选 | [任务 3 的记录 #2、#3 与 PR #277](#candidate-record-identity) | `683d14fed8f47a568420cc9df652012e304c3198` |
 | 专题 03、10，本地 CI 容器资源和临时工作树 | [Linux 上通过、失败、超时三次运行](#ci-resource-worktree) | `4ef15ca556ab794649d71edff1d32c406241d4df` |
 | 专题 03 的控制面、Worker 与横向能力 | [33 项模块职责的实测入口和提交](03-module-catalog.md) | `aa53425b1415dc2223be90f2b7e31e25f4503286` |
+| 专题 10、14，数据库和 Git 恢复后可重现项目配置 | [配置清单、验证方案、风险等级和保留策略](#project-config-restore) | `6d035d8ead1789dc975855e47f3e5f6a09fa3ae0` |
+| 专题 04、10、13，批准记录保留当时的审查和测试要求 | [批准门禁、计划修订与重启后重新下载](#candidate-approval-basis) | `83640fa4832a621a55624789dea21e2fbc4d50d1` |
+| 阶段一，批准依据版本的基座复验 | [同一执行补报、新任务串行与重复回报](#foundation-before-report) | `863f0daa053ccba2a897e711439f60de99578059` |
+| 专题 04，18 个领域对象与六条幂等一致性要求 | [对象、实际使用入口与实现提交](04-domain-model.md) | `90913349f85403534bece4ccce36c31897880ce2` |
+| 阶段二，单项目交付后仍能读回原验收依据 | [beta #287、PR #288 与同一候选的两次必需检查](#single-project-287) | `f4f57c16746b2a9982233be47971de464bb0b44d` |
+| 专题 05，D0–D3 各一类实际决策 | [候选的八个队列用例、项目决定查阅与 Owner 答复](05-agent-roles-and-decisions.md#2-决策等级) | `17c5158102e928bf649256598ee2ac1c0e9eea21` |
+| 阶段三，返工批准、父 Issue 关闭及归档恢复 | [beta #289、两个 PR、三个本地运行与 15 份归档文件](#dependent-goal-289) | `385e28f4f4adfae1889cda331e002a6b40861777` |
 
 业务问题审核、历史计划回填、验收记录编号三次代码变更分别在空 PostgreSQL 18 和真实 Docker 上通过 586 项具名测试及子测试，均无失败或跳过。原始回归记录依次为 `advice-audit-regression.jsonl`、`planner-event-revision-regression.jsonl` 和 `acceptance-id-regression.jsonl`。
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
 | 在空 PostgreSQL 18 与真实 Docker 运行 `go test -count=1 -json ./...`、`go vet ./...`、生产工作台构建，构建正式控制面与 Worker | 当前版本所有具名测试和构建通过 | 9 个包内共 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 与 Vite 生产构建通过。回执为 `roadmap-3296a47-regression.jsonl`。 | `3296a47fcbcb614aa81c8cc10d8040abe0523810` |
+| 在空 PostgreSQL 18 与实际 Docker 上运行候选批准依据版本的全包测试，运行 Go 静态检查并构建生产工作台 | 具名测试及子测试全部通过，静态检查及构建成功 | 586 项通过，0 失败、0 跳过，另有 3 个包无测试文件。`go vet ./...`、TypeScript 和 Vite 生产构建通过。完整回执为 `approval-basis-83640fa-regression.jsonl`。 | `83640fa4832a621a55624789dea21e2fbc4d50d1` |
 | 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 从当前提交构建控制面、Worker 与工作台，运行 `go vet ./...`，在非 root Ubuntu 上运行适配器不匹配和活跃写入跟踪专项 | 构建、静态检查和两项跨平台专项成功 | 工作台 TypeScript 和 Vite 生产构建成功。Windows 和 Ubuntu 两项 Worker 专项均通过。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
