@@ -14,6 +14,20 @@
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
 
+<a id="operations-planner-context"></a>
+
+### 专题 01、08、16 C.7 · 运维任务的只读规划依据
+
+2026-11-18，创建真实 [beta Issue #249](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/249)，要求为恢复后的 CI 证据制定核对计划。通过正式控制面的 Issue 入口派发，使用本机 Windows Worker 和原生 Codex 生成修订 1。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 发布全局规则，要求在计划中写出本次的检查点名，再导入带 Operations 前缀的 Issue | 采用冻结规则和运维类型，在固定提交读取适用手册 | 任务 #1 识别为 operations，模式为 plan，基础提交 6114d2205497635a8f25348f3df0bb8057048817。原生输入含运维角色说明和检查点名 Runbook gate 4319de9b；实际工具调用读取了 docs/check-log-restore.md。 |
+| 核对原生会话、Git 工作区及计划修订 | 在只读环境生成计划，计划指出适用环境、依据和核对方法 | 会话 01a1ee41-aa96-7f13-bf9d-7d1d6c6c5e5b 的沙箱为 read-only，审批为 never，正常退出 0。计划引用 beta 目标分支、恢复手册、git show 和 git merge-base --is-ancestor 的核对命令，列出现场仍需提供的持久化证据。工作区仍在原 SHA 且干净，任务没有交付记录。 |
+| 重启控制面后，从 390 像素宽 Chrome 打开任务的计划修订 1 | 能从历史计划复核这次使用的路径和检查点 | 计划 API 与重启前逐字段一致，任务页可见手册路径和本次检查点名。 |
+
+操作脚本 operations-plan-live.py，实测回执 operations-planning/latest.json。普通开发规划和运维规划的适配器分支均通过独立测试。
+
 <a id="shared-experience-search"></a>
 
 ### 专题 08、16 C.7 · 接收项目检索已发布的脱敏经验
@@ -27,7 +41,7 @@
 | 以错误身份和越权节点发起查询，检查实际发送给编码服务的内容 | 先授权、后编码，源项目私有资料和待审核的 #3 保留在源项目 | 分别返回 401、403，未产生编码请求；合法请求只涉及查询和已发布副本，未包含源资料位置、私有正文标记或草稿标记。 |
 | 由源项目撤销 #1，刷新接收项目、再从节点及重启后的控制面查询 | 已撤销副本立即退出结果，删除其缓存 | #1 的缓存已清除，#2 的 384 维缓存保留；工作台、节点和重启后查询均未返回 #1。PostgreSQL 回归另在编码响应返回前执行撤销，旧模型和正在写入的新模型均无残留。 |
 
-首次试用的食堂菜单被 Management 退回，理由为缺少其他项目可复用的经验。上述两条发布记录分别为恢复手册和字体可读性检查，审核会话为 01a1ee3d-bf4a-7632-b312-9a690d6c4726、01a1ee3d-f014-7a70-91d8-f89c5c7dcec0。运行记录为 shared-semantic/latest.json，数据库为 forgeos_decisions_ecfe28b7。全包回归 shared-semantic-regression.jsonl 共 536 项测试和子测试通过，另有撤销并发场景的独立回归通过。
+首次试用的食堂菜单被 Management 退回，理由为缺少其他项目可复用的经验。上述两条发布记录分别为恢复手册和字体可读性检查，审核会话为 01a1ee3d-bf4a-7632-b312-9a690d6c4726、01a1ee3d-f014-7a70-91d8-f89c5c7dcec0。实现提交为 `cf3fbbe10453e03e0bd6a2c67d236f6432c76c6d`。运行记录为 shared-semantic/latest.json，数据库为 forgeos_decisions_ecfe28b7。全包回归 shared-semantic-regression.jsonl 共 536 项测试和子测试通过，另有撤销并发场景的独立回归通过。
 
 <a id="startup-log-download"></a>
 

@@ -224,6 +224,12 @@ func TestMain(m *testing.M) {
 		if err != nil || !strings.Contains(args, "--ignore-user-config") || !strings.Contains(args, "--output-schema") || os.Getenv("FORGEOS_WORKER_TOKEN") != "" || os.Getenv("GH_TOKEN") != "" {
 			os.Exit(2)
 		}
+		if strings.Contains(string(body), "Plan fixture") {
+			operations := strings.Contains(string(body), `"work_type":"operations"`)
+			if operations != strings.HasPrefix(string(body), "Prepare an operations plan using read-only discovery") {
+				os.Exit(2)
+			}
+		}
 		for k, arg := range os.Args {
 			if arg == "--output-last-message" && k+1 < len(os.Args) {
 				output := `{"objective":"Handbook","milestones":[{"name":"Docs","items":[{"key":"example","objective":"Write example","scope":"README","acceptance_criteria":"Example exists","deliverables":"Example"}]}]}`
@@ -491,17 +497,21 @@ func TestCodexCommentCheckpointResumesThread(t *testing.T) {
 func TestReadOnlyPlanner(t *testing.T) {
 	t.Setenv("FORGEOS_WORKER_TOKEN", "worker-test-secret")
 	t.Setenv("GH_TOKEN", "github-test-secret")
-	w, job, base := fixture(t)
-	w.codex, _ = os.Executable()
-	w.planner = true
-	job.Kind = "codex_issue"
-	job.Spec = &store.IssueSpec{Issue: store.Issue{Number: 42, Title: "Plan README"}, Mode: "plan", BaseCommit: base, Validation: "docs"}
-	res := w.execute(context.Background(), job)
-	if res.ExitCode != 0 || res.Plan == nil || res.Commit != "" || res.Validation != nil || res.SessionID != "planner-test" || res.BaseCommit != base {
-		t.Fatalf("unexpected plan result: %+v", res)
-	}
-	if git(t, job.Workspace, "status", "--porcelain") != "" || git(t, job.Workspace, "rev-parse", "HEAD") != base {
-		t.Fatal("planner modified checkout")
+	for _, workType := range []string{"development", "operations"} {
+		t.Run(workType, func(t *testing.T) {
+			w, job, base := fixture(t)
+			w.codex, _ = os.Executable()
+			w.planner = true
+			job.Kind = "codex_issue"
+			job.Spec = &store.IssueSpec{Issue: store.Issue{Number: 42, Title: "Plan fixture", WorkType: workType}, Mode: "plan", BaseCommit: base, Validation: "docs"}
+			res := w.execute(context.Background(), job)
+			if res.ExitCode != 0 || res.Plan == nil || res.Commit != "" || res.Validation != nil || res.SessionID != "planner-test" || res.BaseCommit != base {
+				t.Fatalf("unexpected plan result: %+v", res)
+			}
+			if git(t, job.Workspace, "status", "--porcelain") != "" || git(t, job.Workspace, "rev-parse", "HEAD") != base {
+				t.Fatal("planner modified checkout")
+			}
+		})
 	}
 }
 
