@@ -24,6 +24,21 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="feedback-event-audit"></a>
+
+### 专题 11、13 · 从反馈事件查到当次截图、录屏和分类
+
+2026-11-19，将实际预览验收的数据库备份恢复到 PostgreSQL 18，在 Windows 正式控制面、Management Worker、原生 Codex 和 390 像素 Chrome 上复验。候选为 `304948ec31c7e6616230934f8d6de1b97f6da2cf`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在升级前后分别从任务页下载事件 8 | 从旧记录恢复可唯一识别的截图 | 旧回执的来源为空，缺反馈和工件编号。升级后为 Owner、反馈 4、工件 1，PNG 共 2731 字节，SHA-256 与原归档一致。另在可回滚事务中分别构造一条证据匹配两个事件、一个事件匹配两条证据，两种歧义均保留未知，其他唯一匹配仍恢复成功。 |
+| 在同一执行通过 Owner API 提交两条反馈，各重复提交一次，向两条反馈分别重复上传一张 PNG 和一段 WebM | 每次重试取得原编号，两类媒体各关联自己的反馈 | 反馈 7 对应截图 10（161 字节），反馈 9 对应录屏 12（526 字节）。事件 9–12 分别记录两次接收和两次归档，摘要与各自的媒体记录匹配。 |
+| 启动正式 Management 节点，让 Codex 独立分类，在工作台逐条下载 | 保留当次分类与 Session，较早的 Owner 回执只带当时已知的信息 | 事件 17、18 各有独立 Session，与相应原生进程的退出码 0 回执匹配，两条均归类为 acceptance。七份浏览器下载与各自 API 响应逐项相同。 |
+| 将截图、录屏保留期限各设为一秒，到期后读取工件并重启控制面 | 文件到期仍可核查原事件 | 两个工件均返回 HTTP 410。到期后及控制面重启后，七份事件回执逐字段保持一致。 |
+
+升级前记录为 `feedback-audit-baseline/latest.json`，七份回执、空关联验证及重启结果为 `feedback-audit-verified/latest.json`。外部设备经 Tailscale 访问预览仍待验收。
+
 <a id="delivery-event-audit"></a>
 
 ### 专题 12、13 · 交付回执绑定原 PR 和 Goal 完成时的子项
@@ -37,6 +52,8 @@
 | 将 beta #178 真实交付时留存的任务详情 JSON 中的执行、验收、交付、换基和五条事件记录重放到空 PostgreSQL 18，重启后逐条下载，并向 GitHub 回读旧、新 PR | 事件 11、19 保留原执行 2 和旧 PR #179；只有 19 含新基线和重验候选。事件 25、26、27 指向执行 4、替代 PR #182。新合并 SHA 只出现在 26、27；GitHub 确认旧 PR 已关闭、未合并。本次使用原任务详情归档重放，未重新执行换基。[旧 PR #179](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/179) · [替代 PR #182](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/182) |
 
 回执为 `delivery-audit-{270,goal,refresh}/latest.json`。换基原始任务 JSON 的 SHA-256 为 `f83fc6431ab4e3ce6924d6595cc3b7d9db17faf4843ba6ac6a13335bcb2ad7f8`。本轮还在 PostgreSQL 验证了双子项 Goal 的冻结快照及同一 PR 在换基前后回执逐字段相同。
+
+实现提交 `8015110ff2ea92d45cc9f197715cfba00926d6c3`。全新 PostgreSQL 18 与真实 Docker 回归共 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。报告为 `delivery-audit-regression.jsonl`。
 
 <a id="task-event-audit"></a>
 

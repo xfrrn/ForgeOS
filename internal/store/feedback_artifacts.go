@@ -128,7 +128,7 @@ func (s *Store) SaveFeedbackMedia(ctx context.Context, task int64, preview strin
 			return a, RetentionExpiry{media.expired, revision.Int64}
 		}
 	} else if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES($1,$2,$3)`, task, execution, media.event)
+		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,feedback_id,feedback_artifact_id) VALUES($1,$2,$3,$4,$5)`, task, execution, media.event, feedback, a.ID)
 	}
 	if err != nil {
 		return a, err

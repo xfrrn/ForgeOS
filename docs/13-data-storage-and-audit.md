@@ -89,6 +89,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 交付事件在 `payload` 保存当次 PR 编号、链接、目标分支和候选 SHA。只有合并、交付完成事件带有合并 SHA。换基事件另外给出 `new_base` 和 `new_candidate`，原 PR 使用原执行的已归档记录。Goal 完成事件的 `completed_goal` 来自完成时保存的计划修订和子项交付快照。[原 PR、换基和 Goal 的回执](acceptance.md#delivery-event-audit)
 
+预览反馈的四种时间线回执均关联原反馈编号和候选 SHA。Owner 提交反馈或上传媒体，Management 分类时记录类别和原生 Session。截图和录屏的回执包含工件编号、MIME、字节数和 SHA-256，文件到期后仍可核对。升级时仅回填能与同一事务中的历史记录唯一匹配的关联。[归档升级、重复上传、分类及到期验证](acceptance.md#feedback-event-audit)
+
 ## 3. 审计
 
 审计记录：

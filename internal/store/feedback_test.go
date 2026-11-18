@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,30 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 	f.Note = "different observation"
 	if _, err = s.SubmitPreviewFeedback(ctx, task.ID, preview.ID, f); !errors.Is(err, ErrConflict) {
 		t.Fatalf("changed replay: %v", err)
+	}
+	checkReceipt := func(t *testing.T, kind, source, session string, fields map[string]any) {
+		t.Helper()
+		var event int64
+		if err := db.QueryRowContext(ctx, "SELECT id FROM task_events WHERE task_id=$1 AND type=$2 ORDER BY id LIMIT 1", task.ID, kind).Scan(&event); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := s.EventAudit(ctx, p.ID, task.ID, event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var receipt struct {
+			Session string         `json:"session_id"`
+			Source  string         `json:"source"`
+			Payload map[string]any `json:"payload"`
+		}
+		if err := json.Unmarshal(raw, &receipt); err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"feedback_id": float64(first), "commit": sha}
+		maps.Copy(want, fields)
+		if receipt.Source != source || receipt.Session != session || !maps.Equal(receipt.Payload, want) {
+			t.Fatal(kind, string(raw))
+		}
 	}
 	t.Run("screenshot receipt follows storage and scope", func(t *testing.T) {
 		digest := strings.Repeat("a", 64)
@@ -132,6 +157,9 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if _, err := s.FeedbackArtifact(ctx, task.ID, preview.ID, first, fresh.ID); err != nil {
 			t.Fatal(err)
 		}
+		checkReceipt(t, "feedback_screenshot_saved", "owner", "", map[string]any{
+			"artifact_id": float64(id), "mime": "image/png", "bytes": float64(42), "sha256": digest,
+		})
 	})
 	t.Run("recording expiry is independent of screenshots", func(t *testing.T) {
 		write := func(string) error { return nil }
@@ -160,6 +188,9 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if err = s.PurgeFeedbackArtifacts(ctx, func(k string) error { removed = append(removed, k); return nil }); err != nil || len(removed) != 1 || removed[0] != clip.Key {
 			t.Fatal(removed, err)
 		}
+		checkReceipt(t, "feedback_recording_saved", "owner", "", map[string]any{
+			"artifact_id": float64(clip.ID), "mime": "video/webm", "bytes": float64(128), "sha256": clip.SHA256,
+		})
 	})
 	t.Run("management lease and provenance", func(t *testing.T) {
 		if j, err := s.ClaimFeedback(ctx, p.ID+1, true, false); err != nil || j != nil {
@@ -265,6 +296,9 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		checkReceipt(t, "preview_feedback_received", "owner", "", nil)
+		checkReceipt(t, "preview_feedback_classified", "management", c.Session, map[string]any{"category": c.Category})
+
 		page, e := s.PreviewFeedbackPage(ctx, task.ID, preview.ID)
 		var decoded struct {
 			Feedback []struct {

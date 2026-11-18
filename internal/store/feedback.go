@@ -131,7 +131,7 @@ func (s *Store) SubmitPreviewFeedback(ctx context.Context, task int64, preview s
         ON CONFLICT(preview_id,request_id) DO NOTHING
         RETURNING id`, preview, task, f.Request, string(body), f.Execution, f.Commit, f.Revision, f.Case).Scan(&id)
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES($1,$2,'preview_feedback_received')`, task, f.Execution)
+		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,feedback_id) VALUES($1,$2,'preview_feedback_received',$3)`, task, f.Execution, id)
 	} else if errors.Is(err, sql.ErrNoRows) {
 		err = tx.QueryRowContext(ctx, `SELECT f.id FROM preview_feedback f JOIN static_preview_receipts r ON r.id=f.preview_id
 			WHERE f.preview_id=$1 AND r.task_id=$2 AND f.request_id=$3 AND f.body=$4::jsonb`, preview, task, f.Request, string(body)).Scan(&id)

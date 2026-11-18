@@ -122,7 +122,7 @@ func (s *Store) ClassifyFeedback(ctx context.Context, project, id int64, lease s
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES($1,$2,'preview_feedback_classified')`, task, execution)
+	_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,feedback_id) VALUES($1,$2,'preview_feedback_classified',$3)`, task, execution, id)
 	if err != nil {
 		return err
 	}
