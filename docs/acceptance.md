@@ -64,6 +64,17 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="candidate-record-identity"></a>
+
+### 专题 04、ADR-007 · 从验收记录追溯返工前后的候选
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 恢复 beta #275 的数据库，对照任务 3 的两次历史验收。用升级前和升级后的控制面分别下载事件 17、20 | 退回与批准各自关联当时的验收记录，重启后仍可核对 | 升级前回执缺少验收编号。升级后，390 像素宽的 Chrome 显示“验收记录 #2 · 已退回”和“验收记录 #3 · 已通过”，下载的 `acceptance_id` 分别为 2 和 3。其余事件均无此字段。两份下载与重启前的 API 逐字段一致。 |
+| 从任务详情读取两次执行，核对原工作树的 HEAD，再从 GitHub 读取原 PR | 可以沿固定需求、计划与基线，将决定追溯至对应候选、验证和交付结果 | 两次执行都属于父 Goal 1 的任务 3，需求和计划均为修订 1，基线均为首个 PR 的合并提交 `ddfeee6af4fb2d6f149f4efece63211626174060`。执行 2 的 Session 为 `01a1efcd-d39e-7661-9737-9aaea6599aa2`，工作树 HEAD 为 `09213cd01b7e8a005a8cffe9f238f8d01a98c1dd`，验证为 `ci-run-2979372247`。执行 3 的 Session 为 `01a1efce-bc75-79c2-aa8a-b53290ca7fb2`，工作树 HEAD 为 `0bbbab64b44560d3dc7e676ca548cf6c2011cb6f`，验证为 `ci-run-1515090832`。原工作树使用 detached HEAD。交付分支 `forgeos/task-3-0bbbab64b445` 与 PR #277 的来源分支一致，目标为 main，合并 SHA 为 `e0296c6e374907d1703333ee43f73fadedd562d0`。 |
+
+回执为 `acceptance-record-id/before.json`、`acceptance-record-id/after.json` 和 `goal-dependent-current/stage3/receipt.json`。[原 PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/277)
+
 <a id="additional-task-events"></a>
 
 ### 专题 06、13 · 执行失败、结束失联执行与计划移除子项

@@ -89,6 +89,8 @@ erDiagram
 - PR ID；
 - Merge Commit SHA。
 
+工作台“验收记录”使用 `acceptance_reviews.execution_id` 作为记录编号，每次执行最多有一条决定。批准或退回事件的下载回执以 `payload.acceptance_id` 指向该记录。返工产生新的执行和验收记录。[两次验收与十二项关联的实测](acceptance.md#candidate-record-identity)
+
 ## 6. 幂等与一致性
 
 - GitHub Event ID 有唯一约束。

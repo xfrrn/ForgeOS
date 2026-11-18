@@ -796,7 +796,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
             <p className="detail-empty-text">{task.status === 'ACCEPTED' ? '此版本已通过本地验收，未创建 GitHub 交付。' : '尚无 PR 或合并记录。'}</p>}</section>}
         {task.spec && <section className="panel detail-card"><h2><Icon name="ListChecks" size={18} />验收记录<span className="detail-count">{reviews.length}</span></h2>
           {reviews.length ? <ol className="detail-reviews">{[...reviews].reverse().map(review =>
-            <li key={review.execution_id}><strong>{review.decision === 'approve' ? '已通过' : '已退回'}</strong><span>执行 #{review.execution_id} · {review.actor}</span>
+            <li key={review.execution_id}><strong>验收记录 #{review.execution_id} · {review.decision === 'approve' ? '已通过' : '已退回'}</strong><span>执行 #{review.execution_id} · {review.actor}</span>
               <code>{review.commit}</code>{Boolean(review.feedback_ids?.length) && <p>引用反馈　{review.feedback_ids?.map(id => '#' + id).join('、')}</p>}
               {review.note && <p>{review.note}</p>}<time dateTime={review.at}>{formatTime(review.at)}</time></li>)}</ol>
             : <p className="detail-empty-text">暂无验收决定。</p>}</section>}

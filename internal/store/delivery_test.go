@@ -103,6 +103,15 @@ func TestReviewAndRework(t *testing.T) {
 		rejected.Reviews[0].At.IsZero() || rejected.Delivery != nil || !reflect.DeepEqual(rejected.Reviews[0].FeedbackIDs, []int64{bug, ui}) || len(rejected.Events) != 8 {
 		t.Fatalf("reject audit: %+v %v", rejected, err)
 	}
+	raw, err := s.EventAudit(ctx, p.ID, issue.ID, rejected.Events[len(rejected.Events)-1].ID)
+	var receipt struct {
+		Payload struct {
+			AcceptanceID int64 `json:"acceptance_id"`
+		}
+	}
+	if err != nil || json.Unmarshal(raw, &receipt) != nil || receipt.Payload.AcceptanceID != rejected.Reviews[0].ExecutionID {
+		t.Fatalf("acceptance record identity: %s %v", raw, err)
+	}
 	if _, err := s.Review(ctx, issue.ID, first.ExecutionID, firstCommit, "reject", feedback, true, "main", bug, ui); err != nil {
 		t.Fatalf("reordered references: %v", err)
 	}
