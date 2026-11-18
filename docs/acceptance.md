@@ -38,6 +38,7 @@
 | 阶段四、专题 09、10、13，撤销或换发节点凭据后的归档补传 | [两次执行的归档授权、轮换与重启](#ci-archive-worker-scope) | `68cc02ef6eec97730389abd5dd4f14eae0de71d0` |
 | 专题 06、13、16 B.5，从工作台重试失败的 Issue 并追溯原执行 | [两次浏览器提交、一次排队及后续失败后重读原回执](#workbench-failed-execution-retry) | `6b56a2c59dc4364bdfc1cb094f5167b4ca0b3adb` |
 | 专题 06、07、12，规划和实现回合读取首次派发来源 | [原生只读规划、GitHub 标签领取和旧数据升级](#native-issue-dispatch-origin) | `b93d5ae0e888c3facdc03f0a62a0dcd1c4cca068` |
+| 专题 00、01、12，Owner 按 Issue 编号派发工作项 | [私库中的类型澄清、重复派发和原生开发任务交付](#web-issue-number) | `effbc78c7256789fb20ddd30ea3513a35ebcbaa9` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
@@ -77,6 +78,15 @@
 | 对 #247 先沿用待澄清类型，再选「测试」，最后重启控制面 | 提示 Owner 明确类型，成功后保留该次派发 | 首次 HTTP 409，页面提示选择工作类型，任务数仍为 1。第二次打开规划任务 3，事件 2 来源为 Owner。重启后共两个工作项，各只有一次导入事件。 |
 
 运行回执为 `owner-inbox-number.json`。[beta #245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245) · [beta #247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247)
+
+另从空 PostgreSQL 18 和新克隆的 beta 仓库验收开发类型。以 Owner 在 390 像素 Chrome 派发 #278，运行正式 Worker，在网页验收后由控制面交付到受保护的 `main`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 按编号派发未加 Agent 标签的开放开发 Issue，检查原生输入和候选内容 | Writer 能读到 Owner 派发依据，只修改 Issue 指定的文件 | 任务 1、执行 1、导入事件 1；原生 Session `01a1f00c-4695-7a11-8c5f-b5092d26299e` 的输入包含派发依据。候选 `cbad7912d376019fe92319103fd3ff9cb0cecbb1` 仅新增 `docs/owner-dispatch.md`，文件内容逐字吻合。 |
+| 从工作台确认该候选，重跑首次失败的必需检查，重启控制面并回读交付 | 合并通过检查的同一候选，Issue 关闭，重启后沿用原执行及合并回执 | PR #279 的检查在第 2 次运行成功；PR 合并为 `89c28f03f277c99774c84775d7a1cdfb1c0c66d8`。GitHub 上 #278 已关闭；重启后任务 DONE、一次执行，合并 SHA 与 GitHub 一致。 |
+
+运行回执为 `owner-web-writer-delivery/current/receipt.json`。[来源 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/278) · [PR #279](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/279) · [必需检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44376900317)
 
 <a id="workbench-failed-execution-retry"></a>
 
