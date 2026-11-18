@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | 缺少唯一启动或完成证据时的处置、接回存活进程及整机重启。 |
-| C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
+| C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | 其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
 
@@ -276,7 +276,7 @@
 | Test | 只读会话 01a1e798-616e-7b12-8a39-b51835d43944 的输入含候选 e699b87538bb2765e843f92842c4b07b6aae627e、冻结全局规则及 requirement/1；原生结果为该条标准生成 documentation 用例，控制面归档为 TC-001。 | `da40dd469296d019380fcf59a769d01025ff666a` |
 | Operations | [beta #249 的只读会话](#operations-planner-context)引用恢复手册和本次 Runbook gate 4319de9b，计划保留现场待核实事项；原工作区干净。 | `80b8b1a50816647b71e6c06b75c4e657d1b2264f` |
 
-C.7 的产品管理入口及上述角色已验收。专题 08 其余检索来源和四阶段最终回归按各自记录继续跟踪。独立 Reviewer 的中央日志离线下载仍列在 C.3。
+C.7 的产品管理入口及上述角色已验收。专题 08 其余检索来源和四阶段最终回归按各自记录继续跟踪。独立 Reviewer 的中央日志离线下载见 [C.3 实测](#reviewer-central-log)。
 
 <a id="live-workbench-turn-input"></a>
 
@@ -353,7 +353,17 @@ C.7 的产品管理入口及上述角色已验收。专题 08 其余检索来源
 | 恢复 `native_reviewer_profile/before-review.dump` 的真实历史候选，在任务 1 工作台生成测试计划，运行 Test Agent 和独立 Management | 候选计划和覆盖审核分别关联自己的进程，离线下载能逐字节核对 | Test Agent 会话 `01a1ee22-8157-7040-9183-04c6f5015cc6` 的 2,512 字节、Management 会话 `01a1ee23-1eff-7c61-8342-821234ad4546` 的 1,144 字节均从 Chrome 下载并与节点导出一致。 |
 | 分别以支持清单的旧控制面配新节点、新控制面配旧节点，在 [beta #247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247) 派发后从需求历史回读 | 两种组合继续显示本地清单，只为协商了中央传输的进程显示下载按钮 | 两种组合分别显示 352、358 字节清单，均与节点 CLI 校验一致。Chrome 两次回读都没有中央下载按钮。 |
 
-Reviewer 使用相同传输协议，已覆盖退出回执补报及本地待传保护的自动化测试；真实 Claude Reviewer 的中央下载仍待验收。启动日志和其他尚未支持的工具输出继续单列。
+<a id="reviewer-central-log"></a>
+
+2026-11-18，在独立 PostgreSQL 18 恢复同一真实候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`，从 Chrome 任务详情启动独立 Claude Reviewer，使用中央归档实现 `06bb5fcbc11e2a5bed43193450e3a1327a8b1119`。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 等待审查终态，读取进程退出记录和日志传输进度 | 模型异常时保留原退出码与公开诊断，任务可追溯 | PID 1564、Session `862108d3-4fc9-43ef-aab4-65f0e6748e76`。模型服务返回 HTTP 403，进程退出码 1，审查状态为失败，中央收到 1 条、269 字节。 |
+| 停止 Reviewer 并重启控制面，从 Chrome 展开「查看审查记录」下载，再与节点 CLI 导出核对 | 离线下载可用，校验链、记录数和内容一致 | 下载文件与已验证的节点导出逐字节相同，SHA-256 链值为 `9cbd966facfd2d17d39982a8c2a5bcb0b8b13c84837cf4e9f5cee503f91c0be6`。 |
+| 使用普通节点、Reviewer 和 Management 的凭据分别尝试下载 | 只有 Owner 可读中央正文 | 三次请求均为 HTTP 401。 |
+
+运行回执为 `reviewer-central-receipt/latest.json`。首次验收在归档尚未传完时停止了节点，浏览器未取得文件。复测等到中央可读后再停节点和重启控制面，离线下载通过。成功审查的历史证据见[角色对照](#knowledge-role-matrix)；本次 HTTP 403 仍阻塞需要 Claude 生成新结果的场景。
 
 <a id="role-process-archive-manifest"></a>
 
