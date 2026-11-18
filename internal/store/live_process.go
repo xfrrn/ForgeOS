@@ -15,8 +15,9 @@ type ObservedProcess struct {
 }
 
 type ProcessReport struct {
-	LeaseToken string         `json:"lease_token"`
-	Process    HarnessProcess `json:"process"`
+	AcceptsTurnInput bool           `json:"accepts_turn_input,omitempty"`
+	LeaseToken       string         `json:"lease_token"`
+	Process          HarnessProcess `json:"process"`
 }
 
 func verifyWriterHandoff(ctx context.Context, tx *sql.Tx, execution int64, p HarnessProcess, source *HarnessProcess) error {
@@ -112,10 +113,10 @@ func (s *Store) ObserveProcess(ctx context.Context, execution int64, report Proc
 	if err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE executions SET observed_process=$2::jsonb || jsonb_build_object('observed_at',clock_timestamp(),'resource_step',
+	res, err := tx.ExecContext(ctx, `UPDATE executions SET observed_process=$2::jsonb || jsonb_build_object('accepts_turn_input',$3::boolean,'observed_at',clock_timestamp(),'resource_step',
 		CASE WHEN observed_process->>'instance'=$2::jsonb->>'instance' THEN (observed_process->>'resource_step')::bigint
 		     WHEN resource_kind='model' THEN resource_step END)
- WHERE id=$1 AND lease_until>clock_timestamp()`, execution, string(raw))
+ WHERE id=$1 AND lease_until>clock_timestamp()`, execution, string(raw), report.AcceptsTurnInput && p.Turn != "" && p.Exited == nil)
 	if err != nil {
 		return err
 	}

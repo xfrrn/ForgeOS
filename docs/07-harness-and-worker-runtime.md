@@ -71,7 +71,7 @@ Owner 在“执行节点”页查看每个适配器的版本和操作，API 字�
 
 普通 Worker 可设置 `FORGEOS_CODEX_TRANSPORT=app-server`，通过本地 stdio 执行 Codex 实现任务和只读 Planner。启动时检查可执行文件支持的参数。每回合核对返回的工作目录、Thread、沙箱、网络限制、可写目录和审批模式，再发送任务。事件必须属于当前 Thread 与 Turn，结构化计划只在该回合正式完成后保存。进程、会话及工具活动沿用任务的执行记录。未设置该变量时使用 `exec`。
 
-App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 审批和沙箱。进程禁用 apps、plugins、hooks、MCP 和网页搜索，设置本次基础指令与空开发者指令，关闭自动载入项目指令。beta #168 已从正式 Worker 完成实现、Owner 退回、返工期间原生进程被终止后的同 Thread 恢复，以及 PR #169 的必需 CI、合并和 Issue 关闭。只读 Planner 已返回固定计划并在 Chrome 回读。该接入已验证版本为 `0.169.0-alpha.11.1`；正式流程中的原生审批和运行中输入仍待验收。[逐项证据](acceptance.md)
+App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 审批和沙箱。进程禁用 apps、plugins、hooks、MCP 和网页搜索，设置本次基础指令与空开发者指令，关闭自动载入项目指令。beta #168 已从正式 Worker 完成实现、Owner 退回、返工期间原生进程被终止后的同 Thread 恢复，以及 PR #169 的必需 CI、合并和 Issue 关闭。只读 Planner 已返回固定计划并在 Chrome 回读。该接入已验证版本为 `0.169.0-alpha.11.1`；正式运行中输入已由 beta #250 验收，原生工具审批仍待验收。[逐项证据](acceptance.md)
 
 工作台暂停或取消 App Server 回合时，适配器在已核对 `turn/started` 后向当前 Thread 和 Turn 发送 `turn/interrupt`。收到匹配终态后关闭进程，沿用原来的暂停检查点或取消结算。尚未确认活动回合、请求失败或五秒内未退出时，使用进程终止兜底；取消后的输出不会成为候选。beta #170 已从 Chrome 暂停、重启控制面、恢复原 Thread，并经 PR #171 完成交付；只读 Planner 同样恢复到原 Thread 产出草案。beta #172 从 Chrome 取消，工具子进程退出，后续任务取得已释放资源。三次原生会话均记录了 `turn_aborted`、原因 `interrupted`，正常中断进程的退出码均为 0。
 
@@ -79,7 +79,11 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 用同一命令加 `--approvals` 实测命令审批。探针在只读 Thread 中用 `accept` 批准一次只输出随机数的 Python 命令，核对工具项状态和标准输出，然后在同一 Thread 再次提交相同命令，核对新的审批请求并拒绝。接下来分别拒绝和取消临时目录中的标记脚本，检查标记文件始终不存在、拒绝后回合完成、取消后回合中断。每次审批均比对工作目录、命令、Thread、Turn 和工具项编号。输出保留原生回执。
 
-同一探测命令加 `--steer` 可实测运行中输入。在只读 Thread 的 turn/started 后，探针先核对不匹配回合的拒绝，再用 expectedTurnId 和 clientUserMessageId 将随机文本送入当前回合。第二个 App Server 从 thread/read 核对原生输入和回复。当前安装版本允许同一 clientUserMessageId 多次进入同一回合，响应丢失后的恢复需要先对账。普通 Worker 的 Owner 运行中输入仍待验收。[协议实测](acceptance.md#native-steer-probe)
+同一探测命令加 `--steer` 可实测运行中输入。在只读 Thread 的 turn/started 后，探针先核对不匹配回合的拒绝，再用 expectedTurnId 和 clientUserMessageId 将随机文本送入当前回合。第二个 App Server 从 thread/read 核对原生输入和回复。当前安装版本允许同一 clientUserMessageId 多次进入同一回合，响应丢失后的恢复需要先对账。普通 Worker 的 Owner 运行中输入见下方工作台记录。[协议实测](acceptance.md#native-steer-probe)
+
+在任务详情展开活动执行，支持实时输入的 Codex App Server 会显示“当前原生回合输入”。提交后查看执行中的输入记录，可区分等待节点领取、已领取待确认、原生接受和原生拒绝。每个实例最多接收八条输入，每条最多 4096 字节；同时保留原有“下一回合指令”入口。输入绑定执行、节点进程实例、Thread 和 Turn。旧 Worker、两个 CLI 传输以及已结束或暂停的回合继续使用已有操作。
+
+Owner 使用 `POST /executions/{id}/turn-inputs` 提交 instance、session_id、turn_id、UUID key 和 body。同一次提交重试沿用同一 key 和正文。Worker 使用已绑定项目和执行的租约领取，丢失领取响应时沿用同一领取编号重试。原生进程只发送一次 turn/steer；原生响应先写入节点私有 SQLite，再向控制面补报，直至取得确认。如果节点在发往原生进程后、保存响应前终止，记录显示“节点已领取，投递待确认”。可用原 Thread、Turn 和消息 key 核对历史；恢复任务不会把该输入自动投向另一个回合。[真实工作台验收](acceptance.md#live-workbench-turn-input)
 
 原生回合确认完成或中断时，Worker 正常关闭输入并等待进程退出。App Server 拒绝中断或超时、需要强制终止时，Worker 先终止自己启动的进程，再关闭协议管道，避免 EOF 使强制终止被记录为正常退出。[中断回归与真实节点操作](acceptance.md#native-interrupt-fallback)
 

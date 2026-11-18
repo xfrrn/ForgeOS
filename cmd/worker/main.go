@@ -354,7 +354,7 @@ func (w *worker) run(ctx context.Context) error {
 	}
 	child, stop := context.WithCancel(ctx)
 	var maintenance sync.WaitGroup
-	for _, run := range []func(context.Context){w.publishCIFiles, w.publishProcessArchives, w.sweepLocalCI, w.sweepProcessLogs} {
+	for _, run := range []func(context.Context){w.publishCIFiles, w.publishProcessArchives, w.publishTurnInputReceipts, w.sweepLocalCI, w.sweepProcessLogs} {
 		maintenance.Add(1)
 		go func() { defer maintenance.Done(); run(child) }()
 	}

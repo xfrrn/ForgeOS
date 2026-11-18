@@ -11,6 +11,26 @@ import (
 )
 
 func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	mux.HandleFunc("POST /executions/{id}/turn-inputs", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var input store.NativeTurnInput
+		if ok && decodeLimited(w, r, &input, 32<<10) {
+			respond(w, http.StatusNoContent, nil, data.QueueTurnInput(r.Context(), id, input))
+		}
+	}))
+	workers.handle(mux, "POST /internal/executions/{id}/turn-inputs", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		var poll store.TurnInputPoll
+		if !ok || !decode(w, r, &poll) {
+			return
+		}
+		item, err := data.PollTurnInput(r.Context(), id, poll)
+		if err == nil && item == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		respond(w, http.StatusOK, item, err)
+	}))
 	for _, action := range []string{"pause-model", "resume-model"} {
 		mux.HandleFunc("POST /executions/{id}/"+action, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 			id, ok := pathID(w, r)

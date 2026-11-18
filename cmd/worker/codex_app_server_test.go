@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,7 @@ func testAppServerProcess() int {
 			Method string
 			Params struct {
 				Cwd, Sandbox, ApprovalPolicy, ThreadID, TurnID string
+				ExpectedTurnID, ClientUserMessageID            string
 				Input                                          []struct{ Text string }
 			}
 		}
@@ -72,6 +75,9 @@ func testAppServerProcess() int {
 				notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "inProgress"}})
 			}
 			_ = out.Encode(map[string]any{"id": req.ID, "result": map[string]any{"turn": map[string]string{"id": "turn-1"}}})
+			if strings.HasPrefix(prompt, "steer ") {
+				continue
+			}
 			if strings.HasPrefix(prompt, "stream ") {
 				notify("item/started", map[string]any{"threadId": thread, "turnId": "turn-1", "item": map[string]string{"id": "tool-1", "type": "commandExecution"}})
 				id, turnID := thread, "turn-1"
@@ -144,6 +150,17 @@ func testAppServerProcess() int {
 			}
 			notify("turn/completed", map[string]any{"threadId": id, "turn": map[string]string{"id": turn, "status": status}})
 			continue
+		case "turn/steer":
+			if req.Params.ThreadID != thread || req.Params.ExpectedTurnID != "turn-1" || req.Params.ClientUserMessageID != "test-owner-input" || len(req.Params.Input) != 1 || req.Params.Input[0].Text != "Use the fixture heading." {
+				return 12
+			}
+			if scenario == "steer rejected" {
+				_ = out.Encode(map[string]any{"id": req.ID, "error": map[string]any{"code": -32600, "message": "turn ended"}})
+			} else {
+				_ = out.Encode(map[string]any{"id": req.ID, "result": map[string]string{"turnId": "another-turn"}})
+			}
+			notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "completed"}})
+			continue
 		case "turn/interrupt":
 			if req.Params.ThreadID != thread || req.Params.TurnID != "turn-1" {
 				return 10
@@ -169,6 +186,51 @@ func testAppServerProcess() int {
 			return 8
 		}
 		_ = out.Encode(map[string]any{"id": req.ID, "result": result})
+	}
+}
+
+func TestAppServerSteerResponseBinding(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"steer rejected", "steer wrong turn"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			defer cancel()
+			srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				var poll store.TurnInputPoll
+				if r.URL.Path != "/internal/executions/17/turn-inputs" || json.NewDecoder(r.Body).Decode(&poll) != nil || len(poll.Claim) != 32 || poll.Turn != "turn-1" {
+					t.Error("invalid native input poll")
+					rw.WriteHeader(400)
+					return
+				}
+				_ = json.NewEncoder(rw).Encode(store.OwnerInstruction{Key: "test-owner-input", Body: "Use the fixture heading."})
+			}))
+			defer srv.Close()
+			root := t.TempDir()
+			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			w := worker{repoRoot: root, workspaceRoot: root, token: "node", codexAppServer: true, client: srv.Client(), api: srv.URL}
+			w.journal, err = w.openJournal(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.journal.Close()
+			job := store.Job{ExecutionID: 17, RecordAppTurn: true, SupportsTurnInput: true}
+			adapter := codexCLI{bin: bin, sandbox: "read-only", appServer: true}
+			_, turnErr := adapter.runTurn(ctx, w.processLog(ctx, job, "codex", "1.2.3"), root, scenario, "")
+			var count int
+			if err := w.journal.QueryRow(`SELECT count(*) FROM turn_input_receipts WHERE json_extract(receipt,'$.outcome')='rejected'`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "steer rejected" {
+				if turnErr != nil || count != 1 {
+					t.Fatal("rejection receipt", turnErr, count)
+				}
+			} else if turnErr == nil || !strings.Contains(turnErr.Error(), "active turn") || count != 0 {
+				t.Fatal("wrong turn confirmed", turnErr, count)
+			}
+		})
 	}
 }
 

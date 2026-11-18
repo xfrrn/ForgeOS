@@ -37,7 +37,10 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
 }
 type Result = { environment_run?: { id: string; output?: { bytes: number; text: string; sha256?: string }; probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type ModelPause = { instance: number; session_id: string; requested_at: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
+type NativeTurn = { instance: number; session_id: string; turn_id: string }
 type Attempt = {
+  steerable_instance?: number
+  turn_inputs?: (NativeTurn & { key: string; body: string; claimed_at: string | null; outcome: 'accepted' | 'rejected' | null })[]
   queue_sequence?: number
   pausable_instance?: number
   model_pause?: ModelPause
@@ -214,25 +217,28 @@ function RequirementHistory({ id, project, latest, request, canApply, onApply }:
 type Checkpoint = { sequence: number; through_event: number; comment_count: number; at: string; session_id?: string
   next_instructions?: { key: string; body: string }[] }
 
-function QueueInstruction({ attempt, sequence, request, refresh }: { attempt: number; sequence: number; request: ApiRequest; refresh: (message: string) => void }) {
+function QueueInstruction({ attempt, target, request, refresh }: { attempt: number; target: number | NativeTurn; request: ApiRequest; refresh: (message: string) => void }) {
   const [body, setBody] = useState('')
   const [key, setKey] = useState(() => crypto.randomUUID())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const live = typeof target !== 'number'
+  const field = live ? 'active-turn-input' : 'next-instruction'
   async function submit() {
     setBusy(true); setError('')
     try {
-      await request(`/executions/${attempt}/instructions`, { method: 'POST', body: JSON.stringify({ sequence, key, body: body.trim() }) })
-      setBody(''); setKey(crypto.randomUUID()); refresh(`指令已排入检查点 ${sequence + 1}。`)
+      const binding = live ? target : { sequence: target }
+      await request(`/executions/${attempt}/${live ? 'turn-inputs' : 'instructions'}`, { method: 'POST', body: JSON.stringify({ ...binding, key, body: body.trim() }) })
+      setBody(''); setKey(crypto.randomUUID()); refresh(live ? `输入已登记，等待当前原生回合确认。` : `指令已排入检查点 ${target + 1}。`)
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) refresh('请查看最新检查点。回合结束、队列已满或重复请求内容不同会拒绝入队。')
-      else setError('未收到回执。可重试同一指令，或从执行检查点核对。')
+      if (e instanceof ApiError && e.status === 409) refresh(live ? '输入被拒绝。请核对当前回合及已有输入。' : '请查看最新检查点。回合结束、队列已满或重复请求内容不同会拒绝入队。')
+      else setError(live ? '未收到登记回执。可用同一正文重试，或核对执行中的输入记录。' : '未收到回执。可重试同一指令，或从执行检查点核对。')
     } finally { setBusy(false) }
   }
   return <form className="detail-accept" onSubmit={e => { e.preventDefault(); void submit() }}>
-    <label htmlFor="next-instruction">下一回合指令</label>
-    <textarea id="next-instruction" required value={body} disabled={busy} onChange={e => { setBody(e.target.value); setKey(crypto.randomUUID()) }}/>
-    <button className="button" disabled={busy || !body.trim() || new TextEncoder().encode(body.trim()).length > 4096}>排入下一回合</button>
+    <label htmlFor={field}>{live ? '当前原生回合输入' : '下一回合指令'}</label>
+    <textarea id={field} required value={body} disabled={busy} onChange={e => { setBody(e.target.value); setKey(crypto.randomUUID()) }}/>
+    <button className="button" disabled={busy || !body.trim() || new TextEncoder().encode(body.trim()).length > 4096}>{live ? '发送到当前回合' : '排入下一回合'}</button>
     {error && <p role="alert">{error}</p>}
   </form>
 }
@@ -412,6 +418,12 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         <p>{d.statement}</p><p>适用条件 · {d.validity}</p><p>来源 · {d.source}</p>
         <p>确认时间 · {formatTime(d.confirmed_at)}{d.valid_until && ' · 截止时间 ' + formatTime(d.valid_until)}</p>
       </section>)}</details>}
+    {observed?.turn_id && observed.session_id && attempt.steerable_instance === observed.instance &&
+      <QueueInstruction key={observed.turn_id} attempt={attempt.id} target={{instance: observed.instance, session_id: observed.session_id, turn_id: observed.turn_id}} request={request} refresh={refresh}/>}
+    {!!attempt.turn_inputs?.length && <section><h4>原生回合输入记录</h4><ol>{attempt.turn_inputs.map(i => <li key={i.key}>
+      <strong>{i.outcome === 'accepted' ? '原生回合已接受' : i.outcome === 'rejected' ? '原生回合已拒绝' : i.claimed_at ? '节点已领取，投递待确认' : attempt.steerable_instance === i.instance ? '等待节点领取' : '回合已结束，未领取'}</strong>
+      <pre className="material-content">{i.body}</pre><code>{i.turn_id}</code>
+    </li>)}</ol></section>}
     {observed && <section><h4>最近的节点进程报告</h4>
       <dl className="detail-facts">
         <Fact label="上报时状态">{observed.exited_at ? '进程已退出' : '进程运行中'}</Fact>
@@ -719,7 +731,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
               <button className="button" disabled={loading || sendingCommand || last.lease_expired} onClick={() => void controlExecution(last.id,'resume-model',last.model_pause?.instance)}>恢复模型回合</button></div>
             : <p role="status">已请求暂停模型，等待 Worker 保存工作区。</p>
           : !!last.pausable_instance && <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id,'pause-model',last.pausable_instance)}>暂停模型回合</button>}
-        {last.queue_sequence != null && <QueueInstruction key={`${last.id}/${last.queue_sequence}`} attempt={last.id} sequence={last.queue_sequence} request={request} refresh={refresh}/>}
+        {last.queue_sequence != null && <QueueInstruction key={`${last.id}/${last.queue_sequence}`} attempt={last.id} target={last.queue_sequence} request={request} refresh={refresh}/>}
         <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'cancel')}>取消任务 · 执行 #{last.id}</button>
       </>}
     </section>}

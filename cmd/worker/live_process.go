@@ -76,7 +76,7 @@ func (w *worker) reportProcesses(ctx context.Context, job store.Job, updates <-c
 		call, cancel := context.WithTimeout(ctx, 5*time.Second)
 		p, err := scanHarnessProcess(w.journal.QueryRowContext(call, readHarnessProcess+` WHERE lease_hash=? ORDER BY instance DESC LIMIT 1`, key[:]))
 		if err == nil {
-			status, postErr := w.post(call, path, store.ProcessReport{LeaseToken: job.LeaseToken, Process: p}, nil)
+			status, postErr := w.post(call, path, store.ProcessReport{LeaseToken: job.LeaseToken, Process: p, AcceptsTurnInput: job.SupportsTurnInput && w.codexAppServer && p.Turn != "" && p.Exited == nil}, nil)
 			if ctx.Err() == nil && (postErr != nil || status != 204) {
 				log.Printf("execution %d process report not confirmed (HTTP %d)", job.ExecutionID, status)
 			}

@@ -37,6 +37,7 @@ type codexServer struct {
 	resume       string
 	thread, turn string
 	interrupt    bool
+	steering     map[string]bool
 }
 
 func (s *codexServer) write(message any) error {
@@ -275,12 +276,46 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		return session, errors.New("App Server returned an empty turn ID")
 	}
 	last := ""
+	var inputPoll store.TurnInputPoll
+	var stopInputs context.CancelFunc
+	var inputsDone chan struct{}
+	defer func() {
+		if stopInputs != nil {
+			stopInputs()
+			input.Close()
+			<-inputsDone
+		}
+	}()
 	for {
 		var m codexServerMessage
 		if len(s.pending) != 0 {
 			m, s.pending = s.pending[0], s.pending[1:]
 		} else if m, err = s.read(); err != nil {
 			return session, err
+		}
+		var responseID string
+		if len(m.ID) > 0 && json.Unmarshal(m.ID, &responseID) == nil && strings.HasPrefix(responseID, "forgeos-steer-") {
+			key := strings.TrimPrefix(responseID, "forgeos-steer-")
+			s.mu.Lock()
+			sent := s.steering[key]
+			delete(s.steering, key)
+			s.mu.Unlock()
+			if !sent {
+				return session, errors.New("unexpected App Server input response")
+			}
+			receipt := inputPoll
+			receipt.Key, receipt.Outcome = key, "rejected"
+			if m.Error == nil {
+				var ack struct{ TurnID string }
+				if json.Unmarshal(m.Result, &ack) != nil || ack.TurnID != inputPoll.Turn {
+					return session, errors.New("App Server input response does not identify the active turn")
+				}
+				receipt.Outcome = "accepted"
+			}
+			if err := process.turnInputs.receipt(receipt); err != nil {
+				return session, fmt.Errorf("record native input response: %w", err)
+			}
+			continue
 		}
 		if string(m.ID) == `"forgeos-interrupt"` {
 			s.mu.Lock()
@@ -345,6 +380,13 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				s.mu.Unlock()
 				if err := process.appTurn(event.Turn.ID); err != nil {
 					return session, err
+				}
+				if process.turnInputs != nil && stopInputs == nil {
+					inputPoll = store.TurnInputPoll{NativeTurn: store.NativeTurn{Instance: process.id, Session: session, Turn: turn.Turn.ID}, Lease: process.turnInputs.lease}
+					s.steering = make(map[string]bool)
+					inputCtx, stop := context.WithCancel(ctx)
+					stopInputs, inputsDone = stop, make(chan struct{})
+					go func() { defer close(inputsDone); process.turnInputs.run(inputCtx, &s, inputPoll) }()
 				}
 			}
 			if m.Method == "item/completed" && event.Item.Type == "agentMessage" {

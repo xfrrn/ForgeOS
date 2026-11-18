@@ -12,6 +12,7 @@ import (
 )
 
 type processLog struct {
+	turnInputs    *turnInputClient
 	beforeStart   func() error
 	roleNative    *roleNativeTurn
 	handoffFrom   string
@@ -36,6 +37,9 @@ func (w *worker) processLog(ctx context.Context, job store.Job, harness, version
 		recorder = &toolRecorder{pending: make(map[string]toolCall)}
 	}
 	p := processLog{tools: recorder, updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version, recordAppTurn: job.RecordAppTurn}
+	if job.SupportsTurnInput && w.codexAppServer && harness == "codex" && w.journal != nil {
+		p.turnInputs = &turnInputClient{worker: w, execution: job.ExecutionID, lease: job.LeaseToken}
+	}
 	if job.RecordModelOutput && w.journal != nil {
 		p.output = &modelOutput{secrets: outputSecrets(job.LeaseToken), credential: w.credential}
 	}
