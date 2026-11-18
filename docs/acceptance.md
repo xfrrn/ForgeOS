@@ -29,10 +29,24 @@
 | 专题 07、16 A.1/B.2 进程报告过期后关闭实时输入 | [beta #250，报告中断、恢复及数据库升级](#stale-turn-input) | `5b28e20d0bdeedadc701162507b1fac76a99748a` |
 | 专题 07、16 B.4 普通 Worker 在写入中途恢复 | [beta #258，首回合、后续排队指令、暂停和取消](#active-writer-recovery) | `8d8ad70e8a35a91d97d2096b225108d902be63c4` |
 | 专题 07、16 A.1 稳定版 App Server 的正式 Worker 交付 | [beta #258、PR #259，按节点选模型、原会话恢复、必需 CI、合并与 Issue 关闭](#stable-worker-delivery) | `7a52344c587d9f5ff984effcd1008db44b630f89` |
+| 专题 07、16 B.4 发送模型任务前的节点恢复 | [beta #260，无 Session、已有 Session、后续指令、停机期间取消](#writer-startup-recovery) | `bc25a193122ad45bbebb52f460b49f71a638ff1b` |
 
 在 `9e0ba64` 的产品代码上，使用独立的空 PostgreSQL 18 实例并启用真实 Docker 用例执行全量 Go 回归，557 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试，原始记录为 `input-history-regression.jsonl`。该轮补充的回执断言又单独运行通过。`go vet ./...`、TypeScript 检查和工作台生产构建通过。四阶段最终端到端复验仍待执行。
 
 此前在 `94ad23b` 上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
+
+<a id="native-start-receipts"></a>
+
+### 专题 07、16 A.1/B.4 · 从原生历史核对启动请求
+
+运行 `python -B scripts/probe_codex_app_server.py --bin <原生可执行文件>`。0.147.0 另用其模型列表中的 `--model gpt-5.6-sol`。首回合与中断回合各携带不同的客户端 UUID。两个执行进程退出后，再启动一个 App Server，以 `thread/read` 检查原工作目录和历史。预期每个 UUID 只匹配一条用户消息，完整正文、回合编号和终态都与发送时一致。
+
+| 版本 | 原生 Thread | 完成回合的请求 UUID | 中断回合的请求 UUID | 实际结果 |
+| --- | --- | --- | --- | --- |
+| 0.147.0 | `01a1eecf-5bab-7b90-9e60-040cf4709e44` | `d7ca2629-f5dc-4678-8984-e72c99bb77e0` | `5dfd5a56-96f5-4efe-b5b7-1069dd2c953d` | 两条均唯一，全文一致，终态分别为 completed、interrupted。 |
+| 0.169.0-alpha.11.1 | `01a1eecf-5b4f-7f02-afe4-7a9fea798082` | `9b2635be-bfbb-445e-9a00-13a99aca44a9` | `7e918fe6-fc77-46c2-8695-0644e9a6f39e` | 两条均唯一，全文一致，终态分别为 completed、interrupted。 |
+
+完整回执为 `worker-start-147.json` 和 `worker-start-169.json`。正式 Worker 在消费启动记录至保存 Turn 之间丢失响应的恢复，仍须从任务入口单独实测。
 
 <a id="writer-startup-recovery"></a>
 

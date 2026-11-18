@@ -73,6 +73,8 @@ Owner 在“执行节点”页查看每个适配器的版本和操作，API 字�
 
 App Server 节点可用 `FORGEOS_CODEX_APP_SERVER_MODEL` 指定本机客户端支持的模型 ID。首次建立和恢复 Thread 都会带上该 ID，只有原生响应确认相同模型才发送本轮任务。留空时沿用原生配置。
 
+默认生命周期探针在两个执行进程退出后，用第三个进程读取原生历史。它逐项核对首轮与中断请求的客户端 UUID、完整正文、所属工作区和回合终态。[两版原生启动回执](acceptance.md#native-start-receipts)
+
 App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 审批和沙箱。进程禁用 apps、plugins、hooks、MCP 和网页搜索，设置本次基础指令与空开发者指令，关闭自动载入项目指令。beta #168 已从正式 Worker 完成实现、Owner 退回、返工期间原生进程被终止后的同 Thread 恢复，以及 PR #169 的必需 CI、合并和 Issue 关闭。只读 Planner 已返回固定计划并在 Chrome 回读。该接入已验证版本为 `0.169.0-alpha.11.1`；正式运行中输入已由 beta #250 验收，原生工具审批仍待验收。[逐项证据](acceptance.md)
 
 工作台暂停或取消 App Server 回合时，适配器在已核对 `turn/started` 后向当前 Thread 和 Turn 发送 `turn/interrupt`。收到匹配终态后关闭进程，沿用原来的暂停检查点或取消结算。尚未确认活动回合、请求失败或五秒内未退出时，使用进程终止兜底；取消后的输出不会成为候选。beta #170 已从 Chrome 暂停、重启控制面、恢复原 Thread，并经 PR #171 完成交付；只读 Planner 同样恢复到原 Thread 产出草案。beta #172 从 Chrome 取消，工具子进程退出，后续任务取得已释放资源。三次原生会话均记录了 `turn_aborted`、原因 `interrupted`，正常中断进程的退出码均为 0。

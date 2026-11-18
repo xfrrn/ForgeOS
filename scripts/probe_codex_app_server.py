@@ -60,9 +60,12 @@ class Client:
             raise RuntimeError("App Server resumed a different thread")
         return thread
 
-    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None, steer=None):
+    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None, steer=None, client_id=None):
         self.notifications.clear()
-        turn = self.call("turn/start", {"threadId": thread, "input": [{"type": "text", "text": prompt}]})["turn"]["id"]
+        params = {"threadId": thread, "input": [{"type": "text", "text": prompt}]}
+        if client_id:
+            params["clientUserMessageId"] = client_id
+        turn = self.call("turn/start", params)["turn"]["id"]
         message, started = "", False
         self.approval = None
         while True:
@@ -253,9 +256,12 @@ def main():
                     receipts.append({"thread": thread, "turn": turn, **client.approval})
             print(json.dumps({"version": version, "sandbox": "read-only", "approvals": receipts}))
             return
+        first_key, interrupt_key = str(uuid.uuid4()), str(uuid.uuid4())
+        first_prompt = f"Test case {marker}. Do not use tools. Reply only OK."
+        interrupt_prompt = "Write ten sentences about the months. Do not use tools."
         with server(binary, workspace, args.model) as first:
             thread = first.thread(workspace)
-            start, answer = first.turn(thread, f"Test case {marker}. Do not use tools. Reply only OK.")
+            start, answer = first.turn(thread, first_prompt, client_id=first_key)
             if answer != "OK":
                 raise RuntimeError("Unexpected first turn response")
             first_pid = first.process.pid
@@ -264,10 +270,24 @@ def main():
             resumed, answer = second.turn(thread, "Return only the test case identifier from my last message. Do not use tools.")
             if answer != marker:
                 raise RuntimeError("Resumed thread did not recall the case identifier")
-            interrupted, _ = second.turn(thread, "Write ten sentences about the months. Do not use tools.", interrupt=True)
+            interrupted, _ = second.turn(thread, interrupt_prompt, interrupt=True, client_id=interrupt_key)
             second_pid = second.process.pid
+        with server(binary, workspace, args.model) as reader:
+            history = reader.call("thread/read", {"threadId": thread, "includeTurns": True})["thread"]
+            if history["id"] != thread or not workspace.samefile(history["cwd"]):
+                raise RuntimeError("Native history belongs to a different thread or workspace")
+            for key, expected, status, prompt in ((first_key, start, "completed", first_prompt),
+                                                  (interrupt_key, interrupted, "interrupted", interrupt_prompt)):
+                matches = [(turn["id"], turn["status"], item) for turn in history["turns"] for item in turn["items"]
+                           if item["type"] == "userMessage" and item.get("clientId") == key]
+                if len(matches) != 1 or matches[0][:2] != (expected, status):
+                    raise RuntimeError("Native start receipt is missing, ambiguous or bound to another turn")
+                content = matches[0][2]["content"]
+                if len(content) != 1 or content[0]["type"] != "text" or content[0]["text"] != prompt:
+                    raise RuntimeError("Native start receipt changed the original input")
     print(json.dumps({"version": version, "thread_id": thread, "start_pid": first_pid,
                       "resume_pid": second_pid, "completed_turns": [start, resumed],
+                      "start_input_ids": [first_key, interrupt_key],
                       "interrupted_turn": interrupted, "sandbox": "read-only"}))
 
 
