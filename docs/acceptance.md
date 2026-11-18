@@ -45,6 +45,19 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="workbench-failed-execution-retry"></a>
+
+### 专题 06、13、16 B.5 · 从工作台重试失败的 Issue 执行
+
+从空 PostgreSQL 18 通过 Owner 入口导入真实 beta #245。验收节点通过正式 HTTP 接口领取和回报两次受控子进程的退出码。重试操作从两个独立 Chrome 会话提交，其中一个视口宽 390 像素。[来源 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 执行 1 以 7 退出，在两个浏览器会话中打开失败任务并分别点击「重试失败执行 #1」 | 两次请求都可确认，同一工作项只重新排队一次 | 两次 POST 均返回 200。任务 1 进入 READY，重试按钮消失，时间线仅有一次重试事件 4。 |
+| 下载事件 4，在另一工作区领取执行 2，以 8 退出，再重放对执行 1 的请求并重启 | 旧请求不能替新的失败执行排队；重启后仍可追查第一次重试 | 浏览器下载与 Owner API 的 JSON 相同。发起者为 Owner，关联 EXECUTION-1，退出码为 7。重放后任务仍为 FAILED，两次执行、两个工作区和一条重试事件均保留。重启后回执相同。 |
+
+实测回执为 `retry-audit-live/latest.json`。数据库专项还覆盖已结束的过期租约：此类重试记录原执行的结束时间，退出码留空。
+
 <a id="ci-archive-worker-scope"></a>
 
 ### 阶段四、专题 09、10、13 · CI 归档补传时变更节点授权

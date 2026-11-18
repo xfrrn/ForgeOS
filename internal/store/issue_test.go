@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -308,5 +309,31 @@ func TestRetryIssueExecution(t *testing.T) {
 	}
 	if _, err := s.RetryIssueExecution(ctx, third.ExecutionID); !errors.Is(err, ErrConflict) {
 		t.Fatalf("successful execution retried: %v", err)
+	}
+	for _, event := range final.Events {
+		if event.Type != "execution_retry_requested" {
+			continue
+		}
+		raw, err := s.EventAudit(ctx, p.ID, item.ID, event.ID)
+		var receipt struct {
+			Source, Actor string
+			Payload       struct {
+				ExitCode    *int       `json:"exit_code"`
+				AbandonedAt *time.Time `json:"abandoned_at"`
+			}
+		}
+		if err != nil || json.Unmarshal(raw, &receipt) != nil || receipt.Source != "owner" || receipt.Actor != "owner" || strings.Contains(string(raw), failure.Error) {
+			t.Fatal(string(raw), err)
+		}
+		if event.ExecutionID == nil {
+			t.Fatal("retry event is missing its original execution")
+		}
+		if *event.ExecutionID == first.ExecutionID {
+			if receipt.Payload.ExitCode == nil || *receipt.Payload.ExitCode != failure.ExitCode || receipt.Payload.AbandonedAt != nil {
+				t.Fatal(string(raw))
+			}
+		} else if *event.ExecutionID != second.ExecutionID || receipt.Payload.ExitCode != nil || receipt.Payload.AbandonedAt == nil {
+			t.Fatal(string(raw))
+		}
 	}
 }

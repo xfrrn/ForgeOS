@@ -59,7 +59,7 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
     const roleArchivePath = /^\/role-processes\/[1-9]\d*\/instances\/[1-9]\d*\/archive$/.test(path)
     const shareSearchPath = /^\/projects\/[1-9]\d*\/shared-experience\/search\?q=[^&#]+$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
-    if (!nativeApprovalPath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && path !== '/workers' && path !== '/workers/model-budgets' && !/^\/executions\/[1-9]\d*\/(?:abandon|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?$/.test(path)) throw new Error('无效的工作台接口')
+    if (!nativeApprovalPath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && path !== '/workers' && path !== '/workers/model-budgets' && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?$/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + token)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')

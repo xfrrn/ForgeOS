@@ -266,7 +266,7 @@ Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/ac
 | `POST /executions/{id}/cancel` | Owner | 请求取消指定运行中的执行。已登记的请求可安全重报。任务详情显示请求时间，Worker 回传结果后才能释放名额。 |
 | `POST /executions/{id}/instructions` | Owner | 提交 `{"sequence":0,"key":"request-1","body":"在本页补充已约定的副标题"}`。sequence 取自当前执行的 queue_sequence。同一执行、检查点和请求键的原文可幂等重报，成功返回 204。改写已用键、过时回合或队列已满返回 409。 |
 | `POST /executions/{id}/abandon` | Owner | 核对失联执行并确认原 Worker 已停止后，人工结束过期租约。标记失败并释放项目名额，保留工作区与事件。 |
-| `POST /executions/{id}/retry` | Owner | 核对失败原因后重试该次 Issue 执行。相同执行 ID 的重试请求幂等，继续沿用原工作项与冻结需求，下一次执行使用新 Worktree。 |
+| `POST /executions/{id}/retry` | Owner | 在失败 Issue 的任务页核对最后一次执行，点击「重试失败执行」。同一执行 ID 的重试请求幂等，继续沿用原工作项与冻结需求，下一次执行使用新 Worktree。时间线可下载该次决定的回执。[双会话实测](acceptance.md#workbench-failed-execution-retry) |
 
 控制面在领取响应的 `lease_seconds` 中给出本次租期，Git HEAD 为 120 秒，Issue 为 1500 秒。正式 Worker 在执行期间每 30 秒确认一次租约，使用节点身份和该执行的令牌。暂时不可达时，Worker 在上一次确认的有效期内重试；确认超时或续约被拒时取消当前操作。控制面按数据库时间核对截止点。Worker 以请求开始的单调时钟计时，不需要与控制面交换本机时间。一般节点心跳只登记在线状态，不延长其他执行。最终结果先写入本地恢复日志再补报。
 

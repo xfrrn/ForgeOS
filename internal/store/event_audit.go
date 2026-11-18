@@ -14,7 +14,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
         SELECT v.*,t.project_id,t.goal_id,t.kind,e.worker,
                COALESCE(v.origin, CASE
                    WHEN v.type IN ('execution_claimed','execution_completed','execution_failed','planner_completed','ci_paused') THEN 'worker'
-                   WHEN v.type IN ('task_created','execution_abandoned','owner_cancel_requested','ci_pause_requested','ci_resumed',
+                   WHEN v.type IN ('task_created','execution_abandoned','execution_retry_requested','owner_cancel_requested','ci_pause_requested','ci_resumed',
                                    'decision_answered','acceptance_approved','acceptance_rejected','plan_revised',
                                    'requirement_revised_from_feedback','requirement_adopted','feedback_work_item_dispatched') THEN 'owner'
                    WHEN v.type='decision_requested' AND q.id IS NOT NULL THEN
@@ -24,9 +24,10 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                    WHEN v.type IN ('pr_created','pr_merged','delivery_completed','goal_delivered') THEN 'controlplane'
                    WHEN v.type IN ('delivery_base_refreshed','preview_feedback_received','feedback_screenshot_saved','feedback_recording_saved') THEN 'owner'
                    WHEN v.type='preview_feedback_classified' THEN 'management' END) AS source,
-               CASE WHEN v.type IN ('execution_completed','execution_failed','planner_completed','ci_paused')
+               CASE WHEN v.type IN ('execution_completed','execution_failed','execution_retry_requested','planner_completed','ci_paused')
                       OR (v.origin='worker' AND v.type IN ('owner_cancelled','source_issue_cancelled'))
                     THEN e.result END AS result,
+               CASE WHEN v.type='execution_retry_requested' THEN e.abandoned_at END AS abandoned_at,
                CASE WHEN v.type='management_reviewed' THEN pr.review END AS plan_review,
                ar.decision,ar."commit" AS reviewed_commit,ar.actor AS reviewer,
                COALESCE(d."commit",f.old_delivery->>'commit') AS delivery_commit,
@@ -75,7 +76,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
             'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,
             'task_kind',CASE WHEN type='task_created' THEN kind END,
             'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
-            'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',
+            'abandoned_at',abandoned_at,'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',
             'validation_profile',result#>>'{validation,profile}','validation_run',result#>>'{validation,run,id}',
             'decision',COALESCE(decision,plan_review->>'verdict'),'decision_level',plan_review->>'effective_level',
             'pr_number',pr_number,'pr_url',pr_url,'target_branch',target_branch,'merge_sha',merge_sha,

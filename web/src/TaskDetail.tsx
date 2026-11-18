@@ -674,7 +674,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
       setSendingCommand(false)
     }
   }
-  async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci' | 'pause-model' | 'resume-model' | 'abandon', instance?: number) {
+  async function controlExecution(execution: number, action: 'cancel' | 'pause-ci' | 'resume-ci' | 'pause-model' | 'resume-model' | 'abandon' | 'retry', instance?: number) {
     setSendingCommand(true)
     try {
       await request(`/executions/${execution}/${action}`, { method: 'POST', ...(instance ? {headers: {'Content-Type':'application/json'},body:JSON.stringify({instance})} : {}) })
@@ -721,6 +721,8 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
     </div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
+    {task.kind === 'codex_issue' && task.status === 'FAILED' && last?.status === 'FAILED' && !task.source_closure &&
+      <button className="button" disabled={loading || sendingCommand} onClick={() => void controlExecution(last.id, 'retry')}>重试失败执行 #{last.id}</button>}
     {last && expired && <section className="panel detail-card" aria-label="核对失联执行">
       <h2>执行 #{last.id} 租约已过期</h2>
       <dl className="detail-facts"><Fact label="节点">{last.worker}</Fact><Fact label="工作区" code>{last.workspace}</Fact></dl>
