@@ -4,11 +4,11 @@
 
 ## 当前验收进度
 
-截至 ForgeOS `60bb6ffc00353b10082fb147145a2349829d1999`，专题 16 的 28 项中，18 项已验收，6 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 ForgeOS `abcd802df8806903b9c0cadcdb6e706435304dd9`，专题 16 的 28 项中，18 项已验收，6 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
-| 专题 01 §03、专题 03 · Issue 分类 | Poller 已按 `forgeos-agent` 标签区分派发和讨论。显式导入可指定验证策略的 `task_type`。 | 开发、代码审查、测试、调查和运维五类工作的规则判定、分类 Agent 协调及意图不明时的澄清入口，仍待补齐和逐类验收。 |
+| 专题 01 §03、专题 03 · Issue 分类 | Poller 已按 `forgeos-agent` 标签区分派发和讨论。Owner 已在[工作台讨论收件箱](#discussion-inbox-ui)转换真实 Issue。显式导入可指定验证策略的 `task_type`。 | 开发、代码审查、测试、调查和运维五类工作的规则判定、分类 Agent 协调及意图不明时的澄清入口，仍待补齐和逐类验收。 |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | 正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生回合的输入和审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input) | 首份回合记录写入前中断、下一回合开始时中断、接回仍存活进程以及整机重启恢复。 |
 | C.3、C.7 · 进程日志与知识上下文 | 节点已能导出经脱敏和校验的全文；中文查询已能检索英文项目决策。多个独立角色在实际会话使用冻结依据。 | 工作台中央全文调阅、其余结构化工具输出及尚未核对的角色上下文。 |
@@ -62,7 +62,7 @@ beta #155、#157 已验证等待业务答复期间的原生会话交接。#159�
 | --- | --- | --- |
 | 一 · 空库迁移、登记、派发、重启查询 | 2026-11-16 在独立 PostgreSQL 18 空库启动控制面，通过 HTTP 登记仓库、创建任务。独立 Worker 在 execution-2 工作区返回退出码 0 和仓库 HEAD `65d40b2a22dcec366c5146ed5924c607b09f7cbd`。重启控制面，任务 2 完整 JSON 相同，符合预期。 | Linux 专用身份与 systemd 见专题 07、14。 |
 | 一 · 并发、失败、重报、失联 | 通过 HTTP 领取任务 1，再创建任务 2。第二次领取返回 204，任务 2 为 READY。回报受控失败后任务 1 为 FAILED，重报返回 204，任务和事件完全相同。PostgreSQL 集成测试覆盖过期租约及人工结束。 | 真实节点中断、在已有远端副作用下恢复见阶段四。 |
-| 二 · Issue 识别、去重和执行 | beta 实库通过 `GET /projects/1/inbox` 得到普通讨论 [2,1]，任务列表为空。Worker 查询返回 401。Owner 两次转换 #2 均得任务 1，重启后收件箱只剩 #1。另一验收库为 beta #1 加模板标签后，Poller 创建任务 7，按编号同步仍返回同一任务。 | 通过。收件箱实现 `319aa65526b5e5e84fb04caca0300a939ee9a34c`。 |
+| 二 · Issue 识别、去重和执行 | beta 实库通过 `GET /projects/1/inbox` 得到普通讨论 [2,1]，任务列表为空。Worker 查询返回 401。Owner 两次转换 #2 均得任务 1，重启后收件箱只剩 #1。另一验收库为 beta #1 加模板标签后，Poller 创建任务 7，按编号同步仍返回同一任务。 | 通过。收件箱实现 `319aa65526b5e5e84fb04caca0300a939ee9a34c`；[工作台转换](#discussion-inbox-ui)实测对应 `abcd802df8806903b9c0cadcdb6e706435304dd9`。 |
 | 二 · 验证、页面验收与退回 | alpha 任务 3 重复导入不变。在 Chrome 打开候选差异，退回 `93a7c42e`，真实 Codex 在新工作区补写示例，生成 `785df9cf`。两个候选各有对应 SHA 的 docs 验证。旧批准返回 409，新批准在页面返回 ACCEPTED。 | 通过。两次按 Owner 身份的页面操作均由 Playwright 执行。 |
 | 二 · PR、必需 CI、Squash Merge、Issue 回写 | alpha 首次检查失败时 PR 为 OPEN/BLOCKED，任务交付为 WAITING。重跑通过后任务 DONE，Issue 已回写候选及合并 SHA `469cef06b81601ac2f382e230157c2e125787e39`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/3) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43815409052) | 通过。beta 再现同一场景，控制面明确指出已验收 head 的 GitHub 检查失败；停止控制面、重跑检查、重启，复用原 PR 合并为 `3b935429ad7588b2e6f4124ac8e4e04d6c80abb0`。[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/3) · [检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43815783260) |
 | 三 · Goal、Milestone、依赖与双重计划记录 | 在收件箱验收库将 beta #2 升级为 Goal 草案，保存两版计划。重报返回原版本，过时改写返回 409。重启后可读取历史，Chrome 展示任务树。beta #4 已走通依赖调度、业务答复、退回、新 SHA 验收、两个子 PR 和父 Issue 关闭，证据见下文。 | 显式 Owner 规划与激活已验收。只读 Planner 已验收（见任务 16）。Management 审核和激活后的滚动修订均在 alpha #4 验收，见下文专题 05–06。 |
