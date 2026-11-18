@@ -26,6 +26,7 @@ type HarnessProcess struct {
 	Harness     string       `json:"harness"`
 	Version     string       `json:"version"`
 	Session     string       `json:"session_id,omitempty"`
+	Turn        string       `json:"turn_id,omitempty"`
 	HandoffFrom string       `json:"handoff_from,omitempty"`
 	Started     time.Time    `json:"started_at"`
 	Exited      *time.Time   `json:"exited_at,omitempty"`
@@ -35,7 +36,14 @@ type HarnessProcess struct {
 	ToolOutput  *ToolOutput  `json:"tool_output,omitempty"`
 }
 
+func ValidAppTurnID(id string) bool {
+	return len(id) > 0 && len(id) <= 128 && strings.Trim(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
+}
+
 func (p HarnessProcess) Valid() bool {
+	if p.Turn != "" && (p.Harness != "codex" || p.Session == "" || !ValidAppTurnID(p.Turn)) {
+		return false
+	}
 	if !p.validToolOutput() {
 		return false
 	}
@@ -72,6 +80,9 @@ func (p HarnessProcess) validToolOutput() bool {
 }
 
 func (p HarnessProcess) outputExcludes(lease string) bool {
+	if lease != "" && strings.Contains(p.Turn, lease) {
+		return false
+	}
 	var texts []string
 	if p.Output != nil {
 		texts = append(texts, p.Output.Text)

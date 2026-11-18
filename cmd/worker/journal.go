@@ -126,6 +126,9 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 	CREATE TABLE IF NOT EXISTS harness_session_handoffs (
 		instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance), previous_session TEXT NOT NULL
 	);
+	CREATE TABLE IF NOT EXISTS harness_app_turns (
+		instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance), turn_id TEXT NOT NULL
+	);
 	CREATE INDEX IF NOT EXISTS harness_processes_attempt ON harness_processes(lease_hash,instance);
 	CREATE TABLE IF NOT EXISTS harness_tool_events (
 		instance INTEGER NOT NULL REFERENCES harness_processes(instance), seq INTEGER NOT NULL, call INTEGER NOT NULL,

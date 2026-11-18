@@ -3722,3 +3722,17 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 使用正式控制面和 Worker，从 Chrome 取消正在运行的实现回合；再派发本机连通性任务 | 工作项取消、原回合正常中断、资源可复用；来源 Issue 保持打开 | [beta Issue #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235) 的 Codex PID 35464 和工具子进程均退出。原会话退出码为 0，无候选、PR 或合并。随后本机任务完成，节点模型占用归零。 |
 
 操作记录为 interrupt-fallback-worker.py、interrupt_fallback_real/proof.json、interrupt-fallback-native.log 及 interrupt-rejection-repeat.jsonl。
+
+<a id="worker-app-turn"></a>
+
+### 专题 07、16 A.1/B.4 · 运行中和结束后核对同一原生 Turn
+
+2026-11-18，复用 [beta Issue #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235)，分别在隔离库启动正式控制面、Worker 和真实 Codex App Server。在 Chrome 取消执行，核对原生历史、节点 SQLite 和控制面回执。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在工具仍运行时展开任务执行记录，通过 Chrome 取消；随后重启控制面 | 运行中可见真实回合，结算和重启保留同一编号 | 最终复验的进程 44860、Thread 01a1ed0c-bb60-70e2-8ed3-c4d3d070691d 和 Turn 01a1ed0c-c2c0-7901-ac5c-1740fe2eefd2 在各入口一致；真实 Thread 历史中正好有一个匹配 Turn，状态 interrupted。 |
+| 新控制面配旧 Worker、旧控制面配新 Worker，分别处理同一来源 Issue | 已确认的原生会话继续显示；缺少 Turn 采集协议时不填编号 | 两种组合均可取消并释放节点，API 与页面均未补造 Turn ID。后续连通性任务完成。 |
+| 对同一个已观测进程尝试省略或替换已登记 Turn，另测错误格式与携带执行凭据的编号 | 拒绝不一致报告，保留原始回合 | PostgreSQL 专项通过；Worker 的实际协议子进程在运行中和结算时读到相同的 Turn。 |
+
+程序 app-turn-live.py、app-turn-final-live.py，证据 app_turn_final_current、app_turn_id_oldworker、app_turn_id_oldcontrol 下的 proof.json。工作台向运行中原生回合发送 Owner 输入另行验收。

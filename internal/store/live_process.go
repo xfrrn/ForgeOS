@@ -45,6 +45,9 @@ func (p HarnessProcess) follows(last HarnessProcess) bool {
 	if p.Instance != last.Instance {
 		return p.Instance > last.Instance
 	}
+	if (last.Turn != "" || last.Exited != nil) && p.Turn != last.Turn {
+		return false
+	}
 	if last.Output != nil && (p.Output == nil || p.Output.Sequence < last.Output.Sequence ||
 		(p.Output.Sequence == last.Output.Sequence && *p.Output != *last.Output)) {
 		return false

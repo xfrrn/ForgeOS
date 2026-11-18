@@ -15,6 +15,7 @@ import (
 
 var readHarnessProcess = fmt.Sprintf(`SELECT instance,pid,harness,version,coalesce(session_id,''),started_at,exited_at,exit_code,
  coalesce((SELECT previous_session FROM harness_session_handoffs h WHERE h.instance=p.instance AND p.session_id IS NOT NULL),''),
+ coalesce((SELECT turn_id FROM harness_app_turns a WHERE a.instance=p.instance),''),
  (SELECT json_group_array(json_object('seq',seq,'call',call,'tool',tool,'phase',phase,'at',at) ORDER BY seq)
   FROM (SELECT * FROM harness_tool_events e WHERE e.instance=p.instance ORDER BY seq DESC LIMIT %d)),
  (SELECT json_object('sequence',sequence,'text',text) FROM harness_model_output o WHERE o.instance=p.instance),
@@ -30,7 +31,7 @@ func scanHarnessProcess(row interface{ Scan(...any) error }) (store.HarnessProce
 	var raw []byte
 	var output []byte
 	var toolOutput []byte
-	err := row.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &started, &exited, &p.ExitCode, &p.HandoffFrom, &raw, &output, &toolOutput)
+	err := row.Scan(&p.Instance, &p.PID, &p.Harness, &p.Version, &p.Session, &started, &exited, &p.ExitCode, &p.HandoffFrom, &p.Turn, &raw, &output, &toolOutput)
 	if err != nil {
 		return p, err
 	}

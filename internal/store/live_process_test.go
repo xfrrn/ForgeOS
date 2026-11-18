@@ -23,7 +23,7 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	job, err := s.Claim(ctx, "node", t.TempDir(), true)
-	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput || !job.RecordToolOutput || !job.RecordToolStream {
+	if err != nil || job == nil || !job.ReportLiveProcess || !job.RecordModelOutput || !job.RecordToolOutput || !job.RecordToolStream || !job.RecordAppTurn {
 		t.Fatalf("expected live reporting job: %v", err)
 	}
 	now := time.Now().UTC()
@@ -39,6 +39,17 @@ func TestLiveProcessCannotRegressOrOutliveLease(t *testing.T) {
 	post(p, job.LeaseToken, true)
 	p.Session = "thread-a"
 	post(p, job.LeaseToken, true)
+	p.Turn = job.LeaseToken
+	post(p, job.LeaseToken, false)
+	p.Turn = "turn/invalid"
+	post(p, job.LeaseToken, false)
+	p.Turn = "turn-a"
+	post(p, job.LeaseToken, true)
+	for _, turn := range []string{"", "turn-b"} {
+		bad := p
+		bad.Turn = turn
+		post(bad, job.LeaseToken, false)
+	}
 	p.Output = &ModelOutput{Sequence: 1, Text: "Reading the guide.\n"}
 	post(p, job.LeaseToken, true)
 	for _, output := range []*ModelOutput{nil, {Sequence: 0, Text: "bad\n"}, {Sequence: 1, Text: "altered\n"},

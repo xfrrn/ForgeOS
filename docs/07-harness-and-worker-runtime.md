@@ -83,6 +83,8 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 原生回合确认完成或中断时，Worker 正常关闭输入并等待进程退出。App Server 拒绝中断或超时、需要强制终止时，Worker 先终止自己启动的进程，再关闭协议管道，避免 EOF 使强制终止被记录为正常退出。[中断回归与真实节点操作](acceptance.md#native-interrupt-fallback)
 
+普通 Worker 的领取结果可包含 `record_app_turn`。当 Codex App Server 返回与本次 Thread 和 turn/start 一致的 turn/started 时，Worker 把 Turn ID 持久化到该进程实例。在任务详情展开执行尝试，可从运行中的观察及完成后的进程回执查看“原生回合”。同一实例已确认的编号不能改写；CLI、旧节点、旧控制面签发的作业保留原有记录。[原生回合身份验收](acceptance.md#worker-app-turn)
+
 ## 5. Claude Code 接入建议
 
 第一版可评估 Headless CLI + stream-json + Session Resume；复杂交互可后续评估 Agent SDK。必须通过真实环境验证会话恢复、问题交互和权限事件。

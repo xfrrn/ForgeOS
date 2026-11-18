@@ -12,20 +12,21 @@ import (
 )
 
 type processLog struct {
-	beforeStart func() error
-	roleNative  *roleNativeTurn
-	handoffFrom string
-	db          *sql.DB
-	lease       [32]byte
-	harness     string
-	version     string
-	updates     chan struct{}
-	id          int64
-	tools       *toolRecorder
-	question    *nativeQuestion
-	output      *modelOutput
-	toolOutput  *modelOutput
-	toolStream  bool
+	beforeStart   func() error
+	roleNative    *roleNativeTurn
+	handoffFrom   string
+	db            *sql.DB
+	lease         [32]byte
+	harness       string
+	version       string
+	updates       chan struct{}
+	id            int64
+	tools         *toolRecorder
+	question      *nativeQuestion
+	output        *modelOutput
+	toolOutput    *modelOutput
+	toolStream    bool
+	recordAppTurn bool
 }
 
 func (w *worker) processLog(ctx context.Context, job store.Job, harness, version string) processLog {
@@ -34,7 +35,7 @@ func (w *worker) processLog(ctx context.Context, job store.Job, harness, version
 	if job.RecordToolActivity && w.journal != nil {
 		recorder = &toolRecorder{pending: make(map[string]toolCall)}
 	}
-	p := processLog{tools: recorder, updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version}
+	p := processLog{tools: recorder, updates: updates, db: w.journal, lease: sha256.Sum256([]byte(job.LeaseToken)), harness: harness, version: version, recordAppTurn: job.RecordAppTurn}
 	if job.RecordModelOutput && w.journal != nil {
 		p.output = &modelOutput{secrets: outputSecrets(job.LeaseToken), credential: w.credential}
 	}
@@ -95,6 +96,21 @@ func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
 	}
 	p.notify()
 	return nil
+}
+
+func (p *processLog) appTurn(turn string) error {
+	if !p.recordAppTurn || p.db == nil {
+		return nil
+	}
+	if !store.ValidAppTurnID(turn) {
+		return fmt.Errorf("invalid App Server turn identifier")
+	}
+	var saved string
+	err := p.db.QueryRow("INSERT INTO harness_app_turns(instance,turn_id) VALUES(?,?) ON CONFLICT(instance) DO UPDATE SET turn_id=excluded.turn_id WHERE turn_id=excluded.turn_id RETURNING turn_id", p.id, turn).Scan(&saved)
+	if err == nil {
+		p.notify()
+	}
+	return err
 }
 
 func (p *processLog) session(session string) error {

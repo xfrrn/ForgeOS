@@ -190,7 +190,7 @@ func TestAppServerCommandStreamBeforeCompletion(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			adapter := codexCLI{bin: bin, sandbox: "read-only", appServer: true}
-			job := store.Job{RecordToolActivity: true, RecordToolOutput: true, RecordToolStream: true}
+			job := store.Job{RecordToolActivity: true, RecordToolOutput: true, RecordToolStream: true, RecordAppTurn: true}
 			end := make(chan error, 1)
 			go func() {
 				_, err := adapter.runTurn(ctx, w.processLog(ctx, job, "codex", "1.2.3"), root, scenario, "")
@@ -201,7 +201,7 @@ func TestAppServerCommandStreamBeforeCompletion(t *testing.T) {
 				for {
 					p, err := scanHarnessProcess(w.journal.QueryRow(readHarnessProcess + " ORDER BY instance DESC LIMIT 1"))
 					if err == nil && p.ToolOutput != nil && strings.Contains(p.ToolOutput.Text, "[redacted]") {
-						if !p.Valid() || p.Exited != nil || !p.ToolOutput.Partial || p.ToolOutput.Text != "Early output\n[redacted]\n" {
+						if !p.Valid() || p.Turn != "turn-1" || p.Exited != nil || !p.ToolOutput.Partial || p.ToolOutput.Text != "Early output\n[redacted]\n" {
 							t.Fatal(p)
 						}
 						break
@@ -218,7 +218,7 @@ func TestAppServerCommandStreamBeforeCompletion(t *testing.T) {
 			runErr := <-end
 			if scenario == "stream live" {
 				p, err := scanHarnessProcess(w.journal.QueryRow(readHarnessProcess + " ORDER BY instance DESC LIMIT 1"))
-				if runErr != nil || err != nil || !p.Valid() || p.ToolOutput == nil || p.ToolOutput.Partial || p.Exited == nil {
+				if runErr != nil || err != nil || !p.Valid() || p.Turn != "turn-1" || p.ToolOutput == nil || p.ToolOutput.Partial || p.Exited == nil {
 					t.Fatal(p, runErr, err)
 				}
 			} else if runErr == nil || !strings.Contains(runErr.Error(), "active turn") {

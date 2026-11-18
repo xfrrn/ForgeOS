@@ -343,6 +343,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				s.mu.Lock()
 				s.thread, s.turn = session, turn.Turn.ID
 				s.mu.Unlock()
+				if err := process.appTurn(event.Turn.ID); err != nil {
+					return session, err
+				}
 			}
 			if m.Method == "item/completed" && event.Item.Type == "agentMessage" {
 				last = event.Item.Text

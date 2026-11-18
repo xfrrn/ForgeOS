@@ -66,7 +66,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 | 编号与原始要求 | 状态 | 实际结果与剩余条件 | 操作记录 | ForgeOS 提交 |
 | --- | --- | --- | --- | --- |
-| A.1 Codex App Server 目标版本、协议与事件 | 部分验收 | 实现、恢复、中断和原生追加输入已实测；正式 Worker 的审批及运行中输入待验。 | [适配器](acceptance.md#check-a-1) · [运行中输入](acceptance.md#native-steer-probe) | `74e856fd9319af075704668556c5b5560c11d8d6`、`af79a557af1fe91f328aeed8b18a2412b3d9fd89`、`cfe0bbcbf37bb817e33421353a2a07a0981c5217` |
+| A.1 Codex App Server 目标版本、协议与事件 | 部分验收 | 正式 Worker 能追溯原生回合；协议追加输入已验，正式审批及运行中输入待验。 | [适配器](acceptance.md#check-a-1) · [运行中输入](acceptance.md#native-steer-probe) · [原生回合](acceptance.md#worker-app-turn) | `74e856fd9319af075704668556c5b5560c11d8d6`、`af79a557af1fe91f328aeed8b18a2412b3d9fd89`、`cfe0bbcbf37bb817e33421353a2a07a0981c5217` |
 | A.2 Claude Headless 会话、交互及权限事件 | 已验收 | Windows 原生登录下的拒绝、问答、恢复与交付。Linux 账号见 A.3–4。 | [实测](acceptance.md#check-a-2) | `1d9617e11095434c41f68956f6e8a0d45c014108`、`402936239a5c25e1412c93239878bb385fde5746` |
 | A.3 同一 Linux 用户的认证复用与限额 | 待环境验收 | Windows 两节点争用名额已验证。Linux 双 CLI 的真实登录、并发和供应方限额待验。 | [实测](acceptance.md#check-a-3) | `4eaf44a273aa9b2bec2f9ea0ab126b714921d69c`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |
 | A.4 systemd 的身份、PATH、登录与代理 | 待环境验收 | 非 root 节点已读取实际 CLI 版本；该身份的模型登录和经代理请求待验。 | [实测](acceptance.md#adr-evidence-009) | `bd1c734d80413c87e032cb250c12baea9ad314cc`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |
@@ -77,7 +77,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 | A.9 OpenBao 解封、备份与恢复 | 已验收 | 真实 OpenBao 以 2/3 解封；分开备份和恢复，核对环境及权限。 | [实测](acceptance.md#check-a-9) | `ab013b603c4bb3368e1daf777dcae7b6f3599b02` |
 | A.10 实际任务量的队列与事件存储性能 | 已验收 | 两份历史快照，四个 Worker；记录负载、吞吐、读写延迟与机器条件。 | [实测](acceptance.md#queue-performance) | `0aab874402a8f24fca7aa3a8d901324f5609e2a0` |
 | B.1 Agent Profile 版本和配置结构 | 已验收 | v1 已在普通节点、独立角色与前后版本协商中验证。 | [实测](acceptance.md#check-b-1) | `5f8a4ebbcd08d082ffe7bbba030a851b25fe91d0`、`9c772dd4d784e88cf0f023e51d83055991c73322` |
-| B.2 Harness Adapter 接口与错误模型 | 部分验收 | 两种适配器有版本、错误与恢复证据；正式原生审批、运行中输入和 Claude 原生中断待验。 | [实测](acceptance.md#check-b-2) | `af79a557af1fe91f328aeed8b18a2412b3d9fd89`、`74e856fd9319af075704668556c5b5560c11d8d6` |
+| B.2 Harness Adapter 接口与错误模型 | 部分验收 | 两种适配器有版本、错误与恢复证据；正式原生审批、运行中输入和 Claude 原生中断待验。 | [实测](acceptance.md#check-b-2) | `af79a557af1fe91f328aeed8b18a2412b3d9fd89`、`74e856fd9319af075704668556c5b5560c11d8d6`、`bb78b3c7f3794c61ca1f926505542ad2f1e5c187` |
 | B.3 ACP 消息 Schema 与路由 | 已验收 | 五种类型均以实际业务入口校验 Schema、来源身份、作用范围和重启重放。 | [五类路由及原始操作](acceptance.md#protocol-route-matrix) | `ca6aa459eba90d665ff92825c0a4f42633f7cf05`、`2acb08c87842feb3426eba8022eb785257470510`、`0fad34a78191e9267827ad785e38cb72e3a05d32`、`5c5657badacc09110f306165b906792eb34fb746` |
 | B.4 Execution、Session、Process 状态与恢复 | 部分验收 | 有实际进程崩溃、会话交接及尚无候选 SHA 的恢复。草稿首次落盘前、仍存活进程接回及整机重启仍待验。 | [实测](acceptance.md#check-b-4) | `2ea9a0f5ab1666d48c42ec1f7d4c29a9ca8621a0`、`0062de1767701ec3d1d4ebe609d7be144389de1c` |
 | B.5 失败重试、退回、租约与补报 | 已验收 | 在原任务保留旧尝试；新执行与新工作树处理重试，节点续约和断线补报有实测。 | [实测](acceptance.md#check-b-5) | `70781ba9badb584e94c9594954bcfbcdae2ddbda`、`6e865cec3ee03cbfb541145230e1d75f60b5dbd1` |
