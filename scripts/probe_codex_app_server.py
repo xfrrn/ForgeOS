@@ -85,6 +85,7 @@ class Client:
             params["clientUserMessageId"] = client_id
         turn = self.call("turn/start", params)["turn"]["id"]
         message, started = "", False
+        input_observed, interrupt_sent = client_id is None, False
         self.approval = None
         while True:
             if not self.notifications:
@@ -110,6 +111,8 @@ class Client:
             method = event["method"]
             if method == "item/completed" and params.get("turnId") == turn:
                 item = params["item"]
+                if item["type"] == "userMessage" and item.get("clientId") == client_id:
+                    input_observed = True
                 if item["type"] == "agentMessage":
                     message = item["text"].strip()
                 if self.approval and item["type"] == "commandExecution" and item["id"] == self.approval["item"]:
@@ -117,11 +120,9 @@ class Client:
                     if decision == "accept":
                         self.approval["output"] = (item.get("aggregatedOutput") or "").strip()
             if method == "turn/started" and params["turn"]["id"] == turn:
-                if interrupt and not started:
-                    self.call("turn/interrupt", {"threadId": thread, "turnId": turn})
                 if steer and not started:
-                    text, client_id = steer
-                    steer_params = {"threadId": thread, "expectedTurnId": str(uuid.uuid4()), "clientUserMessageId": client_id,
+                    text, steer_id = steer
+                    steer_params = {"threadId": thread, "expectedTurnId": str(uuid.uuid4()), "clientUserMessageId": steer_id,
                                     "input": [{"type": "text", "text": text}]}
                     try:
                         self.call("turn/steer", steer_params)
@@ -135,6 +136,10 @@ class Client:
                     if response["turnId"] != turn:
                         raise RuntimeError("Input was delivered to a different turn")
                 started = True
+            # The cold-history check requires a native receipt for this exact user message.
+            if interrupt and started and input_observed and not interrupt_sent:
+                self.call("turn/interrupt", {"threadId": thread, "turnId": turn})
+                interrupt_sent = True
             if method == "turn/completed" and params["turn"]["id"] == turn:
                 expected = "interrupted" if interrupt or decision == "cancel" else "completed"
                 if not started or params["turn"]["status"] != expected:
