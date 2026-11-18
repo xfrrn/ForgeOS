@@ -386,6 +386,10 @@ test "$(sqlite3 -bail -readonly "$state_dir/$journal_name" 'PRAGMA integrity_che
 
 ### 备份节点进程输出归档
 
+中央副本随 PostgreSQL 备份。普通执行对应 `process_archive_transfers`、`process_archive_chunks`，独立角色对应 `role_archive_transfers`、`role_archive_chunks`。还原数据库后，用 Owner 在工作台下载 JSONL，再与原节点 SQLite 的 `process-logs export` 正文逐字节核对。节点导出另含元数据首行和校验末行，工作台下载的是中间的记录。
+
+如果备份时尚有待传日志，工作台下载返回 409。按上节恢复同一节点的 SQLite、API 地址和节点 ID，启动 Worker 让其补传，确认 `process_log_uploads` 中对应记录已清除。已完成传输的归档可在节点离线时下载。下载返回 422 时校验未通过，应从可信备份恢复；410 表示保留期已到。[两类归档的恢复演练](acceptance.md#central-process-backup)
+
 公开模型消息与工具结果的本地归档随 Worker 私有 SQLite 一同备份，采用同一时点的 SQLite 快照，不能只复制正在写入的单个文件。归档默认每进程 32 MiB、已确认结果保留 30 天；服务环境可设置 FORGEOS_PROCESS_LOG_MAX_MIB 与 FORGEOS_PROCESS_LOG_DAYS。普通 Daemon 启动及每小时清理，独立角色打开日志时清理；离线维护可运行 process-logs prune。
 
 还原后先用 process-logs list 核对实例和原生 Session，再 export 校验正文序号、字节数与摘要。过期正文按当前策略重新清理，原进程、业务回执及摘要保留；旧备份不会永久绕过期限。此流程已从四类真实角色日志副本和非 root Linux CLI 验证。导出文件、原生 Harness 自己的会话记录和恢复工作目录不由本项清理。

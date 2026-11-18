@@ -34,6 +34,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="central-process-backup"></a>
+
+### 专题 13、14 · 从数据库与节点备份恢复中央进程日志
+
+使用 ForgeOS `5bce0416c81059fec7088b87e79a9dbc76ad312e`、PostgreSQL 18 的 `pg_dump`／`pg_restore --single-transaction`、正式 Worker 和 390 像素 Chrome。恢复目标为独立空数据库，恢复控制面关闭 GitHub 派发和交付。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 #273 的交付数据库恢复后，下载普通执行的中央日志；再恢复同节点 SQLite 启动 Worker | 能区分业务交付和待传日志，补传应保持原任务记录 | PR 已合并，任务为 DONE。备份中已接收 0 字节，节点有 1 项待传，下载返回 409。补传后待传项清零，原任务事件逐项相同。节点停止后，浏览器下载 10 条、2392 字节，与节点导出正文一致。 |
+| 对补传完成的普通执行再次备份恢复，另从 #163 的独立反馈分类数据库恢复，不启动任何节点 | 两种已确认归档均可从工作台读取 | 普通执行文件 SHA-256 为 `f0d384d067f3aaefe9851c50725fd174a907bc4f7108f8b7eb148aab6141fefe`，与首次下载相同。独立 Management 下载 1 条、402 字节，SHA-256 为 `b9f50079a1069ef3db23bca0ec19776b3e6a2333374956913dcb2b00810c5f63`。两份均核对记录数、字节数、链式摘要和原生进程的 SQLite 导出。 |
+| 在各自的恢复副本使用 Worker 身份读取、移走一个归档块、放回原块、模拟到期并重启控制面 | 权限、完整性和到期规则仍生效 | Worker 均返回 401。缺块时返回 422，响应仅有校验错误。放回后原内容可读，到期后及重启后均返回 410。 |
+
+证据为 `central-restore-execution/latest.json`、`central-restore-execution-ready/latest.json` 和 `central-restore-role/latest.json`。普通执行的 GitHub 交付见[PR #274 的实测](#single-project-273)。
+
 <a id="single-project-273"></a>
 
 ### 路线二 · 从空库重新交付 beta #273
