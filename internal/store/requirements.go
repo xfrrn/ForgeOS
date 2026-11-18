@@ -10,15 +10,16 @@ import (
 )
 
 type RequirementRevision struct {
-	Suggestion      *IssueSuggestion `json:"suggestion,omitempty"`
-	FeedbackID      int64            `json:"feedback_id,omitempty"`
-	FeedbackTask    int64            `json:"feedback_task,omitempty"`
-	FeedbackPreview string           `json:"feedback_preview,omitempty"`
-	ID              int64            `json:"id"`
-	TaskID          int64            `json:"task_id"`
-	Revision        int              `json:"revision"`
-	Issue           Issue            `json:"issue"`
-	ObservedAt      time.Time        `json:"observed_at"`
+	ClassificationID int64            `json:"classification_id,omitempty"`
+	Suggestion       *IssueSuggestion `json:"suggestion,omitempty"`
+	FeedbackID       int64            `json:"feedback_id,omitempty"`
+	FeedbackTask     int64            `json:"feedback_task,omitempty"`
+	FeedbackPreview  string           `json:"feedback_preview,omitempty"`
+	ID               int64            `json:"id"`
+	TaskID           int64            `json:"task_id"`
+	Revision         int              `json:"revision"`
+	Issue            Issue            `json:"issue"`
+	ObservedAt       time.Time        `json:"observed_at"`
 }
 
 // The caller holds the imported task lock. Polling a renamed label or a newer branch tip is not a requirement edit.
@@ -108,10 +109,10 @@ func (s *Store) ObserveIssue(ctx context.Context, projectID int64, issue Issue) 
 func (s *Store) RequirementRevision(ctx context.Context, taskID int64, revision int64) (RequirementRevision, error) {
 	var r RequirementRevision
 	var doc, recommendation []byte
-	err := s.db.QueryRowContext(ctx, `SELECT r.id,r.task_id,r.revision,r.issue,r.observed_at,COALESCE(r.feedback_id,0),COALESCE(p.task_id,0),COALESCE(p.id,''),c.suggestion FROM work_items t
+	err := s.db.QueryRowContext(ctx, `SELECT r.id,r.task_id,r.revision,r.issue,r.observed_at,COALESCE(r.feedback_id,0),COALESCE(p.task_id,0),COALESCE(p.id,''),c.suggestion,COALESCE(c.id,0) FROM work_items t
 		JOIN requirement_revisions r ON r.task_id=COALESCE(t.goal_id,t.id) LEFT JOIN preview_feedback f ON f.id=r.feedback_id
 		LEFT JOIN static_preview_receipts p ON p.id=f.preview_id LEFT JOIN issue_classifications c ON c.id=r.issue_classification_id
-		WHERE t.id=$1 AND r.revision=$2`, taskID, revision).Scan(&r.ID, &r.TaskID, &r.Revision, &doc, &r.ObservedAt, &r.FeedbackID, &r.FeedbackTask, &r.FeedbackPreview, &recommendation)
+		WHERE t.id=$1 AND r.revision=$2`, taskID, revision).Scan(&r.ID, &r.TaskID, &r.Revision, &doc, &r.ObservedAt, &r.FeedbackID, &r.FeedbackTask, &r.FeedbackPreview, &recommendation, &r.ClassificationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}

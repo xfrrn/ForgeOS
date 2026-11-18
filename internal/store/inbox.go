@@ -6,6 +6,7 @@ import (
 )
 
 type Discussion struct {
+	ClassificationID     int64            `json:"classification_id,omitempty"`
 	ClassificationSource *Issue           `json:"-"`
 	Suggestion           *IssueSuggestion `json:"suggestion,omitempty"`
 	SourceDigest         string           `json:"source_digest,omitempty"`
@@ -62,8 +63,8 @@ func (s *Store) Inbox(ctx context.Context, projectID, before int64) ([]Discussio
 	if _, err := s.Project(ctx, projectID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT d.issue_id,d.number,d.title,d.url,COALESCE(d.work_type,''),COALESCE(d.source_digest,''),CASE WHEN d.classification_requested THEN c.suggestion END FROM discussion_inbox d
-		LEFT JOIN issue_classifications c USING(project_id,issue_id,source_digest)
+	rows, err := s.db.QueryContext(ctx, `SELECT d.issue_id,d.number,d.title,d.url,COALESCE(d.work_type,''),COALESCE(d.source_digest,''),c.suggestion,COALESCE(c.id,0) FROM discussion_inbox d
+		LEFT JOIN issue_classifications c ON d.classification_requested AND (d.project_id,d.issue_id,d.source_digest)=(c.project_id,c.issue_id,c.source_digest)
 		WHERE d.project_id=$1 AND ($2::bigint=0 OR number<$2)
 		AND NOT EXISTS (SELECT 1 FROM work_items w WHERE w.project_id=d.project_id AND w.github_issue_id=d.issue_id)
 		ORDER BY number DESC LIMIT 100`, projectID, before)
@@ -75,7 +76,7 @@ func (s *Store) Inbox(ctx context.Context, projectID, before int64) ([]Discussio
 	for rows.Next() {
 		var item Discussion
 		var raw []byte
-		if err := rows.Scan(&item.ID, &item.Number, &item.Title, &item.URL, &item.WorkType, &item.SourceDigest, &raw); err != nil {
+		if err := rows.Scan(&item.ID, &item.Number, &item.Title, &item.URL, &item.WorkType, &item.SourceDigest, &raw, &item.ClassificationID); err != nil {
 			return nil, err
 		}
 		if raw != nil {

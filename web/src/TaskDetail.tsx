@@ -192,9 +192,9 @@ function CandidateDiff({ taskID, attempt, request }: { taskID: number; attempt: 
   </div>
 }
 
-type Requirement = { revision: number; feedback_id?: number; feedback_task?: number; feedback_preview?: string; observed_at: string; issue: Issue; suggestion?: IssueSuggestion }
+type Requirement = { revision: number; feedback_id?: number; feedback_task?: number; feedback_preview?: string; observed_at: string; issue: Issue; suggestion?: IssueSuggestion; classification_id?: number }
 
-function RequirementHistory({ id, latest, request, canApply, onApply }: { id: number; latest: number; request: ApiRequest; canApply: boolean; onApply: (message: string) => void }) {
+function RequirementHistory({ id, project, latest, request, canApply, onApply }: { id: number; project: number; latest: number; request: ApiRequest; canApply: boolean; onApply: (message: string) => void }) {
   const [revision, setRevision] = useState<number | null>(null)
   const [value, setValue] = useState<Requirement | null>(null)
   const [failed, setFailed] = useState(false)
@@ -226,7 +226,7 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
       <button className="button" onClick={() => setRevision(null)}>收起历史</button></div>
     {failed ? <p role="alert">无法读取此需求版本。</p> : value?.revision === revision
       ? <><h4>{value.issue.title}</h4><p className="detail-issue-text">{value.issue.body}</p>
-        {value.suggestion && <ClassificationAdvice suggestion={value.suggestion} />}
+        {value.suggestion && <ClassificationAdvice key={value.classification_id} suggestion={value.suggestion} classification={value.classification_id} project={project} request={request} />}
         <p>{value.feedback_id ? <a href={`#/tasks/${value.feedback_task}/previews/${value.feedback_preview}/feedback`}>Owner 修订 · 预览反馈 #{value.feedback_id} · {formatTime(value.observed_at)}</a> : `GitHub 更新时间 · ${formatTime(value.issue.updated_at)}`}</p></>
       : <p role="status">正在读取需求修订…</p>}
     {canApply && revision === latest && value?.revision === latest &&
@@ -770,7 +770,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
           {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={`#/tasks/${f.task_id}/previews/${f.preview}/feedback`}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}
           <div className="detail-issue-text" tabIndex={0} aria-label="Issue 正文">{issue.body || '此 Issue 没有正文。'}</div>
-          {task.latest_requirement && <RequirementHistory id={id} latest={task.latest_requirement} request={request}
+          {task.latest_requirement && <RequirementHistory id={id} project={task.project_id} latest={task.latest_requirement} request={request}
             canApply={!task.plan && !task.goal_id && task.latest_requirement !== task.requirement_revision && ['READY','FAILED','WAITING_ACCEPTANCE'].includes(task.status)}
             onApply={message => { refresh(message); onChanged() }}/>}</section>}
         <section className="panel detail-card"><h2><Icon name="Terminal" size={18} />Worker 执行记录<span className="detail-count">{task.attempts.length}</span></h2>

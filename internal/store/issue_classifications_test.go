@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -57,6 +58,23 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	report := ManagementProcessReport{IssueClassificationID: job.IssueClassification.ID, Lease: job.Lease, Node: "classifier", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.0.0", Session: suggestion.Session, Started: end.Add(-time.Second), Exited: &end, ExitCode: &code}}
 	conflict(s.ObserveManagementProcess(ctx, p.ID+1, report))
 	must(s.ObserveManagementProcess(ctx, p.ID, report))
+	checkHistory := func(settled bool) {
+		t.Helper()
+		raw, err := s.IssueClassificationProcesses(ctx, p.ID, report.IssueClassificationID)
+		must(err)
+		var h struct {
+			Settled   bool
+			Processes []ManagementProcess
+		}
+		must(json.Unmarshal(raw, &h))
+		if h.Settled != settled || len(h.Processes) != 1 || h.Processes[0].Node != report.Node || h.Processes[0].Session != report.Process.Session || h.Processes[0].Attempt < 1 || strings.Contains(string(raw), job.Lease) {
+			t.Fatal("invalid classification history", h)
+		}
+	}
+	checkHistory(false)
+	if _, err := s.IssueClassificationProcesses(ctx, p.ID+1, report.IssueClassificationID); !errors.Is(err, ErrNotFound) {
+		t.Fatal("wrong project", err)
+	}
 	bad := suggestion
 	bad.Quote = "unsupported citation"
 	conflict(save(bad))
@@ -70,6 +88,7 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	snapshot()
 	must(save(suggestion))
 	must(save(suggestion))
+	checkHistory(true)
 	bad = suggestion
 	bad.WorkType = "operations"
 	conflict(save(bad))
@@ -78,14 +97,14 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	}
 	items, err := s.Inbox(ctx, p.ID, 0)
 	must(err)
-	if len(items) != 2 || items[1].Suggestion == nil || items[1].Suggestion.Session != suggestion.Session {
+	if len(items) != 2 || items[1].ClassificationID != report.IssueClassificationID || items[1].Suggestion == nil || items[1].Suggestion.Session != suggestion.Session {
 		t.Fatal(items)
 	}
 	entry.ClassificationSource = nil
 	snapshot()
 	items, err = s.Inbox(ctx, p.ID, 0)
 	must(err)
-	if items[1].Suggestion != nil {
+	if items[1].Suggestion != nil || items[1].ClassificationID != 0 {
 		t.Fatal("ordinary discussion exposed a historical suggestion")
 	}
 	entry.ClassificationSource = &issue
@@ -97,7 +116,7 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	must(err)
 	revision, err := s.RequirementRevision(ctx, task.ID, 1)
 	must(err)
-	if revision.Suggestion == nil || revision.Suggestion.WorkType != "testing" || revision.Issue.WorkType != "investigation" {
+	if revision.ClassificationID != report.IssueClassificationID || revision.Suggestion == nil || revision.Suggestion.WorkType != "testing" || revision.Issue.WorkType != "investigation" {
 		t.Fatal(revision)
 	}
 }

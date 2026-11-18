@@ -97,6 +97,19 @@ func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner strin
 		respond(w, http.StatusOK, items, err)
 	}))
 	mux.HandleFunc("POST /projects/{id}/issues/{number}", authorized(owner, importIssue(data, root, ghRead)))
+	mux.HandleFunc("GET /projects/{id}/classifications/{classification}/processes", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		project, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		id, err := strconv.ParseInt(r.PathValue("classification"), 10, 64)
+		if err != nil || id < 1 {
+			problem(w, 400, "invalid issue classification")
+			return
+		}
+		history, err := data.IssueClassificationProcesses(r.Context(), project, id)
+		respond(w, http.StatusOK, history, err)
+	}))
 }
 
 func importIssue(data issueImporter, root string, get githubGET) http.HandlerFunc {

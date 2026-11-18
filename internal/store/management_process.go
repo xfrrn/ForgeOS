@@ -38,8 +38,10 @@ type ManagementProcessReport struct {
 	Process               HarnessProcess `json:"process"`
 }
 
+const managementProcessHistoryJSON = `jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id)`
+
 const planRevisionJSON = `(to_jsonb(r)-'review_lease') || jsonb_build_object('review_processes',
- COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id)
+ COALESCE((SELECT ` + managementProcessHistoryJSON + `
  FROM management_processes p WHERE p.task_id=r.task_id AND p.revision=r.revision),'[]'::jsonb))`
 
 const managementProcessTarget = `lease_hash=$1 AND ((task_id=$2 AND revision=$3) OR share_id=$4 OR analysis_task=$5 OR question_id=$6 OR feedback_id=$7 OR (curation_id=$8 AND curation_role=$9 AND ($10=0 OR role_turn=$10)) OR (test_plan_id=$11 AND test_plan_role=$12) OR reviewer_execution=$13 OR issue_classification_id=$14)`

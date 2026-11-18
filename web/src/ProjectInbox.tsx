@@ -3,7 +3,7 @@ import { ApiError, safeGitHubURL, type ApiRequest } from './shared'
 import { workTypeName, workTypes } from './workTypes'
 import { ClassificationAdvice, type IssueSuggestion } from './ClassificationAdvice'
 
-type Discussion = { id: number; number: number; title: string; url: string; work_type?: string; source_digest?: string; suggestion?: IssueSuggestion }
+type Discussion = { id: number; number: number; title: string; url: string; work_type?: string; source_digest?: string; suggestion?: IssueSuggestion; classification_id?: number }
 
 export function ProjectInbox({ project, request }: { project: number; request: ApiRequest }) {
   const [rows, setRows] = useState<Discussion[]>([])
@@ -63,7 +63,7 @@ export function ProjectInbox({ project, request }: { project: number; request: A
       return <article className="registered-project" key={row.id}>
       <div><h2>#{row.number} · {row.title}</h2>
         {safeGitHubURL(row.url) && <a href={safeGitHubURL(row.url)} target="_blank" rel="noreferrer">查看原 Issue #{row.number}</a>}</div>
-      <div>{row.suggestion && <ClassificationAdvice suggestion={row.suggestion} />}
+      <div>{(row.suggestion || row.classification_id) && <ClassificationAdvice key={row.classification_id} suggestion={row.suggestion} classification={row.classification_id} project={project} request={request} />}
         {classified ? <p>任务类型 · {classified}</p> : row.source_digest && <label>Issue #{row.number} 任务类型
         <select value={choice} disabled={loading || !!converting} onChange={e => setChoices(old => ({ ...old, [row.id]: e.target.value }))}>
           <option value="">请选择并澄清类型</option>

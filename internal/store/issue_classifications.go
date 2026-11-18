@@ -21,6 +21,17 @@ type IssueSuggestion struct {
 	Profile   *AgentProfile `json:"profile"`
 }
 
+func (s *Store) IssueClassificationProcesses(ctx context.Context, project, id int64) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('settled',c.suggestion IS NOT NULL,'processes',
+		COALESCE((SELECT `+managementProcessHistoryJSON+` FROM management_processes p WHERE p.issue_classification_id=c.id),'[]'::jsonb))
+		FROM issue_classifications c WHERE c.id=$1 AND c.project_id=$2`, id, project).Scan(&result)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return result, err
+}
+
 const currentIssueClassification = `EXISTS (SELECT 1 FROM discussion_inbox d WHERE
  d.project_id=c.project_id AND d.issue_id=c.issue_id AND d.source_digest=c.source_digest AND d.classification_requested)
  AND NOT EXISTS (SELECT 1 FROM work_items w WHERE w.project_id=c.project_id AND w.github_issue_id=c.issue_id)`
