@@ -102,17 +102,18 @@ Owner 用 `GET /projects/{id}/decisions` 查询，项目节点用 `GET /internal
 
 ## 6. Agent 项目查询 API
 
-建议能力：
-- project.get_profile；
-- project.get_environment；
-- project.search_docs；
-- project.get_decisions；
-- project.search_history；
-- project.get_task_context；
-- project.get_dependencies；
-- project.get_secret_status（只返回状态，不返回明文）。
+这八项能力可通过受控 API 或 MCP 暴露。ForgeOS 提供下列 GET 入口，节点以本项目授权调用。路径均相对于 `/internal/projects/{id}/`，Owner 使用对应的 `/projects/{id}/`。资料列表返回 key 和修订号，可用 `materials/{key}?revision=<修订>` 回查原文。
 
-可通过受控 API 或 MCP 暴露。
+| 建议能力 | 路径与返回内容 | 验收证据 | ForgeOS 提交 |
+| --- | --- | --- | --- |
+| `project.get_profile` | `materials?kind=profile` 返回 Owner 导入的项目背景、来源及修订 | [画像修订与正文位置](acceptance.md#material-literal-source) | `ac17b50` |
+| `project.get_environment` | `materials?kind=environment` 返回环境说明，可加 `q` 检索 | [固定修订](acceptance.md#material-literal-source) · [254,090 字节手册的节点检索](acceptance.md#cold-material-index) | `ac17b50`、`ad9ec2b` |
+| `project.search_docs` | `documents?q=<查询>&commit=<SHA>` 返回 Git 路径、blob、引句和原文字节位置 | [按提交检索](acceptance.md#git-document-hybrid) · [两仓同名文档](acceptance.md#two-project-merged-documents) | `7f0806c`、`c55fd8f` |
+| `project.get_decisions` | `decisions` 浏览有效决策，`decisions/search?q=<查询>` 检索，`decisions/{decision}` 回查依据 | [决策检索与历史](acceptance.md#decision-search) | `e6fb688` |
+| `project.search_history` | `history` 返回需求、评论、合并和 Goal 的版本化来源 | [四种来源及历史修订](acceptance.md#history-hybrid-search) | `9c6ffd0` |
+| `project.get_task_context` | `tasks/{task}/context` 返回任务绑定的需求、计划与工程版本 | [已移除子项及独立任务回读](acceptance.md#node-context-dependencies) | `a6c797e` |
+| `project.get_dependencies` | 同一上下文响应的 `dependencies` 返回直接前置项及其交付结果 | [两座仓库的前置合并 SHA](acceptance.md#node-context-dependencies) | `a6c797e` |
+| `project.get_secret_status` | `environments/{environment}/secrets/{name}` 返回状态及版本，需同时获准访问该环境 | [版本删除、恢复、销毁与越权拒绝](acceptance.md#node-secret-status) | `72cd89d` |
 
 ### 查询固定 Git 版本的工程文档
 

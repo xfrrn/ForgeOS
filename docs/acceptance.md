@@ -52,6 +52,9 @@
 | 文档要求 | 验收证据 | ForgeOS 提交 |
 | --- | --- | --- |
 | 专题 04、13，原执行的领取、回报和决定可追溯 | [工作台下载、取消竞态及重启重放](#task-event-audit) | `2c755f310f3b08d567f11df0f505e3c030143ebc` |
+| 阶段四，分别查回两个项目的同名工程文档和执行回执 | [两份 HEAD 检查、原合并提交及交叉查询](#two-project-merged-documents) | `c55fd8fa8bc15545bcd05830fd8e377cac8d6918` |
+| 专题 08，从 Owner 工作台和授权节点定位项目画像、环境说明的原文 | [字面命中与字符位置](#material-literal-source) | `ac17b50dd56367eab0d72346aadd247d0e13dfb6` |
+| 专题 08，按权限从已导入的环境手册检索跨语言依据 | [两份真实冷索引及重启后的页面结果](#cold-material-index) | `ad9ec2b5b59686f7aaaa5e59c11d1b84e66e8619` |
 | 专题 12、13，换基前后的 PR 及 Goal 完成记录可追溯 | [原 PR、替代 PR 和父子任务的交付回执](#delivery-event-audit) | `8015110ff2ea92d45cc9f197715cfba00926d6c3` |
 | 专题 11、13，媒体和分类绑定对应反馈与候选 | [七份下载、独立分类会话及媒体到期](#feedback-event-audit) | `160605d02773f1971161d045746ac613a89743bc` |
 | 专题 12、13，区分手动与标签派发并保留原需求 | [同一私库的两条真实 Issue](#issue-import-audit) | `9aeaa8f70adc1d698e06afa63b92dd365b370f52` |
@@ -1711,6 +1714,8 @@ Claude Code 原生探测对应提交 `1d9617e11095434c41f68956f6e8a0d45c014108`�
 
 OpenBao 部署及恢复对应 `ab013b603c4bb3368e1daf777dcae7b6f3599b02`。
 
+<a id="node-secret-status"></a>
+
 ## 专题 09 · Go Secret Manager 的环境权限与实时状态
 
 验收使用独立 TLS OpenBao、真实 Go 控制面、PostgreSQL、两个项目和三个节点身份。项目 2 的 local-mock、staging 及项目 4 的 local-mock 使用相同名称 `status-fd4d9c2f`，分别写入不同的随机值。
@@ -3071,6 +3076,8 @@ TypeScript、Web 生产构建通过。本场景验收至子任务就绪，来源
 | 正式 Worker 执行修订 2 的子任务，Chrome 检查候选页面和单文件差异，在任务页批准 | Git 归档不改变交付基线，真实分支保护通过后方可合并并关闭父 Issue | 候选 `41177262f5d826b72acf06ae638463714c1f1070` 只新增指定 HTML，唯一 h1 和段落逐字符合 Issue。首次必需检查按验收夹具失败，只重跑失败作业；acceptance-check 和 forgeos/local-ci 成功后合并为 `eed7fa9f83776301e04421e582b3688b464bfa77`，父子均为 DONE，Issue 关闭。[检查运行](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/43986198166) · [PR #68](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/68) · [父项回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/67#issuecomment-6933532226) |
 
 启用 PostgreSQL 和 Docker 的全量 Go 回归 166 项通过，零跳过。Go vet、TypeScript 与 Web 生产构建通过。
+
+<a id="node-context-dependencies"></a>
 
 ### 专题 08 · 项目节点读取工作项上下文和前置交付
 
