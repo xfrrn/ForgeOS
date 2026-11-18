@@ -16,18 +16,25 @@ import (
 	"forgeos/internal/validation"
 )
 
-func queueCIFiles(ctx context.Context, tx *sql.Tx, key []byte, report json.RawMessage) error {
+func queueCIFiles(ctx context.Context, tx *sql.Tx, key []byte, execution int64, report json.RawMessage) error {
 	var result store.Result
 	if err := json.Unmarshal(report, &result); err != nil {
 		return err
 	}
-	if result.Validation == nil || result.Validation.Run == nil || !result.Validation.Run.Valid() {
-		return errors.New("cannot archive files without a valid CI run")
+	var run string
+	var files map[string]validation.FileDigest
+	if d, ok := result.EnvironmentRun.LogDigest(); ok && store.IsStartupLog(execution, result.EnvironmentRun.ID, "startup.log") {
+		run = result.EnvironmentRun.ID
+		files = map[string]validation.FileDigest{"startup.log": d}
+	} else if result.Validation != nil && result.Validation.Run != nil && result.Validation.Run.Valid() {
+		run = result.Validation.Run.ID
+		files = result.Validation.Run.Files()
+	} else {
+		return errors.New("cannot archive files without a valid run")
 	}
-	run := result.Validation.Run
-	for name, digest := range run.Files() {
+	for name, digest := range files {
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO ci_uploads(lease_hash,run_id,file,bytes,sha256) VALUES(?,?,?,?,?)`,
-			key, run.ID, name, digest.Bytes, digest.SHA256); err != nil {
+			key, run, name, digest.Bytes, digest.SHA256); err != nil {
 			return err
 		}
 	}

@@ -12,6 +12,7 @@ import (
 )
 
 type environmentLog struct {
+	archive    bool
 	observe    func(ciLogFile)
 	run        string
 	secrets    []string
@@ -43,7 +44,11 @@ func (l *environmentLog) finish(dir string, f *os.File) (*store.EnvironmentOutpu
 	if err != nil {
 		return nil, errors.Join(err, closeErr, l.writer.err)
 	}
-	return &store.EnvironmentOutput{Bytes: len(data), Text: validation.DisplayLogTail(data, l.secrets)}, errors.Join(closeErr, l.writer.err)
+	out := &store.EnvironmentOutput{Bytes: len(data), Text: validation.DisplayLogTail(data, l.secrets)}
+	if l.archive && closeErr == nil && l.writer.err == nil {
+		out.SHA256 = validation.DigestBytes(data).SHA256
+	}
+	return out, errors.Join(closeErr, l.writer.err)
 }
 
 // Sanitize complete lines before writing even the node-local log.

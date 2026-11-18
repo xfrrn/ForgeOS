@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strconv"
 	"time"
 
 	"forgeos/internal/validation"
@@ -37,13 +38,25 @@ type EnvironmentRun struct {
 }
 
 type EnvironmentOutput struct {
-	Bytes int    `json:"bytes"`
-	Text  string `json:"text"`
+	SHA256 string `json:"sha256,omitempty"`
+	Bytes  int    `json:"bytes"`
+	Text   string `json:"text"`
 }
 
 func (o *EnvironmentOutput) valid(lease string) bool {
 	return o == nil || o.Bytes >= 0 && o.Bytes <= validation.MaxLogBytes && len(o.Text) <= validation.LiveLogWindow &&
-		(o.Bytes != 0 || o.Text == "") && validation.DisplayLogTail([]byte(o.Text), []string{lease}) == o.Text
+		(o.SHA256 == "" || o.SHA256 != lease && dockerDigest.MatchString(o.SHA256)) && (o.Bytes != 0 || o.Text == "") && validation.DisplayLogTail([]byte(o.Text), []string{lease}) == o.Text
+}
+
+func IsStartupLog(execution int64, run, file string) bool {
+	return execution > 0 && run == "execution-"+strconv.FormatInt(execution, 10) && file == "startup.log"
+}
+
+func (r *EnvironmentRun) LogDigest() (validation.FileDigest, bool) {
+	if r == nil || r.Output == nil || r.Output.SHA256 == "" || !r.Output.valid("") {
+		return validation.FileDigest{}, false
+	}
+	return validation.FileDigest{Bytes: int64(r.Output.Bytes), SHA256: r.Output.SHA256}, true
 }
 
 type StartupSpec struct {

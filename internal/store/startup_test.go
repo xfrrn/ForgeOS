@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"forgeos/internal/validation"
 )
 
 func TestQueueStartupBindsInventoryAndWorker(t *testing.T) {
@@ -114,13 +116,14 @@ func TestQueueStartupBindsInventoryAndWorker(t *testing.T) {
 	if err := s.Complete(ctx, j.ExecutionID, j.LeaseToken, result); !errors.Is(err, ErrConflict) {
 		t.Fatal("discarded startup output", err)
 	}
-	for _, output := range []*EnvironmentOutput{{Bytes: 5, Text: "hello\n"}, {Bytes: 6, Text: "other\n"}, {Bytes: 64, Text: j.LeaseToken + "\n"}} {
+	for _, output := range []*EnvironmentOutput{{Bytes: 6, Text: "hello\n", SHA256: j.LeaseToken}, {Bytes: 6, Text: "hello\n", SHA256: "invalid"}, {Bytes: 5, Text: "hello\n"}, {Bytes: 6, Text: "other\n"}, {Bytes: 64, Text: j.LeaseToken + "\n"}} {
 		r.Output = output
 		if err := s.Complete(ctx, j.ExecutionID, j.LeaseToken, result); !errors.Is(err, ErrConflict) {
 			t.Fatal("invalid startup output", err)
 		}
 	}
-	r.Output = &EnvironmentOutput{Bytes: 6, Text: "hello\n"}
+	digest := validation.DigestBytes([]byte("hello\n"))
+	r.Output = &EnvironmentOutput{Bytes: 6, Text: "hello\n", SHA256: digest.SHA256}
 	for _, bad := range []func(*EnvironmentRun){func(r *EnvironmentRun) { r.Commit = blob }, func(r *EnvironmentRun) { r.Removed = false }, func(r *EnvironmentRun) { r.Network = "none" }, func(r *EnvironmentRun) { r.Worker = "other" }} {
 		copy := *r
 		bad(&copy)
@@ -132,6 +135,20 @@ func TestQueueStartupBindsInventoryAndWorker(t *testing.T) {
 	for range 2 {
 		if err = s.Complete(ctx, j.ExecutionID, j.LeaseToken, result); err != nil {
 			t.Fatal("completion replay", err)
+		}
+	}
+	if err := s.AccessCIFile(ctx, j.TaskID, j.ExecutionID, r.ID, "startup.log", func(want validation.FileDigest) error {
+		if want != digest {
+			t.Fatal("wrong startup log digest", want)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][2]string{{"ci-run-" + strconv.FormatInt(j.ExecutionID, 10), "startup.log"}, {r.ID, "run.json"}, {r.ID, "../startup.log"}} {
+		err := s.AccessCIFile(ctx, j.TaskID, j.ExecutionID, pair[0], pair[1], func(validation.FileDigest) error { t.Fatal("unexpected startup file access"); return nil })
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatal(err)
 		}
 	}
 	next, err := s.QueueStartup(ctx, parent.ID, "local-integrated", j.TaskID)

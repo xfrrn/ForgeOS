@@ -18,7 +18,7 @@ export async function downloadFile(request: ApiRequest, path: string, file: stri
   setTimeout(() => URL.revokeObjectURL(link.href), 1000)
 }
 
-export function ArchiveDownload({ path, file, request }: { path: string; file: string; request: ApiRequest }) {
+export function ArchiveDownload({ path, file, request, label = '下载进程日志 JSONL' }: { path: string; file: string; request: ApiRequest; label?: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function download() {
@@ -26,11 +26,11 @@ export function ArchiveDownload({ path, file, request }: { path: string; file: s
     try { await downloadFile(request, path, file) }
     catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? '节点尚未完成日志传输，请稍后重试。' :
-        e instanceof ApiError && e.status === 410 ? '中央日志已到期，进程摘要仍可查阅。' :
-        e instanceof Error ? e.message : '无法下载进程归档')
+        e instanceof ApiError && e.status === 410 ? '中央日志已到期，归档摘要仍可查阅。' :
+        e instanceof Error ? e.message : '无法下载日志归档')
     }
     finally { setBusy(false) }
   }
-  return <div><button disabled={busy} onClick={() => void download()}>{busy ? '正在下载…' : '下载进程日志 JSONL'}</button>
+  return <div><button disabled={busy} onClick={() => void download()}>{busy ? '正在下载…' : label}</button>
     {error && <p role="alert">{error}</p>}</div>
 }

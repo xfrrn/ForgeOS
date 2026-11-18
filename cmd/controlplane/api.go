@@ -292,6 +292,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		if job != nil {
 			job.RepoRelativePath = localrepo.RelativePath(root, job.RepoPath)
+			job.ArchiveStartupLog = job.Kind == "environment_check" && job.ReportLiveCILog && r.URL.Query().Get("supports_startup_archive") == "1"
 			job.RecordArchiveDigests = job.RecordProcesses && r.URL.Query().Get("supports_archive_digests") == "1"
 			job.UploadProcessArchives = job.RecordArchiveDigests && r.URL.Query().Get("supports_archive_upload") == "1"
 		}
@@ -409,7 +410,8 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		if err == nil && result.Processes != nil {
 			w.Header().Set("ForgeOS-Process-Archive", "1")
 		}
-		if err == nil && input.Validation != nil && input.Validation.Run != nil {
+		_, startupArchive := result.EnvironmentRun.LogDigest()
+		if err == nil && (startupArchive || input.Validation != nil && input.Validation.Run != nil) {
 			w.Header().Set("ForgeOS-CI-Archive", "1")
 		}
 		respond(w, http.StatusNoContent, nil, err)

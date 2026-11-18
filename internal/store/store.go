@@ -471,6 +471,7 @@ type Job struct {
 	RecordToolStream      bool            `json:"record_tool_stream,omitempty"`
 	RecordAppTurn         bool            `json:"record_app_turn,omitempty"`
 	ReportLiveProcess     bool            `json:"report_live_process,omitempty"`
+	ArchiveStartupLog     bool            `json:"archive_startup_log,omitempty"`
 	ReportLiveCILog       bool            `json:"report_live_ci_log,omitempty"`
 	ReportCICandidate     bool            `json:"report_ci_candidate,omitempty"`
 	Startup               *StartupSpec    `json:"startup,omitempty"`
@@ -1115,6 +1116,11 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	}
 	if err != nil {
 		return err
+	}
+	if _, ok := result.EnvironmentRun.LogDigest(); ok {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO ci_archive_files(execution_id,file,kind,confirmed_at) VALUES ($1,'startup.log','log',clock_timestamp())`, id); err != nil {
+			return err
+		}
 	}
 	if result.Processes != nil {
 		for _, p := range *result.Processes {

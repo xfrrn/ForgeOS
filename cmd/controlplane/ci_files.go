@@ -177,7 +177,7 @@ func registerCIFiles(mux *http.ServeMux, data *store.Store, owner string, worker
 }
 
 func removeCIFile(f store.CIArchiveFile) error {
-	if !validation.ValidRunID(f.Run) {
+	if !validation.ValidRunID(f.Run) && !store.IsStartupLog(f.Execution, f.Run, f.File) {
 		return errors.New("invalid archived CI run ID")
 	}
 	return removeArtifact(fmt.Sprintf("ci/%d/%d/%s/%s", f.Task, f.Execution, f.Run, f.File))

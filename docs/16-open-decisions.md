@@ -54,7 +54,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 ## 节点日志归档补充状态
 
-公开模型文本、已完成工具文本以及 App Server 命令增量已接入节点 SQLite 脱敏归档，并通过正式 process-logs CLI 导出、顺序／摘要校验和到期清理。完整记录超出 8 KiB 页面窗口仍可回读；容量省略、旧记录无归档和已到期均明确返回。四类原生角色的 Daemon 恢复、最近结果保护、旧备份再次清理及非 root Linux CLI 已实测。普通原生适配器的真实交付与本阶段回归见验收记录。普通执行的[中央日志下载](acceptance.md#central-process-archive)已验证；Curator、Management 和 Test Agent 的[中央传输、重启与离线下载](acceptance.md#role-process-central)已验收。Reviewer 原生复验、其余结构化工具内容及启动日志归档继续待补齐。角色冻结提示、输出合同和私有目录的到期清理已从四类角色备份及正式 Reviewer 领取入口验收。
+公开模型文本、已完成工具文本以及 App Server 命令增量已接入节点 SQLite 脱敏归档，并通过正式 process-logs CLI 导出、顺序／摘要校验和到期清理。完整记录超出 8 KiB 页面窗口仍可回读；容量省略、旧记录无归档和已到期均明确返回。四类原生角色的 Daemon 恢复、最近结果保护、旧备份再次清理及非 root Linux CLI 已实测。普通原生适配器的真实交付与本阶段回归见验收记录。普通执行的[中央日志下载](acceptance.md#central-process-archive)已验证；Curator、Management 和 Test Agent 的[中央传输、重启与离线下载](acceptance.md#role-process-central)已验收。[启动日志中央下载](acceptance.md#startup-log-download)已在 Docker 的成功和失败终态验收。Reviewer 原生复验及其余结构化工具内容待补齐。角色冻结提示、输出合同和私有目录的到期清理已从四类角色备份及正式 Reviewer 领取入口验收。
 
 文件改动结构化回执补充：已接入 Codex CLI 的原生改动清单和 App Server 的原生补丁，复用现有窗口及节点归档；完成、失败／拒绝、移动路径、未知类型和转义凭据通过适配器测试。正式 Codex CLI 与 App Server 已分别通过 beta #220／PR #221 和 beta #222／PR #223 验证运行中回读、控制面重启、脱敏导出及交付，证据见 acceptance.md。MCP 等其他结构化内容及中央全文调阅仍待补齐。
 
@@ -88,7 +88,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 | B.10 多 Worker 认证与证书轮换 | 已验收 | 活动租约中轮换 bearer 令牌与客户端证书，旧连接撤销后核对新身份。 | [实测](acceptance.md#check-b-10) | `266f11fe1c6598a047b7dac217fa7793a51d8794`、`40736ea2141c80ac4a6f1e5b4ba7bd1f0857c72a` |
 | C.1 Dashboard | 已验收 | 桌面与窄屏工作台按跨项目任务、通知和审批进入详情。 | [实测](acceptance.md#check-c-1) | `30855aaeae2598917382cc1bb42b3a5c189aa283` |
 | C.2 Goal 与任务树 | 已验收 | Chrome 可查看生效计划、历史修订及子项；已有执行的任务升级后保留关联。 | [实测](acceptance.md#adr-evidence-006) | `616dcb6508a47061f2118a98c31bfb821609870b`、`955363108651679a0245eea98d536704dd05813b` |
-| C.3 实时日志与工具调用 | 部分验收 | 普通执行和三个独立角色的中央下载已验。Reviewer 原生复验、启动日志全文和其余工具输出待补。 | [实测](acceptance.md#check-b-9) · [全文校验后导出](acceptance.md#archive-verify-before-export) · [中央下载](acceptance.md#central-process-archive) | `772840a7b2e3ae0a78ac86e34a3a721c8a71d29a`、`e07cb31c2e6122312881f5416abbee4ac4c18549`、`81f5da14d3d07b6bf11007513de720c54fde858a`、`70bbfc0c6cc8476ce461896b0dd52d282f3e9a06`、`6d401c4d52952b36a2d43ed76a0da9fefae2a0de` |
+| C.3 实时日志与工具调用 | 部分验收 | 普通执行和三个独立角色的中央下载已验。环境启动日志的中央下载与到期已验。Reviewer 原生复验及其余工具输出待补。 | [实测](acceptance.md#check-b-9) · [全文校验后导出](acceptance.md#archive-verify-before-export) · [中央下载](acceptance.md#central-process-archive) | `772840a7b2e3ae0a78ac86e34a3a721c8a71d29a`、`e07cb31c2e6122312881f5416abbee4ac4c18549`、`81f5da14d3d07b6bf11007513de720c54fde858a`、`70bbfc0c6cc8476ce461896b0dd52d282f3e9a06`、`6d401c4d52952b36a2d43ed76a0da9fefae2a0de` |
 | C.4 问题批量回答 | 已验收 | 跨项目批量答复、部分填写、并发提交和失去响应后的重读通过。 | [实测](acceptance.md#check-c-4) | `abb5257b9899049c22868821721030556f70a5ab` |
 | C.5 审批中心 | 部分验收 | 计划、知识提案、共享和已分级业务问题可进入原记录审批；原生运行中审批等操作待验。 | [入口](acceptance.md#check-c-5) · [审核等级](acceptance.md#approval-source-levels) · [待答问题](acceptance.md#approval-questions) | `ec9ec1b32da0fb0352855efef19fef2844aa980b`、`2672efc535da66d57f441505fcd4c66d73d83a1b`、`d329bba015030f08ba8852e85250ca712f0275d2` |
 | C.6 预览反馈工具 | 已验收 | 元素、问题、截图、录屏可绑定候选，Owner 从工作台处理、退回并复验；网络条件见 A.7。 | [实测](acceptance.md#adr-evidence-014) | `c382473c31775ebcc074682f8f55ce59adbad745`、`a6ade1d1aeed649685ad1b858cc556c774171f57` |

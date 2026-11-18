@@ -328,7 +328,7 @@ func (w *worker) sendReceipt(ctx context.Context, key []byte, id int64, report j
 				}
 			}
 			if archive {
-				if err = queueCIFiles(confirmCtx, tx, key, report); err != nil {
+				if err = queueCIFiles(confirmCtx, tx, key, id, report); err != nil {
 					return err
 				}
 			}

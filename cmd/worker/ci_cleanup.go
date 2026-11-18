@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -16,7 +17,8 @@ import (
 )
 
 func (w *worker) removeLocalCIFile(ctx context.Context, f store.LocalCIFile) error {
-	if !validation.ValidRunID(f.Run) || !filepath.IsLocal(f.File) || filepath.Base(f.File) != f.File ||
+	startup := store.IsStartupLog(f.Execution, f.Run, f.File)
+	if (!validation.ValidRunID(f.Run) && !startup) || !filepath.IsLocal(f.File) || filepath.Base(f.File) != f.File ||
 		f.File == "run.json" || f.Execution < 1 || f.Revision < 1 || f.Task < 1 {
 		return errors.New("invalid local CI removal receipt")
 	}
@@ -51,13 +53,23 @@ func (w *worker) removeLocalCIFile(ctx context.Context, f store.LocalCIFile) err
 	if err != nil {
 		return err
 	}
-	var run validation.Run
-	if err := readRun(bytes.NewReader(raw), &run); err != nil || !run.Valid() || run.Runner != w.id ||
-		run.ID != f.Run || run.ExecutionID != f.Execution {
-		return errors.New("local CI run does not match the cleanup receipt")
-	}
-	if digest, ok := run.Files()[f.File]; !ok || digest != f.Digest {
-		return errors.New("cleanup file is missing or different in local receipt")
+	if startup {
+		var run store.EnvironmentRun
+		if err := json.Unmarshal(raw, &run); err != nil || run.Worker != w.id || run.ID != f.Run {
+			return errors.New("startup run does not match the cleanup receipt")
+		}
+		if digest, ok := run.LogDigest(); !ok || digest != f.Digest {
+			return errors.New("startup log differs from its cleanup receipt")
+		}
+	} else {
+		var run validation.Run
+		if err := readRun(bytes.NewReader(raw), &run); err != nil || !run.Valid() || run.Runner != w.id ||
+			run.ID != f.Run || run.ExecutionID != f.Execution {
+			return errors.New("local CI run does not match the cleanup receipt")
+		}
+		if digest, ok := run.Files()[f.File]; !ok || digest != f.Digest {
+			return errors.New("cleanup file is missing or different in local receipt")
+		}
 	}
 	// Historical receipts may predate the upload queue. Preserve a verified central copy
 	// (or its explicit retirement) before unlinking the local bytes.

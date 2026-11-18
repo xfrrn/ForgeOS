@@ -90,7 +90,7 @@ func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *ch
 			if job.ReportLiveCILog {
 				observe, stop := w.watchCILog(ctx, job, r.Commit)
 				defer stop()
-				capture = &environmentLog{observe: observe, run: fmt.Sprintf("ci-run-%d", job.ExecutionID), secrets: outputSecrets(job.LeaseToken), credential: w.credential}
+				capture = &environmentLog{archive: job.ArchiveStartupLog, observe: observe, run: fmt.Sprintf("ci-run-%d", job.ExecutionID), secrets: outputSecrets(job.LeaseToken), credential: w.credential}
 			}
 			err := r.record(ctx, repo, expected, capture)
 			return &r, err

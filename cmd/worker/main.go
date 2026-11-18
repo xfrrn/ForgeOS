@@ -384,7 +384,7 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-const workerCapabilityQuery = "supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1"
+const workerCapabilityQuery = "supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1"
 
 func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
 	ctx, stop := context.WithCancelCause(parent)

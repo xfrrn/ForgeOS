@@ -35,7 +35,7 @@ function ToolActivity({events}: {events?: ToolEvent[]}) {
     </li>)}</ol>
   </section>
 }
-type Result = { environment_run?: { output?: { bytes: number; text: string }; probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
+type Result = { environment_run?: { id: string; output?: { bytes: number; text: string; sha256?: string }; probes: number; http_status?: number; network?: string; image?: string; container_removed?: boolean; script_blob?: string; config_blob?: string }; commit?: string; base_commit?: string; session_id?: string; harness?: string; harness_version?: string; processes?: HarnessProcess[]; exit_code: number; error?: string; validation?: Validation; plan?: { objective: string } }
 type ModelPause = { instance: number; session_id: string; requested_at: string; parked_at?: string; resumed_at?: string; index_tree?: string; worktree_tree?: string }
 type Attempt = {
   queue_sequence?: number
@@ -453,6 +453,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
     {result?.error && <p className="detail-problem" role="status">{result.error}</p>}
     {result?.environment_run?.output && <details><summary>启动日志 · 已记录 {result.environment_run.output.bytes} 字节</summary>
       <p>最近 8 KiB，经脱敏后保存。</p><pre className="material-content">{result.environment_run.output.text || '没有日志输出。'}</pre>
+      {result.environment_run.output.sha256 && <><p>日志 SHA-256 · <code>{result.environment_run.output.sha256}</code></p><ArchiveDownload request={request} path={`/tasks/${task.id}/executions/${attempt.id}/ci/${result.environment_run.id}/startup.log`} file="startup.log" label="下载启动日志"/></>}
     </details>}
     {validation ? <section className={'detail-validation ' + (validation.exit_code === 0 ? 'passed' : 'failed')}>
       <div><Icon name={validation.exit_code === 0 ? 'CheckCircle2' : 'AlertCircle'} size={16} />

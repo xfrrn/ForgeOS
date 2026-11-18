@@ -91,6 +91,34 @@ func (s *Store) projectCIRetention(ctx context.Context, id int64, policy *CIRete
 	return *policy, tx.Commit()
 }
 
+const archiveRun = `COALESCE(e.result->'validation'->'run',e.result->'environment_run')`
+
+func archivedDigest(raw []byte, execution int64, id, file, worker string) (validation.FileDigest, error) {
+	if IsStartupLog(execution, id, file) {
+		var run EnvironmentRun
+		if err := json.Unmarshal(raw, &run); err != nil {
+			return validation.FileDigest{}, err
+		}
+		digest, ok := run.LogDigest()
+		if !ok || run.ID != id || run.Worker == "" || (worker != "" && worker != run.Worker) {
+			return digest, ErrNotFound
+		}
+		return digest, nil
+	}
+	var run validation.Run
+	if err := json.Unmarshal(raw, &run); err != nil {
+		return validation.FileDigest{}, err
+	}
+	if !run.Valid() || run.ID != id || run.ExecutionID != execution || (worker != "" && run.Runner != worker) {
+		return validation.FileDigest{}, ErrNotFound
+	}
+	digest, ok := run.Files()[file]
+	if !ok {
+		return digest, ErrNotFound
+	}
+	return digest, nil
+}
+
 // Hold the file row lock until I/O finishes so a late upload cannot undo a purge.
 func (s *Store) AccessCIFile(ctx context.Context, task, execution int64, runID, file string, access func(validation.FileDigest) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -101,11 +129,11 @@ func (s *Store) AccessCIFile(ctx context.Context, task, execution int64, runID, 
 	var raw []byte
 	var expired, due bool
 	var revision int64
-	err = tx.QueryRowContext(ctx, `SELECT e.result->'validation'->'run',a.expired_at IS NOT NULL,COALESCE(`+ciDue+`,false),
+	err = tx.QueryRowContext(ctx, `SELECT `+archiveRun+`,a.expired_at IS NOT NULL,COALESCE(`+ciDue+`,false),
 		COALESCE(CASE WHEN a.expired_at IS NOT NULL THEN a.retention_revision ELSE p.ci_revision END,0)
 		FROM ci_archive_files a JOIN executions e ON e.id=a.execution_id
 		JOIN work_items t ON t.id=e.task_id JOIN projects p ON p.id=t.project_id
-		WHERE e.id=$1 AND e.task_id=$2 AND e.result->'validation'->'run'->>'id'=$3 AND a.file=$4
+		WHERE e.id=$1 AND e.task_id=$2 AND `+archiveRun+`->>'id'=$3 AND a.file=$4
 		FOR UPDATE OF a`, execution, task, runID, file).Scan(&raw, &expired, &due, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -125,16 +153,9 @@ func (s *Store) AccessCIFile(ctx context.Context, task, execution int64, runID, 
 		}
 		return RetentionExpiry{ErrCIExpired, revision}
 	}
-	var run validation.Run
-	if err = json.Unmarshal(raw, &run); err != nil {
+	digest, err := archivedDigest(raw, execution, runID, file, "")
+	if err != nil {
 		return err
-	}
-	if !run.Valid() || run.ExecutionID != execution {
-		return ErrNotFound
-	}
-	digest, ok := run.Files()[file]
-	if !ok {
-		return ErrNotFound
 	}
 	if err = access(digest); err != nil {
 		return err
@@ -154,7 +175,7 @@ func (s *Store) PurgeCIFiles(ctx context.Context, remove func(CIArchiveFile) err
 	var after CIArchiveFile
 	var firstError error
 	for {
-		rows, err := s.db.QueryContext(ctx, `SELECT e.task_id,e.id,e.result->'validation'->'run'->>'id',a.file
+		rows, err := s.db.QueryContext(ctx, `SELECT e.task_id,e.id,`+archiveRun+`->>'id',a.file
 			FROM ci_archive_files a JOIN executions e ON e.id=a.execution_id
 			WHERE a.expired_at IS NOT NULL AND a.removed_at IS NULL AND (a.execution_id,a.file)>($1,$2)
 			ORDER BY a.execution_id,a.file LIMIT 128`, after.Execution, after.File)
@@ -208,7 +229,7 @@ func (s *Store) ExpireLocalCIFiles(ctx context.Context) error {
 }
 
 func (s *Store) LocalCICleanup(ctx context.Context, worker string, projects []int64, after int64, file string, reconcile bool) ([]LocalCIFile, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT e.task_id,e.id,a.file,a.local_revision,e.result->'validation'->'run',a.local_removed_at IS NOT NULL
+	rows, err := s.db.QueryContext(ctx, `SELECT e.task_id,e.id,a.file,a.local_revision,`+archiveRun+`,`+archiveRun+`->>'id',a.local_removed_at IS NOT NULL
         FROM ci_archive_files a JOIN executions e ON e.id=a.execution_id JOIN work_items t ON t.id=e.task_id
         WHERE a.local_expired_at IS NOT NULL AND ($5 OR a.local_removed_at IS NULL) AND e.worker=$1
         AND ($2::bigint[] IS NULL OR t.project_id=ANY($2)) AND (e.id,a.file)>($3,$4)
@@ -221,21 +242,13 @@ func (s *Store) LocalCICleanup(ctx context.Context, worker string, projects []in
 	for rows.Next() {
 		var f LocalCIFile
 		var raw []byte
-		if err = rows.Scan(&f.Task, &f.Execution, &f.File, &f.Revision, &raw, &f.Removed); err != nil {
+		if err = rows.Scan(&f.Task, &f.Execution, &f.File, &f.Revision, &raw, &f.Run, &f.Removed); err != nil {
 			return nil, err
 		}
-		var run validation.Run
-		if err = json.Unmarshal(raw, &run); err != nil {
+		f.Digest, err = archivedDigest(raw, f.Execution, f.Run, f.File, worker)
+		if err != nil {
 			return nil, err
 		}
-		if !run.Valid() || run.Runner != worker || run.ExecutionID != f.Execution {
-			return nil, errors.New("invalid archived Worker run")
-		}
-		digest, ok := run.Files()[f.File]
-		if !ok {
-			return nil, errors.New("file missing from CI receipt")
-		}
-		f.Run, f.Digest = run.ID, digest
 		list = append(list, f)
 	}
 	return list, rows.Err()
