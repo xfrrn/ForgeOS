@@ -8,6 +8,7 @@ import { PreviewFeedback } from './PreviewFeedback'
 import TaskList from './TaskList'
 import { WorkerNodes } from './WorkerNodes'
 import { DecisionQuestions } from './DecisionQuestions'
+import { ProjectInbox } from './ProjectInbox'
 import { Projects } from './Projects'
 import { ProjectShares } from './ProjectShares'
 import { ProjectDecisions } from './ProjectDecisions'
@@ -69,19 +70,20 @@ function App() {
   const notifications = route === '/notifications'
   const nodes = route === '/workers'
   const questions = route === '/questions'
-  const projectRoute = /^\/projects\/([1-9]\d*)\/(materials|(?:decisions|shares)(?:\/[1-9]\d*)?)$/.exec(route)
+  const projectRoute = /^\/projects\/([1-9]\d*)\/(inbox|materials|(?:decisions|shares)(?:\/[1-9]\d*)?)$/.exec(route)
   const projectID = projectRoute && Number.isSafeInteger(Number(projectRoute[1])) ? Number(projectRoute[1]) : undefined
+  const inbox = projectID && projectRoute?.[2] === 'inbox'
   const materials = projectID && projectRoute?.[2] === 'materials'
   const projectPath = projectRoute?.[2].split('/')
   const recordID = projectPath?.[1] ? Number(projectPath[1]) : undefined
   const decisions = projectID && projectPath?.[0] === 'decisions' && (recordID === undefined || Number.isSafeInteger(recordID))
   const shares = projectID && projectPath?.[0] === 'shares' && (recordID === undefined || Number.isSafeInteger(recordID))
-  const projects = route === '/projects' || Boolean(materials || decisions || shares)
+  const projects = route === '/projects' || Boolean(inbox || materials || decisions || shares)
   const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9})|\/questions\/([1-9]\d*))?$/.exec(route)
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) && (!idMatch[5] || Number.isSafeInteger(Number(idMatch[5]))) ? Number(idMatch[1]) : undefined
   const valid = Boolean(overview || running || id || approvals || queue || notifications || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
-  const title = overview ? '工作台总览' : running ? '执行中任务' : preview ? '预览反馈' : id ? '任务详情' : approvals ? '审批中心' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
+  const title = overview ? '工作台总览' : running ? '执行中任务' : preview ? '预览反馈' : id ? '任务详情' : approvals ? '审批中心' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : inbox ? '讨论收件箱' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
   }, [])
@@ -136,6 +138,7 @@ function App() {
         approvals ? <Approvals request={request}/> :
         notifications ? <Notifications request={request} onRead={() => setNotificationRevision(n => n + 1)}/> :
         nodes ? <WorkerNodes request={request}/> :
+        inbox && projectID ? <ProjectInbox key={projectID} project={projectID} request={request}/> :
         shares && projectID ? <ProjectShares key={route} project={projectID} receipt={recordID} request={request}/> :
         decisions && projectID ? <ProjectDecisions key={route} project={projectID} decision={recordID} request={request}/> :
         materials && projectID ? <ProjectMaterials key={projectID} project={projectID} request={request}/> :

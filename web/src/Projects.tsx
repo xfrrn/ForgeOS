@@ -74,7 +74,7 @@ export function Projects({ request }: { request: ApiRequest }) {
       {items.map(p => <article key={p.id} className="registered-project"><div>
         <h3>项目 #{p.id}</h3><code>{p.path}</code>{p.repository_id && <p>GitHub 仓库 ID · {p.repository_id}</p>}
         {p.check_status && <p>最近的 HEAD 检查 <Status value={p.check_status}/></p>}</div>
-        <div className="detail-actions"><a href={`#/projects/${p.id}/materials`}>项目资料</a><a href={`#/projects/${p.id}/decisions`}>项目决策</a><a href={`#/projects/${p.id}/shares`}>共享经验</a>{p.check_id && <a href={'#/tasks/' + p.check_id}>查看检查 #{p.check_id}</a>}
+        <div className="detail-actions"><a href={`#/projects/${p.id}/inbox`}>讨论收件箱</a><a href={`#/projects/${p.id}/materials`}>项目资料</a><a href={`#/projects/${p.id}/decisions`}>项目决策</a><a href={`#/projects/${p.id}/shares`}>共享经验</a>{p.check_id && <a href={'#/tasks/' + p.check_id}>查看检查 #{p.check_id}</a>}
           {(!p.check_id || p.check_status === 'FAILED' || p.check_status === 'DONE') && <button className="button" disabled={busy} onClick={() => void check(p)}>{p.check_status === 'DONE' ? '检查当前 HEAD' : p.check_id ? '重新检查' : '运行 HEAD 检查'}</button>}</div>
       </article>)}
       {cursor && <button className="button" disabled={busy} onClick={() => lifetime.current && void load(lifetime.current.signal, cursor)}>更多项目</button>}

@@ -125,6 +125,8 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 
 按标签自动接入时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，`FORGEOS_POLL_VALIDATION` 为上述一种验证方式。Owner 在 GitHub 仓库中为 Agent 任务模板配置 `forgeos-agent` 标签，Poller 只派发带该标签的开放 Issue，逐页读取并与手动导入共用去重逻辑。普通讨论可由 Owner 通过编号显式转为任务。默认采用按编号派单。
 
+在工作台的“项目接入”中打开对应项目的“讨论收件箱”，可查看 Poller 已同步的普通讨论和 GitHub 原文。点击“转为实现任务”将用项目配置的模型和自动验证策略派单，并打开任务详情。同一讨论重复转换会打开同一任务。[桌面、窄屏与重启实测](acceptance.md#discussion-inbox-ui)
+
 要同时轮询多个仓库，设置 `FORGEOS_POLL_PROJECTS_FILE` 指向操作员维护的 JSON 文件。例如以下配置让第一个项目使用文档检查，第二个项目按固定基础提交的策略选择检查。
 
 ```json
