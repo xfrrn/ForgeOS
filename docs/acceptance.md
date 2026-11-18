@@ -4,7 +4,7 @@
 
 ## 当前验收进度
 
-截至 `94ad23ba0590e9b07e67ac6e8f83d0c39b7a5579` 的回归，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 `9e0ba64249e7d936b6ecf55007de51f96b1d1bc9` 的回归，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
@@ -23,8 +23,13 @@
 | 专题 07、16 B.4 下一回合的名额恢复 | [beta #254，第二次模型分配回执丢失后重启](#queued-model-grant-recovery) | `a7ca585a1395d5f284ecd4db2ad8754f7c5d3f28` |
 | 专题 07、16 B.4 首次模型启动前恢复 | [beta #255，原始分配回执丢失及停机期间取消](#first-model-grant-recovery) | `0c977d76a699ff7fe23dd2844bbe8459b526abcd` |
 | 专题 07、16 B.4 保留原生回合结果 | [beta #256–257，名额释放、暂停、取消和业务答复](#returned-writer-recovery) | `94ad23ba0590e9b07e67ac6e8f83d0c39b7a5579` |
+| 专题 07、16 A.1/B.4 重连活动 Codex 回合 | [私有套接字断开时原命令仍在运行](#native-active-reattach) | `9f80869e8f68737f6cd6c4e0e67afebab1997cf5` |
+| 专题 16 A.1 双版本原生兼容 | [两个版本的输入、审批、中断和接回](#native-version-matrix) | `fe726b748c4ee942c5fb39024ff126bbf2397a15` |
+| 专题 07、16 A.1/B.2 恢复运行中输入的回执 | [beta #250，两次独立写盘故障，补报与保留待确认](#native-input-history-recovery) | `9e0ba64249e7d936b6ecf55007de51f96b1d1bc9` |
 
-在上述最后一项的实现上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
+在 `9e0ba64` 的产品代码上，使用独立的空 PostgreSQL 18 实例并启用真实 Docker 用例执行全量 Go 回归，557 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试，原始记录为 `input-history-regression.jsonl`。该轮补充的回执断言又单独运行通过。`go vet ./...`、TypeScript 检查和工作台生产构建通过。四阶段最终端到端复验仍待执行。
+
+此前在 `94ad23b` 上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
 
 <a id="native-input-history-recovery"></a>
 
