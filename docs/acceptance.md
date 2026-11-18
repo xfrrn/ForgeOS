@@ -4,6 +4,8 @@
 
 ## 当前验收进度
 
+[端到端流程对照](01-end-to-end-workflow.md#4-流程验收对照)按接入、规划、执行、验收、交付和归档等 11 步列出操作证据、ForgeOS 提交及待验条件。
+
 截至 2026-11-19，专题 16 的 28 项中，21 项已验收，3 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
@@ -13,6 +15,8 @@
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方、独立 Staging 接收外部提供方的真实回调。 |
 | 路线一至四最终复验 | 已重新执行[基座的中断补报](#foundation-before-report)、[单项目交付](#single-project-273)和[双子项 Goal](#dependent-goal-275)。阶段四已将[两个离线节点的原始回执与 GitHub 交付记录](#offline-node-deliveries)逐项核对。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
+
+2026-11-19 再以只读权限启动原生 Claude，会话 `93b56ffe-419e-40cf-9e17-bc02ce26dd03` 收到五个事件，提供方报告 HTTP 403 和余额不足。未取得成功读取工具的回执，B.2、B.4、C.3 维持部分验收。脱敏回执为 `native-claude-tool-20261119-025122.json`。
 
 ### 本轮回归与基座复验
 

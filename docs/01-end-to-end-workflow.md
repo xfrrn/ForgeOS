@@ -167,3 +167,21 @@ Owner 用 `POST /tasks/{id}/repository-inventory` 生成或复用清单，`GET` 
 - 普通讨论 Issue：不自动关闭。
 - 失败或取消：保留 Issue 并记录结果。
 - 多个子 PR 使用引用关联父 Issue，不能由第一个子 PR 提前关闭父 Issue。
+
+## 4. 流程验收对照
+
+下表按本页的 11 个步骤索引已运行的场景。提交列给出 ForgeOS 的实现或验收提交；候选和合并 SHA 见各项回执。专题 16 的环境与恢复条件单列在[开放项对照](16-open-decisions.md#requirement-status)中。
+
+| 步骤 | 已核对的操作与实际结果 | ForgeOS 提交 | 尚待验收 |
+| --- | --- | --- | --- |
+| 01 项目接入 | 工作台导入 Git 项目，在固定 HEAD 运行检查，生成环境、密钥需求清单和有版本的初始化报告。[六项接入要求及各自提交](acceptance.md#intake-knowledge-matrix) | `9a75d9e` | Linux 专用服务身份的模型登录见步骤 06。 |
+| 02 需求接入 | 标签触发和 Owner 派发在领取时有不同来源；关闭轮询仍可在网页按编号派发，重复提交只产生一个工作项。[首次来源](acceptance.md#native-issue-dispatch-origin) · [两个浏览器的回执](acceptance.md#web-issue-number) | `b93d5ae`、`effbc78` | — |
+| 03 任务分类 | 实测五类 Issue 的路由、原生分类建议与 Owner 决定。类型不清时保留讨论，Owner 明确为测试后才进入只读规划。[分类与名额](acceptance.md#issue-classification-agent) · [冲突与澄清](acceptance.md#web-issue-number) | `439415c`、`2906d5a`、`effbc78` | — |
+| 04 知识与上下文 | 核对六类角色各自的原生输入或输出、项目范围、规则版本和来源，另从指定提交查询历史资料。[角色、原生会话及逐项提交](acceptance.md#knowledge-role-matrix) · [历史检索](acceptance.md#history-hybrid-search) | `7859f9d`、`3744ecc` | — |
+| 05 Goal 规划 | Planner 从普通讨论生成草案；生效计划的相依子项按序交付，Owner 回答问题并退回一次后才关闭父 Goal。[原生草案](acceptance.md#native-issue-dispatch-origin) · [两次子 PR](acceptance.md#dependent-goal-275) | `b93d5ae`、`73339a5` | — |
+| 06 编排与 Harness | 独立 Worker 在工作树生成候选；控制面与 Worker 中断后按原执行补报，独立角色在 Daemon 替换后继续运行。[补报和串行派发](acceptance.md#foundation-before-report) · [角色恢复](acceptance.md#supervised-roles) | `3296a47`、`ffb9103` | Linux 服务账号登录和共享名额、整机重启、Claude 恢复后成功交付。 |
+| 07 审查与自动验证 | 在固定候选执行容器检查，失败及通过日志均可从网页下载。独立 Reviewer 的固定候选与真实失败进程均有回执。[验证分级](acceptance.md#check-b-6) · [Go 检查](acceptance.md#builtin-go-archive) · [Reviewer](acceptance.md#reviewer-central-log) | `35866ba`、`9431507`、`b064477` | 当前环境的 Claude Reviewer 接回后成功审查。 |
+| 08 人工验收 | 项目标准与全局 Playbook 生成逐条测试计划，覆盖审核、扩展截图和录屏绑定到候选，Owner 可据此退回。[测试计划](acceptance.md#check-b-7) · [浏览器扩展](acceptance.md#check-a-8) | `978d184`、`5279f11`、`5a5d685` | 第二台设备经 Tailscale 访问、独立 Staging 的外部提供方回调。 |
+| 09 代码交付 | 网页批准固定候选，必需检查首轮失败、重跑通过后合入受保护的 main。重启控制面后候选和合并 SHA 与 GitHub 一致。[beta #273](acceptance.md#single-project-273) · [beta #278](acceptance.md#web-issue-number) | `7f461fa`、`f8c32e3` | GitHub 受限身份及第二位审查者批准。 |
+| 10 结果反馈 | 子项交付后父 Issue 继续开放，最后一项完成才关闭；单项目可回查 PR、Actions 与 Issue。任务需人工处理时可从站内通知进入。[父子交付](acceptance.md#dependent-goal-275) · [通知及真实收件条件](03-module-catalog.md#外部通知) | `73339a5`、`31a46df` | Telegram 与飞书的真实收件。 |
+| 11 归档与经验 | 从备份恢复中央进程日志、待传 CI 文件和反馈媒体。需求、计划、决策、合并及共享经验按来源回查。[进程](acceptance.md#central-process-backup) · [CI](acceptance.md#ci-backup-pending) · [媒体](acceptance.md#feedback-backup-restore) · [知识提取触发](acceptance.md#intake-knowledge-matrix) | `755c6c0`、`0f76287`、`a2ace7d`、`52fe76e` | 全路线联验时复核两个项目的归档与隔离。 |
