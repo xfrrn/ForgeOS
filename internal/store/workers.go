@@ -151,11 +151,7 @@ func (h WorkerHeartbeat) Valid() bool {
 			seen := make(map[string]bool)
 			for _, op := range probe.Operations {
 				switch op {
-				case "probe", "start", "resume", "events":
-				case "interrupt":
-					if name != "codex" {
-						return false
-					}
+				case "probe", "start", "resume", "events", "interrupt":
 				default:
 					return false
 				}

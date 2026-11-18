@@ -3795,3 +3795,18 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 再跑原有问答、拒绝写入及恢复模式 | 回答 Green，拒绝写入临时文件，第二进程恢复同一 Session 并读回标识和颜色 | 首次复验有一轮请求其他写入目标，探针拒绝。提示改为明确临时文件绝对路径后，进程 4932、42120 完成同一会话，未写入文件。 |
 
 证据 claude-interrupt-final.json、claude-native-interrupt.json、claude-original-regression-final.json。工作台取消普通 Claude Worker 的原生协议中断仍待接入和实测。
+
+<a id="claude-worker-interrupt"></a>
+
+### 专题 07、16 B.2 · 从工作台中断真实 Claude 实现任务
+
+2026-11-18，在隔离数据库启动正式控制面、普通 Worker 和本机 Claude Code 2.1.310。使用 Chrome 的任务页，分别验证取消和暂停。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在真实 [beta Issue #235](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/235) 的活动 Session 上点击取消，随后派发连通性任务并重启控制面 | 收到该进程的原生回执、结束工作项、归还名额，重启后可核对 | PID 38140、Session 91b09608-23e0-46a6-a192-f9e2a3e1ffdc。节点收到成功中断响应和终态，进程退出 1。任务取消，无候选及 PR，下一任务完成。 |
+| 新控制面配旧 Worker 再从 Chrome 取消；旧控制面配新 Worker 复核能力协商 | 两端继续派发，旧协议维持原操作列表 | 旧 Worker 的 PID 41052 退出、取消结算、下一任务完成且重启可回读。旧控制面接受新节点心跳与执行，未展示新增能力；该次模型已返回余额不足，未取得活动回合中断回执。 |
+| [beta Issue #236](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/236) 从 Chrome 暂停真实 Claude，重启控制面后恢复 | 确认原生中断，在原 Session 继续并交付 | 暂停和原生中断通过。PID 25628 退出 1，已保存树及 Session bf39454b-b476-4db7-8d50-5219919633c2。恢复 PID 2264 使用相同 Session，但模型服务返回 HTTP 403 并明确提示账号余额不足。执行失败，未产生候选。恢复后生成、验证和交付保持待验收。 |
+| Windows 与 Ubuntu 非 root 各重复两次协议子进程测试 | 正常回合结束；中断回执在终态前后到达均可退出；错误回执及静默子进程强制退出 | 两个平台均通过全部五种场景。正式角色原有的工具集与工作目录权限继续由原配置提供。 |
+
+现场程序 claude-interrupt-worker-live.py、claude-pause-delivery.py，证据 claude_native_stream_current/proof.json、claude_native_stream_oldworker/proof.json、claude_stream_pause_delivery/proof.json 和对应的私有节点日志。

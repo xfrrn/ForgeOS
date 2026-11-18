@@ -21,6 +21,7 @@ import (
 
 type claudeCLI struct {
 	bin, version string
+	streamInput  bool
 }
 
 func (c claudeCLI) identity() (string, string) { return "claude", c.version }
@@ -53,7 +54,7 @@ func findClaude(configured string) (claudeCLI, error) {
 	if err != nil || len(version) != 2 {
 		return claudeCLI{}, errors.New("cannot identify the Claude Code version")
 	}
-	return claudeCLI{bin, version[1]}, nil
+	return claudeCLI{bin: bin, version: version[1], streamInput: hasCLIOptions(help, "--input-format")}, nil
 }
 
 func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string) (*exec.Cmd, error) {
@@ -91,11 +92,15 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 			cmd.Env = append(cmd.Env, name+"="+value)
 		}
 	}
-	cmd.Stdin = strings.NewReader(prompt)
+	if c.streamInput {
+		cmd.Args = append(cmd.Args, "--input-format", "stream-json")
+	} else {
+		cmd.Stdin = strings.NewReader(prompt)
+	}
 	return cmd, nil
 }
 
-func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error, question *nativeQuestion) (session string, completed bool, err error) {
+func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error, question *nativeQuestion, control *claudeControl) (session string, completed bool, err error) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	var outcome error
@@ -112,9 +117,18 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 			return session, completed, errors.New("invalid Claude Code event")
 		}
 		switch {
+		case control != nil && event.Type == "control_response":
+			if err := control.response(scanner.Bytes()); err != nil {
+				return session, completed, err
+			}
+		case control != nil && event.Type == "control_request":
+			return session, completed, errors.New("unexpected Claude tool or approval request")
 		case event.Type == "system" && event.Subtype == "init":
 			if session != "" || !nativeSessionID.MatchString(event.Session) || (expected != "" && event.Session != expected) {
 				return session, completed, errors.New("unexpected Claude Code session")
+			}
+			if control != nil {
+				control.active.Store(true)
 			}
 			if err := confirmed(event.Session); err != nil {
 				return "", false, err
@@ -129,6 +143,9 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 				var messages []string
 				if json.Unmarshal(event.Errors, &messages) == nil && len(messages) == 1 && messages[0] == "No conversation found with session ID: "+expected {
 					outcome, completed = errSessionMissing, true
+					if control != nil {
+						control.end()
+					}
 					continue
 				}
 			}
@@ -136,6 +153,9 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 				return session, false, errors.New("mismatched Claude Code result")
 			}
 			completed = true
+			if control != nil {
+				control.end()
+			}
 			if activity != nil {
 				if err := activity(event.Type, scanner.Bytes()); err != nil {
 					return session, completed, err
@@ -155,7 +175,16 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 }
 
 func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
-	cmd, err := c.command(ctx, workspace, prompt, resume)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	child := ctx
+	if c.streamInput {
+		var kill context.CancelFunc
+		child, kill = context.WithCancel(context.WithoutCancel(ctx))
+		defer kill()
+	}
+	cmd, err := c.command(child, workspace, prompt, resume)
 	if err != nil {
 		return "", err
 	}
@@ -163,15 +192,41 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 	if err != nil {
 		return "", errors.New("cannot open Claude result stream")
 	}
+	var control *claudeControl
+	if c.streamInput {
+		input, err := cmd.StdinPipe()
+		if err != nil {
+			stream.Close()
+			return "", err
+		}
+		defer input.Close()
+		control = &claudeControl{input: input}
+	}
 	if err := process.start(cmd, stream); err != nil {
 		return "", err
 	}
-	stop := context.AfterFunc(ctx, func() { stream.Close() })
-	defer stop()
-	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeActivity, process.question)
+	if control == nil {
+		stop := context.AfterFunc(ctx, func() { stream.Close() })
+		defer stop()
+	} else {
+		stop := control.watch(ctx, cmd, stream)
+		defer stop()
+		err := json.NewEncoder(control.input).Encode(map[string]any{"type": "user", "session_id": resume, "parent_tool_use_id": nil,
+			"message": map[string]string{"role": "user", "content": prompt}})
+		if err != nil {
+			_ = cmd.Cancel()
+			stream.Close()
+			_, journalErr := process.wait(cmd)
+			return "", errors.Join(errors.New("could not write Claude user turn"), journalErr, ctx.Err())
+		}
+	}
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeActivity, process.question, control)
 	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) && !errors.Is(parseErr, errSessionMissing) {
-		stream.Close()
 		_ = cmd.Cancel()
+		stream.Close()
+	}
+	if control != nil {
+		_ = control.input.Close()
 	}
 	exit, err := process.wait(cmd)
 	switch {

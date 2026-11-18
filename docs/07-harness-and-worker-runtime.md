@@ -91,7 +91,9 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 在已登录的 Harness 用户下运行 `python scripts/probe_claude.py --bin <原生可执行文件>`。探测会发起两次真实模型调用。第一次在临时目录启动会话，接收并回答 AskUserQuestion，拒绝 Write 权限。第二次启动新的 CLI 进程，按 Session ID 恢复，要求返回第一次消息中的随机标识和选择的答案。脚本核对答复、权限请求的目标路径和文件实际状态后输出版本、Session 和两个 PID。Windows 上将 `--bin` 指向原生 `.exe`。
 
-追加 `--interrupt` 可单独验证文本生成期间的原生中断。探针在同一会话收到首个文本增量后，经标准输入发送 interrupt，核对相同请求编号的成功响应、原生终态及进程退出码。正式 Worker 的交互仍单独验收。[实测](acceptance.md#claude-stream-interrupt) · [Anthropic SDK 控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)
+追加 `--interrupt` 可单独验证文本生成期间的原生中断。探针在同一会话收到首个文本增量后，经标准输入发送 interrupt，核对相同请求编号的成功响应、原生终态及进程退出码。[实测](acceptance.md#claude-stream-interrupt) · [Anthropic SDK 控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)
+
+普通实现 Worker 探测到 Claude 的流式输入选项后，在一个进程中仅提交一个用户回合。Owner 从工作台取消或暂停时，若已确认原生 Session，Worker 发送中断请求。节点核对成功回执与终态并记录退出码。进程尚未初始化、回执无效或五秒后仍未退出，会触发强制终止。旧节点继续按原方式取消；工作台根据节点心跳展示适配器的中断能力。[工作台实测及暂停后的外部阻塞](acceptance.md#claude-worker-interrupt)
 
 ### 将实现任务交给 Claude Code
 

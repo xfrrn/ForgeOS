@@ -22,6 +22,9 @@ const testClaudeID = "21a91faa-be24-43a7-9b4f-631bb115deef"
 
 // The first process exits immediately after a real filesystem edit, before emitting its result.
 func testClaudeProcess() int {
+	if slices.Contains(os.Args, "--input-format") {
+		return testClaudeStream()
+	}
 	body, err := io.ReadAll(os.Stdin)
 	if err != nil || !slices.Contains(os.Args, "--restricted") || !slices.Contains(os.Args, "--safe-mode") {
 		return 2
@@ -56,6 +59,113 @@ func testClaudeProcess() int {
 	}
 	fmt.Printf(`{"type":"result","subtype":"success","session_id":"%s"}`+"\n", testClaudeID)
 	return 0
+}
+
+func testClaudeStream() int {
+	decoder := json.NewDecoder(os.Stdin)
+	var user struct {
+		Type    string
+		Message struct{ Role, Content string }
+	}
+	if decoder.Decode(&user) != nil || user.Type != "user" || user.Message.Role != "user" {
+		return 2
+	}
+	fmt.Printf(`{"type":"system","subtype":"init","session_id":"%s"}`+"\n", testClaudeID)
+	result := func(failed bool) {
+		subtype := "success"
+		if failed {
+			subtype = "error_during_execution"
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "session_id": testClaudeID,
+			"is_error": failed, "subtype": subtype})
+	}
+	if user.Message.Content == "finish" {
+		result(false)
+		if err := decoder.Decode(&user); err != io.EOF {
+			return 2
+		}
+		return 0
+	}
+	var request struct {
+		Type    string
+		ID      string `json:"request_id"`
+		Request struct{ Subtype string }
+	}
+	if decoder.Decode(&request) != nil || request.Type != "control_request" || request.ID == "" || request.Request.Subtype != "interrupt" {
+		return 2
+	}
+	ack := func() {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "control_response",
+			"response": map[string]string{"request_id": request.ID, "subtype": "success"}})
+	}
+	switch user.Message.Content {
+	case "ack first":
+		ack()
+		result(true)
+	case "result first":
+		result(true)
+		ack()
+	case "wrong ack":
+		request.ID += "-other"
+		ack()
+		// A rejected response must terminate the process even if it keeps stdin open.
+		time.Sleep(time.Minute)
+	case "silent":
+		time.Sleep(time.Minute)
+	default:
+		return 2
+	}
+	if decoder.Decode(&user) != io.EOF {
+		return 2
+	}
+	return 23
+}
+
+func TestClaudeStreamCompletesOrInterruptsOneTurn(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, prompt := range []string{"finish", "ack first", "result first", "wrong ack", "silent"} {
+		t.Run(prompt, func(t *testing.T) {
+			w, p, _ := archiveTestProcess(t)
+			p.harness = "claude"
+			dir := t.TempDir()
+			ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+			defer stop()
+			done := make(chan error, 1)
+			go func() {
+				_, err := (claudeCLI{bin: bin, streamInput: true}).runTurn(ctx, p, dir, prompt, "")
+				done <- err
+			}()
+			if prompt != "finish" {
+				for {
+					var n int
+					err := w.journal.QueryRow("SELECT count(*) FROM harness_processes WHERE session_id=?", testClaudeID).Scan(&n)
+					if err != nil || ctx.Err() != nil {
+						t.Fatal("no active Claude session", err, ctx.Err())
+					}
+					if n == 1 {
+						break
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				stop()
+			}
+			runErr := <-done
+			var exit int
+			if err := w.journal.QueryRow("SELECT exit_code FROM harness_processes WHERE session_id=?", testClaudeID).Scan(&exit); err != nil {
+				t.Fatal(err)
+			}
+			if prompt == "finish" {
+				if runErr != nil || exit != 0 {
+					t.Fatal(runErr, exit)
+				}
+			} else if !errors.Is(runErr, context.Canceled) || (exit == 23) != (prompt == "ack first" || prompt == "result first") {
+				t.Fatal("unexpected interruption", runErr, exit)
+			}
+		})
+	}
 }
 
 func TestClaudeProcessRecovery(t *testing.T) {
@@ -139,12 +249,12 @@ func TestClaudeProcessRecovery(t *testing.T) {
 func TestClaudeStreamRejectsWrongSessionAndStructuredFailure(t *testing.T) {
 	init := fmt.Sprintf(`{"type":"system","subtype":"init","session_id":"%s"}`, testClaudeID)
 	confirm := func(string) error { return nil }
-	if _, _, err := readClaudeEvents(strings.NewReader(init), "00000000-0000-0000-0000-000000000000", confirm, nil, nil); err == nil {
+	if _, _, err := readClaudeEvents(strings.NewReader(init), "00000000-0000-0000-0000-000000000000", confirm, nil, nil, nil); err == nil {
 		t.Fatal("accepted an unrelated resumed session")
 	}
 	for _, fields := range []string{`"subtype":"error","is_error":false`, `"subtype":"success","is_error":true`} {
 		failed := fmt.Sprintf(`{"type":"result",%s,"session_id":"%s"}`, fields, testClaudeID)
-		if _, terminal, err := readClaudeEvents(strings.NewReader(init+"\n"+failed), "", confirm, nil, nil); !terminal || !errors.Is(err, errTurnFailed) {
+		if _, terminal, err := readClaudeEvents(strings.NewReader(init+"\n"+failed), "", confirm, nil, nil, nil); !terminal || !errors.Is(err, errTurnFailed) {
 			t.Fatal("lost terminal model failure", fields, err)
 		}
 	}
@@ -163,7 +273,7 @@ func TestClaudeMissingSessionBindsRequestedID(t *testing.T) {
 		{strings.Replace(record, "error_during_execution", "error", 1), testClaudeID, false},
 		{init + "\n" + record, testClaudeID, false},
 	} {
-		_, _, err := readClaudeEvents(strings.NewReader(tc.stream), tc.expected, func(string) error { return nil }, nil, nil)
+		_, _, err := readClaudeEvents(strings.NewReader(tc.stream), tc.expected, func(string) error { return nil }, nil, nil, nil)
 		if errors.Is(err, errSessionMissing) != tc.missing {
 			t.Fatalf("unexpected missing-session classification for %q: %v", tc.expected, err)
 		}

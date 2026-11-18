@@ -329,6 +329,9 @@ func (w *worker) run(ctx context.Context) error {
 	if w.codexAppServer {
 		heartbeat += "&codex_interrupt=1"
 	}
+	if w.claude.streamInput {
+		heartbeat += "&claude_interrupt=1"
+	}
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
 			status, err := w.post(ctx, heartbeat, h, nil)

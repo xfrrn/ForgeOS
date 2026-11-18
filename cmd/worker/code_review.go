@@ -145,7 +145,7 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 				return nil
 			}
 			return process.claudeActivity(kind, body)
-		}, nil)
+		}, nil, nil)
 		if err == nil && !completed {
 			err = errors.New("Claude review has no terminal result")
 		}
