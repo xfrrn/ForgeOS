@@ -17,6 +17,8 @@ import (
 	"forgeos/internal/store"
 )
 
+var errExcludeTurnsUnsupported = errors.New("resuming without turn history requires an experimental capability")
+
 type codexServerMessage struct {
 	ID     json.RawMessage `json:"id"`
 	Method string          `json:"method"`
@@ -89,6 +91,9 @@ func (s *codexServer) call(method string, params, result any) error {
 		}
 		if string(m.ID) == strconv.Itoa(s.seq) {
 			if m.Error != nil {
+				if method == "thread/resume" && m.Error.Code == -32600 && m.Error.Message == "thread/resume.excludeTurns requires experimentalApi capability" {
+					return errExcludeTurnsUnsupported
+				}
 				if method == "thread/resume" && m.Error.Code == -32600 && strings.Contains(m.Error.Message, "no rollout found for thread id "+s.resume) {
 					return errSessionMissing
 				}
@@ -210,7 +215,12 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		} else {
 			input.Close()
 		}
-		timeout := time.AfterFunc(5*time.Second, func() { _ = cmd.Cancel() })
+		grace := 5 * time.Second
+		if terminal && resultErr == nil {
+			// Stable native servers may take ten seconds to exit after a completed turn and EOF.
+			grace = 15 * time.Second
+		}
+		timeout := time.AfterFunc(grace, func() { _ = cmd.Cancel() })
 		exit, journalErr := process.wait(cmd)
 		timeout.Stop()
 		close(done)
@@ -236,11 +246,16 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	method := "thread/start"
 	params := map[string]any{"cwd": workspace, "sandbox": c.sandbox, "approvalPolicy": store.CodexApproval,
 		"baseInstructions": "You are a coding agent executing a ForgeOS work item. Follow its supplied scope, requirements and permissions.", "developerInstructions": ""}
+	model := os.Getenv("FORGEOS_CODEX_APP_SERVER_MODEL")
+	if model != "" {
+		params["model"] = model
+	}
 	if resume != "" {
 		method = "thread/resume"
 		params["threadId"], params["excludeTurns"] = resume, true
 	}
 	var thread struct {
+		Model          string
 		Cwd            string              `json:"cwd"`
 		Thread         struct{ ID string } `json:"thread"`
 		ApprovalPolicy string              `json:"approvalPolicy"`
@@ -252,8 +267,16 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			ExcludeSlashTmp     bool     `json:"excludeSlashTmp"`
 		} `json:"sandbox"`
 	}
-	if err = s.call(method, params, &thread); err != nil {
+	err = s.call(method, params, &thread)
+	if errors.Is(err, errExcludeTurnsUnsupported) {
+		delete(params, "excludeTurns")
+		err = s.call(method, params, &thread)
+	}
+	if err != nil {
 		return "", err
+	}
+	if model != "" && thread.Model != model {
+		return "", errors.New("App Server returned a different model than the Worker requested")
 	}
 	expected, expectedErr := os.Stat(workspace)
 	actual, actualErr := os.Stat(thread.Cwd)

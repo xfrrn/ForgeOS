@@ -25,12 +25,17 @@ func testAppServerProcess() int {
 			ID     json.RawMessage
 			Method string
 			Params struct {
+				ExcludeTurns                                   bool
+				Model                                          string
 				Cwd, Sandbox, ApprovalPolicy, ThreadID, TurnID string
 				ExpectedTurnID, ClientUserMessageID            string
 				Input                                          []struct{ Text string }
 			}
 		}
 		if in.Decode(&req) != nil {
+			if scenario == "slow exit" {
+				time.Sleep(6 * time.Second)
+			}
 			return 0
 		}
 		var result any = map[string]any{}
@@ -45,6 +50,10 @@ func testAppServerProcess() int {
 			}
 			if req.Method == "thread/resume" && req.Params.ThreadID != thread {
 				_ = out.Encode(map[string]any{"id": req.ID, "error": map[string]any{"code": -32600, "message": "no rollout found for thread id " + req.Params.ThreadID}})
+				continue
+			}
+			if req.Method == "thread/resume" && filepath.Base(cwd) == "stable resume" && req.Params.ExcludeTurns {
+				_ = out.Encode(map[string]any{"id": req.ID, "error": map[string]any{"code": -32600, "message": "thread/resume.excludeTurns requires experimentalApi capability"}})
 				continue
 			}
 			sandbox := "readOnly"
@@ -66,7 +75,11 @@ func testAppServerProcess() int {
 			if filepath.Base(cwd) == "workspace" {
 				cwd = filepath.Dir(cwd)
 			}
-			result = map[string]any{"cwd": cwd, "thread": map[string]string{"id": thread}, "approvalPolicy": policy, "sandbox": map[string]any{
+			model := req.Params.Model
+			if filepath.Base(cwd) == "other model" {
+				model = "unexpected"
+			}
+			result = map[string]any{"cwd": cwd, "model": model, "thread": map[string]string{"id": thread}, "approvalPolicy": policy, "sandbox": map[string]any{
 				"type": sandbox, "writableRoots": roots, "networkAccess": filepath.Base(req.Params.Cwd) == "network", "excludeTmpdirEnvVar": true, "excludeSlashTmp": true}}
 		case "turn/start":
 			prompt := req.Params.Input[0].Text
@@ -369,7 +382,7 @@ func TestAppServerTurnIdentityAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"complete", "resume", "missing session", "missing terminal", "failed", "foreign thread", "missing turn", "unsafe", "network", "roots", "policy", "workspace", "approval"} {
+	for _, scenario := range []string{"complete", "slow exit", "resume", "stable resume", "other model", "missing session", "missing terminal", "failed", "foreign thread", "missing turn", "unsafe", "network", "roots", "policy", "workspace", "approval"} {
 		t.Run(scenario, func(t *testing.T) {
 			root := filepath.Join(t.TempDir(), scenario)
 			if err = os.Mkdir(root, 0700); err != nil {
@@ -384,14 +397,17 @@ func TestAppServerTurnIdentityAndPermissions(t *testing.T) {
 				adapter.sandbox = "workspace-write"
 			}
 			resume := ""
-			if scenario == "resume" {
+			if scenario == "complete" || strings.HasSuffix(scenario, "resume") || scenario == "other model" {
+				t.Setenv("FORGEOS_CODEX_APP_SERVER_MODEL", "test-model")
+			}
+			if strings.HasSuffix(scenario, "resume") {
 				resume = "a7090935-460b-4930-8484-0f2008435a45"
 			} else if scenario == "missing session" {
 				resume = "046dddd8-2527-45e7-a67f-701b406412aa"
 			}
 			var question nativeQuestion
 			session, err := adapter.runTurn(context.Background(), processLog{question: &question}, root, scenario, resume)
-			if scenario == "complete" || scenario == "resume" {
+			if scenario == "complete" || scenario == "slow exit" || strings.HasSuffix(scenario, "resume") {
 				raw, readErr := os.ReadFile(output)
 				if err != nil || readErr != nil || !nativeSessionID.MatchString(session) || !strings.Contains(string(raw), "Which heading?") {
 					t.Fatal(session, err, readErr)

@@ -27,6 +27,7 @@
 | 专题 16 A.1 双版本原生兼容 | [两个版本的输入、审批、中断和接回](#native-version-matrix) | `fe726b748c4ee942c5fb39024ff126bbf2397a15` |
 | 专题 07、16 A.1/B.2 恢复运行中输入的回执 | [beta #250，两次独立写盘故障，补报与保留待确认](#native-input-history-recovery) | `9e0ba64249e7d936b6ecf55007de51f96b1d1bc9` |
 | 专题 07、16 A.1/B.2 进程报告过期后关闭实时输入 | [beta #250，报告中断、恢复及数据库升级](#stale-turn-input) | `5b28e20d0bdeedadc701162507b1fac76a99748a` |
+| 专题 07、16 B.4 普通 Worker 在写入中途恢复 | [beta #258，首回合、后续排队指令、暂停和取消](#active-writer-recovery) | `8d8ad70e8a35a91d97d2096b225108d902be63c4` |
 
 在 `9e0ba64` 的产品代码上，使用独立的空 PostgreSQL 18 实例并启用真实 Docker 用例执行全量 Go 回归，557 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试，原始记录为 `input-history-regression.jsonl`。该轮补充的回执断言又单独运行通过。`go vet ./...`、TypeScript 检查和工作台生产构建通过。四阶段最终端到端复验仍待执行。
 
@@ -46,6 +47,8 @@
 | 首回合中从 Chrome 将指令排入下一回合，第二回合写下新的编号后终止 Worker，再启动替代 Worker | 第一回合结果和第二回合的部分编辑同时保留，同一条指令只生成一个编号和一个最终标题 | 三个原生进程的退出码依次为 0、-1、0，Session 始终为 `01a1eeb6-b5e6-7cd1-b0f6-51353d154917`。候选 `ebd124eb2aa12e1b3f0896994e22022ffd8cf9b8` 同时保留 `fce08250fadb` 和 `ce21ebb9d60e`，两处标题各出现一次。 |
 
 本机原始回执分别为 `active-writer-resume/latest.json`、`active-writer-pause/latest.json`、`active-writer-cancel/latest.json` 和 `active-writer-next/latest.json`。回执记录进程、原生 Session、Turn、草稿原文、候选与最终任务状态。原生历史缺失、版本或工作目录不符、最新回合无法确认为中断时，节点保留待恢复记录。
+
+在 `8d8ad70` 上，以独立 PostgreSQL 18 和真实 Docker 执行全量 Go 回归，559 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试。Windows 专项观察到原进程退出后工具子进程随之退出；非 root Ubuntu 专项确认原生父进程被终止后仍能检测存活的工具进程组。原始记录为 `active-writer-regression.jsonl`。`go vet ./...`、前端类型检查和生产构建通过。
 
 <a id="stale-turn-input"></a>
 
@@ -79,6 +82,21 @@
 
 实测回执为 `turn-input-history/latest.json` 和 `turn-input-crash-history/latest.json`。原生双版本协议的对照提交为 `fe726b748c4ee942c5fb39024ff126bbf2397a15`。
 
+<a id="stable-worker-delivery"></a>
+
+### 专题 07、16 A.1 · Codex 0.147.0 正式 Worker 的恢复与交付
+
+在隔离的 PostgreSQL 18 和真实私库中派发 beta #258，节点选择 `gpt-5.6-sol`，等待原生模型落下草稿后终止 Worker，再用同一节点目录启动。本次从实际入口发现两处仅运行协议探针时未暴露的差异。
+
+| 操作 | 预期 | 实际结果 |
+| --- | --- | --- |
+| 首次使用旧版恢复原 Thread，分别检查带和不带 `excludeTurns` 的响应 | 明确恢复失败的协议条件 | 带该字段返回 -32600，说明需要实验能力。省略后原 Thread 可以恢复。Worker 只在收到这一明确拒绝时重试，继续核对同一目录、权限、模型和 Thread。 |
+| 模型完成写入后关闭标准输入，观察真实进程退出 | 成功回合应收集真实退出码 | 两次独立原生探测在 7.69 秒、9.05 秒后退出 0。原 Worker 五秒后强制终止，误将已写好标题的执行结算为失败。成功终态的退出宽限调整为 15 秒。 |
+| 正式 Worker 重启后，再从 Chrome 查看并批准精确候选 | 保留原生 Session、草稿编号和文件内容，模型正常退出 | PID 45400 与替代 PID 2524 属于同一 Session `01a1eec2-209f-74f2-a525-d616ac0fa8a7`，退出码分别为 -1、0。候选 `a9e3c93687920a12281d3d13d8df8b2802333875` 保留编号 `54b98089d947` 和一个最终标题。 |
+| 检查受保护分支的 PR、专门设计为首轮失败的 Actions 和本地 CI | 必需检查全绿后才允许合并，远端 PR 的候选应等于 Owner 批准的 SHA | [Actions 44310333580](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44310333580) 第二次通过。`acceptance-check` 与 `forgeos/local-ci` 均成功，[PR #259](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/259) 以 `8cabaf5771c8808301ebc63d1cf5b5f181ecd472` 合入验收分支。 |
+
+交付完成后，GitHub 回读 [Issue #258](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/258) 已关闭，留有一条交付评论。控制面最终状态是 `DONE`。本机回执为 `active-writer-stable-delivery/latest.json`。较新版本从原生实现回合到受保护分支的交付可核对 [PR #169](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/169)。
+
 <a id="native-version-matrix"></a>
 
 ### 专题 07、16 A.1 · 两个已安装版本的 Codex 原生协议
@@ -92,7 +110,7 @@
 | 同一 Thread 批准一次、再次拒绝、拒绝写文件、取消 | Thread `01a1ee94-05c6-7b22-939c-a69de763d682` 四次请求均有独立工具编号，获准命令输出 125810899301，标记文件始终不存在 | [四回合回归](#native-active-reattach) |
 | 命令运行期间断线，接回原进程，要求原命令退出 0、输入 UUID 和随机回复一致 | PID 23604，Turn `01a1ee95-57ec-75d1-9bed-89bc5624f6c9`。重连后收到原命令 `exec-72acf194-35ab-47c1-8087-3b770e52a1a1` 完成事件，退出 0。重建历史包含输入和回复，省略命令项 | PID 25788，Turn `01a1ee95-5e29-76f2-ad08-fad5a0feaa01`，原命令实时完成事件和历史项均可查，退出 0 |
 
-复验命令为 `python -B scripts/probe_codex_app_server.py --bin <原生路径>`，分别运行默认模式、`--steer`、`--approvals` 和 `--reconnect`。稳定版各命令另加上述模型参数。原始回执为 `protocol-matrix-{baseline,steer,approvals}.json`、`compat-147-events.json`、`compat-169-events.json`。新版的私有套接字探针首次实现提交为 `9f80869e8f68737f6cd6c4e0e67afebab1997cf5`。正式 Worker 交付的双版本兼容性和 Owner 原生工具审批仍待验收。
+复验命令为 `python -B scripts/probe_codex_app_server.py --bin <原生路径>`，分别运行默认模式、`--steer`、`--approvals` 和 `--reconnect`。稳定版各命令另加上述模型参数。原始回执为 `protocol-matrix-{baseline,steer,approvals}.json`、`compat-147-events.json`、`compat-169-events.json`。新版的私有套接字探针首次实现提交为 `9f80869e8f68737f6cd6c4e0e67afebab1997cf5`。0.147.0 已完成[正式 Worker 的恢复与交付](#stable-worker-delivery)。Owner 原生工具审批仍待验收。
 
 <a id="native-active-reattach"></a>
 
