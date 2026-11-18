@@ -38,6 +38,21 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="dependent-goal-275"></a>
+
+### 阶段三 · beta #275 双子项交付、答复和退回复验
+
+从空 PostgreSQL 18 和全新私库克隆启动控制面与正式 Codex Worker。Owner 明确激活 D2 计划，Git 计划快照为 `46cf16b9258dc84b85383ff1721ff5225abe16f9`。目标分支 main 开启严格必需检查 `acceptance-check`。两次交付均在 390 像素 Chrome 中按各自 SHA 批准。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 激活索引、引用页两个有依赖的子项，批准并合并首项，再读 GitHub 父 Issue | 索引先进入 READY，引用页为 BLOCKED；首项合并后父 Issue 仍开放 | 任务 2 独立创建索引，候选 `25114711b39adbf97b6a338a32735343b3e79ebf` 合并为 `ddfeee6af4fb2d6f149f4efece63211626174060`。此时父任务为 ACTIVE，GitHub 返回 OPEN。[PR #276](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/276) |
+| 验证任务 3 的基础提交和链接，在验收检查点询问是否需要离线副本，重启控制面，在工作台作答并退回 | 第二项基于首项合并结果，等待期间保留候选；答复后仍能按原 SHA 退回 | 执行 2 的基础为首个合并 SHA，候选为 `09213cd01b7e8a005a8cffe9f238f8d01a98c1dd`。问题 1 进入 WAITING_INPUT。Owner 答复后回到同一次执行与候选，退回决定指向该 SHA。 |
+| Worker 重新修订，只在引用页增加 Owner 指定的离线说明，从工作台验收新候选 | 保留原链接，新执行重新验证；仅新候选可交付 | 执行 3 的新候选为 `0bbbab64b44560d3dc7e676ca548cf6c2011cb6f`。逐字核对标题、链接和说明后批准。PR #277 只合并该候选，合并 SHA 为 `e0296c6e374907d1703333ee43f73fadedd562d0`，唯一父提交为 PR #276 的合并 SHA。[PR #277](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/277) |
+| 核对关单时间和两次交付回写，从数据库备份读回决定，用独立构建的 Worker 核对三份 CI 回执 | 全部子项交付后才关闭；退回决定和新验证都可追查 | 第二个 PR 在 17:59:40 UTC 合并，父 Issue 在 18:00:25 UTC 关闭，父任务为 DONE。两条子项回写各含自己的候选与合并 SHA，另有一条计划修订 1 的完成回写。两次必需 Actions 均在第 2 次尝试成功。三个本地 V2 运行均有 format、unit、build 退出 0，逐份核验了 15 个日志和报告。[关闭回执](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/275#issuecomment-6987046205) |
+
+原始证据为 `goal-dependent-current/latest.json` 和 `goal-dependent-current/restored.json`。恢复核对使用清洁提交 `3296a47fcbcb614aa81c8cc10d8040abe0523810` 构建的控制面和 Worker。此次业务问题由 Owner 在候选验收检查点发起。实现过程中由模型提问并恢复原生会话的记录见 beta #98。
+
 <a id="foundation-before-report"></a>
 
 ### 阶段一 · 两个进程重启后补报原执行，再放行同项目下一项
