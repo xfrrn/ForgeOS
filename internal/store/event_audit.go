@@ -16,7 +16,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                    WHEN v.type IN ('execution_claimed','execution_completed','execution_failed','planner_completed','ci_paused') THEN 'worker'
                    WHEN v.type IN ('task_created','execution_abandoned','owner_cancel_requested','ci_pause_requested','ci_resumed',
                                    'decision_answered','acceptance_approved','acceptance_rejected','plan_revised',
-                                   'requirement_revised_from_feedback','requirement_adopted') THEN 'owner'
+                                   'requirement_revised_from_feedback','requirement_adopted','feedback_work_item_dispatched') THEN 'owner'
                    WHEN v.type='decision_requested' AND q.id IS NOT NULL THEN
                        CASE WHEN q.checkpoint_sequence IS NULL THEN 'owner' ELSE 'worker' END
                    WHEN v.type IN ('management_reviewed','management_decision_answered','management_question_reviewed') THEN 'management'
@@ -38,6 +38,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                CASE WHEN v.type='delivery_base_refreshed' THEN f.candidate END AS refreshed_candidate,
                c.goal_snapshot->'goal' AS completed_goal,
                fb.id AS feedback, fb.body->>'commit' AS feedback_commit,
+               target.id AS dispatched_task,target.github_issue_id AS dispatched_issue,
                CASE WHEN v.type='preview_feedback_classified' THEN fb.classification END AS classification,
                fa.id AS artifact,fa.mime,fa.bytes,fa.sha256,
                req.id AS requirement_id,req.revision AS requirement_revision,req.issue AS issue,
@@ -57,6 +58,8 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
         LEFT JOIN preview_feedback fb ON fb.id=v.feedback_id AND EXISTS (
                SELECT 1 FROM static_previews p WHERE p.id=fb.preview_id AND p.execution_id=e.id)
         LEFT JOIN feedback_artifacts fa ON fa.id=v.feedback_artifact_id AND fa.feedback_id=fb.id
+        LEFT JOIN feedback_work_items link ON v.type='feedback_work_item_dispatched' AND link.feedback_id=fb.id
+        LEFT JOIN work_items target ON target.id=link.task_id AND target.project_id=t.project_id
         LEFT JOIN requirement_revisions req ON req.task_id=t.id AND
               ((v.type='issue_imported' AND req.revision=1) OR req.id=v.requirement_version_id)
         LEFT JOIN preview_feedback rf ON rf.id=req.feedback_id
@@ -78,6 +81,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
             'pr_number',pr_number,'pr_url',pr_url,'target_branch',target_branch,'merge_sha',merge_sha,
             'new_base',refreshed_base,'new_candidate',refreshed_candidate,'completed_goal',completed_goal,
             'feedback_id',COALESCE(feedback,revision_feedback),'feedback_task_id',feedback_task,'feedback_execution_id',feedback_execution,
+            'dispatched_task_id',dispatched_task,'dispatched_issue_id',dispatched_issue,
             'category',classification->>'category','artifact_id',artifact,'mime',mime,'bytes',bytes,'sha256',sha256,
             'requirement_id',requirement_id,'requirement_revision',requirement_revision,'issue_id',issue->'id',
             'issue_number',issue->'number','issue_url',NULLIF(issue->>'url',''),'repository_id',issue->'repository_id',

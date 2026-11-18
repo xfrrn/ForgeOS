@@ -148,7 +148,8 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		err = tx.QueryRowContext(ctx, `WITH source AS (SELECT f.feedback_id`+dispatchSourceSQL+`),
 			created AS (INSERT INTO feedback_work_items(feedback_id,task_id) SELECT feedback_id,$8 FROM source
 				ON CONFLICT(feedback_id) DO NOTHING RETURNING feedback_id),
-			event AS (INSERT INTO task_events(task_id,execution_id,type) SELECT $4,$6,'feedback_work_item_dispatched' FROM created)
+			event AS (INSERT INTO task_events(task_id,execution_id,type,origin,feedback_id)
+				SELECT $4,$6,'feedback_work_item_dispatched','owner',feedback_id FROM created)
 			SELECT EXISTS(SELECT 1 FROM created) OR EXISTS(SELECT 1 FROM source JOIN feedback_work_items USING(feedback_id) WHERE task_id=$8)`,
 			projectID, issue.Number, src.FeedbackID, src.TaskID, src.Preview, src.Execution, src.Commit, id).Scan(&linked)
 		if err != nil {

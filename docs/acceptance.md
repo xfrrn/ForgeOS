@@ -42,6 +42,17 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="feedback-dispatch-audit"></a>
+
+### 专题 11–13 · 独立工作项派发回执绑定原反馈
+
+在独立 PostgreSQL 18 中恢复 beta #163 的候选，打开真实预览。对同一执行提交「另建标题测试」和「另建链接测试」两条反馈。正式 Management 进程分别将其归为新工作项。两次派发均从 390 像素 Chrome 工作台选择同一个真实开放目标。[目标 Issue #245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在旧版本派发反馈 1，升级后派发反馈 2 | 目标工作项复用，只有新事件能给出准确的反馈编号 | 两次均返回任务 2。旧事件 9 可确认由 Owner 发起，具体反馈关联保持为空。新事件 10 明确指向反馈 2、执行 1、候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`、目标任务 2 及 GitHub Issue ID `6462306042`。 |
+| 从时间线下载新事件，重复派发并重启 | 浏览器与 API 回执一致，重放不会增加关系或事件 | 下载 JSON 与 API 完全相同，未包含反馈正文或预览访问标识。目标任务保留反馈 1 和 2 两个来源；重启前后事件均只有 9 和 10，再次提交返回任务 2。回执为 `feedback-dispatch-live/latest.json`。 |
+
 <a id="offline-node-deliveries"></a>
 
 ### 阶段四 · 节点离线时按原项目核对执行与远端交付

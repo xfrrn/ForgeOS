@@ -384,6 +384,9 @@ func TestConcurrentFeedbackRecordsOneEvent(t *testing.T) {
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM task_events WHERE type='feedback_work_item_dispatched' AND task_id=$1 AND execution_id=$2", task.ID, execution).Scan(&events); err != nil || events != 1 {
 			t.Fatal(events, err)
 		}
+		checkReceipt(t, "feedback_work_item_dispatched", "owner", "", map[string]any{
+			"feedback_id": float64(id), "dispatched_task_id": float64(itemID), "dispatched_issue_id": float64(target.Issue.ID),
+		})
 		target.Issue.ID++
 		target.Issue.Number++
 		if _, err := s.ImportIssue(ctx, p.ID, target, source); !errors.Is(err, ErrConflict) {
