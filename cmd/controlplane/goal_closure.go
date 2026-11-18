@@ -28,14 +28,9 @@ func (p deliveryPolicy) closeGoal(ctx context.Context, data *store.Store, root s
 		return true, errIdentity
 	}
 	issue := task.Spec.Issue
-	path := fmt.Sprintf("repositories/%d/issues/%d", repo.ID, issue.Number)
-	var remote githubIssue
-	if err := ghRead(ctx, path, &remote); err != nil {
+	path, open, err := checkedFeedbackIssue(ctx, repo, issue, ghRead)
+	if err != nil {
 		return true, err
-	}
-	if remote.ID != issue.ID || remote.Number != issue.Number || remote.HTMLURL != issue.URL || remote.RepoURL != "https://api.github.com/repos/"+repo.FullName ||
-		remote.PullRequest != nil || (remote.State != "open" && remote.State != "closed") {
-		return true, errIdentity
 	}
 	count := 0
 	for _, child := range task.Children {
@@ -44,8 +39,24 @@ func (p deliveryPolicy) closeGoal(ctx context.Context, data *store.Store, root s
 		}
 	}
 	message := fmt.Sprintf("ForgeOS goal %d completed (plan revision %d). All %d work items have confirmed PR merges and delivery records.", task.ID, task.Plan.Revision, count)
-	if err := syncIssueFeedback(ctx, deliveryRequest, path, remote.State == "open", message); err != nil {
+	if err := syncIssueFeedback(ctx, deliveryRequest, path, open, message); err != nil {
 		return true, err
 	}
 	return true, data.CompleteGoal(ctx, *claim)
+}
+
+func checkedFeedbackIssue(ctx context.Context, repo githubProject, issue store.Issue, get githubGET) (string, bool, error) {
+	if repo.ID != issue.RepositoryID {
+		return "", false, errIdentity
+	}
+	path := fmt.Sprintf("repositories/%d/issues/%d", repo.ID, issue.Number)
+	var remote githubIssue
+	if err := get(ctx, path, &remote); err != nil {
+		return "", false, err
+	}
+	if remote.ID != issue.ID || remote.Number != issue.Number || remote.HTMLURL != issue.URL || remote.RepoURL != "https://api.github.com/repos/"+repo.FullName ||
+		remote.PullRequest != nil || (remote.State != "open" && remote.State != "closed") {
+		return "", false, errIdentity
+	}
+	return path, remote.State == "open", nil
 }

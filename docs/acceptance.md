@@ -3457,3 +3457,18 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 正式入口证据 external-notice-proof.json，操作脚本 external-notice-linux.py、external-notice-qa.py。提供方回执、无效配置及 PostgreSQL 通知／领取专项通过，go vet 通过。当前环境没有供本项目发送验收消息的 Telegram 测试聊天或飞书测试群。Owner 于 2026-11-18 确认真实投递保持待验收。远端账号收件与最终全路线验收均未计为通过。
 
 正式 Windows 控制面将原失联处置验收库从 108 升级至 109。升级前后均有 3 条任务事件、1 条通知、1 次人工结束。任务页 API 仍返回 FAILED，未配置外部通道时投递记录为 0。证据 notice-upgrade-proof.json。
+
+上述外部通知通道实现、本机 TLS 验收与数据库升级对应 ForgeOS 提交 `656375c8e668678ca08f105ee02d917f1b8a061e`。
+
+### 专题 12、ADR-017 · 失败与取消的 Issue 回写
+
+2026-11-18 通过正式控制面在私有 beta 项目导入 Issue #228。验收客户端使用 Worker 的 HTTP 领取与回报接口提交受控失败，以验证失败处理路径。退出码为 9，原始错误含专用隐私标记。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 领取任务、报告执行失败 | Issue 保持开放，GitHub 反馈具体尝试及失败原因 | 执行 1 的评论包含退出码 9、任务和事件编号，原始错误未出现在评论。 |
+| GitHub 已保存评论时，通过数据库故障注入阻止本地确认。重启并等待真实领取期限届满 | 重领后先核对远端评论，同一失败只有一条 | 在本地未确认时已读到远端评论，重新启动后确认原评论，数量仍为 1。 |
+| Owner 重试，领取新执行，请求取消并让 Worker 回报停止 | 独立事件反馈 Owner 取消，Issue 保持开放 | 执行 2 留下第二条评论，任务 CANCELLED，远端 Issue 为 OPEN。 |
+| 再次重启，通过 Chrome 回读任务时间线 | 两次尝试和回执分别展示 | 原失败事件和 Owner 取消事件各有确认时间，两条链接均指向来源 Issue。 |
+
+GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/228#issuecomment-6968072667)和[取消回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/228#issuecomment-6968106519)。操作脚本 issue-outcome-live.py、outcome-browser.py，证据 outcome_feedback_live/proof.json。PostgreSQL 专项验证重复 Worker 回报、项目隔离、重领、旧租约确认冲突与事件回读。来源关闭、Owner 取消、迁移、失败重试及既有远端交付门禁回归通过。前端生产构建、go vet、git diff 检查通过。

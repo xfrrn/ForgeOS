@@ -8,6 +8,8 @@
 
 核对模型完成后的候选恢复可查看[候选检查点与结算](cmd/worker/candidate_recovery.go)：节点先保存候选 SHA，重启后复用原候选和已保存的验证结果。
 
+失败和取消的 GitHub 评论见[结果回写](cmd/controlplane/issue_outcome.go)和[事件领取与确认](internal/store/issue_outcome.go)。工作台时间线按原执行回读确认时间。
+
 项目外部通知见[发送器与配置](cmd/controlplane/external_notifications.go)、[通知领取和回执](internal/store/notifications.go)及[运行配置](docs/local-development.md#外部通知)。
 
 跟踪一次派发可依次查看 [HTTP 接口](cmd/controlplane/api.go)、[数据表](internal/store/001_initial.sql)、[状态和租约事务](internal/store/store.go)及 [Git 任务执行](cmd/worker/execute.go)。

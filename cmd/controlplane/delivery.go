@@ -165,6 +165,9 @@ func (p deliveryPolicy) start(parent context.Context, data *store.Store, root st
 			if err == nil && !claimed {
 				claimed, err = p.releaseDependent(stepCtx, data, root, &lastDependent)
 			}
+			if err == nil && !claimed {
+				claimed, err = p.reportIssueOutcome(stepCtx, data, root)
+			}
 			stop()
 			if err != nil && ctx.Err() == nil {
 				log.Printf("delivery for project %d: %v", p.projectID, err)
