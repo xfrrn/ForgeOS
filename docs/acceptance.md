@@ -4,7 +4,7 @@
 
 ## 当前验收进度
 
-截至 `2f82f7b` 的全量回归及 `c1ded60` 的双版本探针实测，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 `f39bfed` 的真实工作台验收与全量回归，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
@@ -25,9 +25,10 @@
 | 从审批中心核对命令、目录、基线、进程和回合，选“仅允许本次” | 只有对应工具项获得执行许可，原生输出可核对 | 回合 `01a1ef11-cc7e-7952-9fd9-476ea7d6ab8c` 的工具项 `exec-caef1a13-8f86-4760-9a73-bc2417c9b2b0` 报告 completed；在冷启动的原生会话历史读到对应工具项和上述输出。 |
 | 同回合再次请求完全相同的命令，选择“拒绝本次” | 新调用单独等候决定，拒绝后模型可正常结束 | 新工具项 `exec-ebce4d18-524b-45bd-afcf-bac385e1c02a` 报告 declined，任务生成候选 `93c60ef813970f4f3dd73e6cdc24bd8094d13e8f`；Chrome 执行详情保留两项 Owner 决定与各自的原生回执。 |
 | 在独立执行的第一条请求选择“取消回合” | 原生工具不执行，回合中断，无候选 | 工具项 `exec-ab53e25d-47ac-4c2b-b737-81b12d13478d` 的回执为 declined。原生回合 `01a1ef12-53b4-7201-82ee-6dbb6609de33` 为 interrupted，执行以 FAILED 结束，候选为空。 |
+| 切换到 0.147.0 正式 Worker，在 beta #263 的第一条命令请求选择取消 | 旧版也能把决定交回等待的工具项并中断回合 | 工具项 `exec-601d3c15-d9fe-4763-8e7d-4b9ffafa85a0` 报告 declined，回合 `01a1ef18-ea8f-75f0-8fd9-d63503c9bde0` 为 interrupted，候选为空。 |
 | 在受保护分支上再次运行同一 Issue，从任务页批准候选 | PR 必需检查通过、候选合并、Issue 关闭 | 候选 `09e5b8d659d66d3c3ba9aad44205869d627df869` 经 [PR #265](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/265) 合并为 `cf7377181c19636ad65277d65d0647c6be11f537`。预设失败的检查按演练重跑后，`acceptance-check` 和 `forgeos/local-ci` 均 SUCCESS。控制面为 DONE，GitHub Issue 为 CLOSED。 |
 
-验收回执保存在 `workbench-native-command/{decisions,cancel,latest}.json`，每次运行目录有审批及任务记录的 Chrome 截图。原生历史可能省略被拒工具项，因此节点在运行中按原始工具项编号保存完成事件，控制面分别记录 Owner 决定和原生终态。早先的 [beta #263](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/263) 在两项命令决定后提出了独立文件补丁权限请求，执行停止。该不同类型的审批仍待验。
+实现提交 `f39bfed36bc240a6f287111bb2ea07e2a9b610b5`。使用 PostgreSQL 18 和 Docker 执行 `go test -count=1 -json ./...`，575 项测试及子测试通过，0 项失败、0 项跳过，另有 3 个包无测试文件；工作台生产构建通过。回归原始结果为 `workbench-native-command/receipt-regression.jsonl`。验收回执保存在 `workbench-native-command/{decisions,cancel,stable-cancel,latest}.json`，每次运行目录有审批及任务记录的 Chrome 截图。原生历史可能省略被拒工具项，因此节点在运行中按原始工具项编号保存完成事件，控制面分别记录 Owner 决定和原生终态。早先的 [beta #263](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/263) 在两项命令决定后提出了独立文件补丁权限请求，执行停止。该不同类型的审批仍待验。
 
 ### 2026-11-18 · 本轮实现提交与回归
 
@@ -51,6 +52,7 @@
 | 专题 07、14、16 C.3 独立 Reviewer 中央日志 | [在 Chrome 离线下载失败进程的日志，与节点 CLI 核对全文与摘要](#reviewer-central-log) | 实现 `06bb5fcbc11e2a5bed43193450e3a1327a8b1119`，验收 `b064477acc319d008e76b70768fbfaddebb05ef1` |
 | 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
+| 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
 | 专题 07、16 B.4 按已收到的输入回执验收原生中断 | [两版从独立进程核对中断及完整输入](#thread-mcp-isolation) | `c1ded60ddec9683e0ba5d379f3d994ce3178a761` |
 
 在 `2f82f7b` 的产品代码上，从空 PostgreSQL 18 并启用真实 Docker 执行 `go test -count=1 -json ./...`。573 个具名测试及子测试全部通过，9 个包通过，3 个包无测试，具名测试无跳过。`go vet ./...` 通过，原始记录为 `mcp-policy-regression.jsonl`。随后仅改进了原生验证探针，并在两个受支持版本实际复测。
