@@ -16,6 +16,16 @@
 
 ### 本轮回归与基座复验
 
+2026-11-19 按专题核对了以下五项。前四项的实现版本分别通过空 PostgreSQL 18 与真实 Docker 全包回归，每轮 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。备份命令在 Linux PostgreSQL 17 上独立实测。
+
+| 文档要求 | 验收证据 | ForgeOS 提交 |
+| --- | --- | --- |
+| 专题 04、13，原执行的领取、回报和决定可追溯 | [工作台下载、取消竞态及重启重放](#task-event-audit) | `2c755f310f3b08d567f11df0f505e3c030143ebc` |
+| 专题 12、13，换基前后的 PR 及 Goal 完成记录可追溯 | [原 PR、替代 PR 和父子任务的交付回执](#delivery-event-audit) | `8015110ff2ea92d45cc9f197715cfba00926d6c3` |
+| 专题 11、13，媒体和分类绑定对应反馈与候选 | [七份下载、独立分类会话及媒体到期](#feedback-event-audit) | `160605d02773f1971161d045746ac613a89743bc` |
+| 专题 12、13，区分手动与标签派发并保留原需求 | [同一私库的两条真实 Issue](#issue-import-audit) | `9aeaa8f70adc1d698e06afa63b92dd365b370f52` |
+| 专题 13、14，从配套备份恢复反馈媒体和历史元数据 | [新旧格式、空清单和恢复时已到期的文件](#feedback-backup-restore) | `a2ace7de58db876fcb351e27eda6cbc4051bf4c9` |
+
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
 | 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
@@ -4387,6 +4397,8 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 正式 Windows 控制面将原失联处置验收库从 108 升级至 109。升级前后均有 3 条任务事件、1 条通知、1 次人工结束。任务页 API 仍返回 FAILED，未配置外部通道时投递记录为 0。证据 notice-upgrade-proof.json。
 
 上述外部通知通道实现、本机 TLS 验收与数据库升级对应 ForgeOS 提交 `656375c8e668678ca08f105ee02d917f1b8a061e`。
+
+2026-11-19，Owner 确认目前没有可接收验收消息的 Telegram 测试聊天或飞书测试群，两项真实投递均保留为待验收。
 
 <a id="adr-evidence-017"></a>
 
