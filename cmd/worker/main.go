@@ -42,6 +42,7 @@ type worker struct {
 	client                                  *http.Client
 	journal                                 *sql.DB
 	roleRunID                               string
+	roleDaemonGone                          <-chan struct{}
 	nextRoleCleanup                         time.Time
 	roleRecoveryRetention                   time.Duration
 	roleNativeResume                        bool
@@ -564,15 +565,33 @@ func main() {
 		return
 	}
 	var role string
-	if len(os.Args) == 2 {
+	roleProcess := len(os.Args) == 3 && os.Args[1] == "run-role-process"
+	if roleProcess {
+		role = os.Args[2]
+	} else if len(os.Args) == 2 {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" && role != "curator" {
 		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs|prune-role-recovery]")
 	}
+	if role != "" && !roleProcess {
+		switch os.Getenv("FORGEOS_SUPERVISE_ROLE_TURNS") {
+		case "", "0":
+		case "1":
+			if err := superviseRole(ctx, role); err != nil {
+				log.Fatal(err)
+			}
+			return
+		default:
+			log.Fatal("FORGEOS_SUPERVISE_ROLE_TURNS must be 0 or 1")
+		}
+	}
 	w, err := fromEnv(role)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if roleProcess {
+		w.roleDaemonGone = roleDaemonLifetime(os.Stdin)
 	}
 	if role == "test-agent" {
 		err = w.runIndependentRole(ctx, role, w.runTestAgent)
@@ -585,7 +604,7 @@ func main() {
 	} else {
 		err = w.run(ctx)
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, errRoleDaemonGone) {
 		log.Fatal(err)
 	}
 }

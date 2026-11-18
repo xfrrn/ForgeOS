@@ -9,7 +9,7 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | B.2 · 适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。[原生命令](#workbench-native-commands)与[文件补丁](#workbench-file-patches)的单次决定、执行回执及受保护分支交付均已验收。 | Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。Claude、独立角色的存活进程接回及整机重启仍待验。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。Claude 的成功回报、Reviewer 的成功审查及整机重启仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
@@ -21,6 +21,23 @@
 | 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 从当前提交构建控制面、Worker 与工作台，运行 `go vet ./...`，在非 root Ubuntu 上运行适配器不匹配和活跃写入跟踪专项 | 构建、静态检查和两项跨平台专项成功 | 工作台 TypeScript 和 Vite 生产构建成功。Windows 和 Ubuntu 两项 Worker 专项均通过。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
+
+<a id="supervised-roles"></a>
+
+### 专题 07、16 B.4 · Daemon 替换后独立角色完成在途作业
+
+在 Windows、PostgreSQL 18 和 Chrome 中从正式入口导入两份资料，使用同一节点 ID 和角色私有目录启动替代 Daemon。在每份资料的进程历史中查验原生 PID、Session、退出结果及引用的原文。候选测试计划使用先前真实验收数据库的独立副本，候选 SHA 固定为 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`。本节只终止自己启动的验收 Daemon。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 关闭默认模式的 Curator Daemon，在原模型运行时启动替代 Daemon | 确认原生进程和管道能否由替代 Daemon 接回 | 原 Daemon 37400 退出，原生 PID 31004 仍存活，替代 Daemon 27960 返回退出码 1，提示原进程仍运行。观测时工作台未收到提取结果。 |
+| 启用 `FORGEOS_SUPERVISE_ROLE_TURNS=1`，Curator 正在处理第一份资料时终止 Daemon；第二份已排队 | 原 Session 返回提取结果，旧执行进程退出，新执行进程处理下一份 | Daemon 14540 → 2492。PID 30420 在原 Session `01a1ef73-e54e-7992-a91b-50debf4922ea` 退出 0，Chrome 可查。提取引用与资料原文一致。第二份由替代 Daemon 的执行进程 10372 启动 PID 21984 处理。 |
+| 用同样方式替换独立 Management 知识审核 Daemon | 在途审核只产生一份结果，新进程领取下一份审核 | Daemon 48076 → 33492。原生 PID 38460 在同一 Session 退出 0。新执行进程 9252 为第二份审核启动 PID 13124。两次审核均有独立会话。 |
+| 从候选任务页请求测试计划，分别在 Test Agent 生成计划及 Management 审核覆盖时终止各自 Daemon | 两份业务回执均属于原候选及各自的原生进程 | Test Agent 的 Daemon 40748 → 13980，原生 PID 46692，状态 awaiting_review。Management 的 Daemon 39088 → 12888，原生 PID 14124，覆盖审核状态 covered。两项均只有一条进程记录，退出码均为 0，Chrome 回读两个原 Session。 |
+| 在相同候选的独立 Reviewer 启动原生 Claude 后终止 Daemon | 原进程的失败如实回报，候选不能获得成功审查 | Daemon 37748 → 44044，原生 PID 752、Session `847df593-28e6-494a-a020-d80fa66479cd`，退出码 1。Chrome 显示失败进程，控制面记录 failed，无审核报告。成功审查保持待验收。 |
+| 以 Ubuntu 专用服务用户启动空闲 Curator，使用 systemctl 重启后停止服务 | 整个服务组依次结束；新角色进程可从正式控制面领取，停止后进程组内无残留 | UID 997，默认 KillMode 为 control-group。重启前 PID 13841、13851 均退出，替换为 13908、13918。正式控制面返回 6 次 HTTP 204，停止后新进程也退出。 |
+
+回执位于 `role-daemon-{baseline,knowledge,test-plan,reviewer,linux}/latest.json`。服务管理器同时终止执行进程和原生 CLI 时，适用原有日志恢复流程。Linux 已登录模型、Reviewer 成功审查及整机重启另列待验。Windows 与非 root Ubuntu 的退出、角色锁和停止派单专项均通过。`go vet ./...` 和 PostgreSQL 18、Docker 全包回归通过，共 582 项具名测试及子测试、0 失败、0 跳过，另有 3 个包无测试文件。原始报告为 `role-daemon-knowledge/regression.jsonl`。
 
 <a id="supervised-planner"></a>
 

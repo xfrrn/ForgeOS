@@ -14,6 +14,11 @@ import (
 )
 
 func (w *worker) claimRole(ctx context.Context, role, path string, body, out any) (status int, resultErr error) {
+	select {
+	case <-w.roleDaemonGone:
+		return http.StatusConflict, errRoleDaemonGone
+	default:
+	}
 	db, node, err := w.openRoleJournal(ctx, role)
 	if err != nil {
 		return 0, err

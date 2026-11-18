@@ -331,6 +331,10 @@ HTTP 204 表示已确认，409 表示结果与当前状态冲突，两者均结�
 
 只读 Planner 接回时重新核对租约、冻结的需求讨论、基线提交、工作树和模型版本。获得模型名额后才消费启动检查点，沿用原只读沙箱及输出校验。只有模型返回有效计划且工作树保持干净时，控制面才保存草案。[只读规划验收](acceptance.md#supervised-planner)
 
+### 独立角色在 Daemon 替换期间完成原作业
+
+启用 `FORGEOS_SUPERVISE_ROLE_TURNS=1` 后，Curator、Management、Test Agent 和 Reviewer 的执行进程各自持有本角色的日志锁、原生管道和已领取的作业。Daemon 退出后，已获派的作业继续执行并回报。执行进程通过私有管道感知 Daemon 退出，在下次领取前结束。同节点同角色的替代进程等待原锁释放，再按原规则回放回执并领取后续作业。等待中的替代 Daemon 再次退出，其等待进程也会退出。[操作与实测](acceptance.md#supervised-roles)
+
 ### 普通 Worker 的候选结算恢复
 
 启用检查点和模型名额管理的写入任务会在首次检出完成后、申请模型名额前保存起始 SHA、索引树、工作区树、Harness 版本和冻结的作业。首次名额响应丢失时，同身份 Worker 重启后先确认租约，再取回检查点 0，复核现场后请求同一步骤。Owner 在停机期间取消会阻止原生启动。[首个模型名额的恢复与取消](acceptance.md#first-model-grant-recovery)

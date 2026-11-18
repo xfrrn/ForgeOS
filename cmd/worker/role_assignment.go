@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -180,8 +181,24 @@ func (w *worker) runIndependentRole(ctx context.Context, role string, run func(c
 		return err
 	}
 	defer func() { resultErr = errors.Join(resultErr, lock.Close()) }()
-	if err = lockRoleFile(lock); err != nil {
-		return errors.New("another Daemon owns this role node, or its journal cannot be locked")
+	for waiting := false; ; waiting = true {
+		err = lockRoleFile(lock)
+		if err == nil {
+			break
+		}
+		if w.roleDaemonGone == nil || !roleLockBusy(err) {
+			return errors.New("another Daemon owns this role node, or its journal cannot be locked")
+		}
+		if !waiting {
+			log.Printf("waiting for the active %s process on this node", role)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-w.roleDaemonGone:
+			return nil
+		case <-time.After(time.Second):
+		}
 	}
 	if err = w.ensureRoleRunID(); err != nil {
 		return err

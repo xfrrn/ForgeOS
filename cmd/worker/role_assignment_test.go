@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestRoleAssignmentRestartsBeforeNativeTurn(t *testing.T) {
@@ -122,5 +125,59 @@ func TestRoleDaemonLock(t *testing.T) {
 	}
 	if err := second.runIndependentRole(context.Background(), "curator", func(context.Context) error { return nil }); err != nil {
 		t.Fatal("lock survived owner exit", err)
+	}
+}
+
+func TestRoleProcessFinishesAssignmentAfterDaemonExit(t *testing.T) {
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	reader, parent := io.Pipe()
+	defer reader.Close()
+	active := worker{api: "http://127.0.0.1:1", id: "handover", roleDaemonGone: roleDaemonLifetime(reader)}
+	entered, finish := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- active.runIndependentRole(ctx, "curator", func(ctx context.Context) error {
+			close(entered)
+			select {
+			case <-finish:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			status, err := active.claimRole(ctx, "curator", "/internal/curator/claim", struct{}{}, nil)
+			if status != http.StatusConflict || !errors.Is(err, errRoleDaemonGone) {
+				return errors.New("finished role attempted another claim")
+			}
+			return nil
+		})
+	}()
+	select {
+	case <-entered:
+	case err := <-done:
+		t.Fatal("role stopped before its assignment", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	parent.Close()
+	select {
+	case <-active.roleDaemonGone:
+	case <-ctx.Done():
+		t.Fatal("role missed its Daemon's exit")
+	}
+	standby := worker{api: active.api, id: active.id, roleDaemonGone: active.roleDaemonGone}
+	if err := standby.runIndependentRole(ctx, "curator", func(context.Context) error {
+		return errors.New("disconnected standby entered the occupied journal")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	close(finish)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	standby.roleDaemonGone = make(chan struct{})
+	enteredAgain := false
+	if err := standby.runIndependentRole(ctx, "curator", func(context.Context) error { enteredAgain = true; return nil }); err != nil || !enteredAgain {
+		t.Fatal("replacement could not use the released journal", err)
 	}
 }
