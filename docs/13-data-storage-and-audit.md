@@ -130,6 +130,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 CI 日志、报告与产物的中央副本位于 `FORGEOS_ARTIFACT_ROOT/ci/<任务号>/<执行号>/<运行号>/<归档文件名>`。执行结果 JSON 保存对应的大小与 SHA-256。Worker 的 SQLite 表 `ci_uploads` 只保存待传文件引用和重试时间，确认上传后清除。可以用 `SELECT run_id,file,bytes,retry_at FROM ci_uploads` 查看积压。源文件损坏时，恢复与回执匹配的本地文件后，待传项会继续重试。已确认上传的副本可由 Owner 独立下载。
 
+采用具名节点时，归档检查和上传都核对原执行的节点及其当前项目授权。撤销项目后补传返回 403。换发凭据并恢复项目授权后，原节点可继续按既有摘要补传。Owner 下载已归档的文件无需 Worker 在线。[撤销、轮换、补传与重启实测](acceptance.md#ci-archive-worker-scope)
+
 Owner 可用 `GET /projects/{id}/ci-retention` 读取项目策略，用 `PUT` 整体替换。以下示例让中央日志保留 7 天、检查报告 30 天、构建产物 1 天。
 
 ```json
