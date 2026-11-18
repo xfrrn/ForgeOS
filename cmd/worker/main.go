@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ type worker struct {
 	codex, codexVersion                     string
 	commandPolicy                           commandPolicy
 	codexAppServer                          bool
+	superviseWriters                        bool
 	claude                                  claudeCLI
 	planner                                 bool
 	slots                                   int
@@ -178,6 +180,16 @@ func fromEnv(role string) (*worker, error) {
 		w.codexAppServer = true
 	default:
 		return nil, errors.New("FORGEOS_CODEX_TRANSPORT must be exec or app-server")
+	}
+	switch os.Getenv("FORGEOS_SUPERVISE_WRITERS") {
+	case "", "0":
+	case "1":
+		if !supportsWriterProcessTree || !w.codexAppServer {
+			return nil, errors.New("supervised writers require a supported Codex App Server Worker")
+		}
+		w.superviseWriters = true
+	default:
+		return nil, errors.New("FORGEOS_SUPERVISE_WRITERS must be 0 or 1")
 	}
 	if w.codex != "" {
 		w.codexVersion, err = readCodexVersion(w.codex)
@@ -412,6 +424,11 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		return err
 	}
 	parked = append(finalizing, parked...)
+	supervised, err := w.supervisedWriters(ctx)
+	if err != nil {
+		return err
+	}
+	parked = slices.DeleteFunc(parked, func(id int64) bool { return slices.Contains(supervised, id) })
 	for ctx.Err() == nil {
 		select {
 		case occupied <- struct{}{}:
@@ -421,7 +438,10 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		var job store.Job
 		requested := time.Now()
 		var saved *parkedCheckpoint
-		if len(parked) > 0 {
+		var assigned int64
+		if len(supervised) > 0 {
+			assigned, supervised = supervised[0], supervised[1:]
+		} else if len(parked) > 0 {
 			id := parked[0]
 			parked = parked[1:]
 			saved, err = w.readFinalization(ctx, id)
@@ -455,7 +475,17 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		go func() {
 			defer jobs.Done()
 			defer func() { <-occupied }()
-			if err := w.runAttempt(ctx, job, requested, saved); err != nil {
+			var err error
+			if assigned == 0 {
+				err = w.runAttempt(ctx, job, requested, saved)
+				if errors.Is(err, errWriterDelegated) {
+					assigned = job.ExecutionID
+				}
+			}
+			if assigned != 0 {
+				err = w.followWriter(ctx, assigned)
+			}
+			if err != nil {
 				stop(err)
 			}
 		}()
@@ -481,6 +511,16 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) == 3 && os.Args[1] == "run-saved-writer" {
+		if err := runSavedWriter(ctx, os.Args[2]); err != nil {
+			if errors.Is(err, errWriterBusy) {
+				os.Exit(writerBusyExit)
+			}
+			log.Print(err)
+			os.Exit(writerErrorExit)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "preview-manager" {
 		if err := servePreviewManager(ctx); err != nil {
 			log.Fatal(err)

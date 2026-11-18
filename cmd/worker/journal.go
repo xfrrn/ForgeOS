@@ -82,6 +82,11 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		instance INTEGER PRIMARY KEY, lease_hash BLOB NOT NULL REFERENCES attempts(lease_hash), harness TEXT NOT NULL, version TEXT NOT NULL,
 		pid INTEGER NOT NULL, started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, session_id TEXT, exited_at TEXT, exit_code INTEGER
 	);
+	CREATE TABLE IF NOT EXISTS supervised_writers (
+		lease_hash BLOB PRIMARY KEY REFERENCES attempts(lease_hash)
+	);
+	CREATE TRIGGER IF NOT EXISTS settle_supervised_writer AFTER UPDATE OF settled_at ON attempts
+	WHEN NEW.settled_at IS NOT NULL BEGIN DELETE FROM supervised_writers WHERE lease_hash=NEW.lease_hash; END;
 	CREATE TABLE IF NOT EXISTS role_receipts (
  lease_hash BLOB NOT NULL, path TEXT NOT NULL, digest BLOB NOT NULL, report BLOB,
  buffered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, settled_at TEXT, status INTEGER,
@@ -177,12 +182,17 @@ func (w *worker) executeAndReport(ctx context.Context, job store.Job, requested 
 }
 
 func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.Time, saved *parkedCheckpoint) error {
-	key := sha256.Sum256([]byte(job.LeaseToken))
 	unlock, err := w.lockAttempt(job.ExecutionID)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	return w.runLockedAttempt(ctx, job, requested, saved)
+}
+
+func (w *worker) runLockedAttempt(ctx context.Context, job store.Job, requested time.Time, saved *parkedCheckpoint) error {
+	key := sha256.Sum256([]byte(job.LeaseToken))
+	var err error
 	if saved != nil && (saved.Finalization != nil || saved.Active != nil || saved.CompletedTip != "" || saved.InitialTip != "" || saved.ReturnedTip != "") {
 		// The previous owner can advance or settle the candidate between queue discovery and this lock.
 		saved, err = w.readFinalization(ctx, job.ExecutionID)
@@ -199,6 +209,9 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 	}
 	recovery := checkpointRecovery{saved: saved, waiting: saved != nil, leaveUnsettled: saved != nil}
 	result := w.executeWithLease(ctx, job, requested, &recovery)
+	if recovery.delegated {
+		return errWriterDelegated
+	}
 	if recovery.leaveUnsettled || recovery.waiting && ctx.Err() != nil {
 		log.Printf("execution %d left at recorded checkpoint: %s", job.ExecutionID, result.Error)
 		return nil

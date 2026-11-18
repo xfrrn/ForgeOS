@@ -176,6 +176,9 @@ func (w *worker) lockAttempt(id int64) (func(), error) {
 	}
 	if err = lockRoleFile(f); err != nil {
 		f.Close()
+		if roleLockBusy(err) {
+			return nil, errWriterBusy
+		}
 		return nil, errors.New("another Daemon owns this execution, or its journal cannot be locked")
 	}
 	return func() { f.Close() }, nil

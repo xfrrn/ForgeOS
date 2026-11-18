@@ -4,15 +4,31 @@
 
 ## 当前验收进度
 
-截至 beta #268 的恢复验收，专题 16 的 28 项中，21 项已验收，3 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 beta #269、#271 的恢复验收，专题 16 的 28 项中，21 项已验收，3 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | B.2 · 适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。[原生命令](#workbench-native-commands)与[文件补丁](#workbench-file-patches)的单次决定、执行回执及受保护分支交付均已验收。 | Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。接回存活进程及整机重启仍待验。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。[普通 Codex App Server 写入回合的存活进程接回](#supervised-writer)已验。其他适配器、独立角色及整机重启仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="supervised-writer"></a>
+
+### 专题 07、16 B.4 · Daemon 替换后接回存活的原生写入回合
+
+环境为 Windows、PostgreSQL 18、正式 Worker、真实 Codex 和 390 像素宽的 Chrome。普通 Worker 启用 `FORGEOS_CODEX_TRANSPORT=app-server`、`FORGEOS_SUPERVISE_WRITERS=1`，本机容量设为一项。在模型写下随机草稿编号后记录 Daemon、独立执行进程和原生 PID。强制终止 Daemon，核对其确已退出，随后以相同节点身份和私有目录启动替代进程。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 [beta #269](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/269) 等待恢复后的候选，从任务页按 SHA 批准交付 | 原生 PID、Session、Turn 均保持相同，草稿只出现一次，必需检查通过 | Daemon 从 41792 换成 38496，执行进程为 45520，原生 PID 始终为 27652，只有一条进程记录。候选 `8647c5c75bd180fc4d64c33827c476aec3857053` 经 [PR #270](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/270) 合并为 `7c671c2c9c60628a7d092013fa472a6bb1c3eb76`。两项必需检查均成功，任务 DONE，来源 Issue CLOSED，交付评论一条。 |
+| 替换 Daemon 后从工作台取消同一执行 | 原生回合收到取消，保留原进程记录，不生成候选 | Daemon 从 8120 换成 47316，原生 PID 38796、Thread 和 Turn 保持相同。工作项 CANCELLED，无候选。 |
+| 在 [beta #271](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/271) 接回运行中的进程，在 Chrome 向当前回合追加随机标记，同时给第二个项目提交连通性任务 | 同一原生回合接收并仅写入一次；运行时仍占一个名额，结束后另一项目获派 | 0.147.0 的 PID 30452 保持相同，候选 `55bd21f337a3b65352ab7a9475d7a1342d600ece`。0.169.0-alpha.11.1 的 PID 48388 保持相同，候选 `e7f844234595ab9e2f82eee97d1ba3f166849e9c`。每轮仅一条进程记录；两个标记分别在各自候选出现一次，第二项目均随后 DONE。 |
+| 保留 Daemon，终止持有原生管道的独立执行进程 | 确认原进程退出，从原 Session 的检查点恢复同一份草稿 | Daemon 28404 持续运行。原生 PID 从 45992 换成 28920，两个 Turn 的 Session 均为 `01a1ef4d-08c1-7e83-aff7-41a4915eb165`，候选 `da032985115c1b013a8b5b575300a9158f7b5214` 保留原草稿。 |
+| 让替代 Daemon 跟踪原进程，控制面接受结果后延迟 SQLite 确认写盘，再终止执行进程 | 已缓冲回执重报并确认，既有候选保持相同，不启动另一个模型 | 原生 PID 41092，候选 `79dfabdea12c23aad9998cdb848ee0e06ccd6ccd`。原回执摘要 `5b3b83862d46be0023f2ba06e3f5f069e6035f15defd15bfc5552646990e3874`，本地结算 confirmed，跟踪记录随确认清理。 |
+
+回执位于 `supervised-writer-{delivery,cancel,stable,steer,runner-crash,receipt}/latest.json`。交付演练中验收脚本查询 Actions 时遇到一次 EOF，控制面随脚本退出。从原 PostgreSQL 的停机副本启动正式控制面后，它认出既有 PR 和合并 SHA，补齐交付评论与关闭，Chrome 回读 DONE。其余场景在独立数据库中运行。此次接回验证限于存活的普通 Codex App Server 写入进程，整机重启仍待实测。
 
 <a id="writer-evidence-deadline"></a>
 

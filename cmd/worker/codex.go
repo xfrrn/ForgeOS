@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -521,6 +522,15 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				err = w.saveFinalization(ctx, launchFrom)
 			}
 			recovery.waiting = err == nil
+			if err == nil && w.superviseWriters && job.RecordAppTurn && (spec.Harness == "" || spec.Harness == "codex") {
+				key := sha256.Sum256([]byte(job.LeaseToken))
+				_, err = w.journal.ExecContext(ctx, "INSERT INTO supervised_writers(lease_hash) VALUES(?)", key[:])
+				if err == nil {
+					recovery.delegated = true
+					return result
+				}
+				recovery.leaveUnsettled = true
+			}
 		}
 	}
 	for ; err == nil; seq++ {

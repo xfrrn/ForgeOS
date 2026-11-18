@@ -48,6 +48,7 @@ type pausedWriter struct {
 type checkpointRecovery struct {
 	saved                   *parkedCheckpoint
 	waiting, leaveUnsettled bool
+	delegated               bool
 }
 
 func (w *worker) nativeVersion(job store.Job) string {

@@ -108,6 +108,9 @@ $env:FORGEOS_WEB_ROOT = (Resolve-Path .\web\dist).Path
 1. 在控制面运行身份下安装 GitHub CLI，使用 `gh auth status` 确认有目标仓库和 Issue 的读取权限。在 Worker 的专用普通用户下登录原生 Codex CLI，通过 `codex login status` 核实。Windows 可在启动 Worker 前把 `FORGEOS_CODEX_BIN` 设为 `(Get-Command codex.exe).Source`。Worker 启动时探测 CLI，只有声明支持 Codex 的 Worker 才能领取这类任务。
 
    需要使用 App Server 时，为普通 Worker 设置 `FORGEOS_CODEX_TRANSPORT=app-server`。该选择用于 Codex 实现和只读规划，复用当前用户的原生登录、任务工作区和恢复日志。允许值为 `exec`、`app-server`，默认值为 `exec`。能力探测失败会终止 Worker 启动。当前角色的审批策略为 `never`，收到超出该权限的原生请求会令回合失败。[运行时说明](07-harness-and-worker-runtime.md)
+
+   如需在普通 Daemon 退出后继续同一个 Codex 写入回合，设置 `FORGEOS_SUPERVISE_WRITERS=1` 并保留相同的节点 ID、控制面和私有状态目录。默认值为 `0`。新 Daemon 会先跟踪已有执行，再按可用名额领取任务。Owner 仍从工作台向原回合发送输入或取消。此模式要求 App Server、执行租约和写入检查点。服务管理器同时终止整个进程组时，按保留下来的检查点恢复；整机重启见 B.4。[双版本工作台与运行回执](acceptance.md#supervised-writer)
+
 2. 在授权仓库根目录内准备带提交的 Git 克隆，`origin` 指向 `github.com` 的 HTTPS 或 SSH 仓库。控制面按该仓库的 GitHub 数字 ID 绑定本地项目。首次派单固定 Issue 标题、正文、更新时间、本地 HEAD 和验证方式。重复导入同一 Issue 返回已有任务及原快照。
 3. Owner 指定一个开放 Issue 和一项验证。下面示例假设克隆路径和 Issue 编号已替换为实际值。
 
