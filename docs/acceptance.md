@@ -389,6 +389,21 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 
 两份 SQLite 完整性检查均通过，结算时间已记录，结果待报字段为空，CI 文件待传数均为 0。两条 Issue 的交付评论各自匹配本项目 PR、候选和合并 SHA。原始回执为 `offline-two-node-reconciliation/latest.json`。此项复核使用历史上已交付的两个工作项；当前版本从空库重新交付两个项目和实测受限 GitHub 身份仍待验收。
 
+<a id="dependent-goal-289"></a>
+
+### 阶段三 · 从空库交付 beta #289 的两个依赖子项
+
+在空 PostgreSQL 18 上将真实 Issue #289 登记为 Goal 1，由 Owner 归档并激活计划修订 1，Git 快照为 `39b280d937dc6fc9bfd157b48b81484a922c4292`。实际使用 Codex Worker、Docker 仓库验证、手机尺寸 Chrome 和受保护的 main。[父 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/289)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 激活两项工作，验证索引文件并批准首项 | 引用页等待索引交付；首项合并时父 Issue 仍开放 | 任务 2、3 初态分别为 READY、BLOCKED。执行 1 的候选 `b2f773b1e3b385015b7de2b27e518ffb836dc6d3` 只新增索引。PR #290 的必需检查先失败，同一 SHA 重跑成功后合并为 `33a28afa03f7e94e06d4426d04abfa942f3bf123`。此时父 Goal 仍为 ACTIVE，GitHub Issue 为 open。[PR #290](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/290) · [两次检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44400162115) |
+| 在第二项的候选上提问是否需保留离线副本，重启控制面，从手机工作台答复、退回再执行 | 原执行等待业务答复；退回后以新执行和新候选重新验证 | 执行 2 的基线是首项合并 SHA，候选为 `3135318cb5e660ba9ac5127955c6fc2195a0a1e7`。问题 1 进入 WAITING_INPUT，答复后回到原候选。退回后，执行 3 使用独立会话，仅修改引用页，在原链接后增加 Owner 指定的完整句子。新候选为 `f175eb75ffabf93647484387c4d6fc478094485b`。 |
+| 批准新候选，等待必需检查和父 Issue 回写 | 第二项仅交付重验后的 SHA；两项都完成后关闭父 Issue | PR #291 首次检查失败，原 SHA 再次检查成功。合并提交 `9df87ea344b2da8d940f5b79e16463a783d1f47a` 的唯一父提交是首项合并 SHA。二者的交付回写各一次，父 Goal 为 DONE。第二项于 21:23:34 UTC 合并，父 Issue 于 21:24:19 UTC 关闭。[PR #291](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/291) · [两次检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44400853070) · [最终回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/289#issuecomment-6992064162) |
+| 重启控制面下载三份验收事件，再把交付数据库还原到另一个空实例并校验归档 | 各决定关联原执行和候选，三个本地运行各自可验证 | 事件 8、17、20 对应执行 1、2、3。两条批准回执保留各自批准时生效的审查和测试要求，退回记录保留原决定。三个 V2 运行依次为 `ci-run-34854209`、`ci-run-3345594316`、`ci-run-2900607757`；format、unit、build 均退出 0。正式 Worker 的 `verify-ci-run` 对每个运行核对 5 份文件，共 15 份。 |
+
+执行 2 和 3 的原生会话分别为 `01a1f088-3e01-70a1-b968-4dc17c661eec` 与 `01a1f089-4f56-7133-b063-ff475b7f215c`。操作与重启回执为 `approval-stage3-current/latest.json`，独立恢复及远端检查回执为同目录 `restored.json`。
+
 <a id="dependent-goal-275"></a>
 
 ### 阶段三 · beta #275 双子项交付、答复和退回复验
