@@ -24,6 +24,21 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="feedback-backup-restore"></a>
+
+### 专题 13、14 · 从同一套备份恢复反馈 PNG、WebM 和过期回执
+
+2026-11-19，在隔离的 Linux PostgreSQL 17 容器中恢复既有预览任务，通过正式控制面登记媒体和调整保留策略。停止控制面写入后，使用部署手册中的 `pg_dump`、`psql`、`sha256sum`、`tar` 和 `pg_restore` 命令备份并还原到空数据库。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 对含一条已清理回执、两份有效文件的数据库执行旧命令和更新后的命令 | 保留全部历史回执，归档中的文件都能校验 | 旧命令检查已清理文件时退出 1。更新后的清单只列出有效的 PNG、WebM，共两份文件。数据库保留三条媒体回执。 |
+| 在隔离目录恢复附件，再从 Chrome 以 Owner 身份读取 | 编号、字节数及 SHA-256 与源端相同，原来已到期的工件返回 410 | 截图 10 共 161 字节，录屏 11 共 526 字节，两份摘要均匹配。临时移出有效录屏时返回 503，放回原文件后返回 200。 |
+| 在截图到期后，向另一空库恢复同一份备份 | 能按备份时刻核对清单，读取时执行当前保留策略 | 归档时的两项校验均通过。恢复控制面读取截图返回 410，录屏返回 200。 |
+| 恢复旧格式归档，再用新格式备份一个所有媒体都已到期的项目 | 旧版完整备份和空媒体清单均可还原 | 使用旧命令生成备份，将数据库还原到另一个空库，通过旧清单校验两份文件。全到期样本生成空清单、空媒体归档，也通过数据库恢复与校验。 |
+
+原始结果位于 `feedback-backup/latest.json`。复现命令见[部署手册](14-deployment-and-operations.md#随数据库备份和恢复反馈截图及录屏)。
+
 <a id="issue-import-audit"></a>
 
 ### 专题 12、13 · 核对 GitHub Issue 的首次派发来源
@@ -36,6 +51,8 @@
 | 开启正式 GitHub 轮询，再用 Owner 身份手动导入已由标签派发的 Issue，重启控制面 | 首次派发方保持为轮询器，每项只留一条导入事件 | 任务 6 的事件 5 记录来源 github、发起方 github_poller、Issue 6462305130、需求记录 5 的修订 1，类型为 operations。两份下载均匹配 API 和 GitHub，重启后回执相同。数据库专项还验证了采用修订 3、观察修订 5 后，首次回执逐字节保持一致。[beta #243](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/243) |
 
 原始回执位于 `issue-import-audit-before/latest.json` 和 `issue-import-audit-after/latest.json`。
+
+实现提交 `9aeaa8f70adc1d698e06afa63b92dd365b370f52`。空 PostgreSQL 18 和真实 Docker 全包回归共 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。报告为 `issue-import-audit-regression.jsonl`。
 
 <a id="feedback-event-audit"></a>
 

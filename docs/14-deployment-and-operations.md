@@ -250,33 +250,42 @@ pg_restore --dbname='service=forgeos-restore' \
 
 用恢复库的连接启动独立控制面，演练时关闭 GitHub 轮询和交付。通过 Owner API 对照任务列表、任务详情、计划修订、需求版本、评论和检查点。选择已交付任务核对候选、合并 SHA 和事件，再创建一条 `git_head` 任务确认序列可以继续分配。另行恢复项目 Git 对象与配置、Worker 工作区和认证材料后，才可恢复涉及这些资源的操作。
 
-### 随数据库备份和恢复反馈截图
+<a id="随数据库备份和恢复反馈截图"></a>
 
-在包含截图的部署上，从同一个维护窗口备份数据库和附件。暂停该控制面的写入及工件清理，保留 PostgreSQL 运行。按照上一节创建数据库备份，在恢复写入前执行以下操作。`artifact_root` 指向该控制面的实际截图目录，`backup_dir` 使用刚创建的私有绝对路径。附件清单取自数据库，归档只包含有回执的图片。
+### 随数据库备份和恢复反馈截图及录屏
+
+在同一个维护窗口备份数据库、反馈 PNG 和 WebM。暂停控制面的写入及工件清理，保留 PostgreSQL 运行。按照上一节创建数据库备份，再从 ForgeOS 仓库根目录执行以下操作。`artifact_root` 指向控制面的工件目录，`backup_dir` 使用刚创建的私有绝对路径。清单根据数据库时间选取仍可读取的文件。过期媒体的原始回执随数据库备份。
 
 ```sh
 set -eu
 umask 077
-receipt_sql="SELECT sha256 || '  ' || storage_key FROM feedback_artifacts ORDER BY storage_key"
-PGSERVICE=forgeos-source psql -XAtq -v ON_ERROR_STOP=1 -c "$receipt_sql" > "$backup_dir/feedback.sha256"
+PGSERVICE=forgeos-source psql -XAtq -v ON_ERROR_STOP=1 -c "SELECT extract(epoch FROM statement_timestamp())" > "$backup_dir/feedback.cutoff"
+PGSERVICE=forgeos-source psql -XAtq -v ON_ERROR_STOP=1 -v cutoff="$(cat "$backup_dir/feedback.cutoff")" \
+  -f deploy/postgres/feedback-manifest.sql > "$backup_dir/feedback.sha256"
 if test -s "$backup_dir/feedback.sha256"; then
   (cd "$artifact_root" && sha256sum -c "$backup_dir/feedback.sha256")
 fi
 cut -c67- "$backup_dir/feedback.sha256" > "$backup_dir/feedback.paths"
 tar -C "$artifact_root" -czf "$backup_dir/feedback.tar.gz" --verbatim-files-from --files-from="$backup_dir/feedback.paths"
-(cd "$backup_dir" && sha256sum forgeos.dump feedback.sha256 feedback.tar.gz > SHA256SUMS)
+(cd "$backup_dir" && sha256sum forgeos.dump feedback.cutoff feedback.sha256 feedback.tar.gz > SHA256SUMS)
 ```
 
-如果尚无回执且截图目录尚未创建，在备份账号的私有临时目录中创建一个空目录作为本次 `artifact_root`。源图缺失或摘要不符时修复对应回执后重新备份。备份放在受限存储中，将校验清单的副本独立保管。
+如果清单为空且工件目录尚未创建，在备份账号的私有临时目录中创建一个空目录作为本次 `artifact_root`。有效媒体缺失或摘要不符时，从可信副本恢复匹配原回执的内容，再重新备份。备份放在受限存储中，将校验清单的副本独立保管。
 
-在隔离实例核对整套备份的 `SHA256SUMS`，再按上一节恢复到空数据库。以恢复控制面的服务账号在私有的 `RESTORE_ROOT` 下新建附件目录，并核对恢复库中的清单。
+在隔离实例核对整套备份的 `SHA256SUMS`，再按上一节恢复到空数据库。以恢复控制面的服务账号从 ForgeOS 仓库根目录执行以下命令。恢复清单沿用归档时的截止时间，Owner 读取仍服从当前到期时间。
 
 ```sh
 set -eu
 umask 077
 artifact_root=$(mktemp -d "$RESTORE_ROOT/feedback-XXXXXXXX")
-receipt_sql="SELECT sha256 || '  ' || storage_key FROM feedback_artifacts ORDER BY storage_key"
-PGSERVICE=forgeos-restore psql -XAtq -v ON_ERROR_STOP=1 -c "$receipt_sql" > "$artifact_root/receipts.sha256"
+if test -f "$backup_dir/feedback.cutoff"; then
+  PGSERVICE=forgeos-restore psql -XAtq -v ON_ERROR_STOP=1 -v cutoff="$(cat "$backup_dir/feedback.cutoff")" \
+    -f deploy/postgres/feedback-manifest.sql > "$artifact_root/receipts.sha256"
+else
+  # 旧版备份按全部媒体回执生成清单。
+  PGSERVICE=forgeos-restore psql -XAtq -v ON_ERROR_STOP=1 \
+    -c "SELECT sha256 || '  ' || storage_key FROM feedback_artifacts ORDER BY storage_key" > "$artifact_root/receipts.sha256"
+fi
 cmp "$backup_dir/feedback.sha256" "$artifact_root/receipts.sha256"
 tar -C "$artifact_root" --no-same-owner --no-same-permissions -xzf "$backup_dir/feedback.tar.gz"
 if test -s "$artifact_root/receipts.sha256"; then
@@ -284,7 +293,7 @@ if test -s "$artifact_root/receipts.sha256"; then
 fi
 ```
 
-将恢复控制面的 `FORGEOS_ARTIFACT_ROOT` 指向新目录。通过 Owner 工作台打开原任务、候选预览及反馈，核对附件编号、图像和摘要。单独恢复数据库时仍可读历史元数据，缺少附件的回读返回 503。
+将恢复控制面的 `FORGEOS_ARTIFACT_ROOT` 指向新目录。通过原反馈核对附件编号、类型、字节数和摘要。有效文件可以读取，已到期文件返回 410。只恢复数据库时，有效文件缺失会返回 503。
 
 ### 恢复项目克隆和 Worker 工作区
 
