@@ -38,6 +38,19 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="offline-node-deliveries"></a>
+
+### 阶段四 · 节点离线时按原项目核对执行与远端交付
+
+2026-11-19，在两个原 Worker 均未启动的情况下，以只读方式打开各自的 SQLite，核对原 Git Worktree，并向 GitHub 查询 PR、Actions 和 Issue。预期仅在同一项目的执行回执、候选与远端交付三者匹配时认定该工作已经交付。
+
+| 原节点与执行 | 节点及工作区 | GitHub 交付与重试决定 |
+| --- | --- | --- |
+| pool-alpha，任务 1、执行 1 | 回报 confirmed，原生进程退出 0。工作区干净，remote 指向 alpha，HEAD 为 `c8be7c9f6578bfdc7b18b6e39dc28517eca29f6e`。 | 仓库 1459614967 的 PR #23 按该候选合入 main，合并 SHA `fdd4caf85c2cb00ce93725649c85dcc16b6386dd`。Actions 第 2 次成功，Issue #22 已关闭；保留原执行。[Issue 回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/22#issuecomment-6944123622) |
+| pool-beta，任务 2、执行 2 | 回报 confirmed，原生进程退出 0。工作区干净，remote 指向 beta，HEAD 为 `ded9b037b29e6edad15faf74d8f46860c54ee583`。 | 仓库 1459615168 的 PR #116 按该候选合入 `codex/accept-project-harness-9c4836`，合并 SHA `679168aaab7bc6c401cc0f5994f7360c8d533f21`。Actions 第 2 次成功，Issue #115 已关闭；保留原执行。[Issue 回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/115#issuecomment-6944123636) |
+
+两份 SQLite 完整性检查均通过，结算时间已记录，结果待报字段为空，CI 文件待传数均为 0。两条 Issue 的交付评论各自匹配本项目 PR、候选和合并 SHA。原始回执为 `offline-two-node-reconciliation/latest.json`。此项复核使用历史上已交付的两个工作项；当前版本从空库重新交付两个项目和实测受限 GitHub 身份仍待验收。
+
 <a id="dependent-goal-275"></a>
 
 ### 阶段三 · beta #275 双子项交付、答复和退回复验

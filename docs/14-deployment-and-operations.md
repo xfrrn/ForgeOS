@@ -377,6 +377,8 @@ test "$(sqlite3 -bail -readonly "$state_dir/$journal_name" 'PRAGMA integrity_che
 
 将恢复服务的 `FORGEOS_WORKER_STATE_DIR` 指向 `state_dir`。启动后从 Owner 任务页核对原执行号、工作区、回执与事件，并在新 SQLite 文件中核对 `outcome`、`settled_at` 以及 `report IS NULL`。正常补报和已送达的重复回报都应为 confirmed；Owner 已放弃的执行应保留 conflict 和脱去租约的原结果。核对活动进程、会话时，备份中的 PID 仅是源节点上的历史记录。[本地日志查询](13-data-storage-and-audit.md#worker-执行恢复日志)
 
+判断已离线节点上的工作是否需要重试时，先核对原工作区的 Git remote、HEAD 与节点候选，再到该仓库核对 PR head、目标分支、合并 SHA 和原 Issue 回写。`confirmed` 表示控制面接收了执行回报；是否交付还要看对应仓库的合并和回写。[两节点离线核对实例](acceptance.md#offline-node-deliveries)
+
 ## 7. 不属于第一版的内容
 
 - Kubernetes；
