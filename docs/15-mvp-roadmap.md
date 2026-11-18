@@ -63,4 +63,6 @@
 
 **阶段验收**　让两个项目各交付一个工作项，验证两个项目的执行记录和凭据访问范围彼此独立。让另一台 Worker 或另一种 Harness 完成同类任务，通过同一套 API 查询结果。模拟节点失联后核对已有执行、PR 和合并结果，再决定是否重试。详见[知识管理](08-project-knowledge-and-context.md)、[权限与密钥](09-security-and-secrets.md)和[部署与恢复](14-deployment-and-operations.md)。
 
+alpha #14 与 beta #39 已分别完成交付，并在同名凭据、相同版本和用途下验证两个项目只能取得自己的 OpenBao 包装响应。pool-alpha 与 pool-beta 在离线状态下核对了另一组工作项的原执行、候选、PR 和合并结果，两项都无需重试。2026-11-19 另从 alpha #38 的交付备份验证撤销原节点的项目授权可立即阻止归档补传。当前版本从空库重跑双项目交付仍待验收。[双项目交付与凭据隔离](acceptance.md#two-project-broker-delivery) · [离线对账](acceptance.md#offline-node-deliveries) · [归档补传授权](acceptance.md#ci-archive-worker-scope)
+
 每次进入新阶段，根据上一阶段的实测结果补齐该阶段的范围、依赖、数据与 API、风险、恢复办法和验收记录，并更新相关专题文档。[滚动规划原则](06-orchestration-and-planning.md)
