@@ -4,7 +4,7 @@
 
 ## 当前验收进度
 
-截至 `5b28e20d0bdeedadc701162507b1fac76a99748a` 的回归，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 `bc25a193122ad45bbebb52f460b49f71a638ff1b` 的全量回归及 `1290aab` 的双版本原生实测，专题 16 的 28 项中，19 项已验收，5 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
@@ -30,6 +30,7 @@
 | 专题 07、16 B.4 普通 Worker 在写入中途恢复 | [beta #258，首回合、后续排队指令、暂停和取消](#active-writer-recovery) | `8d8ad70e8a35a91d97d2096b225108d902be63c4` |
 | 专题 07、16 A.1 稳定版 App Server 的正式 Worker 交付 | [beta #258、PR #259，按节点选模型、原会话恢复、必需 CI、合并与 Issue 关闭](#stable-worker-delivery) | `7a52344c587d9f5ff984effcd1008db44b630f89` |
 | 专题 07、16 B.4 发送模型任务前的节点恢复 | [beta #260，无 Session、已有 Session、后续指令、停机期间取消](#writer-startup-recovery) | `bc25a193122ad45bbebb52f460b49f71a638ff1b` |
+| 专题 07、16 A.1/B.4 原生启动请求的历史核对 | [两个 Codex 版本，完成及中断回合的唯一原文](#native-start-receipts) | `1290aab3e1bb64e9f54f5ab25d2686fc2fcfb233` |
 
 在 `9e0ba64` 的产品代码上，使用独立的空 PostgreSQL 18 实例并启用真实 Docker 用例执行全量 Go 回归，557 个具名测试及子测试全部通过，9 个测试包通过，3 个包无测试，原始记录为 `input-history-regression.jsonl`。该轮补充的回执断言又单独运行通过。`go vet ./...`、TypeScript 检查和工作台生产构建通过。四阶段最终端到端复验仍待执行。
 
@@ -62,6 +63,8 @@
 | 首回合启动中断，停机期间从 Chrome 取消 | 替代节点结算取消，没有新的模型回合和候选 | 状态为 `CANCELLED`，只保留 PID 47260，候选为空。 |
 
 四份回执分别为 `writer-startup-final-initial/latest.json`、`writer-startup-final-session/latest.json`、`writer-startup-final-next/latest.json` 和 `writer-startup-final-cancel/latest.json`。Windows 及非 root Ubuntu 另验收了对存活进程的等待，以及拒绝将已经登记的 Turn 当作未启动进程。消费启动记录后到确认新 Turn 之前发生的故障，继续列为待验收。
+
+在提交 `bc25a193122ad45bbebb52f460b49f71a638ff1b` 上，使用空 PostgreSQL 18 和真实 Docker 执行 `go test -count=1 -json ./...`，562 个具名测试及子测试全部通过，9 个包通过，3 个包无测试。原始报告为 `writer-startup-committed-regression.jsonl`。另已通过 `go vet ./...`、前端类型检查和生产构建。四阶段最终端到端验收仍待执行。
 
 <a id="active-writer-recovery"></a>
 
