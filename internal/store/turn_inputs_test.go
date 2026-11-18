@@ -63,6 +63,19 @@ func TestNativeInputBindsOneLiveTurnAndClaimsOnlyOnce(t *testing.T) {
 		t.Fatal("wrong lease received an input")
 	}
 	poll.Lease = j.LeaseToken
+	_, err = s.db.ExecContext(ctx, `UPDATE executions SET observed_process=jsonb_set(observed_process,
+		'{observed_at}',to_jsonb(clock_timestamp()-interval '46 seconds')) WHERE id=$1`, id)
+	must(err)
+	stale := input
+	stale.Key = "00000000-0000-4000-8000-000000000002"
+	conflict(s.QueueTurnInput(ctx, id, stale))
+	must(s.QueueTurnInput(ctx, id, input))
+	item, err = s.PollTurnInput(ctx, id, poll)
+	must(err)
+	if item != nil {
+		t.Fatal("stale process observation allowed a claim")
+	}
+	must(s.ObserveProcess(ctx, id, report))
 	type claim struct {
 		item *OwnerInstruction
 		err  error

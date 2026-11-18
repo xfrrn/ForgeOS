@@ -31,6 +31,21 @@
 
 此前在 `94ad23b` 上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
 
+<a id="stale-turn-input"></a>
+
+### 专题 07、16 A.1/B.2 · 原生进程报告中断时关闭实时输入
+
+2026-11-18，在隔离 PostgreSQL 18 中运行正式控制面、Worker、Codex App Server 和 Chrome，使用 [beta #250](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/250)。代理仅中断该执行的进程报告，节点心跳、模型名额和租约继续工作。临时挂起本次测试的 Codex 进程，以便在同一个回合中核对恢复。前后使用同一份工作台构建。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 旧控制面在最近进程报告后等待 47 秒，再从 Owner 入口登记新输入 | 复现失去进程观察后仍可登记的问题 | Turn `01a1eea5-55fd-7bd0-afa7-72156d524ba9`，47.17 秒后 Chrome 仍展示输入框，API 返回 204。 |
+| 新控制面在相同条件下登记新输入 | 超过 45 秒后关闭输入框，API 拒绝新登记，历史中没有新增行 | PID 38152，Turn `01a1eea3-a795-73a3-a148-4c8164740f83`，47.02 秒后返回 409。 |
+| 恢复进程报告，向原回合登记新的标题，再恢复原生进程 | 入口重新出现，原模型消费输入并交付 | 同一进程在 20:31:05 和 20:32:01（北京时间）分别有中断前和恢复后的报告。候选 `ad0f3b79bb491716bcddd9373088a3a9a1cb9081` 的标题 `Harbor 3229e4b5` 恰有一次，输入记录为 accepted。 |
+| 在版本 119 登记真实回合输入，停止旧控制面，使用新版原地升级同一数据库 | 既有输入逐字段相同，提交相同请求仍幂等，工作台可回读 | schema 升至 120。Turn `01a1eea6-f75d-76d2-8056-3feb3d119ca7` 的输入 `eae39aa9-5a40-4a7d-872c-fa1a857a21fd` 历史完全相同，重试返回 204，Chrome 可见原文。 |
+
+数据库专项另验已登记请求在报告过期后的幂等重试、过期期间无法领取，以及同一回合恢复报告后并发领取只成功一次。使用隔离的 PostgreSQL 18 并启用真实 Docker 用例，全量 Go 回归 557 个具名测试及子测试通过，具名测试没有跳过或失败。`go vet ./...`、前端类型检查和生产构建通过。原始回执为 `stale-native-old/latest.json`、`stale-native-current/01a1eea3-a795-73a3-a148-4c8164740f83.json`、`stale-native-upgrade/latest.json` 和 `turn-fresh-regression.jsonl`。
+
 <a id="native-input-history-recovery"></a>
 
 ### 专题 07、16 A.1/B.2 · Worker 重启后核对缺失的原生输入回执

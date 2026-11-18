@@ -83,7 +83,7 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 同一探测命令加 `--steer` 可实测运行中输入。在只读 Thread 的 turn/started 后，探针先核对不匹配回合的拒绝，再用 expectedTurnId 和 clientUserMessageId 将随机文本送入当前回合。第二个 App Server 从 thread/read 核对原生输入和回复。当前安装版本允许同一 clientUserMessageId 多次进入同一回合，响应丢失后的恢复需要先对账。普通 Worker 的 Owner 运行中输入见下方工作台记录。[协议实测](acceptance.md#native-steer-probe)
 
-在任务详情展开活动执行，支持实时输入的 Codex App Server 会显示“当前原生回合输入”。提交后查看执行中的输入记录，可区分等待节点领取、已领取待确认、原生接受和原生拒绝。每个实例最多接收八条输入，每条最多 4096 字节；同时保留原有“下一回合指令”入口。输入绑定执行、节点进程实例、Thread 和 Turn。旧 Worker、两个 CLI 传输以及已结束或暂停的回合继续使用已有操作。
+在任务详情展开活动执行，支持实时输入的 Codex App Server 会显示“当前原生回合输入”。提交后查看执行中的输入记录，可区分等待节点领取、已领取待确认、原生接受和原生拒绝。每个实例最多接收八条输入，每条最多 4096 字节；同时保留原有“下一回合指令”入口。输入绑定执行、节点进程实例、Thread 和 Turn。普通 Worker 每 15 秒重报活动进程。控制面从最后一次收到该进程报告起算，超过 45 秒就隐藏实时输入入口并拒绝新登记和领取。任务租约、节点心跳和已经登记的输入继续分别保留。收到同一回合的新鲜报告后自动恢复入口。[进程报告中断验收](acceptance.md#stale-turn-input)旧 Worker、两个 CLI 传输以及已结束或暂停的回合继续使用已有操作。
 
 Owner 使用 `POST /executions/{id}/turn-inputs` 提交 instance、session_id、turn_id、UUID key 和 body。同一次提交重试沿用同一 key 和正文。Worker 使用已绑定项目和执行的租约领取，丢失领取响应时沿用同一领取编号重试。原生进程只发送一次 turn/steer；原生响应先写入节点私有 SQLite，再向控制面补报，直至取得确认。节点在发送前把执行、进程、Thread、Turn、输入 UUID 和正文摘要写入私有 SQLite。若原生响应未能落盘，重启相同身份和版本的 Worker 后，通过只读的 thread/read 核对原工作目录和回合。只有历史中恰有一条 UUID 和正文摘要都相符的输入，才补报已接受。证据缺失、正文不同或 UUID 重复时，工作台保留“节点已领取，投递待确认”。[回执恢复实测](acceptance.md#native-input-history-recovery)[真实工作台验收](acceptance.md#live-workbench-turn-input)
 

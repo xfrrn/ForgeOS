@@ -421,7 +421,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
     {observed?.turn_id && observed.session_id && attempt.steerable_instance === observed.instance &&
       <QueueInstruction key={observed.turn_id} attempt={attempt.id} target={{instance: observed.instance, session_id: observed.session_id, turn_id: observed.turn_id}} request={request} refresh={refresh}/>}
     {!!attempt.turn_inputs?.length && <section><h4>原生回合输入记录</h4><ol>{attempt.turn_inputs.map(i => <li key={i.key}>
-      <strong>{i.outcome === 'accepted' ? '原生回合已接受' : i.outcome === 'rejected' ? '原生回合已拒绝' : i.claimed_at ? '节点已领取，投递待确认' : attempt.steerable_instance === i.instance ? '等待节点领取' : '回合已结束，未领取'}</strong>
+      <strong>{i.outcome === 'accepted' ? '原生回合已接受' : i.outcome === 'rejected' ? '原生回合已拒绝' : i.claimed_at ? '节点已领取，投递待确认' : attempt.steerable_instance === i.instance ? '等待节点领取' : '尚未领取，当前无法投递'}</strong>
       <pre className="material-content">{i.body}</pre><code>{i.turn_id}</code>
     </li>)}</ol></section>}
     {observed && <section><h4>最近的节点进程报告</h4>
