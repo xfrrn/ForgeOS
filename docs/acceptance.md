@@ -3693,3 +3693,18 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 重启控制面，再次进入两条原链接，同时尝试不存在的编号和超出安全整数范围的编号 | 历史答复可独立回读；无效链接不能提交答复 | 两条链接各显示原问题的 Owner 答复，审批队列为空。未知编号提示本任务无此问题，超大编号进入不存在的页面。 |
 
 脚本 question-approval-live.py，证据 question_approval_a/proof.json 及 D2.png、D3.png。PostgreSQL 专项验证 D3 项保留至 Owner 答复后移除。
+
+<a id="native-steer-probe"></a>
+
+### 专题 07、16 A.1/B.2 · 真实 Codex App Server 运行中输入
+
+2026-11-18，Windows，codex-cli 0.169.0-alpha.11.1。执行 python scripts/probe_codex_app_server.py --bin codex.exe --steer。初始 Thread 为只读、从不申请授权，提示要求用文字回答。这是原生协议验收；从工作台向正式 Worker 投递运行中输入仍待验收。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 turn/started 后指定另一回合编号发送，再用正确编号提交一条随机标识 | 错误回合被拒绝，正确回合返回自己的编号 | 错误为 -32600。回合 01a1ed01-e3b1-7db3-875b-e9c77dae792a 的最终回复为 FORGE-cfdb8c1c32facc3c，标识仅在追加输入中出现。 |
+| 退出首个进程，以第二个 App Server 读取同一 Thread 的原生历史 | 恢复同一回合、同一客户端消息及回复 | 输入项 01a1ed01-f8a6-7030-a5a2-23ead09bdfe8，clientId 为 55b1dc08-e61e-462a-8d63-36506121aa82。在原回合只出现一次。 |
+| 在另一个独立只读回合，对同一正确回合连续使用相同的客户端编号投递同一文本两次 | 查明客户端编号能否防止重复执行 | 两次调用均成功。重开历史得到两条同 clientId 的用户输入，证明该版本需要应用侧处理响应丢失和重复发送。 |
+| 重新执行默认生命周期探针和 --approvals | 启动、恢复、中断、批准、拒绝及取消可重复运行 | 两种模式均成功；批准的临时命令输出与随机数匹配，两次拒绝和一次取消均有原生回执。 |
+
+证据为 native-steer-final-0.json、native-steer-final-1.json、native-steer-final-2.json。重复投递的独立实验脚本为 native-steer-repeat.py。

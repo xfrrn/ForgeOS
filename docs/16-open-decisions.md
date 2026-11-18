@@ -66,7 +66,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 | 编号与原始要求 | 状态 | 实际结果与剩余条件 | 操作记录 | ForgeOS 提交 |
 | --- | --- | --- | --- | --- |
-| A.1 Codex App Server 目标版本、协议与事件 | 部分验收 | 真实实现、恢复与中断；正式 Worker 的审批及运行中输入待验。 | [实测](acceptance.md#check-a-1) | `74e856fd9319af075704668556c5b5560c11d8d6`、`af79a557af1fe91f328aeed8b18a2412b3d9fd89` |
+| A.1 Codex App Server 目标版本、协议与事件 | 部分验收 | 实现、恢复、中断和原生追加输入已实测；正式 Worker 的审批及运行中输入待验。 | [适配器](acceptance.md#check-a-1) · [运行中输入](acceptance.md#native-steer-probe) | `74e856fd9319af075704668556c5b5560c11d8d6`、`af79a557af1fe91f328aeed8b18a2412b3d9fd89` |
 | A.2 Claude Headless 会话、交互及权限事件 | 已验收 | Windows 原生登录下的拒绝、问答、恢复与交付。Linux 账号见 A.3–4。 | [实测](acceptance.md#check-a-2) | `1d9617e11095434c41f68956f6e8a0d45c014108`、`402936239a5c25e1412c93239878bb385fde5746` |
 | A.3 同一 Linux 用户的认证复用与限额 | 待环境验收 | Windows 两节点争用名额已验证。Linux 双 CLI 的真实登录、并发和供应方限额待验。 | [实测](acceptance.md#check-a-3) | `4eaf44a273aa9b2bec2f9ea0ab126b714921d69c`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |
 | A.4 systemd 的身份、PATH、登录与代理 | 待环境验收 | 非 root 节点已读取实际 CLI 版本；该身份的模型登录和经代理请求待验。 | [实测](acceptance.md#adr-evidence-009) | `bd1c734d80413c87e032cb250c12baea9ad314cc`、`c18af6d27c6e054d50a79959e43ed28d71963f66` |
@@ -90,7 +90,7 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 | C.2 Goal 与任务树 | 已验收 | Chrome 可查看生效计划、历史修订及子项；已有执行的任务升级后保留关联。 | [实测](acceptance.md#adr-evidence-006) | `616dcb6508a47061f2118a98c31bfb821609870b`、`955363108651679a0245eea98d536704dd05813b` |
 | C.3 实时日志与工具调用 | 部分验收 | 工作台窗口和节点归档已验；中央全文调阅及未覆盖的结构化工具输出待补。 | [实测](acceptance.md#check-b-9) | `772840a7b2e3ae0a78ac86e34a3a721c8a71d29a`、`e07cb31c2e6122312881f5416abbee4ac4c18549` |
 | C.4 问题批量回答 | 已验收 | 跨项目批量答复、部分填写、并发提交和失去响应后的重读通过。 | [实测](acceptance.md#check-c-4) | `abb5257b9899049c22868821721030556f70a5ab` |
-| C.5 审批中心 | 部分验收 | 计划、知识提案、共享和已分级业务问题可进入原记录审批；原生运行中审批等操作待验。 | [入口](acceptance.md#check-c-5) · [审核等级](acceptance.md#approval-source-levels) · [待答问题](acceptance.md#approval-questions) | `ec9ec1b32da0fb0352855efef19fef2844aa980b`、`2672efc535da66d57f441505fcd4c66d73d83a1b` |
+| C.5 审批中心 | 部分验收 | 计划、知识提案、共享和已分级业务问题可进入原记录审批；原生运行中审批等操作待验。 | [入口](acceptance.md#check-c-5) · [审核等级](acceptance.md#approval-source-levels) · [待答问题](acceptance.md#approval-questions) | `ec9ec1b32da0fb0352855efef19fef2844aa980b`、`2672efc535da66d57f441505fcd4c66d73d83a1b`、`d329bba015030f08ba8852e85250ca712f0275d2` |
 | C.6 预览反馈工具 | 已验收 | 元素、问题、截图、录屏可绑定候选，Owner 从工作台处理、退回并复验；网络条件见 A.7。 | [实测](acceptance.md#adr-evidence-014) | `c382473c31775ebcc074682f8f55ce59adbad745`、`a6ade1d1aeed649685ad1b858cc556c774171f57` |
 | C.7 知识库管理 | 部分验收 | 全局规则、私有资料、决策与受控共享均已验；其他角色所用上下文仍待核对。 | [实测](acceptance.md#adr-evidence-004) | `4713fdc9d8139e3e9f92609f44ee4651876b8e16`、`2359fe38c621b41eeff8922e2f8a7c399102021f`、`ce005c1d31a5a9072489fd22869ea4a6cd6499aa` |
 | C.8 项目初始化向导 | 已验收 | 从登记、受控检查、原生归纳到版本化报告与离线导出有实测。 | [实测](acceptance.md#check-c-8) | `d57f60da4b1dff1892b1c5f50559add4acd00e38`、`9a75d9e04a2cdd2be90b833da5f8bd6c38d1e698` |

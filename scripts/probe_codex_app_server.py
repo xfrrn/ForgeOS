@@ -9,6 +9,13 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import uuid
+
+
+class ProtocolError(RuntimeError):
+    def __init__(self, method, code):
+        super().__init__(f"{method} failed with protocol error {code}")
+        self.code = code
 
 
 class Client:
@@ -37,7 +44,7 @@ class Client:
             msg = self.receive()
             if "method" not in msg and msg.get("id") == self.sequence:
                 if "error" in msg:
-                    raise RuntimeError(f"{method} failed with protocol error {msg['error'].get('code')}")
+                    raise ProtocolError(method, msg["error"].get("code"))
                 return msg["result"]
 
     def thread(self, workspace, existing=None, approval="never"):
@@ -52,7 +59,7 @@ class Client:
             raise RuntimeError("App Server resumed a different thread")
         return thread
 
-    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None):
+    def turn(self, thread, prompt, interrupt=False, decision=None, workspace=None, command=None, steer=None):
         self.notifications.clear()
         turn = self.call("turn/start", {"threadId": thread, "input": [{"type": "text", "text": prompt}]})["turn"]["id"]
         message, started = "", False
@@ -90,6 +97,21 @@ class Client:
             if method == "turn/started" and params["turn"]["id"] == turn:
                 if interrupt and not started:
                     self.call("turn/interrupt", {"threadId": thread, "turnId": turn})
+                if steer and not started:
+                    text, client_id = steer
+                    steer_params = {"threadId": thread, "expectedTurnId": str(uuid.uuid4()), "clientUserMessageId": client_id,
+                                    "input": [{"type": "text", "text": text}]}
+                    try:
+                        self.call("turn/steer", steer_params)
+                    except ProtocolError as error:
+                        if error.code != -32600:
+                            raise
+                    else:
+                        raise RuntimeError("App Server accepted input for a different turn")
+                    steer_params["expectedTurnId"] = turn
+                    response = self.call("turn/steer", steer_params)
+                    if response["turnId"] != turn:
+                        raise RuntimeError("Input was delivered to a different turn")
                 started = True
             if method == "turn/completed" and params["turn"]["id"] == turn:
                 expected = "interrupted" if interrupt or decision == "cancel" else "completed"
@@ -138,7 +160,9 @@ def server(binary, workspace):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin", default="codex", help="native Codex executable")
-    parser.add_argument("--approvals", action="store_true", help="exercise one-time approval, decline and cancel")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--approvals", action="store_true", help="exercise one-time approval, decline and cancel")
+    modes.add_argument("--steer", action="store_true", help="verify input delivered during an active turn")
     args = parser.parse_args()
     binary = shutil.which(args.bin)
     if not binary or (os.name == "nt" and Path(binary).suffix.lower() != ".exe"):
@@ -147,6 +171,28 @@ def main():
     marker = "FORGE-" + secrets.token_hex(8)
     with tempfile.TemporaryDirectory(prefix="forgeos-app-server-") as tmp:
         workspace = Path(tmp)
+        if args.steer:
+            instruction = f"Reply with exactly {marker}. Do not use tools."
+            client_id = str(uuid.uuid4())
+            with server(binary, workspace) as client:
+                thread = client.thread(workspace)
+                turn, answer = client.turn(thread, "Write a paragraph about winter. Do not use tools.", steer=(instruction, client_id))
+                if answer != marker:
+                    raise RuntimeError("Final response did not match the input delivered during the turn")
+            with server(binary, workspace) as client:
+                history = client.call("thread/read", {"threadId": thread, "includeTurns": True})["thread"]
+                turns = [t for t in history["turns"] if t["id"] == turn]
+                if history["id"] != thread or len(turns) != 1:
+                    raise RuntimeError("Could not recover the steered turn")
+                items = turns[0]["items"]
+                inputs = [i for i in items if i["type"] == "userMessage" and i.get("clientId") == client_id]
+                if (len(inputs) != 1 or not any(c.get("text") == instruction for c in inputs[0]["content"])
+                        or not any(i["type"] == "agentMessage" and i["text"].strip() == marker for i in items)):
+                    raise RuntimeError("Stored turn is missing the new input or its reply")
+            print(json.dumps({"version": version, "thread": thread, "turn": turn, "input_item": inputs[0]["id"],
+                              "client_id": client_id, "wrong_turn_error": -32600, "reply": answer,
+                              "sandbox": "read-only", "history_verified": True}))
+            return
         if args.approvals:
             # The fixture has no external dependencies. Its only effect would be visible here.
             (workspace / "approval_probe.py").write_text(

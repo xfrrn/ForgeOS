@@ -79,6 +79,8 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 用同一命令加 `--approvals` 实测命令审批。探针在只读 Thread 中用 `accept` 批准一次只输出随机数的 Python 命令，核对工具项状态和标准输出，然后在同一 Thread 再次提交相同命令，核对新的审批请求并拒绝。接下来分别拒绝和取消临时目录中的标记脚本，检查标记文件始终不存在、拒绝后回合完成、取消后回合中断。每次审批均比对工作目录、命令、Thread、Turn 和工具项编号。输出保留原生回执。
 
+同一探测命令加 `--steer` 可实测运行中输入。在只读 Thread 的 turn/started 后，探针先核对不匹配回合的拒绝，再用 expectedTurnId 和 clientUserMessageId 将随机文本送入当前回合。第二个 App Server 从 thread/read 核对原生输入和回复。当前安装版本允许同一 clientUserMessageId 多次进入同一回合，响应丢失后的恢复需要先对账。普通 Worker 的 Owner 运行中输入仍待验收。[协议实测](acceptance.md#native-steer-probe)
+
 ## 5. Claude Code 接入建议
 
 第一版可评估 Headless CLI + stream-json + Session Resume；复杂交互可后续评估 Agent SDK。必须通过真实环境验证会话恢复、问题交互和权限事件。
