@@ -8,12 +8,27 @@
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
-| 专题 01 §03、专题 03 · Issue 分类 | Poller 已按 `forgeos-agent` 标签区分派发和讨论。Owner 已在[工作台讨论收件箱](#discussion-inbox-ui)转换真实 Issue。显式导入可指定验证策略的 `task_type`。 | 开发、代码审查、测试、调查和运维五类工作的规则判定、分类 Agent 协调及意图不明时的澄清入口，仍待补齐和逐类验收。 |
+| 专题 01 §03、专题 03 · Issue 分类 | [五类规则、只读派发与 Owner 澄清](#issue-work-type-rules)已在私有 GitHub、正式 Worker 和工作台验收。 | 规则不能判定时调用分类 Agent，记录建议、证据及后续澄清。 |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | 正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生回合的输入和审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input) | 首份回合记录写入前中断、下一回合开始时中断、接回仍存活进程以及整机重启恢复。 |
 | C.3、C.7 · 进程日志与知识上下文 | 节点已能导出经脱敏和校验的全文；中文查询已能检索英文项目决策。多个独立角色在实际会话使用冻结依据。 | 工作台中央全文调阅、其余结构化工具输出及尚未核对的角色上下文。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="issue-work-type-rules"></a>
+
+### 专题 01、03、12 · GitHub Issue 规则分类、澄清与需求修订
+
+2026-11-18，私库 beta、正式控制面、PostgreSQL 18、Windows Worker、原生 Codex 和 Chrome。五类工作均核对了派发规格。开发、调查两类另运行真实模型；代码审查、测试、运维本次核对到只读规划入口。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 为 [#239 开发](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/239)、[#240 代码审查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/240)、[#241 测试](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/241)、[#242 调查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/242)、[#243 运维](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/243) 配置派发信号，运行 Poller，并对照手动导入 | 五类均有固定分类，非开发型从只读入口开始；反复导入同一来源应得到同一任务 | 五类各关联一项任务。#241 通过标题首词 `Verify` 判定。#242 的只读 Session `01a1eda6-2c0f-7d22-9c8e-af35df07c70a` 在计划中引用 `docs/queue-preview/index.html` 和准确页面标题 `Queue handbook`，工作树干净。 |
+| 显式选择 Codex 执行开发用例并在 Chrome 按候选验收 | 产生指定文档，通过本地验证和目标分支门禁 | #239 只修改 `docs/work-type-check.md`，候选 `1bb586c3bb66f7991cf12a332c86192eac7c6ec4` 经 [PR #246](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/246) 合并，合并提交 `9da699577a1f8772912f912d6a5124bddc7613dc`。首次试跑继承项目的 Claude 配置，保持 READY；实际交付使用本次明确选择的 Codex。 |
+| 给 [#244](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/244) 设置冲突类型，给 [#245](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/245) 只声明测试类型；在收件箱打开后修改 #244 正文 | 冲突和普通讨论都没有自动执行。过时的 Owner 选择必须拒绝 | 两项均留在收件箱。#244 未选择类型时按钮不可用；直接导入及过时页面提交均返回 409。刷新后重新选择运维，HTTP 200，任务 13 进入只读规划。同一选择重试回到任务 13，另一个类型返回 409。#245 保持普通讨论。 |
+| 重启控制面；只移除 #244 的冲突标签，再采用新修订 | 新的类型可追溯，采用前保留旧决定 | 重启后第 1 版仍为 Owner 确认的运维。第 2 版为规则识别的调查。采用前任务仍绑定第 1 版，采用后保持只读规划。重新登录及整页刷新后，390 像素宽 Chrome 显示“任务类型 · 调查（GitHub 规则）”。 |
+
+新前端与旧控制面的桌面及窄屏转换、两个窗口重复操作、101 条分页样本均通过。启用 PostgreSQL 18 和真实 Docker 的全量 Go 回归共 528 项测试及子测试通过，零失败、零跳过；`go vet ./...`、TypeScript 检查和前端生产构建通过。分类 Agent 的调用和建议仍待实现。
 
 <a id="discussion-inbox-ui"></a>
 

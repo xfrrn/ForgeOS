@@ -172,11 +172,11 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 				open[raw.ID] = true
 			}
 			var taskID int64
-			if err == nil && !raw.hasAgentLabel() {
+			if err == nil && (!raw.hasAgentLabel() || issue.WorkType == "clarification") {
 				if taskID, err = data.ObserveIssue(ctx, p.projectID, issue); err != nil {
 					return err
 				}
-				discussions = append(discussions, store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL})
+				discussions = append(discussions, store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL, WorkType: issue.WorkType, SourceDigest: issueSourceDigest(issue)})
 			} else if err == nil {
 				var task store.Task
 				task, err = data.ImportIssue(ctx, p.projectID, repo.spec(issue, p.validation, "", validation.Policy{}))

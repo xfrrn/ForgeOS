@@ -8,6 +8,67 @@ import (
 	"testing"
 )
 
+func TestIssueWorkTypeRevisionAndClarification(t *testing.T) {
+	ctx := context.Background()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	project, err := s.CreateProject(ctx, "classified")
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := Issue{ID: 10, Number: 1, RepositoryID: 12, Title: "Release", WorkType: "development", OwnerClassified: true, UpdatedAt: "2026-01-01T00:00:00Z"}
+	spec := IssueSpec{Issue: issue, Harness: "claude", BaseCommit: strings.Repeat("a", 40), Validation: "docs"}
+	task, err := s.ImportIssue(ctx, project.ID, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := spec
+	other.Issue.WorkType, other.Mode, other.Harness = "testing", "plan", "codex"
+	if _, err := s.ImportIssue(ctx, project.ID, other); !errors.Is(err, ErrConflict) {
+		t.Fatal("conflicting concurrent Owner decision accepted", err)
+	}
+	issue.WorkType, issue.OwnerClassified = "clarification", false
+	if _, err := s.ObserveIssue(ctx, project.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	if task, err = s.Task(ctx, task.ID); err != nil || task.LatestRequirement != 1 || task.Spec.Issue.WorkType != "development" {
+		t.Fatal("poll replaced Owner clarification", err)
+	}
+	issue.Title = "New scope"
+	if _, err = s.ObserveIssue(ctx, project.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.AdoptRequirement(ctx, task.ID, 2); !errors.Is(err, ErrConflict) {
+		t.Fatal("unresolved revision dispatched", err)
+	}
+	issue.WorkType = "operations"
+	if _, err = s.ObserveIssue(ctx, project.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	task, err = s.AdoptRequirement(ctx, task.ID, 3)
+	if err != nil || task.Spec.Mode != "plan" || task.Spec.ChildHarness != "claude" || !task.Spec.ValidHarness() || task.Spec.Issue.WorkType != "operations" {
+		t.Fatal("new scope did not enter read-only planning", err)
+	}
+	initial, err := s.RequirementRevision(ctx, task.ID, 1)
+	if err != nil || !initial.Issue.OwnerClassified || initial.Issue.WorkType != "development" {
+		t.Fatal("lost original classification", err)
+	}
+	issue.WorkType, issue.WorkTypeLabels = "clarification", "operations,testing"
+	if _, err = s.ObserveIssue(ctx, project.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	issue.WorkTypeLabels = "code-review,operations"
+	if _, err = s.ObserveIssue(ctx, project.ID, issue); err != nil {
+		t.Fatal(err)
+	}
+	observed, err := s.RequirementRevision(ctx, task.ID, 5)
+	if err != nil || observed.Issue.WorkTypeLabels != issue.WorkTypeLabels {
+		t.Fatal("different conflicting labels lost their revision", err)
+	}
+}
+
 func TestRequirementHistoryIgnoresDelayedPolls(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))

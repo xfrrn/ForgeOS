@@ -53,7 +53,11 @@ func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issu
 			return err
 		}
 	}
-	if previous != nil && old.Title == issue.Title && old.Body == issue.Body {
+	if old.WorkType != "" && issue.WorkType == "" {
+		issue.WorkType = "clarification"
+	}
+	if previous != nil && old.Title == issue.Title && old.Body == issue.Body && old.WorkTypeLabels == issue.WorkTypeLabels &&
+		(old.WorkType == issue.WorkType || old.OwnerClassified && (issue.OwnerClassified || !ValidWorkType(issue.WorkType))) {
 		return nil
 	}
 	doc, err := json.Marshal(issue)
@@ -202,7 +206,17 @@ func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task,
 		if planned || (status != "READY" && status != "WAITING_ACCEPTANCE" && status != "FAILED") {
 			return Task{}, ErrConflict
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2,spec=jsonb_set(spec-'verify_commit','{issue}',$3::jsonb),status='READY' WHERE id=$1`, id, rid, string(issue)); err != nil {
+		var next Issue
+		if err = json.Unmarshal(issue, &next); err != nil {
+			return Task{}, err
+		}
+		if next.WorkType != "" && !ValidWorkType(next.WorkType) {
+			return Task{}, ErrConflict
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2,
+			spec=jsonb_set(spec-'verify_commit','{issue}',$3::jsonb) || CASE
+			WHEN $4 AND COALESCE(spec->>'mode','')<>'plan' THEN jsonb_strip_nulls(jsonb_build_object('mode','plan','child_harness',spec->'harness','harness','codex'))
+			ELSE '{}'::jsonb END,status='READY' WHERE id=$1`, id, rid, string(issue), next.WorkType != "" && next.WorkType != "development"); err != nil {
 			return Task{}, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'requirement_adopted')`, id); err != nil {

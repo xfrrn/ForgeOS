@@ -111,17 +111,23 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			return
 		}
 		var input struct {
-			Validation string                `json:"validation"`
-			Mode       string                `json:"mode"`
-			Harness    string                `json:"harness"`
-			TaskType   string                `json:"task_type"`
-			Target     string                `json:"target"`
-			Feedback   *store.FeedbackSource `json:"feedback_source"`
+			Validation   string                `json:"validation"`
+			Mode         string                `json:"mode"`
+			Harness      string                `json:"harness"`
+			TaskType     string                `json:"task_type"`
+			WorkType     string                `json:"work_type"`
+			SourceDigest string                `json:"source_digest"`
+			Target       string                `json:"target"`
+			Feedback     *store.FeedbackSource `json:"feedback_source"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
 		policy := validation.Policy{TaskType: input.TaskType, Target: input.Target}
+		if input.WorkType != "" && !store.ValidWorkType(input.WorkType) {
+			problem(w, http.StatusBadRequest, "unsupported Issue work type")
+			return
+		}
 		if !(store.IssueSpec{Harness: input.Harness, Mode: input.Mode}).ValidHarness() {
 			problem(w, http.StatusBadRequest, "select codex or claude for implementation, or codex for planning")
 			return
@@ -173,8 +179,26 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			problem(w, status, err.Error())
 			return
 		}
+		if input.SourceDigest != "" && input.SourceDigest != issueSourceDigest(issue) {
+			problem(w, http.StatusConflict, "the GitHub Issue changed; refresh the inbox before dispatch")
+			return
+		}
+		if input.WorkType != "" {
+			if store.ValidWorkType(issue.WorkType) && input.WorkType != issue.WorkType {
+				problem(w, http.StatusConflict, "work type differs from the current GitHub Issue")
+				return
+			}
+			issue.OwnerClassified = !store.ValidWorkType(issue.WorkType)
+			issue.WorkType = input.WorkType
+		}
+		if issue.WorkType == "clarification" {
+			problem(w, http.StatusConflict, "select an Issue work type before dispatch")
+			return
+		}
 		spec := source.spec(issue, input.Validation, input.Mode, policy)
-		if input.Harness != "" {
+		if input.Harness != "" && spec.Mode == "plan" && input.Mode != "plan" {
+			spec.ChildHarness = input.Harness
+		} else if input.Harness != "" {
 			spec.Harness = input.Harness
 		}
 		task, err := data.ImportIssue(ctx, id, spec, sources...)
@@ -233,6 +257,9 @@ type githubProject struct {
 }
 
 func (repo githubProject) spec(issue store.Issue, profile, mode string, policy validation.Policy) store.IssueSpec {
+	if store.ValidWorkType(issue.WorkType) && issue.WorkType != "development" {
+		mode = "plan"
+	}
 	spec := store.IssueSpec{Issue: issue, BaseCommit: repo.Base, Validation: profile, Mode: mode}
 	spec.ProjectConfigBlob = repo.ConfigBlob
 	if mode == "plan" {
@@ -334,7 +361,8 @@ func (repo githubProject) issue(remote githubIssue, number int64) (store.Issue, 
 		strings.ContainsRune(remote.Title, 0) || strings.ContainsRune(remote.Body, 0) {
 		return store.Issue{}, errIssueText
 	}
-	return store.Issue{RepositoryID: repo.ID, Repository: repo.FullName, ID: remote.ID, Number: number,
+	kind, labels := remote.classify()
+	return store.Issue{WorkType: kind, WorkTypeLabels: labels, RepositoryID: repo.ID, Repository: repo.FullName, ID: remote.ID, Number: number,
 		URL: remote.HTMLURL, Title: remote.Title, Body: remote.Body, UpdatedAt: remote.UpdatedAt}, nil
 }
 

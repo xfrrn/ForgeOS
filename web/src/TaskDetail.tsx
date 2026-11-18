@@ -1,4 +1,5 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
+import { workTypeName } from './workTypes'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import type { GlobalRulesRevision } from './GlobalRules'
 import { PlanEditor } from './PlanEditor'
@@ -53,7 +54,7 @@ type Attempt = {
   id: number; status: string; worker: string; workspace: string; lease_until: string
   uses_checkpoints?: boolean; requirement_revision?: number; lease_expired: boolean; abandoned_at?: string; end_reason?: string; result?: Result
 }
-type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string }
+type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string; work_type?: string; owner_classified?: boolean }
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
 type TaskEvent = { id: number; execution_id?: number; type: string; at: string; issue_feedback_at?: string }
@@ -206,7 +207,9 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
         <p>{value.feedback_id ? <a href={`#/tasks/${value.feedback_task}/previews/${value.feedback_preview}/feedback`}>Owner 修订 · 预览反馈 #{value.feedback_id} · {formatTime(value.observed_at)}</a> : `GitHub 更新时间 · ${formatTime(value.issue.updated_at)}`}</p></>
       : <p role="status">正在读取需求修订…</p>}
     {canApply && revision === latest && value?.revision === latest &&
-      <button className="button primary" disabled={applying} onClick={() => void apply()}>采用修订 {revision} 并排队执行</button>}
+      (value.issue.work_type === 'clarification'
+        ? <p>此修订的类型待澄清。请在来源 Issue 明确任务类型，等待同步后采用新修订。</p>
+        : <button className="button primary" disabled={applying} onClick={() => void apply()}>采用修订 {revision} 并排队执行</button>)}
   </div>
 }
 
@@ -679,6 +682,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
       <h1>{issue?.title || (task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>
+      {workTypeName(issue?.work_type) && <p>任务类型 · {workTypeName(issue?.work_type)}（{issue?.owner_classified ? 'Owner 确认' : 'GitHub 规则'}）</p>}
       {task.spec?.project_config_blob && <details><summary>项目执行配置</summary><dl className="detail-facts">
         <Fact label="实现 Harness">{(task.spec.child_harness || task.spec.harness) === 'claude' ? 'Claude Code' : 'Codex'}</Fact>
         <Fact label="project.yaml 对象" code>{task.spec.project_config_blob}</Fact>

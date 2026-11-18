@@ -125,7 +125,19 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 
 按标签自动接入时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，`FORGEOS_POLL_VALIDATION` 为上述一种验证方式。Owner 在 GitHub 仓库中为 Agent 任务模板配置 `forgeos-agent` 标签，Poller 只派发带该标签的开放 Issue，逐页读取并与手动导入共用去重逻辑。普通讨论可由 Owner 通过编号显式转为任务。默认采用按编号派单。
 
-在工作台的“项目接入”中打开对应项目的“讨论收件箱”，可查看 Poller 已同步的普通讨论和 GitHub 原文。点击“转为实现任务”将用项目配置的模型和自动验证策略派单，并打开任务详情。同一讨论重复转换会打开同一任务。[桌面、窄屏与重启实测](acceptance.md#discussion-inbox-ui)
+在工作台的“项目接入”中打开对应项目的“讨论收件箱”，可查看 Poller 已同步的讨论和 GitHub 原文。开发类型可转为实现任务，其他类型先转为只读规划任务。派发后会打开任务详情。同一讨论按同一类型重复转换会打开同一任务。[桌面、窄屏与重启实测](acceptance.md#discussion-inbox-ui)
+
+在 GitHub 为 Issue 添加一个类型标签，如 `forgeos:type:investigation`，或使用标题前缀，如 `[Investigation]`、`[调查]`。五种类型如下。类型标签可由项目的 GitHub Issue 模板设置。`forgeos-agent` 仍是自动派发信号；单独添加类型标签的普通讨论留在收件箱。
+
+| 类型 | 标题前缀 | 首次派发 |
+| --- | --- | --- |
+| `development` | `[Development]` 或 `[开发]` | 按项目模型配置执行实现任务 |
+| `code-review` | `[Code Review]` 或 `[代码审查]` | Codex 只读规划 |
+| `testing` | `[Testing]` 或 `[测试]` | Codex 只读规划 |
+| `investigation` | `[Investigation]` 或 `[调查]` | Codex 只读规划 |
+| `operations` | `[Operations]` 或 `[运维]` | Codex 只读规划 |
+
+带派发信号且没有显式声明的 Issue，会先按标题开头的英文动作词判定。例如 `Add` 对应开发、`Review` 对应审查、`Verify` 对应测试、`Investigate` 对应调查、`Deploy` 对应运维。显式声明相互冲突、出现未知类型标签或规则未能判定时，Owner 可在收件箱选择类型，再派单。来源发生变化时刷新列表并重新核对。任务详情显示分类结果及其来源。已派发任务采用新的 GitHub 类型时，按需求修订流程处理；新修订仍有冲突时，先在来源 Issue 澄清再采用。
 
 要同时轮询多个仓库，设置 `FORGEOS_POLL_PROJECTS_FILE` 指向操作员维护的 JSON 文件。例如以下配置让第一个项目使用文档检查，第二个项目按固定基础提交的策略选择检查。
 

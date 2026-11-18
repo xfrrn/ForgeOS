@@ -180,7 +180,7 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 		page := make([]githubIssue, 0, end-start+1)
 		for n := start; n <= end; n++ {
 			i := githubIssue{ID: int64(100 + n), Number: int64(n), RepoURL: "https://api.github.com/repos/my-org/project", State: "open",
-				HTMLURL: fmt.Sprintf("https://github.com/my-org/project/issues/%d", n), Title: "sample", UpdatedAt: "2026-01-05T16:00:00Z"}
+				HTMLURL: fmt.Sprintf("https://github.com/my-org/project/issues/%d", n), Title: "Add sample", UpdatedAt: "2026-01-05T16:00:00Z"}
 			if n <= 5 || n >= pageSize {
 				i.Labels = []struct{ Name string }{{agentLabel}}
 			}

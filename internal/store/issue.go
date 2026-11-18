@@ -13,14 +13,25 @@ import (
 )
 
 type Issue struct {
-	RepositoryID int64  `json:"repository_id"`
-	Repository   string `json:"repository"`
-	ID           int64  `json:"id"`
-	Number       int64  `json:"number"`
-	URL          string `json:"url"`
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	UpdatedAt    string `json:"updated_at"`
+	WorkType        string `json:"work_type,omitempty"`
+	OwnerClassified bool   `json:"owner_classified,omitempty"`
+	WorkTypeLabels  string `json:"work_type_labels,omitempty"`
+	RepositoryID    int64  `json:"repository_id"`
+	Repository      string `json:"repository"`
+	ID              int64  `json:"id"`
+	Number          int64  `json:"number"`
+	URL             string `json:"url"`
+	Title           string `json:"title"`
+	Body            string `json:"body"`
+	UpdatedAt       string `json:"updated_at"`
+}
+
+func ValidWorkType(value string) bool {
+	switch value {
+	case "development", "code-review", "testing", "investigation", "operations":
+		return true
+	}
+	return false
 }
 
 type IssueSpec struct {
@@ -86,7 +97,9 @@ func (s *Store) FeedbackDispatch(ctx context.Context, project, number int64, src
 
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec, sources ...FeedbackSource) (Task, error) {
 	issue := spec.Issue
-	if len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
+	if issue.WorkType != "" && !ValidWorkType(issue.WorkType) || issue.OwnerClassified && issue.WorkType == "" ||
+		issue.WorkType != "" && issue.WorkType != "development" && spec.Mode != "plan" ||
+		len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
 		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
 		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") || !spec.ValidHarness() {
 		return Task{}, ErrConflict
@@ -113,8 +126,12 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		INSERT INTO task_events(task_id, type) SELECT id, 'issue_imported' FROM created
 		RETURNING task_id`, projectID, issue.ID, string(snapshot)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		err = tx.QueryRowContext(ctx, `SELECT id FROM work_items WHERE project_id = $1 AND github_issue_id = $2 FOR UPDATE`,
-			projectID, issue.ID).Scan(&id)
+		var frozenWorkType string
+		err = tx.QueryRowContext(ctx, `SELECT id,COALESCE(spec->'issue'->>'work_type','') FROM work_items WHERE project_id = $1 AND github_issue_id = $2 FOR UPDATE`,
+			projectID, issue.ID).Scan(&id, &frozenWorkType)
+		if err == nil && issue.OwnerClassified && frozenWorkType != "" && frozenWorkType != issue.WorkType {
+			return Task{}, ErrConflict
+		}
 	}
 	if err != nil {
 		return Task{}, err
