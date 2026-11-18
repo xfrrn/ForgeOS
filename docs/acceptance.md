@@ -24,6 +24,21 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="task-event-audit"></a>
+
+### 专题 04、13 · 从时间线下载执行、决定和验收的审计回执
+
+2026-11-19，在空 PostgreSQL 18、正式 Windows 控制面和 Worker 上运行 `scripts/smoke.ps1`，并将两份有实际模型执行和受审候选的数据库快照恢复到隔离实例。以下按正式 API、桌面及 390 像素 Chrome 的结果记录。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 派发 Git HEAD，重启控制面、重放原 Worker 回报，在工作台逐条下载三份 JSON | 同一执行有明确的领取节点与结果，重放保持同一事件，下载与 API 一致 | 任务 1 有三个事件。Owner 创建，节点 foundation-regression 领取并以退出码 0 回报 `aa5aa433d27916871f4523d500d3a752452dabcd`。两条执行事件均关联 EXECUTION-1。重放为 204，三份下载和原事件时间均逐项匹配。节点身份读取为 401，错项目、错任务均为 404，事件编号 0 为 400 |
+| 让中继暂存完成回报，Owner 连续两次取消，再放行原回报、重启并重放 | 能区分请求取消的人与最终回报的节点，保留真实进程结果 | 任务 CANCELLED，仅一次取消请求和一次结算。请求方是 Owner，最终回报方是 foundation-regression，进程实际退出 0，提交 `c01cf19fcb84495b507148e7329b5d659289000e`。终态重放为 204 |
+| 恢复执行过的候选，回答两个不同问题、发布并激活两次计划，从父子时间线核对 | 问题和修订分别对应其发起方。原执行结果可查 Session，领取与 Owner 答复只显示各自当时的证据 | 原候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228` 的 Session、Worker 和退出码与原 Execution 一致。两次 Owner 答复分别关联问题 1、2，两版父计划和子项均正确关联，并经控制面重启复核 |
+| 在工作台退回该候选，并从另一份旧数据库下载已批准候选的事件 | 回执保存原决定及准确 SHA，私有退回说明仍在原验收记录 | 新退回回执为 reject、原 SHA；恢复的 beta #269 为 approve、候选 `8647c5c75bd180fc4d64c33827c476aec3857053`。两次下载均由 Owner 身份完成 |
+
+回执保存在 `event-audit-base/receipts.json`、`event-audit-cancel/foundation.json`、`event-audit-plan/receipts.json`、`event-audit-{approve,reject}/latest.json`。阶段最终复验及其余业务事件的专用载荷仍另行记录。
+
 <a id="roadmap-remote-receipts"></a>
 
 ### 阶段二至四 · 从 GitHub 复核跨仓库交付和复杂 Goal 的回执

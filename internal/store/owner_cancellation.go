@@ -42,7 +42,7 @@ func (s *Store) CancelExecution(ctx context.Context, execution int64) error {
 	}
 	_, err = tx.ExecContext(ctx, `WITH requested AS (
 		UPDATE executions SET owner_cancel_requested_at=now() WHERE id=$1 RETURNING id
-	) INSERT INTO task_events(task_id,execution_id,type) SELECT $2,id,$3 FROM requested`, execution, task, event)
+	) INSERT INTO task_events(task_id,execution_id,type,origin) SELECT $2,id,$3,'owner' FROM requested`, execution, task, event)
 	if err != nil {
 		return err
 	}

@@ -195,7 +195,7 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 		return err
 	}
 	if review.EffectiveLevel == "D1" && review.Verdict == "approve" {
-		if err = activatePlan(ctx, tx, id, revision); err != nil {
+		if err = activatePlan(ctx, tx, id, revision, "management"); err != nil {
 			return err
 		}
 	}

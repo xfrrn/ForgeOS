@@ -74,20 +74,7 @@ func registerCurationReview(mux *http.ServeMux, data *store.Store, project int64
 }
 
 func registerCurationReads(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
-	mux.HandleFunc("GET /projects/{id}/tasks/{task}/events/{event}/curation", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		project, ok := pathID(w, r)
-		if !ok {
-			return
-		}
-		task, taskErr := strconv.ParseInt(r.PathValue("task"), 10, 64)
-		event, eventErr := strconv.ParseInt(r.PathValue("event"), 10, 64)
-		if taskErr != nil || eventErr != nil || task < 1 || event < 1 {
-			problem(w, 400, "invalid task or event id")
-			return
-		}
-		out, err := data.EventCuration(r.Context(), project, task, event)
-		respond(w, 200, out, err)
-	}))
+	mux.HandleFunc("GET /projects/{id}/tasks/{task}/events/{event}/curation", authorized(owner, taskEventRead(data.EventCuration)))
 	mux.HandleFunc("GET /projects/{id}/decisions/{decision}/curation", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {

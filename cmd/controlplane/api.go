@@ -90,6 +90,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	registerMaterials(mux, data, owner, workers)
 	registerGlobalRules(mux, data, owner, workers)
 	registerCurationReads(mux, data, owner, workers)
+	mux.HandleFunc("GET /projects/{id}/tasks/{task}/events/{event}", authorized(owner, taskEventRead(data.EventAudit)))
 	registerShares(mux, data, owner, workers)
 	registerIssueRoute(mux, data, root, owner)
 	registerPlanRoutes(mux, data, root, owner)

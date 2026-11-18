@@ -808,6 +808,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
               {event.question_id && <a href={`#/tasks/${task.id}/questions/${event.question_id}`}>问题 #{event.question_id}</a>}
               {event.plan_revision && <a href={`#/tasks/${task.goal_id || task.id}/plans/${event.plan_revision}`}>计划修订 {event.plan_revision}</a>}
               {event.issue_feedback_at && issue && <div><OutLink href={issue.url}>已回写 Issue #{issue.number}</OutLink> · <time dateTime={event.issue_feedback_at}>{formatTime(event.issue_feedback_at)}</time></div>}
+              <ArchiveDownload request={request} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}`} file={`task-${task.id}-event-${event.id}.json`} label="下载事件回执"/>
               {(event.type === 'pr_merged' || event.type === 'goal_delivered') && <KnowledgeCuration project={task.project_id} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}/curation`} request={request}/>}</li>)}</ol>
           {!task.events.length && <p className="detail-empty-text">暂无事件。</p>}</section>
       </aside>
