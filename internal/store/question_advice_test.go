@@ -145,12 +145,27 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if e != nil || !strings.Contains(string(page), "management-session") || !strings.Contains(string(page), "expired-advice") {
 		t.Fatal("pending page process history", e)
 	}
+	approvals, err := s.PendingApprovals(ctx, "question", "", 0, true)
+	var pending struct {
+		Items []struct {
+			ID    int64
+			Task  int64 `json:"task_id"`
+			Level string
+		}
+	}
+	if err != nil || json.Unmarshal(approvals, &pending) != nil || len(pending.Items) != 1 || pending.Items[0].ID != id || pending.Items[0].Task != task || pending.Items[0].Level != "D3" {
+		t.Fatal("missing D3 decision", string(approvals), err)
+	}
 	observe(false)
 	if p := detail.Questions[0].ManagementAdvice.Profile; p == nil || !validStructuredProfile(p) {
 		t.Fatal("missing archived permissions")
 	}
 	if _, err = s.AnswerQuestion(ctx, task, id, "Harbor"); err != nil {
 		t.Fatal(err)
+	}
+	approvals, err = s.PendingApprovals(ctx, "question", "", 0, true)
+	if err != nil || json.Unmarshal(approvals, &pending) != nil || len(pending.Items) != 0 {
+		t.Fatal("answered decision still pending", string(approvals), err)
 	}
 	if err = finish(project.ID, retry.Lease); err != nil {
 		t.Fatal("lost response replay", err)

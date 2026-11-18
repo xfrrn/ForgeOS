@@ -77,8 +77,8 @@ function App() {
   const decisions = projectID && projectPath?.[0] === 'decisions' && (recordID === undefined || Number.isSafeInteger(recordID))
   const shares = projectID && projectPath?.[0] === 'shares' && (recordID === undefined || Number.isSafeInteger(recordID))
   const projects = route === '/projects' || Boolean(materials || decisions || shares)
-  const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9}))?$/.exec(route)
-  const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) ? Number(idMatch[1]) : undefined
+  const idMatch = /^\/tasks\/([1-9]\d*)(?:\/previews\/([a-f0-9]{48})\/feedback(?:\?(.*))?|\/plans\/([1-9]\d{0,9})|\/questions\/([1-9]\d*))?$/.exec(route)
+  const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) && (!idMatch[5] || Number.isSafeInteger(Number(idMatch[5]))) ? Number(idMatch[1]) : undefined
   const valid = Boolean(overview || running || id || approvals || queue || notifications || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
   const title = overview ? '工作台总览' : running ? '执行中任务' : preview ? '预览反馈' : id ? '任务详情' : approvals ? '审批中心' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
@@ -131,7 +131,7 @@ function App() {
     </header>
     <main id="content" tabIndex={-1} className="content">
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
-        id ? <TaskDetail key={id} id={id} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
+        id ? <TaskDetail key={id} id={id} questionID={idMatch?.[5] ? Number(idMatch[5]) : undefined} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
         overview ? <Overview request={request} onCounts={setCounts}/> :
         approvals ? <Approvals request={request}/> :
         notifications ? <Notifications request={request} onRead={() => setNotificationRevision(n => n + 1)}/> :

@@ -383,7 +383,7 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 		}
 		original = doc
 	}
-	page, err := s.PendingApprovals(ctx, "decision", "", 0)
+	page, err := s.PendingApprovals(ctx, "decision", "", 0, false)
 	var pending struct {
 		Items []struct{ Level, Verdict string }
 	}

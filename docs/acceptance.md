@@ -3679,3 +3679,17 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 两种 REQUEST/RESPONSE 均核对了原请求 ID。四个 COMMAND 各绑定自己的接收检查点。RESULT 与 EVENT 共享知识记录的关联编号，分别保留提取与审核的业务时间。所有 10 条均通过 Schema 并在重启后逐字段一致。普通 Worker 令牌访问对应的 Owner 或 Management 接口均收到 401。摘要以 UTF-8 对键排序的 JSON 计算（Python json.dumps，sort_keys=True，ensure_ascii=False，默认分隔符）。
 
 原始端到端证据包括 [Owner 指令](#check-b-3)、[角色结果及新旧版本的真实组合](#curator-result-route)、[Owner 在 Chrome 查看审核事件](#curation-review-event)。实现与验收提交见[专题 16 的原始事项对照](16-open-decisions.md#requirement-status)。此次复验脚本 protocol-type-matrix.py，每组 proof.json 保留消息身份、幂等关联及完整消息摘要。
+
+<a id="approval-questions"></a>
+
+### 专题 05、16 C.5 · 从审批中心处理原任务的 D2 和 D3 业务问题
+
+2026-11-18，将真实候选的审核前快照还原到独立 PostgreSQL 18 数据库。从正式接口先后对同一候选提出标题用词、不可逆删除的审批规则两项问题。第二项只要求判断政策；Owner 在页面选择拒绝。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在原候选提出问题，启动独立 Management，分别打开审批中心的全部操作与“业务决定” | 完成风险分级后，两种筛选都可转到该问题；传统请求保留旧类别 | 原生会话分别给出 D2 和 D3。分级前问题未出现在本队列，D3 的建议答复为空。普通节点请求返回 401；原接口不带新参数时返回原有类别。 |
+| 在 Chrome 分别打开问题 #1 和 #2，查看审核依据后提交答复 | 每个详情入口只处理指定问题；答复后从队列移除 | 两次均只出现一个答复框。D2 记录 Owner 的标题用词，D3 记录 Owner 拒绝变更，原候选恢复待验收。以边界游标读取没有重复项。 |
+| 重启控制面，再次进入两条原链接，同时尝试不存在的编号和超出安全整数范围的编号 | 历史答复可独立回读；无效链接不能提交答复 | 两条链接各显示原问题的 Owner 答复，审批队列为空。未知编号提示本任务无此问题，超大编号进入不存在的页面。 |
+
+脚本 question-approval-live.py，证据 question_approval_a/proof.json 及 D2.png、D3.png。PostgreSQL 专项验证 D3 项保留至 Owner 答复后移除。

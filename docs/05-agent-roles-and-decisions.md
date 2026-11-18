@@ -66,7 +66,7 @@ Owner 的 `GET /tasks/decision-questions` 按问题编号倒序返回最多 20 �
 
 打开工作台的“审批中心”，可跨项目查看规划中的 Goal 最新修订、待确认且仍有效的项目决策，以及 Management 已同意、等待 Owner 发布的脱敏共享副本。可按操作筛选。计划行显示修订及决策等级，共享行显示实际生效的审核等级、来源修订、接收项目和副本 SHA-256。由资料提取结果提出的决策还显示来源知识的审核等级与意见；Owner 自行起草的提案没有这份审核记录。进入对应记录核对依据，并在原详情页批准、拒绝或发布。刷新列表后，已处理的记录离开队列。
 
-Owner 接口 `GET /tasks/approvals` 每页最多返回 30 项，按操作分组、同组按记录编号倒序排列。`kind` 可选 `plan`、`decision` 或 `share`；读下一页时沿用原筛选，把 `next_before` 原样传给 `before`。候选代码的人工验收继续从“验收队列”进入。
+Owner 接口 `GET /tasks/approvals` 每页最多返回 30 项，按操作分组、同组按记录编号倒序排列。`kind` 可选 `plan`、`decision` 或 `share`；读下一页时沿用原筛选，把 `next_before` 原样传给 `before`。工作台传入 `include_questions=1`，一并列出 Management 已判为 D2 或 D3、仍可由 Owner 答复的业务问题。也可按 `kind=question` 单独筛选。进入问题可查看固定候选、提问依据和该次建议，提交答复后从队列移除。D3 要求 Owner 自行决定。候选代码的人工验收继续从“验收队列”进入。
 
 ## 5. Agent 内部通信
 

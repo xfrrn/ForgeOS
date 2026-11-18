@@ -38,7 +38,7 @@ func TestPendingApprovalCursorSurvivesDecision(t *testing.T) {
 	}
 	read := func(kind, beforeKind string, before int64) response {
 		t.Helper()
-		data, err := s.PendingApprovals(ctx, kind, beforeKind, before)
+		data, err := s.PendingApprovals(ctx, kind, beforeKind, before, false)
 		if err != nil {
 			t.Fatal(err)
 		}

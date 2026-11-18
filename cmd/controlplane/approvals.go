@@ -9,7 +9,7 @@ import (
 )
 
 func approvalKind(kind string) bool {
-	return kind == "plan" || kind == "decision" || kind == "share"
+	return kind == "plan" || kind == "decision" || kind == "share" || kind == "question"
 }
 
 func registerApprovals(mux *http.ServeMux, data *store.Store, owner string) {
@@ -31,7 +31,8 @@ func registerApprovals(mux *http.ServeMux, data *store.Store, owner string) {
 			}
 			beforeKind, beforeID = k, id
 		}
-		page, err := data.PendingApprovals(r.Context(), kind, beforeKind, beforeID)
+		questions := q.Get("include_questions") == "1" || kind == "question" || beforeKind == "question"
+		page, err := data.PendingApprovals(r.Context(), kind, beforeKind, beforeID, questions)
 		respond(w, 200, page, err)
 	}))
 }

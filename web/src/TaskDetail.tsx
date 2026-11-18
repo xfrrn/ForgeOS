@@ -71,7 +71,7 @@ type Task = {
   children?: GoalChild[]
   questions?: Question[]
 }
-type Props = { id: number; planRevision?: number; request: ApiRequest; onChanged: () => void }
+type Props = { id: number; planRevision?: number; questionID?: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
@@ -582,7 +582,7 @@ function RefreshDelivery({ id, delivery, request, reload }: { id: number; delive
     <button className="button" disabled={busy} onClick={() => void submit()}>在最新目标版本上重新验证</button></div>
 }
 
-function Detail({ id, planRevision, request, onChanged }: Props) {
+function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -657,6 +657,13 @@ function Detail({ id, planRevision, request, onChanged }: Props) {
   }
   if (!task) return <div className="panel detail-placeholder" role="status">{error || '正在读取任务详情…'}
     {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
+  if (questionID !== undefined) {
+    const question = task.questions?.find(q => q.id === questionID)
+    return <article className="task-detail"><a href={`#/tasks/${id}`}>查看任务 T-{id}</a>
+      {question ? <Decision key={question.id} taskID={id} q={question} canAnswer={task.status === 'WAITING_INPUT'} request={request}
+        onAnswer={() => { refresh(); onChanged() }}/> : <p role="status">本任务没有这条业务决定。</p>}
+    </article>
+  }
   const issue = task.spec?.issue
   const last = task.execution
   const expired = last?.lease_expired && last.status === 'RUNNING' && !last.result && !last.abandoned_at

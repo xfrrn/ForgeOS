@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
-export const approvalLabels = { plan: 'Goal 计划', decision: '项目决策', share: '跨项目共享' }
+export const approvalLabels = { plan: 'Goal 计划', decision: '项目决策', share: '跨项目共享', question: '业务决定' }
 const verdicts = { approve: '建议通过', needs_owner: '请 Owner 决定', revise: '建议修订' }
 type Kind = keyof typeof approvalLabels
-export type ApprovalItem = { kind: Kind; id: number; project_id: number; title: string; revision?: number; verdict?: keyof typeof verdicts; level?: string; recipient?: number; digest?: string; valid_until?: string }
+export type ApprovalItem = { kind: Kind; id: number; project_id: number; title: string; task_id?: number; revision?: number; verdict?: keyof typeof verdicts; level?: string; recipient?: number; digest?: string; valid_until?: string }
 type Page = { items: ApprovalItem[]; next_before?: string }
 
 export function approvalPath(item: ApprovalItem) {
+  if (item.kind === 'question') return `#/tasks/${item.task_id}/questions/${item.id}`
   if (item.kind === 'plan') return `#/tasks/${item.id}/plans/${item.revision}`
   return `#/projects/${item.project_id}/${item.kind === 'decision' ? 'decisions' : 'shares'}/${item.id}`
 }
@@ -21,7 +22,7 @@ export function Approvals({request}: {request: ApiRequest}) {
   const before = cursors.at(-1)
   useEffect(() => {
     const controller = new AbortController()
-    const query = new URLSearchParams()
+    const query = new URLSearchParams({include_questions: '1'})
     if (kind) query.set('kind', kind)
     if (before) query.set('before', before)
     setPage(undefined); setError('')
