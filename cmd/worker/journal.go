@@ -216,6 +216,11 @@ func (w *worker) runLockedAttempt(ctx context.Context, job store.Job, requested 
 		log.Printf("execution %d left at recorded checkpoint: %s", job.ExecutionID, result.Error)
 		return nil
 	}
+	if job.Kind != "environment_check" && (result.Commit != "" || result.Plan != nil) {
+		if err := w.syncResultWorktree(context.WithoutCancel(ctx), job.Workspace); err != nil {
+			return fmt.Errorf("persist worktree before buffering execution %d: %w", job.ExecutionID, err)
+		}
+	}
 	if job.RecordProcesses {
 		result.Processes, err = w.processHistory(context.WithoutCancel(ctx), key[:])
 		if err != nil {

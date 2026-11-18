@@ -11,7 +11,7 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | B.2 · 适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。[原生命令](#workbench-native-commands)与[文件补丁](#workbench-file-patches)的单次决定、执行回执及受保护分支交付均已验收。 | Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。[Claude 原生失败和工作台取消](#supervised-claude)已验。Claude 成功交付、Reviewer 成功审查及整机重启仍待验。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。[Claude 原生失败和工作台取消](#supervised-claude)已验。[Linux 断电后的工作树与结果补报](#linux-power-loss-worktree)已验。Claude 成功交付、Reviewer 成功审查及活动模型的整机重启恢复仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方、独立 Staging 接收外部提供方的真实回调。 |
 | 路线一至四最终复验 | 已重新执行[基座的中断补报](#foundation-before-report)、[单项目交付](#single-project-273)和[双子项 Goal](#dependent-goal-275)。阶段四已将[两个离线节点的原始回执与 GitHub 交付记录](#offline-node-deliveries)逐项核对。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
@@ -44,6 +44,7 @@
 | 专题 06、07、12，规划和实现回合读取首次派发来源 | [原生只读规划、GitHub 标签领取和旧数据升级](#native-issue-dispatch-origin) | `b93d5ae0e888c3facdc03f0a62a0dcd1c4cca068` |
 | 专题 00、01、12，Owner 按 Issue 编号派发工作项 | [私库中的类型澄清、重复派发和原生开发任务交付](#web-issue-number) | `effbc78c7256789fb20ddd30ea3513a35ebcbaa9` |
 | 专题 01、11、12，从工作台和预览反馈派发无类型的普通讨论 | [修复前后的派发结果与旧调用兼容](#untyped-owner-dispatch) | `9a46086d73b9f5b0c35329c73f72dad67cfadf4e` |
+| 专题 06、12、13，父 Goal 与子项的取消回执关联原 Issue 关闭 | [三个任务、一次节点补报和四份工作台下载](#source-closure-audit) | `404ca391c279ca2289a9c48553ade03257814509` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
@@ -53,6 +54,20 @@
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
+
+<a id="linux-power-loss-worktree"></a>
+
+### 阶段一、专题 07、14、16 B.4 · Linux 整机断电后的工作树与结果补报
+
+在无外部网络的 Debian 12 KVM 客机中，用仓库提供的 systemd 单元启动控制面和 UID 996 的 Worker，PostgreSQL 15 同机运行。用 Owner API 登记本地 Git 项目并派发两项 HEAD 检查。在首个结果已进入节点 SQLite、控制面尚未收到回报时，从宿主强制终止整台客机，再从原虚拟磁盘启动。每次开机由 systemd 自动启动服务。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 用修复前的节点断电，再按 API 的原工作区核对提交 | 已缓存的结果与磁盘上的 Git 工作树都能恢复 | 控制面已补报，但 Git 读取 `execution-1/.git` 报 `invalid gitfile format`。断电前的内核启动 ID 为 `ceffd95b-3442-4776-8f28-6f81d7ef8f52`。 |
+| 用修复后的节点在同一 ext4 文件系统上重复断电 | 首个工作项继续使用原执行与原工作树，第二项单独执行 | 启动 ID 从 `c6f3620e-ea7a-4e40-8d4a-19a7aa43bfc1` 变为 `e998f068-4d5d-4dc2-b4a8-b446ac70b576`。执行 1 补报，任务 2 取得执行 34，二者均为 DONE、退出码 0，各只有一次执行。 |
+| 将工作区放到另一块 ext4 虚拟磁盘，同一时点再次断电 | 两个文件系统上的工作树和 Git 元数据都能回读 | 设备号分别为 65024 和 65040，启动 ID 从 `d81a9bb3-e9c0-471c-9f18-4a49a3d12818` 变为 `a7222bbb-5dea-4502-ad93-d6b4a7142e57`。两个工作区均读到 `faf2169269db866ea27163b52a9bddb1a3b07355`，与控制面的提交相同。 |
+
+两轮均核对了原任务的创建、领取、完成事件。断电前 SQLite 只含执行 1 的待报结果，重启后两项均已结算且待报正文已清空，数据库完整性检查通过。回执为 `vm-reboot/latest-same.json` 和 `vm-reboot/latest-split.json`；修复前两次启动的控制台记录在 `vm-reboot/run-2c8af56e/`。本项验收覆盖 Git 执行结果已生成时的整机断电。原生模型尚在运行时的整机恢复仍待验收。
 
 <a id="source-closure-audit"></a>
 
@@ -67,6 +82,8 @@
 | 在 390 像素 Chrome 从三条任务时间线分别下载回执，重启后再读 | 每份文件绑定原事件，关闭信息只出现在相关事件上 | 四份下载逐份与项目 API 相同，均指向同一条关闭记录；此前的事件均无此字段。重启后四份回执逐字段相同。 |
 
 原始回执为 `source-closure-live/latest.json`。[私库 Issue #40](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/40)
+
+实现提交 `404ca391c279ca2289a9c48553ade03257814509` 通过空 PostgreSQL 18 与真实 Docker 的全量 Go 回归。9 个包共 586 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。`go vet ./...` 通过，回归回执为 `source-closure-regression.jsonl`。
 
 <a id="native-issue-dispatch-origin"></a>
 

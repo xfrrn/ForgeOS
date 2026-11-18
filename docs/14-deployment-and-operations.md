@@ -345,6 +345,8 @@ FORGEOS_WORKSPACE_ROOT="$restored_workspace_root" worker verify-ci-run < "$backu
 
 ### 备份和恢复 Worker 的 SQLite 日志
 
+Linux 节点在将 Git 执行的提交或计划结果写入待补报日志前，先确认工作树、专用 Git 目录与共享 Git 目录所在的文件系统已写盘。同一设备每次只同步一次。同步出错时，节点日志标明执行号，成功结果不会进入补报队列。核对执行时可分别读取 SQLite 的待补报状态及该工作树的 HEAD。[同盘与分盘的 Linux 断电复验](acceptance.md#linux-power-loss-worktree)
+
 在暂停派发的维护窗口中，先让活动的 Harness 和 CI 写完结果，保留尚未送达或尚未确认的回执。停止源 Worker 后，配套备份控制面数据库、项目克隆和工作区。SQLite 也支持在 Worker 运行时读取一致快照；与 PostgreSQL 配套恢复时，需要记录两个快照之间实际送达了哪些回报。恢复时只有一台 Worker 使用原节点身份。
 
 使用 SQLite CLI。每个控制面地址和 Worker ID 有一份独立的 SQLite 文件，文件名是对“去除末尾斜线的 API 地址、一个零字节、Worker ID”计算的 SHA-256 加 `.sqlite`。从源服务配置核对这两项及状态目录。以下示例备份一个身份；存在多份日志时分别保留各自原始文件名。归档中尚未确认的回执含执行租约，使用仅备份身份可读的私有存储。服务认证材料按原有权限单独配置。
