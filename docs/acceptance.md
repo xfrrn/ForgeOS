@@ -516,6 +516,21 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 
 证据为 `central-restore-execution/latest.json`、`central-restore-execution-ready/latest.json` 和 `central-restore-role/latest.json`。普通执行的 GitHub 交付见[PR #274 的实测](#single-project-273)。
 
+<a id="single-project-292"></a>
+
+### 阶段二 · beta #292 从本地 CI 引擎故障恢复并交付
+
+以空 PostgreSQL 18 登记验收私库，派发真实 Issue #292。两次执行均使用正式 Codex Worker。只对第一次启动的 Worker 指定不存在的 Docker 管道；恢复阶段使用本机正常引擎。[原 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/292)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 首次执行完成修改后，让本地 CI 连接不可用的引擎 | 保留候选和运行编号，以基础设施故障结束，无仓库检查结果 | 执行 1、原生会话 `01a1f099-0310-7bc2-b771-dd63922bbe44`、候选 `a350ed09ec7c73316ccb2bd585920b383f351057`。运行 `ci-run-220518516` 为 INFRA_FAILURE，工作项 FAILED。 |
+| 在手机 Chrome 展开执行详情，查看错误并点击“重试失败执行 #1”，重新启动使用正常引擎的 Worker | 原故障仍可查询，同一工作项以新执行完成本地验证 | 重试返回 200，任务进入 READY。执行 2、原生会话 `01a1f09a-7447-7fa1-9ea8-9e2c3b2d0a86`，仅新增指定指南。运行 `ci-run-1728552151` 的 format、unit、build 均退出 0；Owner 批准新候选 `0a97dc01bc6704d55c9146eb87bd08f495c92928`。 |
+| 等待 PR 必需检查，再在同一 head 上重跑失败的检查 | 远端检查失败时保留 Issue 和 PR，成功才合并和关闭 | PR #293 的 Actions 首次失败，Issue 仍开放且 PR 未合并。第二次通过，两次 head 均等于获批候选。合并 SHA `9200f60a5af00f195650c1885aed883fa8bceb24`。GitHub 合并、关闭时刻分别为 `2026-11-18T21:43:03Z`、`2026-11-18T21:43:43Z`。[PR #293](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/293) · [两次检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44404095184) |
+| 重启控制面，再从交付备份还原到另一空库，打开任务历史并下载回执 | 首次失败、Owner 重试和最后交付各自关联原执行 | 任务为 DONE，Owner 重试事件 4 指向执行 1 及其失败候选和运行，批准事件 7 指向执行 2。正式 Worker 的 `verify-ci-run` 核对了首次未启动检查的空清单及第二次的 5 份文件。 |
+
+交付回执为 `engine-classification-stage2/stage2/receipt.json`，独立恢复和远端检查结果为 `engine-classification-stage2/verified.json`。本次使用的引擎分类实现为 `e91fcfd58ec0f943dc7ae22718f3b36796f87347`。
+
 <a id="single-project-287"></a>
 
 ### 阶段二 · 从空库交付 beta #287，合并后从工作台核对原批准
