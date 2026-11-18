@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -21,12 +22,9 @@ type HistoryHit struct {
 	Excerpt    string          `json:"excerpt"`
 }
 
-func (s *Store) SearchHistory(ctx context.Context, project, task int64, source, query string) ([]HistoryHit, error) {
-	if _, err := s.Project(ctx, project); err != nil {
-		return nil, err
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		WITH scope AS (
+const historyOrder = "observed_at DESC,source,version DESC,task_id DESC"
+
+const historyRecords = `WITH scope AS (
 			SELECT id,spec->'issue'->>'title' AS title,spec->'issue'->>'url' AS url,active_revision
 			FROM work_items WHERE project_id=$1 AND ($2::bigint=0 OR id=$2)
 		), records AS (
@@ -51,16 +49,64 @@ func (s *Store) SearchHistory(ctx context.Context, project, task int64, source, 
 			       concat_ws(' ',t.title,r.plan->>'objective',t.url),1,NULL::jsonb
 			FROM scope t JOIN plan_revisions r ON r.task_id=t.id AND r.revision=t.active_revision
 			JOIN task_events e ON e.task_id=t.id AND e.type='goal_delivered' WHERE $3 IN ('','goal')
-		), matches AS (
-			SELECT *,to_tsvector('simple',content) AS words,
-			       plainto_tsquery('simple',$4) AS terms FROM records
-		)
+		)`
+
+func (s *Store) SearchHistory(ctx context.Context, project, task int64, source, query string) ([]HistoryHit, error) {
+	if _, err := s.Project(ctx, project); err != nil {
+		return nil, err
+	}
+	args := []any{project, task, source, query}
+	sourceRows := "matches"
+	filter := "$4='' OR words @@ terms OR strpos(lower(content),lower($4))>0"
+	order := "ts_rank(words,terms) DESC," + historyOrder
+	extra := ""
+	sourceURL := strings.HasPrefix(query, "https://")
+	if sourceURL {
+		filter = "url=$4 OR " + filter
+		order = "(url=$4) DESC NULLS LAST," + order
+	}
+	// A full commit or source URL is an exact reference, including when it belongs to another project.
+	if query != "" && s.embeddings != nil && !validCommit(strings.ToLower(query)) && !sourceURL {
+		var eligible bool
+		if err := s.db.QueryRowContext(ctx, historyRecords+` SELECT EXISTS(SELECT 1 FROM records WHERE content<>'')`, project, task, source).Scan(&eligible); err != nil {
+			return nil, err
+		}
+		if !eligible {
+			return []HistoryHit{}, nil
+		}
+		v, err := s.embeddings.textVector(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.indexHistory(ctx, project, task, source, len(v)); err != nil {
+			return nil, err
+		}
+		vector, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, s.embeddings.model, string(vector))
+		extra = `, eligible AS MATERIALIZED (
+			SELECT m.*,e.embedding FROM matches m LEFT JOIN history_embeddings e
+			ON e.task_id=m.task_id AND e.content_hash=sha256(convert_to(m.content,'UTF8')) AND e.model=$5
+		), scores AS (
+			SELECT *, words @@ terms OR strpos(lower(content),lower($4))>0 AS keyword,
+			       embedding::vector <=> $6::vector AS distance FROM eligible
+		), ranked AS (
+			SELECT *,CASE WHEN keyword THEN row_number() OVER (ORDER BY keyword DESC NULLS LAST,ts_rank(words,terms) DESC,` + historyOrder + `) END AS lexical,
+			         CASE WHEN distance<1 THEN row_number() OVER (ORDER BY distance NULLS LAST,` + historyOrder + `) END AS semantic FROM scores
+		)`
+		sourceRows = "ranked"
+		filter = "lexical IS NOT NULL OR semantic IS NOT NULL"
+		order = "coalesce(1.0/(60+lexical),0)+coalesce(1.0/(60+semantic),0) DESC," + historyOrder
+	}
+	rows, err := s.db.QueryContext(ctx, historyRecords+`, matches AS (
+			SELECT *,to_tsvector('simple',content) AS words,plainto_tsquery('simple',$4) AS terms FROM records
+		)`+extra+`
 		SELECT task_id,source,source_id,version,
 		       CASE WHEN recency=1 THEN 'latest' ELSE 'historical' END,observed_at,url,
 		       left(content,500),COALESCE(feedback_id,0),delivery
-		FROM matches WHERE $4='' OR words @@ terms OR strpos(lower(content),lower($4))>0
-		ORDER BY ts_rank(words,terms) DESC,observed_at DESC,source,version DESC,task_id DESC LIMIT 30`,
-		project, task, source, query)
+		FROM `+sourceRows+` WHERE `+filter+` ORDER BY `+order+` LIMIT 30`, args...)
 	if err != nil {
 		return nil, err
 	}
