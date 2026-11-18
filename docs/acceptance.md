@@ -42,6 +42,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="builtin-go-archive"></a>
+
+### 专题 10、13、14 · 内置 Go 测试的中央日志
+
+在空 PostgreSQL 18 登记无 `validation.yaml` 的 alpha 验收仓库，将 #38 交给正式 Codex Worker，指定内置 `go-test`。两次执行均在无网络 Docker 容器中验证固定候选。每次从 390 像素 Chrome 展开「逐项检查」，下载 `go-test.log` 后独立计算字节数和 SHA-256。[Issue #38](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/38)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 按首版需求仅提交一个故意失败的 Go 测试，输出诊断及合成凭据标记 | 失败候选不能交付，Owner 能下载脱敏诊断，Worker 凭据不能下载 | 执行 1 的候选 `854572a754d66f5da9db9ea6f30fc5e6fb294bf7` 为 FAILED，Issue 仍开放。下载保留了测试开始提示与失败包名，敏感行被遮蔽。227 字节，摘要 `bf8930db1509b6ce0b3a0a56f222d79fdaea962205e7027b27458611bcbaef0f`。Worker 下载返回 401。 |
+| 更新真实 Issue 正文，采用修订 2，重新运行同一任务，逐字核对新测试后在工作台批准 | 新候选拥有独立日志，两次结果分别保留 | 执行 2 的候选 `8d13a83d5c38e69b6a3fddadbf579bba0101d98f` 为 PASSED。131 字节，摘要 `3dff2610db6923d16614bbd3914192a6434a0c60934c7dcf9790cb19a0eaab75`。两份下载与各自节点归档副本一致。必需检查重跑成功，PR #39 合并为 `4ce85751fde5a29ba0bb5cd4eb1b6b87847f2f5c`。[PR #39](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/39) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/44369538403) |
+| 停止 Worker，恢复数据库至新 PostgreSQL 18，从空工件根下载，再还原中央文件、缩短保留期并重启 | 两份日志可分别恢复和校验，到期后仅保留元数据和交付记录 | 文件缺失时均返回 503，还原后均返回 200，每次下载都与原摘要相同。`worker verify-ci-run` 分别验证 1 份文件。到期及控制面重启后均返回 410，任务事件和交付未变，GitHub Issue 已关闭。 |
+
+运行回执为 `builtin-go-archive-live/latest.json`，恢复回执为 `builtin-go-archive-live/retention.json`。空 PostgreSQL 18 与真实 Docker 全包回归 584 项通过，0 失败、0 跳过，另有 3 个包无测试文件；`go vet ./...` 通过。另跑 Docker 专项，核对未协商归档时的成功回报及新节点的脱敏失败日志。
+
 <a id="feedback-dispatch-work-type"></a>
 
 ### 专题 03、11、12 · 从反馈派发时澄清独立 Issue 类型

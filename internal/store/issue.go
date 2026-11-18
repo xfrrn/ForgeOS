@@ -311,6 +311,15 @@ func (spec IssueSpec) accepts(r Result) bool {
 			} else if spec.Policy == nil || run.Decision.Policy != *spec.Policy || run.Decision.Level != run.Level || !validation.ValidLevel(run.Level) {
 				return false
 			}
+		} else if spec.Validation == "go-test" {
+			if run.Level != "go-test" || run.ConfigBlob != "" || run.ConfigVersion != 0 || run.Profile != "" || run.Decision != nil || len(run.Checks) != 1 {
+				return false
+			}
+			check := run.Checks[0]
+			if check.Name != "go-test" || !check.Required || check.LogDigest == nil || len(check.Outputs) != 0 ||
+				check.ExitCode == nil || *check.ExitCode != v.ExitCode || check.Failure != run.Failure {
+				return false
+			}
 		} else if !validation.ValidLevel(spec.Validation) || run.Level != spec.Validation || run.Decision != nil {
 			return false
 		}

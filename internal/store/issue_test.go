@@ -7,7 +7,33 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"forgeos/internal/validation"
 )
+
+func TestBuiltinGoLogBoundToValidation(t *testing.T) {
+	base, sha := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	zero, now := 0, time.Now()
+	digest := validation.DigestBytes([]byte("ok\n"))
+	check := validation.CheckResult{Name: "go-test", Required: true, Started: now, Finished: now, ExitCode: &zero,
+		Status: "PASSED", Log: "go-test.log", LogDigest: &digest}
+	run := validation.Run{ID: "ci-run-1", Runner: "node", ExecutionID: 1, Base: base, Commit: sha,
+		Level: "go-test", Started: now, Finished: now, Checks: []validation.CheckResult{check}}
+	spec := IssueSpec{BaseCommit: base, Validation: "go-test"}
+	result := Result{BaseCommit: base, Commit: sha, SessionID: "session", Validation: &ValidationResult{Profile: "go-test", Commit: sha, Run: &run}}
+	if !spec.accepts(result) {
+		t.Fatal("rejected the built-in check")
+	}
+	run.Checks[0].Name, run.Checks[0].Log = "unrelated", "unrelated.log"
+	if spec.accepts(result) {
+		t.Fatal("accepted a different check as go-test")
+	}
+	run.Checks[0] = check
+	spec.Validation, result.Validation.Profile = "V2", "V2"
+	if spec.accepts(result) {
+		t.Fatal("accepted a built-in receipt for a declared validation plan")
+	}
+}
 
 func TestIssueMigrationAndDelivery(t *testing.T) {
 	db := isolatedDatabase(t)

@@ -294,6 +294,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		if job != nil {
 			job.RepoRelativePath = localrepo.RelativePath(root, job.RepoPath)
 			job.ArchiveStartupLog = job.Kind == "environment_check" && job.ReportLiveCILog && r.URL.Query().Get("supports_startup_archive") == "1"
+			job.ArchiveGoTestLog = job.Spec != nil && job.Spec.Validation == "go-test" && r.URL.Query().Get("supports_go_test_archive") == "1"
 			job.RecordArchiveDigests = job.RecordProcesses && r.URL.Query().Get("supports_archive_digests") == "1"
 			job.UploadProcessArchives = job.RecordArchiveDigests && r.URL.Query().Get("supports_archive_upload") == "1"
 		}

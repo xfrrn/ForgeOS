@@ -36,9 +36,7 @@ func (l *environmentLog) open(dir, environment string) (*os.File, error) {
 }
 
 func (l *environmentLog) finish(dir string, f *os.File) (*store.EnvironmentOutput, error) {
-	if l.writer.pending != "" || l.writer.dropping {
-		_, _ = l.writer.Write([]byte("\n"))
-	}
+	l.writer.flush()
 	closeErr := f.Close()
 	data, err := archivedFile(dir, "startup.log", int64(validation.MaxLogBytes))
 	if err != nil {
@@ -58,6 +56,12 @@ type environmentOutputWriter struct {
 	pending  string
 	dropping bool
 	err      error
+}
+
+func (w *environmentOutputWriter) flush() {
+	if w.pending != "" || w.dropping {
+		_, _ = w.Write([]byte("\n"))
+	}
 }
 
 func (w *environmentOutputWriter) Write(data []byte) (int, error) {

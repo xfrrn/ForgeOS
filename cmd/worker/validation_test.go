@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"forgeos/internal/store"
 )
 
 func TestCappedLogContinuesDraining(t *testing.T) {
@@ -59,14 +61,14 @@ func TestGoValidationInLocalContainer(t *testing.T) {
 	if os.Getenv("FORGEOS_TEST_DOCKER") != "1" {
 		t.Skip("set FORGEOS_TEST_DOCKER=1 to exercise the local offline CI image")
 	}
-	_, job, base := fixture(t)
+	w, job, base := fixture(t)
 	repo := job.RepoPath
 	validationCommit(t, repo, "go.mod", "module example\n\ngo 1.23\n")
 	good := validationCommit(t, repo, "main_test.go", "package example\nimport \"testing\"\nfunc TestWorks(t *testing.T) {}\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	result, err := validateCandidate(ctx, repo, base, good, "go-test", nil)
-	if err != nil || result.ExitCode != 0 || result.Commit != good {
+	result, err := w.validateIssueCandidate(ctx, job, repo, repo, good, &store.IssueSpec{BaseCommit: base, Validation: "go-test"})
+	if err != nil || result.ExitCode != 0 || result.Commit != good || result.Run != nil {
 		t.Fatalf("Go validation: %+v, %v", result, err)
 	}
 	// Each actual execution has its own workspace and log.

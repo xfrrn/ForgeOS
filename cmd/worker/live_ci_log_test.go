@@ -98,6 +98,8 @@ func TestBuiltinGoOutputArrivesBeforeValidationEnds(t *testing.T) {
 	defer server.Close()
 	w.api, w.client, w.token = server.URL, server.Client(), "node-token"
 	job.ReportLiveCILog = true
+	job.ArchiveGoTestLog = true
+	w.id = "go-test-runner"
 	done := make(chan struct{})
 	var result store.ValidationResult
 	var err error
@@ -132,5 +134,13 @@ func TestBuiltinGoOutputArrivesBeforeValidationEnds(t *testing.T) {
 	<-done
 	if err == nil || result.ExitCode == 0 || result.Commit != sha {
 		t.Fatal("live output changed validation outcome", result, err)
+	}
+	run := result.Run
+	if run == nil || !run.Valid() || run.Commit != sha || run.Failure != "CODE_FAILURE" {
+		t.Fatal("missing failed Go run", run)
+	}
+	content, err := w.ciUploadContent(run.ID, "go-test.log", run.Files()["go-test.log"])
+	if err != nil || strings.Contains(string(content), "synthetic-ci-secret") || !strings.Contains(string(content), "[redacted]") || !strings.Contains(string(content), "zslow") {
+		t.Fatal("archived diagnostics missing or unredacted", err)
 	}
 }

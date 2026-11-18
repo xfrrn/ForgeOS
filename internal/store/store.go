@@ -508,6 +508,7 @@ type Job struct {
 	RecordAppTurn         bool            `json:"record_app_turn,omitempty"`
 	ReportLiveProcess     bool            `json:"report_live_process,omitempty"`
 	ArchiveStartupLog     bool            `json:"archive_startup_log,omitempty"`
+	ArchiveGoTestLog      bool            `json:"archive_go_test_log,omitempty"`
 	ReportLiveCILog       bool            `json:"report_live_ci_log,omitempty"`
 	ReportCICandidate     bool            `json:"report_ci_candidate,omitempty"`
 	Startup               *StartupSpec    `json:"startup,omitempty"`
@@ -1097,7 +1098,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 			if modelPause {
 				return ErrConflict
 			}
-			if v := result.Validation; v != nil && v.Run != nil {
+			if v := result.Validation; v != nil && v.Run != nil && issue.Validation != "go-test" {
 				if verify == nil {
 					return ErrConflict
 				}

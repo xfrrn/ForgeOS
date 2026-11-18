@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -44,13 +45,7 @@ func (w *worker) validateIssueCandidate(ctx context.Context, job store.Job, repo
 		defer stop()
 	}
 	if profile != "auto" && !validation.ValidLevel(profile) {
-		var logOpened func(string)
-		if observe != nil {
-			logOpened = func(name string) {
-				observe(ciLogFile{dir: filepath.Dir(name), file: filepath.Base(name), run: fmt.Sprintf("ci-run-%d", job.ExecutionID), check: profile})
-			}
-		}
-		return validateCandidate(ctx, workspace, base, candidate, profile, logOpened)
+		return w.validateBuiltin(ctx, job, workspace, base, candidate, profile, observe)
 	}
 	report := store.ValidationResult{Profile: profile, Commit: candidate, ExitCode: 1}
 	req := ciRequest{ExecutionID: job.ExecutionID, Repo: repo, Base: base, Commit: candidate, Level: profile, Policy: spec.Policy}
@@ -68,6 +63,86 @@ func (w *worker) validateIssueCandidate(ctx context.Context, job store.Job, repo
 	report.ExitCode = 0
 	report.Output = fmt.Sprintf("%d declared checks completed; all required checks passed", len(run.Checks))
 	return report, nil
+}
+
+func (w *worker) validateBuiltin(ctx context.Context, job store.Job, workspace, base, candidate, profile string, observe func(ciLogFile)) (store.ValidationResult, error) {
+	var content bytes.Buffer
+	var capture *environmentOutputWriter
+	var dir string
+	var archiveErr error
+	start := time.Now().UTC()
+	result, err := validateCandidate(ctx, workspace, base, candidate, profile, func(name string) io.Writer {
+		runID := fmt.Sprintf("ci-run-%d", job.ExecutionID)
+		if job.ArchiveGoTestLog {
+			dir, archiveErr = os.MkdirTemp(w.workspaceRoot, "ci-run-")
+			if archiveErr == nil {
+				runID = filepath.Base(dir)
+				capture = &environmentOutputWriter{dest: &cappedLog{dest: &content, remaining: validation.LogLimit},
+					output: modelOutput{secrets: outputSecrets(job.LeaseToken), credential: w.credential}}
+			}
+		}
+		if observe != nil {
+			observe(ciLogFile{dir: filepath.Dir(name), file: filepath.Base(name), run: runID, check: profile})
+		}
+		if capture == nil {
+			return nil
+		}
+		return capture
+	})
+	if capture != nil {
+		capture.flush()
+		archiveErr = capture.err
+		if archiveErr == nil {
+			result.Run, archiveErr = w.saveGoTestLog(ctx, dir, job.ExecutionID, base, result, start, err, content.Bytes())
+		}
+	}
+	if archiveErr != nil {
+		if dir != "" {
+			os.RemoveAll(dir) // Private directory created for this attempt.
+		}
+		result.ExitCode, result.Output = 1, "could not archive the built-in go-test log"
+		return result, errors.Join(err, errors.New(result.Output))
+	}
+	return result, err
+}
+
+func (w *worker) saveGoTestLog(ctx context.Context, dir string, execution int64, base string, result store.ValidationResult, start time.Time, testErr error, content []byte) (*validation.Run, error) {
+	digest := validation.DigestBytes(content)
+	check := validation.CheckResult{Name: "go-test", Log: "go-test.log", LogDigest: &digest, Required: true,
+		Started: start, Finished: time.Now().UTC(), ExitCode: &result.ExitCode, Status: "PASSED"}
+	if testErr != nil {
+		check.Status = "FAILED"
+		var exit *exec.ExitError
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			check.Failure = "TIMEOUT"
+		case errors.Is(ctx.Err(), context.Canceled):
+			check.Failure = "CANCELLED"
+		case !errors.As(testErr, &exit) || exit.ExitCode() == 125:
+			check.Failure = "INFRA_FAILURE"
+		case exit.ExitCode() == 126 || exit.ExitCode() == 127:
+			check.Failure = "TEST_ENV_FAILURE"
+		default:
+			check.Failure = "CODE_FAILURE"
+		}
+	}
+	run := validation.Run{ExecutionID: execution, ID: filepath.Base(dir), Runner: w.id, Level: result.Profile,
+		Base: base, Commit: result.Commit, Started: start, Finished: check.Finished, Failure: check.Failure, Checks: []validation.CheckResult{check}}
+	if err := os.WriteFile(filepath.Join(dir, check.Log), content, 0600); err != nil {
+		return nil, err
+	}
+	if err := writeRunReceipt(dir, run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func writeRunReceipt(dir string, run validation.Run) error {
+	body, err := json.MarshalIndent(run, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "run.json"), body, 0600)
 }
 
 func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (validation.Run, error) {
@@ -110,11 +185,7 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 		run.Finished = time.Now().UTC()
 		run.Failure = category
 		run.Detail = detail
-		body, err := json.MarshalIndent(run, "", "  ")
-		if err == nil {
-			err = os.WriteFile(filepath.Join(dir, "run.json"), body, 0600)
-		}
-		return run, err
+		return run, writeRunReceipt(dir, run)
 	}
 	if req.Level == "auto" {
 		var policy validation.Policy
