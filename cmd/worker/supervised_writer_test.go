@@ -67,7 +67,7 @@ func TestSupervisedPlannerAssignmentIsAtomic(t *testing.T) {
 func TestSavedWriterTransport(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
-	w := worker{superviseWriters: true}
+	w := worker{superviseWriters: true, codex: "codex"}
 	var err error
 	w.journal, err = w.openJournal(ctx)
 	if err != nil {
@@ -106,6 +106,20 @@ func TestSavedWriterTransport(t *testing.T) {
 		}
 		if saved, err := w.readFinalization(ctx, job.ExecutionID); err != nil || saved == nil || saved.SupervisedExec != useExec {
 			t.Fatal("replacement lost the original transport", err)
+		}
+	}
+	job.Spec.Harness = "claude"
+	for _, appServer := range []bool{true, false} {
+		w.codexAppServer = appServer
+		if err := w.saveFinalization(ctx, &checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.resumeAssignedWriter(ctx, job.ExecutionID); err != nil {
+			t.Fatal("Codex-only node stopped on a Claude assignment", err)
+		}
+		saved, err := w.readFinalization(ctx, job.ExecutionID)
+		if err != nil || saved == nil || saved.SupervisedExec || saved.Job.Spec.Harness != "claude" {
+			t.Fatal("lost the Claude checkpoint on a Codex-only node", err)
 		}
 	}
 }

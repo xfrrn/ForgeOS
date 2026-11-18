@@ -9,9 +9,9 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | B.2 · 适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。[原生命令](#workbench-native-commands)与[文件补丁](#workbench-file-patches)的单次决定、执行回执及受保护分支交付均已验收。 | Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。Claude 的成功回报、Reviewer 的成功审查及整机重启仍待验。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。[Claude 原生失败和工作台取消](#supervised-claude)已验。Claude 成功交付、Reviewer 成功审查及整机重启仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
-| A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
+| A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方、独立 Staging 接收外部提供方的真实回调。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
 
 ### 本轮回归与基座复验
@@ -21,6 +21,21 @@
 | 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 从当前提交构建控制面、Worker 与工作台，运行 `go vet ./...`，在非 root Ubuntu 上运行适配器不匹配和活跃写入跟踪专项 | 构建、静态检查和两项跨平台专项成功 | 工作台 TypeScript 和 Vite 生产构建成功。Windows 和 Ubuntu 两项 Worker 专项均通过。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
+
+<a id="supervised-claude"></a>
+
+### 专题 07、16 B.4 · Claude Code 原进程接回、失败和取消
+
+从 [beta #267](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/267) 在独立 PostgreSQL 18 中派发 Claude 写入任务。Windows 普通 Worker 的 PATH 移除 Codex，同时显式配置真实 Claude Code 和 `FORGEOS_SUPERVISE_WRITERS=1`。为固定中断时点，验收脚本只挂起该作业已经启动的原生进程，再终止 Daemon；替代 Daemon 跟踪后恢复该进程或从 Chrome 取消。来源 Issue 在验收后仍为 OPEN。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在模型会话登记前替换 Daemon，再让同一 Claude 进程继续 | 原进程返回自己的终态；服务拒绝时工作台应显示失败且没有候选 | Daemon 36800 → 10876，原生 PID 35228，Session `fdd14243-85e8-43ec-a119-77711681f949`。唯一进程退出码 1，任务 FAILED，无候选。原生公开输出包含 HTTP 403 和余额不足。 |
+| 等节点登记原生 Session 后再替换 Daemon | 同一 PID 和已确认的 Session 贯穿替换，节点保留终态 | Daemon 47504 → 5720，PID 42696。替换前后 Session 均为 `6dad68fe-58ca-4ddc-bbb5-108998325a27`，相同的 403，任务 FAILED。Chrome 只有一条进程记录。 |
+| 替换 Daemon 后从 Chrome 取消尚未登记 Session 的原进程 | 套用原租约结算取消，保留真实的进程记录 | Daemon 21664 → 42512。原生 PID 26528 退出，任务 CANCELLED，无候选，Session 为空。 |
+| 在首次模型启动前终止执行进程，以仅有 Codex 的节点启动；在 Chrome 取消，再恢复 Claude 配置 | 保留 Claude 检查点，另一项目可用空余名额；恢复后不再启动已取消任务 | 检查点摘要 `a25ad8fbcc5893a77fbdbc28b4a3ee683b1656bdb366149168c6a8c7c21815d2` 保持相同。第二个项目的任务 2 为 DONE。恢复 Claude 后原项 CANCELLED，原生启动数 0。 |
+
+回执位于 `supervised-claude-{provider,initialized,cancel,changed}/latest.json`。成功生成候选、完成交付和 Claude 工具输出增量仍待真实模型服务可用后验收。
 
 <a id="supervised-roles"></a>
 
@@ -210,6 +225,7 @@
 | 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
 | 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
+| 专题 07、16 B.4 · 独立角色接回 | [原生进程、后续派单、Reviewer 失败与 Ubuntu 服务重启](#supervised-roles) | `ffb9103b7b581bc8b4ac7ca470f4572b2067a36f` |
 | 专题 07、16 B.4 · 存活的只读规划进程 | [两种适配器、工作台取消、暂停后接回同一会话并产出草案](#supervised-planner) | `2bfd6d2e2dff37ef6ed8b8dce2e9c19aacfdcc77` |
 | 专题 07、16 B.4 · 存活的普通 CLI 写入进程 | [工作台排入下一回合、取消、切换适配器与受保护 PR #272](#supervised-cli-writer) | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 专题 07、16 B.4 · 存活的普通 App Server 写入进程 | [双版本、活动输入、容量、执行进程故障与受保护 PR #270](#supervised-writer) | `a9a4181557b26aca690eab3eb8454a73b7f6d046` |

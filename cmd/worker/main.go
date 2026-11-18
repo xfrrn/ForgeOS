@@ -182,11 +182,15 @@ func fromEnv(role string) (*worker, error) {
 	default:
 		return nil, errors.New("FORGEOS_CODEX_TRANSPORT must be exec or app-server")
 	}
+	w.claude, err = findClaude(os.Getenv("FORGEOS_CLAUDE_BIN"))
+	if err != nil {
+		return nil, err
+	}
 	switch os.Getenv("FORGEOS_SUPERVISE_WRITERS") {
 	case "", "0":
 	case "1":
-		if !supportsWriterProcessTree || w.codex == "" {
-			return nil, errors.New("supervised writers require a supported Worker with Codex")
+		if !supportsWriterProcessTree || (w.codex == "" && w.claude.bin == "") {
+			return nil, errors.New("supervised writers require a supported Worker with Codex or Claude Code")
 		}
 		w.superviseWriters = true
 	default:
@@ -195,7 +199,7 @@ func fromEnv(role string) (*worker, error) {
 	if w.codex != "" {
 		w.codexVersion, err = readCodexVersion(w.codex)
 		if err != nil {
-			if os.Getenv("FORGEOS_CODEX_BIN") != "" || w.codexAppServer || w.superviseWriters {
+			if os.Getenv("FORGEOS_CODEX_BIN") != "" || w.codexAppServer || (w.superviseWriters && w.claude.bin == "") {
 				return nil, err
 			}
 			log.Printf("skipping discovered Codex: %v", err)
@@ -203,10 +207,6 @@ func fromEnv(role string) (*worker, error) {
 		}
 	}
 	w.commandPolicy, err = configuredCommandPolicy(os.Getenv("FORGEOS_CODEX_COMMAND_APPROVALS"), w.codexAppServer)
-	if err != nil {
-		return nil, err
-	}
-	w.claude, err = findClaude(os.Getenv("FORGEOS_CLAUDE_BIN"))
 	if err != nil {
 		return nil, err
 	}

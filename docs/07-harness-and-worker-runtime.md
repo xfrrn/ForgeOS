@@ -325,9 +325,9 @@ HTTP 204 表示已确认，409 表示结果与当前状态冲突，两者均结�
 
 ### 普通 Worker 接回仍在运行的 Codex 写入回合
 
-启用 `FORGEOS_SUPERVISE_WRITERS=1` 后，普通 Daemon 将 Codex 写入或只读规划的首次检查点与受托执行记录写入同一事务，然后将执行交给独立的 Worker 进程。该进程持有执行锁、原生标准输入输出和原租约。Daemon 退出期间，原生进程可继续收发工作台指令和报告。替代 Daemon 从节点日志发现该执行，计入本机名额并等候同一把执行锁释放。日志只为这项跟踪增加原租约的摘要，不向命令行传递令牌。
+启用 `FORGEOS_SUPERVISE_WRITERS=1` 后，普通 Daemon 将 Codex／Claude 写入或 Codex 只读规划的首次检查点与受托执行记录写入同一事务，然后将执行交给独立的 Worker 进程。该进程持有执行锁、原生标准输入输出和原租约。Daemon 退出期间，原生进程可继续收发工作台指令和报告。替代 Daemon 从节点日志发现该执行，计入本机名额并等候同一把执行锁释放。日志只为这项跟踪增加原租约的摘要，不向命令行传递令牌。
 
-独立执行进程异常退出时，Daemon 从已保存的状态尝试恢复一次。恢复入口检查执行锁、任务、原租约和工作区。已有最终回执时补报原回执；没有足以恢复的检查点时，保留现场供核对。控制面确认或判定冲突后，节点在同一事务中结束跟踪。执行检查点保留当时使用的 Codex 适配器，旧版受托检查点按 App Server 读取。App Server 支持当前回合输入；CLI 在下一检查点消费排队指令。此模式已从 Windows 正式 Worker 的故障、取消和交付验收。[App Server 验收](acceptance.md#supervised-writer) · [CLI 验收](acceptance.md#supervised-cli-writer)
+独立执行进程异常退出时，Daemon 从已保存的状态尝试恢复一次。恢复入口检查执行锁、任务、原租约和工作区。已有最终回执时补报原回执；没有足以恢复的检查点时，保留现场供核对。控制面确认或判定冲突后，节点在同一事务中结束跟踪。执行检查点保留当时使用的 Codex 适配器，旧版 Codex 受托检查点按 App Server 读取。Claude 作业按已冻结的 Harness 恢复，仅有 Codex 的节点会保留 Claude 检查点。[Claude 工作台取消与失败回报](acceptance.md#supervised-claude)App Server 支持当前回合输入；CLI 在下一检查点消费排队指令。此模式已从 Windows 正式 Worker 的故障、取消和交付验收。[App Server 验收](acceptance.md#supervised-writer) · [CLI 验收](acceptance.md#supervised-cli-writer)
 
 只读 Planner 接回时重新核对租约、冻结的需求讨论、基线提交、工作树和模型版本。获得模型名额后才消费启动检查点，沿用原只读沙箱及输出校验。只有模型返回有效计划且工作树保持干净时，控制面才保存草案。[只读规划验收](acceptance.md#supervised-planner)
 

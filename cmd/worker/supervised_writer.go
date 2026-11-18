@@ -24,7 +24,7 @@ const (
 )
 
 func (w *worker) marshalWriterCheckpoint(q parkedCheckpoint) ([]byte, error) {
-	// Older supervised checkpoints all belonged to App Server writers.
+	// Codex checkpoints from before CLI supervision belong to App Server.
 	q.SupervisedExec = w.superviseWriters && !w.codexAppServer && q.Job.Spec != nil && q.Job.Spec.Harness != "claude"
 	return json.Marshal(q)
 }
@@ -35,7 +35,7 @@ func (w *worker) recordInitialTurn(ctx context.Context, q *parkedCheckpoint, rec
 	if err != nil {
 		return err
 	}
-	if !w.superviseWriters || !q.Job.RecordAppTurn || q.Job.Spec.Harness == "claude" {
+	if !w.superviseWriters || !q.Job.RecordAppTurn {
 		err := w.saveFinalization(ctx, q)
 		recovery.waiting = err == nil
 		return err
@@ -190,11 +190,16 @@ func (w *worker) resumeAssignedWriter(ctx context.Context, id int64) error {
 	}
 	digest := sha256.Sum256([]byte(q.Job.LeaseToken))
 	if !bytes.Equal(digest[:], key) || q.Job.ExecutionID != id ||
-		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || (q.Job.Spec.Harness != "" && q.Job.Spec.Harness != "codex") {
-		return fmt.Errorf("execution %d does not match its assigned Codex writer", id)
+		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || !q.Job.Spec.ValidHarness() || (q.Job.Spec.Harness == "claude" && q.SupervisedExec) {
+		return fmt.Errorf("execution %d does not match its assigned harness", id)
 	}
-	runningExec := !w.codexAppServer
-	if q.SupervisedExec != runningExec {
+	usingCodexExec := !w.codexAppServer
+	if q.Job.Spec.Harness == "claude" {
+		if w.claude.bin == "" {
+			log.Printf("execution %d requires its original Claude Code harness; retaining the writer checkpoint", id)
+			return nil
+		}
+	} else if w.codex == "" || q.SupervisedExec != usingCodexExec {
 		log.Printf("execution %d requires its original Codex transport; retaining the writer checkpoint", id)
 		return nil
 	}
