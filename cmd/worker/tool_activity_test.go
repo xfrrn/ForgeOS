@@ -11,6 +11,18 @@ import (
 	"forgeos/internal/validation"
 )
 
+func TestWebSearchShowsOnlyReturnedTextResults(t *testing.T) {
+	results := json.RawMessage(`[null,"bad",{"type":"other","snippet":"private"},{"type":"text_result","title":"First","url":"private","ref_id":"private","snippet":"Summary"},{"type":"text_result","domain":"example.org"},{"type":"text_result","snippet":123}]`)
+	if got := webSearchOutput(results); got != "First\nSummary\n\nexample.org" {
+		t.Fatal(got)
+	}
+	for _, raw := range []string{"null", "[]", `[{"type":"text_result","query":"private"}]`, `{"action":"private"}`} {
+		if got := webSearchOutput(json.RawMessage(raw)); got != "" {
+			t.Fatal(raw, got)
+		}
+	}
+}
+
 func TestToolEventsKeepMetadataAndReadLatestWindow(t *testing.T) {
 	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	w := worker{repoRoot: t.TempDir(), workspaceRoot: t.TempDir()}

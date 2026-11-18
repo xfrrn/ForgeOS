@@ -538,6 +538,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 					ID, Type, Status, Text, AggregatedOutput string
 					Changes                                  []nativeFileChange
 					Result, Error                            json.RawMessage
+					Results                                  json.RawMessage
 				}
 			}
 			isTurn := strings.HasPrefix(m.Method, "turn/")
@@ -643,6 +644,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				}
 				if name == "mcp_tool_call" && phase != "started" && process.toolOutput != nil {
 					output = mcpToolOutput(event.Item.Result, event.Item.Error)
+				}
+				if name == "web_search" && phase != "started" && process.toolOutput != nil {
+					output = webSearchOutput(event.Item.Results)
 				}
 				if err = process.recordTool(event.Item.ID, name, phase, output); err != nil {
 					return session, err

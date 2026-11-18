@@ -95,6 +95,7 @@ func (p *processLog) codexTool(kind string, raw []byte) error {
 			ID, Type, Status string
 			Changes          []nativeFileChange
 			Result, Error    json.RawMessage
+			Results          json.RawMessage
 			Output           string `json:"aggregated_output"`
 		}
 	}
@@ -115,7 +116,34 @@ func (p *processLog) codexTool(kind string, raw []byte) error {
 	if e.Item.Type == "mcp_tool_call" && phase != "started" && p.toolOutput != nil {
 		output = mcpToolOutput(e.Item.Result, e.Item.Error)
 	}
+	if e.Item.Type == "web_search" && phase != "started" && p.toolOutput != nil {
+		output = webSearchOutput(e.Item.Results)
+	}
 	return p.recordTool(e.Item.ID, e.Item.Type, phase, output)
+}
+
+func webSearchOutput(results json.RawMessage) string {
+	var records []json.RawMessage
+	if json.Unmarshal(results, &records) != nil {
+		return ""
+	}
+	var entries []string
+	for _, record := range records {
+		var r struct{ Type, Title, Domain, Snippet string }
+		if json.Unmarshal(record, &r) != nil || r.Type != "text_result" {
+			continue
+		}
+		var lines []string
+		for _, field := range []string{r.Title, r.Domain, r.Snippet} {
+			if field != "" {
+				lines = append(lines, field)
+			}
+		}
+		if len(lines) > 0 {
+			entries = append(entries, strings.Join(lines, "\n"))
+		}
+	}
+	return strings.Join(entries, "\n\n")
 }
 
 func (p *processLog) claudeTool(kind string, raw []byte) error {
