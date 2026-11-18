@@ -12,7 +12,7 @@
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。[Claude 原生失败和工作台取消](#supervised-claude)已验。Claude 成功交付、Reviewer 成功审查及整机重启仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方、独立 Staging 接收外部提供方的真实回调。 |
-| 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+| 路线一至四最终复验 | 已重新执行[基座的中断补报](#foundation-before-report)、[单项目交付](#single-project-273)和[双子项 Goal](#dependent-goal-275)。阶段四已将[两个离线节点的原始回执与 GitHub 交付记录](#offline-node-deliveries)逐项核对。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
 
 ### 本轮回归与基座复验
 
@@ -29,9 +29,13 @@
 | 阶段二，必需检查失败时保留 PR 和 Issue，重跑通过后交付 | [beta #273 与 PR #274 的两次检查](#single-project-273) | `7f461fa2c4fa7d9d9c884a8070303b567cf1f198` |
 | 专题 13、14，恢复中央进程日志和待传的节点日志 | [补传、离线下载、损坏和到期](#central-process-backup) | `755c6c095ffecfabf21fb3f5672f9650eebf19e2` |
 | 专题 10、13、14，逐文件恢复积压的 CI 日志和报告 | [五份工作台下载与源文件一致](#ci-backup-pending) | `0f762876b1b695d9af4b3de870eadc8168083fa8` |
+| 阶段一，同项目串行，重启后能够补报原执行 | [同一 HEAD 的两项工作分别只有一次执行](#foundation-before-report) | `3296a47fcbcb614aa81c8cc10d8040abe0523810` |
+| 阶段三，依赖、人工答复、退回后的新验证与父 Issue 关闭 | [beta #275、PR #276、PR #277 和恢复后读回的三个 CI 运行](#dependent-goal-275) | `73339a5f6ec9ce13343b7cb8f52dd2e7e65deffe` |
+| 阶段四，离线后按项目核对已有执行、PR 与合并结果再决定重试 | [两份独立节点日志、工作区及各自仓库的关闭记录](#offline-node-deliveries) | `4e61d3a769d894bbb322f0eeec9d878b5591b5ac` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
+| 在空 PostgreSQL 18 与真实 Docker 运行 `go test -count=1 -json ./...`、`go vet ./...`、生产工作台构建，构建正式控制面与 Worker | 当前版本所有具名测试和构建通过 | 9 个包内共 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 与 Vite 生产构建通过。回执为 `roadmap-3296a47-regression.jsonl`。 | `3296a47fcbcb614aa81c8cc10d8040abe0523810` |
 | 空 PostgreSQL 18 及真实 Docker，运行 `go test -count=1 -json ./...` | 所有具名测试和子测试通过 | App Server 版本 579 项通过，CLI 版本 580 项通过。两轮均 0 失败、0 跳过，另有 3 个包无测试文件。两份原始报告为 `supervised-writer-receipt/regression.jsonl`、`supervised-exec-changed/regression-final.jsonl`。 | `a9a4181557b26aca690eab3eb8454a73b7f6d046`、`362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 从当前提交构建控制面、Worker 与工作台，运行 `go vet ./...`，在非 root Ubuntu 上运行适配器不匹配和活跃写入跟踪专项 | 构建、静态检查和两项跨平台专项成功 | 工作台 TypeScript 和 Vite 生产构建成功。Windows 和 Ubuntu 两项 Worker 专项均通过。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
