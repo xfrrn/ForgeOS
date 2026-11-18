@@ -341,3 +341,19 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 保持原角色、控制面地址、节点身份、状态目录和 Harness 版本，重启 Daemon。新领取协议保存了 recover_native 时，节点自动核对已记录的 PID、Session 和私有工作目录；原进程已退出则在原期限内恢复会话。原进程仍运行时会报 original native role process is still running，应核实原进程状态，不能删除记录或按未经确认的 PID 强制结束进程。工作目录丢失、Harness 版本改变或未记录 Session 时也会保留作业并停止。
 
 原生 CLI 明确报告 Session 不存在后，会保留失败尝试并交接给新 Session。从对应资料、测试计划或审查历史展开进程记录，核对实例、恢复来源、原生会话、交接来源、实际退出及最终业务结果。退出码 -1 在页面显示“未取得正常退出码”，不代表成功。原工作目录和冻结提示包含项目内容，须随私有状态目录保护；目前尚无自动到期清理。
+
+## 导出和清理节点进程日志
+
+在保存该节点私有状态的服务账号下运行正式 Worker。先用 list 核对进程实例、Harness、Session 与任务／执行编号，再导出选定实例：
+
+```powershell
+.\worker.exe process-logs list --journal C:\ForgeOS\state\node.sqlite
+.\worker.exe process-logs export --journal C:\ForgeOS\state\node.sqlite --instance 1 > C:\ForgeOS\exports\process-1.jsonl
+.\worker.exe process-logs prune --journal C:\ForgeOS\state\node.sqlite --days 30
+```
+
+路径为示例，替换为实际私有 SQLite 的绝对路径；Linux 使用相同参数。此入口不需要 GitHub 或模型凭据，也不向控制面发送数据。导出目录应限服务账号访问。独立角色分别选择其日志文件，并与页面中的 Session 和节点进程实例对应。
+
+export 成功时退出码为 0，末行 verified 为 true；truncated 为 true 表示达到本进程容量，不能将其标作完整输出。list 的 available=false 表示旧进程没有归档；expired_at 表示已按策略清理，export 返回错误且保留可查的摘要。JSONL 内部摘要校验使用原始 UTF-8 字节，修改正文或重新格式化后不能沿用原摘要。
+
+可在 Daemon 环境设置 FORGEOS_PROCESS_LOG_MAX_MIB（默认 32）和 FORGEOS_PROCESS_LOG_DAYS（默认 30）。正文仅在执行退出且业务结果已确认、保留期届满后清理；pending 补报、暂停及在途角色作业会阻止清理。prune 返回本次新到期数量，重复执行为零。旧版本 Worker 日志须由新 Daemon 打开升级后才有归档表，不会补造旧输出。完整归档目前从节点 CLI 导出，工作台仍展示最近 8 KiB。

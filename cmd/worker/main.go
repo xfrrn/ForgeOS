@@ -345,7 +345,7 @@ func (w *worker) run(ctx context.Context) error {
 	}
 	child, stop := context.WithCancel(ctx)
 	var maintenance sync.WaitGroup
-	for _, run := range []func(context.Context){w.publishCIFiles, w.sweepLocalCI} {
+	for _, run := range []func(context.Context){w.publishCIFiles, w.sweepLocalCI, w.sweepProcessLogs} {
 		maintenance.Add(1)
 		go func() { defer maintenance.Done(); run(child) }()
 	}
@@ -444,6 +444,12 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "process-logs" {
+		if err := processLogsCommand(os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if len(os.Args) == 2 && os.Args[1] == "preview-manager" {
@@ -493,7 +499,7 @@ func main() {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" && role != "curator" {
-		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager]")
+		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {

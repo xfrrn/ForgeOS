@@ -374,3 +374,9 @@ test "$(sqlite3 -bail -readonly "$state_dir/$journal_name" 'PRAGMA integrity_che
 - 自动生产部署；
 - 复杂多节点调度；
 - 默认每任务 Docker 隔离。
+
+### 备份节点进程输出归档
+
+公开模型消息与工具结果的本地归档随 Worker 私有 SQLite 一同备份，采用同一时点的 SQLite 快照，不能只复制正在写入的单个文件。归档默认每进程 32 MiB、已确认结果保留 30 天；服务环境可设置 FORGEOS_PROCESS_LOG_MAX_MIB 与 FORGEOS_PROCESS_LOG_DAYS。普通 Daemon 启动及每小时清理，独立角色打开日志时清理；离线维护可运行 process-logs prune。
+
+还原后先用 process-logs list 核对实例和原生 Session，再 export 校验正文序号、字节数与摘要。过期正文按当前策略重新清理，原进程、业务回执及摘要保留；旧备份不会永久绕过期限。此流程已从四类真实角色日志副本和非 root Linux CLI 验证。导出文件、原生 Harness 自己的会话记录和恢复工作目录不由本项清理。

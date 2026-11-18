@@ -12,7 +12,7 @@ const LiveLogWindow = 8 << 10
 
 var sensitiveLine = regexp.MustCompile(`(?i)(authorization|proxy-authorization|cookie|password|passwd|secret|token|api[-_ ]?key|private[-_ ]?key|bearer\s+|://[^/\s]+:[^/\s]+@|gh[pousr]_[a-z0-9]+|github_pat_|sk-[a-z0-9_-]+|AKIA[A-Z0-9]{16}|eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|-----BEGIN [A-Z ]*CREDENTIAL)`)
 
-func DisplayLogTail(data []byte, secrets []string) string {
+func RedactedLog(data []byte, secrets []string) string {
 	// Only publish complete lines. Classify them before cutting the display window.
 	end := bytes.LastIndexByte(data, '\n')
 	if end < 0 {
@@ -47,7 +47,11 @@ func DisplayLogTail(data []byte, secrets []string) string {
 		}
 		text.WriteByte('\n')
 	}
-	s := text.String()
+	return text.String()
+}
+
+func DisplayLogTail(data []byte, secrets []string) string {
+	s := RedactedLog(data, secrets)
 	if len(s) > LiveLogWindow {
 		s = s[len(s)-LiveLogWindow:]
 		for !utf8.RuneStart(s[0]) {

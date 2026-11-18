@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"forgeos/internal/store"
+	"forgeos/internal/validation"
 )
 
 type toolCall struct {
@@ -35,7 +36,7 @@ func (p *processLog) recordTool(id, name, phase, output string) error {
 		call = toolCall{number: r.seq + 1, tool: name}
 	}
 	seq := r.seq + 1
-	var safe string
+	var safe, archive string
 	if call.stream != nil {
 		if phase != "output" {
 			if err := call.stream.append(p, "", true); err != nil {
@@ -43,12 +44,14 @@ func (p *processLog) recordTool(id, name, phase, output string) error {
 			}
 		}
 		safe = call.stream.text
+		archive = call.stream.archive
 	} else if p.toolOutput != nil && phase != "started" && output != "" {
 		var err error
-		safe, err = p.redactOutput(p.toolOutput, "tool", output)
+		archive, err = p.redactOutput(p.toolOutput, "tool", output)
 		if err != nil {
 			return err
 		}
+		safe = validation.DisplayLogTail([]byte(archive), nil)
 	}
 	tx, err := p.db.Begin()
 	if err != nil {
@@ -67,8 +70,14 @@ func (p *processLog) recordTool(id, name, phase, output string) error {
 			return err
 		}
 	}
+	if err = p.archiveOutput(tx, "tool", call.number, call.tool, phase, archive); err != nil {
+		return err
+	}
 	if err = tx.Commit(); err != nil {
 		return err
+	}
+	if call.stream != nil {
+		call.stream.archive = ""
 	}
 	r.seq = seq
 	if phase == "started" || phase == "output" {

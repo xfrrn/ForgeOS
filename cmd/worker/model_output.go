@@ -50,6 +50,9 @@ func (p *processLog) modelMessage(text string) error {
 	_, err = tx.Exec(`INSERT INTO harness_model_output(instance,sequence,text) VALUES(?,?,?)
 	 ON CONFLICT(instance) DO UPDATE SET sequence=excluded.sequence,text=excluded.text`, p.id, o.Sequence, o.Text)
 	if err == nil {
+		err = p.archiveOutput(tx, "model", 0, "", "message", safe)
+	}
+	if err == nil {
 		err = p.saveOutputState(tx, "model", o.privateKey)
 	}
 	if err == nil {
@@ -98,7 +101,7 @@ func (o *modelOutput) redact(text string) (string, error) {
 			o.privateKey = false
 		}
 	}
-	return validation.DisplayLogTail([]byte(text+"\n"), o.secrets), nil
+	return validation.RedactedLog([]byte(text+"\n"), o.secrets), nil
 }
 
 func (p *processLog) claudeActivity(kind string, raw []byte) error {

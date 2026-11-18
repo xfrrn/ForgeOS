@@ -3339,3 +3339,35 @@ PostgreSQL 18／真实 Docker 最终全包 452 项测试及子测试通过，零
 本次 Windows Worker 受影响回归 107 项、PostgreSQL 进程／领取与会话交接回归 16 项、Linux 非 root 原生恢复专项 17 项测试及子测试通过，均零失败、零跳过。报告分别为 role-native-worker-tests.log、role-native-pg-tests.log、role-native-handoff-pg-test.log 和 native-role-linux.log。Go 静态分析、前端 TypeScript／Vite 构建和 git diff 检查通过。上一阶段全包为 452 项通过，本次不冒充已重跑全量。全路线最终回归及端到端验收仍待完成。
 
 尚未覆盖未记录 PID／Session 的启动间隙、接回仍存活 CLI 的事件流、完整归档及到期清理；外部设备私网、受限 GitHub 身份、第二位审查者和 Linux 服务账号模型登录继续待验收。固定输入和工作目录目前在私有节点目录中保留。
+
+上述独立角色原生恢复与交接实现、验收对应 ForgeOS 提交 df323a9cea263409c5dbffecef10a5985e9f2585。
+
+### 专题 07、13、14、16 C.3 · 节点进程日志归档、导出和保留
+
+2026-11-18 从正式 Worker、真实原生 CLI、Chrome 工作台和 GitHub 交付验证节点公开消息与工具文本归档。记录保存在节点私有 SQLite，正式 process-logs CLI 负责列出、导出、校验和清理，不把页面窗口当作完整输出。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 原生工具输出 700 行编号文本及首尾标记，再读取含合成敏感字段的文档 | 超过 8 KiB 仍可回查开头、末尾，敏感行不落盘 | 已完成适配器证据在下表；正文包含 0000–0699 和两端标记，敏感行仅保留 redacted。 |
+| 原生完成后重启控制面，从 Chrome 核对候选并交付，再用节点 CLI 导出 | 页面快照、候选和归档相互对应 | 导出含同一 PID／Session 与执行编号，末行 verified=true，未达到容量，摘要可复验。 |
+| 四类独立角色完成后中断结果发送，重启 Daemon | 原公开消息归档保留，不重新运行模型 | Curator、Management、Test Agent、Reviewer 各一份真实原生归档可验证；过时计划结果仍为 409，其日志保留。 |
+| 对四份真实角色日志的隔离副本推进保留时间 | 最近确认、pending 和在途作业受保护；到期仅清正文 | 只修改旧退出时间时清理数为 0；确认时间也超过 30 天后各清理 1 份，摘要和业务进程不变，重复清理为 0。 |
+| 从清理前 SQLite 快照恢复并再次清理 | 旧备份不能永久绕过期限 | 四份均再次清理 1 份；已到期 export 返回非零，未输出正文。 |
+| 在 Ubuntu UID 1000 下运行正式 Linux 二进制 | 无需模型登录即可列出、导出及清理自己的日志 | 私有目录中导出摘要一致，清理后保留摘要并拒绝导出正文。 |
+
+四类独立角色原生 Session：Curator 01a1ec65-134e-7333-837f-6f1fecd7664f，Management 01a1ec65-5656-7470-8fca-4b953cac2e23，Test Agent 01a1ec65-938f-7502-9cd0-9e45d65c5c67，Reviewer 11c0c519-78d4-4a7d-ba50-c2f82622a164。证据 role_archive_current/proof.json、process-archive-roles-live.py、process_archive_retention/proof.json、archive-retention-live.py 和 process-archive-linux-cli-proof.json。
+
+容量上限、跨块脱敏、事务故障同时回滚归档／窗口／脱敏状态、记录损坏拒绝验证、暂停保护、在途角色保护、过期幂等及旧进程无归档通过专项。删除失败时，到期标记和正文一起回滚；后台维护正常退出。中央全文下载、其他结构化结果及冻结角色输入／工作目录清理仍待补齐；全路线最终端到端验收和既有外部条件继续待验收。
+
+
+| 原生适配器 | 归档证据 | 真实交付 |
+| --- | --- | --- |
+| Codex CLI | PID 23216；Session 01a1ec65-3214-7be3-9c12-e3abc880d428；12 条，14,774 字节。 | beta #212，候选 b68cbfe393bc3708bfa4c4f6c8f0988423e7ea85；[PR #213](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/213)，合并 4cdd6c604540e30a91fc46c9af9fc3488bb394d0。 |
+| Codex App Server | PID 26988；Thread 01a1ec6e-afb8-7303-afdd-d122000b12b8；734 条，111,100 字节，含命令增量。 | beta #216，候选 8c010ae8395634925bdfa76702f215827fd0eda6；[PR #217](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/217)，合并 9919147f99241cb0017480c30151241e8f20282b。 |
+| Claude Code Read | PID 43020；Session 4693c936-7ae7-4512-94f0-6952174e6dc7；14 条，18,889 字节。 | beta #218，候选 e32d32a99e27b908cb7f4d84add448740e5c2a44；[PR #219](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/219)，合并 9cdf1e06d7490439490209736cfc42594adbf07f。 |
+
+三项均由 Chrome 按固定候选验收，真实必需检查先失败、按验收工作流重跑成功后才合并，forgeos/local-ci 同时为成功，Issue 关闭；重启后可回读原进程与输出。证据 process_archive_cli/proof.json、process_archive_appserver/proof.json、process_archive_long_claude/proof.json，以及各目录的 process-1.jsonl。导出摘要分别为 c8a67ef58fcd83a64449f84f12902e4e0ce02fd24b56ce3eaea4f7d4e22bd96b、a777bb850deba1e331a55477448f6386da3c65e7f91c5c46151ce4306618d08e、56b1849f0342fbcf3a8bb9575cd9f664ce45952efbd8975dcdefd8d9292ab306。
+
+Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付，但权限集合没有 Shell，未执行长输出命令，因此未记为长日志验收通过。保持原权限，改用 #218 的 706 行文档及完整 Read 取得长输出。前一个场景记录保留在 process_archive_claude/proof.json。
+
+本阶段 PostgreSQL 18／真实 Docker 全包 463 项测试及子测试通过，零失败、零跳过，报告 process-archive-regression.jsonl。随后补入的后台维护及清理失败回滚以受影响专项复验；最终 Windows 受影响专项 30 项测试及子测试通过，零失败、零跳过（process-archive-tests.log）。Linux 非 root 专项 14 项通过，零失败、零跳过（process-archive-linux.log），另以正式 Linux CLI 实测真实日志导出和到期拒绝。Go 静态检查及 git diff 检查通过；本次没有修改前端代码，全路线最终回归仍待完成。

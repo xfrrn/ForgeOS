@@ -10,6 +10,7 @@ import (
 type toolStream struct {
 	pending    string
 	text       string
+	archive    string
 	discard    bool
 	revision   int64
 	privateKey bool
@@ -50,6 +51,8 @@ func (p *processLog) commandOutput(id, delta string) error {
 }
 
 func (s *toolStream) append(p *processLog, delta string, final bool) error {
+	var archive strings.Builder
+	defer func() { s.archive += archive.String() }()
 	p.toolOutput.privateKey = p.toolOutput.privateKey || s.privateKey
 	defer func() { s.privateKey = p.toolOutput.privateKey }()
 	for delta != "" || final && s.pending != "" {
@@ -64,6 +67,7 @@ func (s *toolStream) append(p *processLog, delta string, final bool) error {
 				p.toolOutput.privateKey = true
 				s.revision++
 				s.text = validation.DisplayLogTail([]byte(s.text+"[redacted]\n"), nil)
+				archive.WriteString("[redacted]\n")
 				s.pending, s.discard = "", true
 			} else {
 				s.pending += part
@@ -76,6 +80,7 @@ func (s *toolStream) append(p *processLog, delta string, final bool) error {
 					return err
 				}
 				s.text = validation.DisplayLogTail([]byte(s.text+safe), nil)
+				archive.WriteString(safe)
 				s.revision++
 			}
 			s.pending, s.discard = "", false

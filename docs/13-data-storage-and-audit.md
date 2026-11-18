@@ -42,7 +42,7 @@ ORDER BY p.instance;
 
 公开模型消息的脱敏窗口保存在 Worker SQLite 的 `harness_model_output(instance, sequence, text)`，每个进程最多 8 KiB。控制面在 `observed_process.output` 和最终 `result.processes[].output` 保存对应序号和正文；原始消息不写入这张节点表。输出包含候选任务的内容，因此仍按原执行的 Owner 访问边界读取。没有该字段的旧记录保持原状。该窗口用于回看最近进度，不是完整会话转录或任务成功凭据。
 
-工具的脱敏窗口位于 harness_tool_output(instance, seq, call, tool, text)，每个进程最多 8 KiB；通过 observed_process.tool_output 和 result.processes[].tool_output 回读。对应事件仍保存在 harness_tool_events。harness_output_redaction 按租约摘要和 model/tool 类别记录未结束的私钥块状态，不保存密钥正文；该状态与脱敏输出在同一 SQLite 事务内提交。beta #200、#202 已验证 Worker 重启后从该状态继续遮蔽 Codex CLI 和 App Server 工具结果；beta #204 验证 Claude 在业务问题检查点重启、答复后同会话续读时继承该状态。App Server 增量输出也复用该表；通过同一 instance/seq 关联 harness_tool_events 的 output 状态生成 partial=true，无需更改旧 SQLite 表结构。未完成行不写入窗口，只持久化保守遮蔽状态。窗口只保存最近一次有正文的调用更新，完整工具输出的归档和到期清理继续待补齐。
+工具的脱敏窗口位于 harness_tool_output(instance, seq, call, tool, text)，每个进程最多 8 KiB；通过 observed_process.tool_output 和 result.processes[].tool_output 回读。对应事件仍保存在 harness_tool_events。harness_output_redaction 按租约摘要和 model/tool 类别记录未结束的私钥块状态，不保存密钥正文；该状态与脱敏输出在同一 SQLite 事务内提交。beta #200、#202 已验证 Worker 重启后从该状态继续遮蔽 Codex CLI 和 App Server 工具结果；beta #204 验证 Claude 在业务问题检查点重启、答复后同会话续读时继承该状态。App Server 增量输出也复用该表；通过同一 instance/seq 关联 harness_tool_events 的 output 状态生成 partial=true，无需更改旧 SQLite 表结构。未完成行不写入窗口，只持久化保守遮蔽状态。窗口只保存最近一次有正文的调用更新，完整接收的公开文本另按下文归档；中央传输与全文下载继续待补齐。
 
 在执行节点的 SQLite 中，按实例号查询完整工具事件。两个终端或会话的相同序号须结合节点与进程实例识别。
 
@@ -160,3 +160,13 @@ role_turn_results 按租约摘要及回合编号保存待完成记录，成功�
 独立角色原生恢复新增 role_native_turns，按租约摘要与回合保存 Harness、版本、私有工作目录、首次提示、输出合同及当前进程实例。role_native_attempts 保存每次进程的前序实例；role_native_handoffs 保存原生 CLI 明确返回会话不存在的失败尝试及原 Session。它们与工作目录目前保留在节点私有状态目录，不能作为公开日志导出；统一归档和到期清理继续待补齐。
 
 PostgreSQL 迁移 107 将 management_processes 的唯一键扩展到进程实例，允许同一作业回合保留多次原生进程。迁移 108 增加 resumed_from 与 missing_session；旧记录默认为零／false，API 省略这些默认值，既有历史 JSON 保持不变。恢复不能覆盖原进程或删除失败尝试；只有最新实例的退出与 Session 可验证最终业务结果。实际从 106 升级到 108 并回读四份已有原生记录，四份节点 SQLite 升级也未重复结果或模型。
+
+### 节点进程日志的归档与保留
+
+harness_log_entries 按进程实例和该进程内两类输出统一递增的序号追加脱敏 JSONL 记录，harness_log_archives 保存字节数、记录数、容量、累计省略数、摘要与到期时间。写入与对应公开窗口、工具事件及跨块脱敏状态使用同一 SQLite 事务。记录不含租约、节点令牌或冻结输入。摘要逐条计算 SHA-256(前一条摘要的十六进制字符串 + 本条 JSONL 原始字节)，首条以前序空字符串计算。导出校验整个连续记录序列。
+
+FORGEOS_PROCESS_LOG_MAX_MIB 为每进程容量，默认 32，范围 1–1024；容量在首次记录时固定。FORGEOS_PROCESS_LOG_DAYS 默认 30，范围 1–3650，按实际退出和业务结果确认中较晚的时间计算。普通 Daemon 在启动和每小时扫描；独立角色在打开自己的日志时扫描。服务账号也可执行 process-logs prune --journal <绝对路径> --days 30。清理只删除到期归档正文，保留元数据、原生进程、既有 8 KiB 快照及业务回执；尚未确认的执行、暂停检查点和在途角色作业保持原样。
+
+清理是幂等事务，到期记录不能重新追加；延长期限不能恢复已经删除的正文。SQLite 启用 secure_delete，空间由后续写入复用，不承诺数据库文件立即缩小。旧备份恢复后，启动或再次 prune 会按当前期限重新清理。导出文件和离线备份仍由运维按自身保留策略管理。
+
+节点 JSONL 已有本地导出与期限控制；中央归档、按项目从工作台下载全文、启动日志的中央传输、冻结角色输入及工作目录清理仍待完成。原有 CI、截图和录屏策略保持独立。
