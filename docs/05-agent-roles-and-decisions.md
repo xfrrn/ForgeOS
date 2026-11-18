@@ -101,6 +101,8 @@ Owner 可用 `GET /tasks/{id}/questions/{question}/messages` 回读原生实现�
 
 支持 ACP 的控制面在原生实现任务的领取结果中提供 `decision_protocol: "1.0"` 和本地项目 ID。Worker 在原执行的检查点问题接口请求 `?acp=1.0`。等待期间收到空消息数组，取得答复的进程收到与 Owner 回读一致的 REQUEST 和 RESPONSE。Worker 校验格式、项目、Goal、工作项、执行、检查点、提问节点、Git 依据和答复者，并核对两条消息的关联标识。校验通过后，原生回合的 `owner_clarification` 同时包含问题、答复、请求 ID、响应 ID 和关联 ID。已按 1.0 领取的执行收到缺少消息的答复时会报告失败。旧版控制面签发的任务沿用原有答复格式。
 
+Management 领取知识审核时可协商 `curation_acp=1.0`。控制面把 Curator 的已结算提取结果路由为项目级 RESULT，以提取回执时间、知识记录编号和来源 SHA-256 绑定原始资料。Management 在启动独立原生会话前验证发送方、接收方、信任级别、项目、幂等键及逐字引用。旧节点和旧控制面仍可使用原提取格式。[真实路由与版本兼容验收](acceptance.md#curator-result-route)
+
 ## 6. 知识来源优先级
 
 普通规则冲突：

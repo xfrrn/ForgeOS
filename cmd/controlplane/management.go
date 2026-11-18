@@ -72,6 +72,9 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 			err = claimErr
 			if c != nil {
 				c.CaptureProcess = r.URL.Query().Get("supports_curation_process") == "1"
+				if r.URL.Query().Get("curation_acp") == "1.0" {
+					err = c.RouteExtraction(id)
+				}
 				job = &store.ManagementJob{Curation: c}
 			}
 		}

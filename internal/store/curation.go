@@ -28,6 +28,8 @@ type CurationJob struct {
 	LeaseUntil     *time.Time      `json:"lease_until,omitempty"`
 	Material       json.RawMessage `json:"material"`
 	Extraction     *Extraction     `json:"extraction,omitempty"`
+	ResultMessage  json.RawMessage `json:"result_message,omitempty"`
+	extractedAt    *time.Time
 }
 
 func (s *Store) ClaimCuration(ctx context.Context, project int64, review, supportsDeadline bool) (*CurationJob, error) {
@@ -54,7 +56,7 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 		UPDATE material_curations c SET `+lease+`=gen_random_uuid(),`+until+`=clock_timestamp()+interval '6 minutes',model_budget=$2
 		FROM candidate,curation_sources s WHERE c.id=candidate.id AND s.curation_id=c.id
 		RETURNING c.id,c.`+lease+`,jsonb_strip_nulls(to_jsonb(s)-'curation_id'-'receipt_path'-'is_current'),c.extraction-'profile',
-		CASE WHEN $3 THEN c.`+until+` END`, project, pool, supportsDeadline).Scan(&job.ID, &job.Lease, &job.Material, &extraction, &job.LeaseUntil)
+		CASE WHEN $3 THEN c.`+until+` END,c.extracted_at`, project, pool, supportsDeadline).Scan(&job.ID, &job.Lease, &job.Material, &extraction, &job.LeaseUntil, &job.extractedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -73,16 +75,23 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 	return &job, nil
 }
 
-func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease string, out Extraction) error {
+func (out Extraction) valid() bool {
 	if out.Session == "" || len(out.Session) > 128 || strings.Trim(out.Session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" ||
 		out.Facts == nil || len(out.Facts) > 8 || !validStructuredProfile(out.Profile) {
-		return ErrConflict
+		return false
 	}
 	for _, f := range out.Facts {
 		if strings.TrimSpace(f.Statement) == "" || len(f.Statement) > 2048 || strings.TrimSpace(f.Quote) == "" || len(f.Quote) > 2048 ||
 			strings.ContainsRune(f.Statement, 0) || strings.ContainsRune(f.Quote, 0) {
-			return ErrConflict
+			return false
 		}
+	}
+	return true
+}
+
+func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease string, out Extraction) error {
+	if !out.valid() {
+		return ErrConflict
 	}
 	doc, err := json.Marshal(out)
 	if err != nil {

@@ -3627,3 +3627,18 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 用普通节点身份读取审批列表；控制面重启后再以 Owner 身份打开队列 | 节点无法读 Owner 队列；已处理项退出 | 节点收到 401。列表中没有资料的内部标记或原生会话字段。重启后仅手工提案仍待确认，已确认决策和已发布副本均可回读。 |
 
 脚本 approval-policy-live.py，证据 approval_policy_a/result.json 与 decision-list.png。来源和共享由独立角色在生产入口审核，审批页使用生产构建。
+
+<a id="curator-result-route"></a>
+
+### 专题 05、16 B.3 · Curator 向 Management 交付 RESULT
+
+2026-11-18，在三套独立 PostgreSQL 18 项目中导入同一份重启观察，分别运行新控制面与新 Worker、新控制面与旧 Worker、旧控制面与新 Worker。每组都使用真实 Curator 和 Management 原生 Codex 会话，另从 Chrome 查看审核回执。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 使用当前版本提取资料并领取审核，对照控制面领取回执、节点冻结提示词和来源正文 | RESULT 携带原事实与逐字引用；发送与接收角色、项目和来源固定 | 节点提示词里的整条消息与领取回执相同。消息为 CURATION-1-RESULT，原生提取会话、固定正文 SHA-256 与全部事实匹配；时间为原提取回执时间。Management 在不同会话审核通过。 |
+| 分别换用旧 Worker 或旧控制面，重复两角色作业 | 两种次序均能交付原始提取并完成审核 | 两组的原生提示词都与旧格式提取一致，各有两份退出码 0 的独立进程记录；Chrome 可回读审核会话。 |
+| 各组重启控制面，以原节点、原键和原请求再次领取 | 原请求返回原响应，不新建审核 | 三组均逐字节重放相同响应。来源与审核回执保持一致。 |
+| 在测试中改变项目、知识记录、参与角色、信任级别、关联范围、消息类型、来源绑定或引用 | Management 在启动原生审核前拒绝无效消息 | 接收端专项通过。携带新旧两套提取内容的歧义输入也被拒绝。 |
+
+脚本 curation-acp-live.py，三组证据为 curator_acp_current、curator_acp_oldworker、curator_acp_oldcontrol 中的 result.json。

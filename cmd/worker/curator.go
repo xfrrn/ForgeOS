@@ -53,7 +53,7 @@ func (w *worker) curate(ctx context.Context, job store.CurationJob, review bool)
 		profile = &p
 	}
 	if review {
-		doc, e := json.Marshal(job.Extraction)
+		doc, e := job.ReviewInput()
 		if e != nil {
 			return e
 		}
