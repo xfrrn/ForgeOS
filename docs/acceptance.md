@@ -94,6 +94,19 @@ beta Issue #8 规定了 `CanEnqueue` 的业务语义、表驱动测试和四类�
 
 原生测试与覆盖会话分别为 `01a1f07c-d2a4-7283-a4c7-d23e7d907744` 和 `01a1f07d-2aed-7250-8990-5120fc08ae07`。证据在 `approval-basis/old.json`、`new.json`、`plan/cases.json`、`plan/passed.json`。另有 PostgreSQL 测试验证必需审查报告经 Owner 核对后通过，及第二版测试计划通过后保存修订 2。当前 Claude Reviewer 的真实成功审查仍待环境验收。
 
+<a id="candidate-plan-history-state"></a>
+
+### 专题 10、13 · 浏览候选测试计划的历史修订
+
+从 beta #163 的真实候选备份读取覆盖审核通过的修订 1，Owner 在正式入口提交一条补充标准，产生等待 Test Agent 的修订 2。两版属于同一执行和同一候选。修复前，390 像素宽 Chrome 点击“上一版测试计划”，用例和计划摘要已切到修订 1，状态仍显示“等待 Test Agent 生成用例 · 修订 2”。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在手机工作台依次打开最新版、上一版、下一版 | 状态、版本号、用例和覆盖摘要都来自所选版本 | 修订 1 显示“覆盖审查通过”，可核对原摘要和 TC-001。切回修订 2 显示“等待 Test Agent 生成用例”，旧版摘要消失。 |
+| 在 1280 像素宽 Chrome 延迟历史版本的 HTTP 响应，随后放行，收起并重新打开 | 等待期间不会把最新版状态或另一版的用例归到历史版；收起时概括最新版 | 修订 1 响应送达前没有显示修订 2 的状态；送达后显示修订 1 实际的覆盖状态。收起后显示修订 2，重新打开仍定位到修订 1。 |
+
+修复前后浏览器记录为 `plan-version-ui/before.json`、`plan-version-ui/after.json`。在已有上述两种状态的执行上，设置 Owner 环境变量后可运行 `python scripts/probe_candidate_plan_history.py <控制面地址> <任务号> <执行号>` 重验手机切换过程。
+
 <a id="approved-test-plan-restore"></a>
 
 ### 专题 04、10、13、14 · 从数据库恢复已批准候选的测试证据

@@ -23,12 +23,15 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
 }) {
   const [open, setOpen] = useState(false)
   const [revision, setRevision] = useState(0)
-  const [receipt, setReceipt] = useState<Receipt | null>(null)
+  const [loadedReceipt, setReceipt] = useState<Receipt | null>(null)
   const [criteria, setCriteria] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const path = `/tasks/${task}/test-plans`
   const selected = revision || latest
+  const receipt = loadedReceipt?.revision === selected ? loadedReceipt : null
+  const displayedRevision = open ? selected : latest
+  const displayedState = displayedRevision === latest ? state : receipt?.state
   useEffect(() => {
     if (!open || !selected) return
     const controller = new AbortController()
@@ -61,7 +64,7 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
   return <section className="detail-validation">
     <h3>候选测试计划</h3>
     {required && !state && <p>项目验收规则要求通过测试计划核对人工验收。</p>}
-    {state && <p>{labels[state] ?? state} · 修订 {latest}</p>}
+    {displayedState && <p>{labels[displayedState] ?? displayedState} · 修订 {displayedRevision}</p>}
     <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起测试计划' : '查看测试计划'}</button>
     {open && <>
       {latest > 1 && <div className="detail-actions"><button className="button" disabled={selected <= 1} onClick={() => setRevision(selected - 1)}>上一版测试计划</button>
