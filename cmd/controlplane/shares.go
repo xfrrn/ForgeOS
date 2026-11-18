@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"forgeos/internal/store"
 )
@@ -87,6 +89,15 @@ func registerShares(mux *http.ServeMux, data *store.Store, owner string, workers
 			respond(w, 200, out, err)
 		}
 	}))
+	registerProjectRead(mux, "shared-experience/search", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q == "" || len(q) > 512 || strings.ContainsRune(q, 0) || !utf8.ValidString(q) || r.URL.Query().Has("before") {
+			problem(w, 400, "invalid shared experience search query or cursor")
+			return
+		}
+		out, err := data.SearchSharedExperience(r.Context(), id, q)
+		respond(w, 200, out, err)
+	})
 	registerProjectRead(mux, "shared-experience", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		if before, ok := beforeID(w, r); ok {
 			out, err := data.SharedExperience(r.Context(), id, before)

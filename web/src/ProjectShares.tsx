@@ -67,7 +67,8 @@ export function ProjectShares({ project, receipt, request }: { project: number; 
 
 function ShareList({ project, receipt, direction, request }: { project: number; receipt?: number; direction: string; request: ApiRequest }) {
   const base = `/projects/${project}/${direction}`
-  const [page, setPage] = useState({ before: 0 })
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState<{ before: number; query?: string }>({ before: 0 })
   const [rows, setRows] = useState<(Copy | Receipt)[]>([])
   const [more, setMore] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -79,11 +80,11 @@ function ShareList({ project, receipt, direction, request }: { project: number; 
     setLoading(true); setReadError(''); setMore(false)
     if (!page.before) setRows([])
     const data = receipt ? request<Receipt>(base + '/' + receipt, { signal: c.signal }).then(r => [r]) :
-      request<(Receipt | Copy)[]>(base + (page.before ? '?before=' + page.before : ''), { signal: c.signal })
+      request<(Receipt | Copy)[]>(base + (page.query ? '/search?q=' + encodeURIComponent(page.query) : page.before ? '?before=' + page.before : ''), { signal: c.signal })
     data.then(items => {
       if (c.signal.aborted) return
       setRows(old => page.before ? old.concat(items.filter(i => !old.some(o => o.id === i.id))) : items)
-      setMore(!receipt && items.length === 30)
+      setMore(!receipt && !page.query && items.length === 30)
     }).catch(e => { if (!c.signal.aborted) setReadError(e.message) })
       .finally(() => { if (!c.signal.aborted) setLoading(false) })
     return () => c.abort()
@@ -98,11 +99,15 @@ function ShareList({ project, receipt, direction, request }: { project: number; 
     finally { setBusy(false) }
   }
   return <section className="panel detail-card">
-    <div className="detail-actions"><button className="button" disabled={busy || loading} onClick={() => setPage({ before: 0 })}>刷新共享记录</button>
+    {direction === 'shared-experience' && <form onSubmit={e => { e.preventDefault(); setPage({ before: 0, query: query.trim() }) }}>
+      <label>检索已接收的经验<input type="search" maxLength={512} value={query} onChange={e => setQuery(e.target.value)}/></label>
+      <button className="button">检索</button>{page.query && <button type="button" onClick={() => {setQuery(''); setPage({before: 0})}}>显示全部</button>}
+    </form>}
+    <div className="detail-actions"><button className="button" disabled={busy || loading} onClick={() => setPage({ before: 0, query: page.query })}>刷新共享记录</button>
       {direction === 'shares' && <a href={`#/projects/${project}/materials`}>从项目资料起草副本</a>}</div>
     {readError && <p role="alert">{readError}</p>}{error && <p role="alert">{error}</p>}
     {loading && <p role="status">正在读取共享记录…</p>}
-    {!loading && !readError && !rows.length && <p>{direction === 'shares' ? '尚无发出的副本。' : '尚无已发布给本项目的经验。'}</p>}
+    {!loading && !readError && !rows.length && <p>{direction === 'shares' ? '尚无发出的副本。' : page.query ? '没有匹配的已发布经验。' : '尚无已发布给本项目的经验。'}</p>}
     {rows.map(row => <article className="registered-project" key={row.id}><div><h3>#{row.id} · {row.title}</h3>
       <pre className="material-content">{row.content}</pre><p>副本摘要 · <code>{row.digest}</code></p>
       {row.published_at && <p>发布时间 · {formatTime(row.published_at)}</p>}

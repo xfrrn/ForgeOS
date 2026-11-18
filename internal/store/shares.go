@@ -179,6 +179,8 @@ func (s *Store) SetSharePublished(ctx context.Context, project, id int64, digest
 	return s.ShareReceipt(ctx, project, id)
 }
 
+const visibleShare = `recipient=$1 AND published_at IS NOT NULL AND revoked_at IS NULL`
+
 func (s *Store) SharedExperience(ctx context.Context, recipient, before int64) (json.RawMessage, error) {
 	if _, err := s.Project(ctx, recipient); err != nil {
 		return nil, err
@@ -186,7 +188,6 @@ func (s *Store) SharedExperience(ctx context.Context, recipient, before int64) (
 	var doc json.RawMessage
 	// Only the reviewed copy is visible. Its private source and reviewer notes stay in the origin project.
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY id DESC),'[]') FROM (
-		SELECT id,title,content,digest,published_at FROM knowledge_shares WHERE recipient=$1 AND published_at IS NOT NULL
-		AND revoked_at IS NULL AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 30) s`, recipient, before).Scan(&doc)
+		SELECT id,title,content,digest,published_at FROM knowledge_shares WHERE `+visibleShare+` AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 30) s`, recipient, before).Scan(&doc)
 	return doc, err
 }

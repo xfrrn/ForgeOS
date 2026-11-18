@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -98,12 +100,50 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 	if err != nil || !strings.Contains(string(feed), input.Content) || strings.Contains(string(feed), "private-source") || strings.Contains(string(feed), "disabled_features") || strings.Contains(string(feed), review.SessionID) {
 		t.Fatal(string(feed), err)
 	}
-	if _, err = s.SetSharePublished(ctx, source.ID, id, receipt.Digest, false); err != nil {
+	hit, err := s.SearchSharedExperience(ctx, target.ID, input.Title)
+	if err != nil || string(hit) != string(feed) {
+		t.Fatal("recipient search must return only the approved copy", string(hit), err)
+	}
+	for _, q := range []struct {
+		project int64
+		query   string
+	}{{source.ID, input.Title}, {target.ID, "private-source"}, {target.ID, review.SessionID}} {
+		hit, err = s.SearchSharedExperience(ctx, q.project, q.query)
+		if err != nil || string(hit) != "[]" {
+			t.Fatal("private field matched", q, string(hit), err)
+		}
+	}
+	_, err = s.db.Exec("INSERT INTO share_embeddings(share_id,model,embedding) VALUES($1,'test',ARRAY[1,0]::real[])", id)
+	if err != nil {
 		t.Fatal(err)
 	}
+	encoder := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Input []string }
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Input) != 1 || body.Input[0] != input.Title+"\n"+input.Content {
+			t.Error("unexpected shared copy sent to encoder", body.Input, err)
+		}
+		if _, err := s.SetSharePublished(ctx, source.ID, id, receipt.Digest, false); err != nil {
+			t.Error(err)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"index":0,"embedding":[1,0]}]}`))
+	}))
+	defer encoder.Close()
+	s.embeddings = &materialEncoder{endpoint: encoder.URL, model: "new-model", client: encoder.Client()}
+	if err = s.indexShares(ctx, target.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+	s.embeddings = nil
 	feed, err = s.SharedExperience(ctx, target.ID, 0)
 	if err != nil || string(feed) != "[]" {
 		t.Fatal(string(feed), err)
+	}
+	hit, err = s.SearchSharedExperience(ctx, target.ID, input.Title)
+	if err != nil || string(hit) != "[]" {
+		t.Fatal("revoked copy matched", string(hit), err)
+	}
+	var cached int
+	if err = s.db.QueryRow("SELECT count(*) FROM share_embeddings WHERE share_id=$1", id).Scan(&cached); err != nil || cached != 0 {
+		t.Fatal("revoked vector retained", cached, err)
 	}
 	input.Title = "Another handoff"
 	raw, err = s.DraftShare(ctx, source.ID, input)
