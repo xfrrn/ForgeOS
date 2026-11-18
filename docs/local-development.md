@@ -375,10 +375,10 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 export 在同一个 SQLite 快照中先检查全档，再输出 JSONL。序号、字节数或摘要校验失败时，标准输出为零字节。成功时退出码为 0，末行 verified 为 true。truncated 为 true 表示归档达到本进程容量。list 的 available=false 表示旧进程没有归档。expired_at 表示已按策略清理，export 返回错误且保留可查的摘要。JSONL 内部摘要使用原始 UTF-8 字节计算。
 
-可在 Daemon 环境设置 FORGEOS_PROCESS_LOG_MAX_MIB（默认 32）和 FORGEOS_PROCESS_LOG_DAYS（默认 30）。正文仅在执行退出且业务结果已确认、保留期届满后清理；pending 补报、暂停及在途角色作业会阻止清理。prune 返回本次新到期数量，重复执行为零。旧版本 Worker 日志须由新 Daemon 打开升级后才有归档表，不会补造旧输出。普通 Worker 与控制面协商支持归档摘要后，可在已结算任务的 Harness 进程记录核对节点实例、保留条数、字节数、省略数量和链 SHA-256。这些字段对应同一实例导出的 JSONL。旧进程没有归档回执时仍展示已有输出窗口。Management、Curator、Test Agent 和 Reviewer 在退出时也会上报节点归档清单。展开角色进程即可将节点实例、记录数、字节数、链摘要与 CLI 导出逐项对照。独立角色的全文仍从节点 CLI 导出。
+可在 Daemon 环境设置 FORGEOS_PROCESS_LOG_MAX_MIB（默认 32）和 FORGEOS_PROCESS_LOG_DAYS（默认 30）。正文仅在执行退出且业务结果已确认、保留期届满后清理；pending 补报、暂停及在途角色作业会阻止清理。prune 返回本次新到期数量，重复执行为零。旧版本 Worker 日志须由新 Daemon 打开升级后才有归档表，不会补造旧输出。普通 Worker 与控制面协商支持归档摘要后，可在已结算任务的 Harness 进程记录核对节点实例、保留条数、字节数、省略数量和链 SHA-256。这些字段对应同一实例导出的 JSONL。旧进程没有归档回执时仍展示已有输出窗口。Management、Curator、Test Agent 和 Reviewer 在退出时也会上报节点归档清单。展开角色进程即可将节点实例、记录数、字节数、链摘要与 CLI 导出逐项对照。支持中央传输的角色在同一处提供「下载进程日志 JSONL」。节点完成上传后，即使离线，Owner 也能从原任务、资料或测试计划下载该角色的归档。只上报清单的旧节点可在节点 CLI 导出。
 
 
-### 从工作台下载普通执行的进程日志
+### 从工作台下载进程日志
 
 在任务详情展开已结算执行的「Harness 进程记录」，选择对应实例的「下载进程日志 JSONL」。普通 Worker 与控制面同时支持中央传输时，节点在结果确认后自动上传保留的记录。模型无需再次运行。上传期间页面提示等待，节点重启后从控制面已接收的位置继续。两端仅支持摘要时，页面仍可核对节点导出的摘要。
 

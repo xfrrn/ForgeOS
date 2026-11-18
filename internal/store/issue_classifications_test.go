@@ -91,6 +91,40 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	if _, err := s.IssueClassificationProcesses(ctx, p.ID+1, report.IssueClassificationID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("wrong project", err)
 	}
+	upload := report
+	upload.Process.Archive = &manifest
+	remote, err := s.RegisterRoleArchive(ctx, p.ID, upload)
+	must(err)
+	if remote < 1 {
+		t.Fatal("missing remote process")
+	}
+	again, err := s.RegisterRoleArchive(ctx, p.ID, upload)
+	must(err)
+	if again != remote {
+		t.Fatal("replay created another archive")
+	}
+	ownerTarget := ArchiveTarget{RoleProcess: remote, Instance: 1}
+	scopedTarget := ownerTarget
+	scopedTarget.Role, scopedTarget.Project = "management", p.ID
+	a, err := s.ArchiveUploadStatus(ctx, scopedTarget)
+	must(err)
+	if !a.Central || a.Received != 0 {
+		t.Fatal(a)
+	}
+	for _, wrong := range []ArchiveTarget{
+		{RoleProcess: remote, Instance: 1, Role: "curator", Project: p.ID},
+		{RoleProcess: remote, Instance: 1, Role: "management", Project: p.ID + 1},
+		{RoleProcess: remote, Instance: 2, Role: "management", Project: p.ID},
+	} {
+		if _, err = s.ArchiveUploadStatus(ctx, wrong); !errors.Is(err, ErrNotFound) {
+			t.Fatal("unexpected archive access", err)
+		}
+		if err = s.PutArchiveChunk(ctx, wrong, 0, []byte("x")); !errors.Is(err, ErrNotFound) {
+			t.Fatal("unexpected archive write", err)
+		}
+	}
+	must(s.ObserveManagementProcess(ctx, p.ID, report))
+	manifest.Central = true
 	bad := suggestion
 	bad.Quote = "unsupported citation"
 	conflict(save(bad))
@@ -105,6 +139,23 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	must(save(suggestion))
 	must(save(suggestion))
 	checkHistory(true)
+	manifest.Central = false
+	replayed, err := s.RegisterRoleArchive(ctx, p.ID, upload)
+	must(err)
+	if replayed != remote {
+		t.Fatal("lost archive ID after settlement")
+	}
+	_, err = s.RegisterRoleArchive(ctx, p.ID+1, upload)
+	conflict(err)
+	wrongNode := upload
+	wrongNode.Node = "another"
+	_, err = s.RegisterRoleArchive(ctx, p.ID, wrongNode)
+	conflict(err)
+	wrongManifest := manifest
+	wrongManifest.Bytes++
+	upload.Process.Archive = &wrongManifest
+	_, err = s.RegisterRoleArchive(ctx, p.ID, upload)
+	conflict(err)
 	bad = suggestion
 	bad.WorkType = "operations"
 	conflict(save(bad))

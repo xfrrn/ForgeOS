@@ -34,6 +34,6 @@ export function ClassificationAdvice({ suggestion, classification, project, requ
     {classification && <details onToggle={e => setOpen(e.currentTarget.open)}><summary>查看分类进程</summary>
       {error && <p role="alert">{error}</p>}
       {!error && !history?.length && <p role="status">{history ? '尚无节点进程回执。' : '正在读取分类进程…'}</p>}
-      <ManagementProcesses processes={history} title="分类 Agent 进程"/>
+      <ManagementProcesses request={request} processes={history} title="分类 Agent 进程"/>
     </details>}</div>
 }

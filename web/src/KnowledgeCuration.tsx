@@ -85,8 +85,8 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
       <p role="status">{!receipt ? '正在读取记录…' : !extraction ? '等待 Curator 提取' : !extraction.facts.length ? '此修订没有提取到项目经验' :
         !review ? '建议等待 Management 审核' : review.verdict === 'approve' && review.level === 'D1' ? '此修订已通过项目经验审核' :
         review.verdict === 'revise' ? '建议已退回' : '需要 Owner 决定'}</p>
-      <ManagementProcesses processes={receipt?.extraction_processes} title="Curator 提取进程"/>
-      <ManagementProcesses processes={receipt?.review_processes} title="Management 知识审核进程"/>
+      <ManagementProcesses request={request} processes={receipt?.extraction_processes} title="Curator 提取进程"/>
+      <ManagementProcesses request={request} processes={receipt?.review_processes} title="Management 知识审核进程"/>
       {extraction && <><p>提取会话 · <code>{extraction.session}</code></p>
         {extraction.profile && <RolePermissions role="Curator" profile={extraction.profile}/>}
         {extraction.facts.map((f,i) => {

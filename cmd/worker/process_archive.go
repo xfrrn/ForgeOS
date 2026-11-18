@@ -75,7 +75,14 @@ func prepareProcessArchives(db *sql.DB) error {
  CREATE TABLE IF NOT EXISTS process_log_uploads (
  instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance),
  retry_at INTEGER NOT NULL DEFAULT 0
- );`)
+ );
+ CREATE TABLE IF NOT EXISTS role_archive_uploads (
+ instance INTEGER PRIMARY KEY REFERENCES process_log_uploads(instance),
+ process_id INTEGER NOT NULL
+ );
+ CREATE TRIGGER IF NOT EXISTS clear_role_archive_upload AFTER DELETE ON process_log_uploads BEGIN
+ DELETE FROM role_archive_uploads WHERE instance=OLD.instance;
+ END;`)
 	if err != nil {
 		return err
 	}

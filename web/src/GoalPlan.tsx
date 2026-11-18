@@ -64,7 +64,7 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
       <p>{plan.plan.objective}</p>
       <PlanArchive key={plan.revision} taskID={taskID} plan={plan} request={request} disabled={disabled}/>
       {plan.review_context && <CandidateRuleEvidence context={plan.review_context} title="计划审核使用的规则依据"/>}
-      <ManagementProcesses processes={plan.review_processes}/>
+      <ManagementProcesses request={request} processes={plan.review_processes}/>
       {plan.review && <div><h3>Management 审核 · {plan.review.effective_level}</h3>
         <dl><Fact label="建议">{{approve: '通过', revise: '修订', needs_owner: '请 Owner 决定'}[plan.review.verdict] ?? plan.review.verdict}</Fact>
           <Fact label="理由">{plan.review.rationale}</Fact><Fact label="依据">{plan.review.evidence}</Fact>

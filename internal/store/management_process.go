@@ -47,6 +47,16 @@ const planRevisionJSON = `(to_jsonb(r)-'review_lease') || jsonb_build_object('re
 const managementProcessTarget = `lease_hash=$1 AND ((task_id=$2 AND revision=$3) OR share_id=$4 OR analysis_task=$5 OR question_id=$6 OR feedback_id=$7 OR (curation_id=$8 AND curation_role=$9 AND ($10=0 OR role_turn=$10)) OR (test_plan_id=$11 AND test_plan_role=$12) OR reviewer_execution=$13 OR issue_classification_id=$14)`
 
 func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, report ManagementProcessReport) error {
+	return s.recordRoleProcess(ctx, project, report, nil)
+}
+
+func (s *Store) RegisterRoleArchive(ctx context.Context, project int64, report ManagementProcessReport) (int64, error) {
+	var id int64
+	err := s.recordRoleProcess(ctx, project, report, &id)
+	return id, err
+}
+
+func (s *Store) recordRoleProcess(ctx context.Context, project int64, report ManagementProcessReport, upload *int64) error {
 	p := report.Process
 	targets := 0
 	for _, id := range []int64{report.TaskID, report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.TestPlanID, report.ReviewerExecution, report.IssueClassificationID} {
@@ -78,6 +88,14 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 		!p.outputExcludes(report.Lease) || len(report.Lease) != 36 || report.Node == "" || len(report.Node) > 128 ||
 		strings.Trim(report.Node, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" {
 		return ErrConflict
+	}
+	if upload != nil {
+		if p.Archive == nil {
+			return ErrConflict
+		}
+		manifest := *p.Archive
+		manifest.Central = true
+		p.Archive = &manifest
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -122,13 +140,33 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 		err = tx.QueryRowContext(ctx, `SELECT review IS NULL AND review_until>clock_timestamp() FROM knowledge_shares WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 FOR UPDATE`, project, report.ShareID, report.Lease).Scan(&valid)
 	}
 
+	hash := sha256.Sum256([]byte(report.Lease))
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !valid) {
-		return ErrConflict
+		if upload == nil {
+			return ErrConflict
+		}
+		// An accepted exit may be acknowledged again after its business lease has expired.
+		raw, err := json.Marshal(p)
+		if err != nil {
+			return err
+		}
+		err = tx.QueryRowContext(ctx, `SELECT p.id FROM management_processes p JOIN role_archive_transfers a ON a.process_id=p.id
+            WHERE `+managementProcessTarget+` AND p.instance=$15 AND a.project_id=$16 AND p.node=$17 AND p.resumed_from=$18
+            AND p.missing_session=$19 AND p.process=$20::jsonb`,
+			hash[:], report.TaskID, report.Revision, report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID,
+			report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole, report.ReviewerExecution, report.IssueClassificationID,
+			p.Instance, project, report.Node, report.ResumedFrom, report.MissingSession, string(raw)).Scan(upload)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 	if err != nil {
 		return err
 	}
-	hash := sha256.Sum256([]byte(report.Lease))
 	if report.CurationID != 0 && report.Turn == 2 {
 		var first []byte
 		var node string
@@ -162,10 +200,18 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 			return err
 		}
 		if prior.Archive != nil {
-			if p.Archive != nil && *p.Archive != *prior.Archive {
-				return ErrConflict
+			if p.Archive == nil {
+				p.Archive = prior.Archive
+			} else {
+				want := *prior.Archive
+				want.Central = p.Archive.Central
+				if *p.Archive != want {
+					return ErrConflict
+				}
+				if prior.Archive.Central {
+					p.Archive = prior.Archive
+				}
 			}
-			p.Archive = prior.Archive
 		}
 		if node != report.Node || resumeFrom != report.ResumedFrom || (missing && !report.MissingSession) || !p.follows(prior) {
 			return ErrConflict
@@ -251,12 +297,30 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	if report.ReviewerExecution != 0 {
 		conflictTarget = "reviewer_execution,lease_hash"
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO management_processes(task_id,revision,lease_hash,node,process,share_id,analysis_task,question_id,feedback_id,curation_id,curation_role,role_turn,test_plan_id,test_plan_role,reviewer_execution,resumed_from,missing_session,issue_classification_id) VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,NULLIF($6,0),NULLIF($7,0),NULLIF($8,0),NULLIF($9,0),NULLIF($10,0),NULLIF($11,''),NULLIF($12,0),NULLIF($13,0),NULLIF($14,''),NULLIF($15,0),$16,$17,NULLIF($18,0))
+	var processID int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO management_processes(task_id,revision,lease_hash,node,process,share_id,analysis_task,question_id,feedback_id,curation_id,curation_role,role_turn,test_plan_id,test_plan_role,reviewer_execution,resumed_from,missing_session,issue_classification_id) VALUES(NULLIF($1,0),NULLIF($2,0),$3,$4,$5,NULLIF($6,0),NULLIF($7,0),NULLIF($8,0),NULLIF($9,0),NULLIF($10,0),NULLIF($11,''),NULLIF($12,0),NULLIF($13,0),NULLIF($14,''),NULLIF($15,0),$16,$17,NULLIF($18,0))
  ON CONFLICT(`+conflictTarget+`,instance) DO UPDATE SET process=excluded.process,missing_session=excluded.missing_session,
- observed_at=CASE WHEN management_processes.process=excluded.process THEN management_processes.observed_at ELSE clock_timestamp() END`,
-		report.TaskID, report.Revision, hash[:], report.Node, string(raw), report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole, report.ReviewerExecution, report.ResumedFrom, report.MissingSession, report.IssueClassificationID)
+ observed_at=CASE WHEN management_processes.process=excluded.process THEN management_processes.observed_at ELSE clock_timestamp() END RETURNING id`,
+		report.TaskID, report.Revision, hash[:], report.Node, string(raw), report.ShareID, report.AnalysisTask, report.QuestionID, report.FeedbackID, report.CurationID, report.CurationRole, report.Turn, report.TestPlanID, report.TestPlanRole, report.ReviewerExecution, report.ResumedFrom, report.MissingSession, report.IssueClassificationID).Scan(&processID)
 	if err != nil {
 		return err
+	}
+	if upload != nil {
+		role := "management"
+		switch {
+		case report.CurationRole == "curator":
+			role = "curator"
+		case report.TestPlanRole == "test":
+			role = "test-agent"
+		case report.ReviewerExecution > 0:
+			role = "reviewer"
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO role_archive_transfers(process_id,instance,project_id,role,verified,expires_at)
+           VALUES ($1,$2,$3,$4,$5,clock_timestamp()+make_interval(days=>$6)) ON CONFLICT(process_id) DO NOTHING`, processID, p.Instance, project, role, p.Archive.Bytes == 0, s.ProcessArchiveDays)
+		if err != nil {
+			return err
+		}
+		*upload = processID
 	}
 	return tx.Commit()
 }

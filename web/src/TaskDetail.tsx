@@ -1,4 +1,5 @@
-import { ArchiveFacts, type ProcessArchive, ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
+import { ArchiveDownload, ArchiveFacts, downloadFile, type ProcessArchive } from './ProcessArchive'
+import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { workTypeName } from './workTypes'
 import { ClassificationAdvice, type IssueSuggestion } from './ClassificationAdvice'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
@@ -106,32 +107,6 @@ const fullSHA = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/
 function OutLink({ href, children }: { href?: string; children: ReactNode }) {
   const url = safeGitHubURL(href)
   return url ? <a className="detail-link" href={url} target="_blank" rel="noopener noreferrer">{children}<Icon name="ExternalLink" size={13} /></a> : <span>{children}</span>
-}
-
-async function downloadFile(request: ApiRequest, path: string, file: string) {
-  const blob = await request<Blob>(path, undefined, 'blob')
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = file
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000)
-}
-
-function ArchiveDownload({ task, execution, instance, request }: { task: number; execution: number; instance: number; request: ApiRequest }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  async function download() {
-    setBusy(true); setError('')
-    try { await downloadFile(request, `/tasks/${task}/executions/${execution}/processes/${instance}/archive`, `execution-${execution}-process-${instance}.jsonl`) }
-    catch (e) {
-      setError(e instanceof ApiError && e.status === 409 ? '节点尚未完成日志传输，请稍后重试。' :
-        e instanceof ApiError && e.status === 410 ? '中央日志已到期，进程摘要仍可查阅。' :
-        e instanceof Error ? e.message : '无法下载进程归档')
-    }
-    finally { setBusy(false) }
-  }
-  return <div><button disabled={busy} onClick={() => void download()}>{busy ? '正在下载…' : '下载进程日志 JSONL'}</button>
-    {error && <p role="alert">{error}</p>}</div>
 }
 
 function DeclaredChecks({ run, path, request }: { run: CheckRun; path: string; request: ApiRequest }) {
@@ -363,7 +338,7 @@ function CandidateReview({ task, attempt, request, refresh, current }: {
       onClick={() => void submit(false)}>{state === 'failed' ? '重试审查' : '请求独立审查'}</button>}
     {state && <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起审查记录' : '查看审查记录'}</button>}
     {open && !receipt && !error && <p role="status">正在读取审查报告…</p>}
-    {open && receipt && <ManagementProcesses processes={receipt.processes} title="Reviewer 审查进程"/>}
+    {open && receipt && <ManagementProcesses request={request} processes={receipt.processes} title="Reviewer 审查进程"/>}
     {open && receipt?.report && <>
       <dl className="detail-facts"><Fact label="审查会话" code>{receipt.report.session_id}</Fact>
         <Fact label="基础 SHA" code>{receipt.base_commit}</Fact><Fact label="候选 SHA" code>{receipt.commit_sha}</Fact></dl>
@@ -461,7 +436,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         {p.turn_id && <Fact label="原生回合" code>{p.turn_id}</Fact>}
         {p.handoff_from && <Fact label="交接来源会话" code>{p.handoff_from}</Fact>}
         {p.archive && <ArchiveFacts instance={p.instance} archive={p.archive}/>}
-      </dl>{p.archive?.central && <ArchiveDownload task={task.id} execution={attempt.id} instance={p.instance} request={request}/>}
+      </dl>{p.archive?.central && <ArchiveDownload path={`/tasks/${task.id}/executions/${attempt.id}/processes/${p.instance}/archive`} file={`execution-${attempt.id}-process-${p.instance}.jsonl`} request={request}/>}
         <ToolActivity events={p.tools}/><ModelOutput output={p.output}/><ToolOutput output={p.tool_output}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
@@ -587,7 +562,7 @@ function Decision({ taskID, q, canAnswer, request, onAnswer }: { taskID: number;
       {q.trees && <><Fact label="检查点暂存区树" code>{q.trees.index}</Fact><Fact label="检查点工作树" code>{q.trees.worktree}</Fact></>}
       {q.answered_at && <Fact label="答复时间">{formatTime(q.answered_at)}</Fact>}</dl>
     {q.management_advice && <QuestionAdvice advice={q.management_advice}/>}
-    <ManagementProcesses processes={q.management_processes} title="Management 问题审阅进程"/>
+    <ManagementProcesses request={request} processes={q.management_processes} title="Management 问题审阅进程"/>
     {q.withdrawn_at ? <p>执行已结束，问题已撤回。</p> : q.answer ? <p>{q.answered_by === 'management' ? 'Management' : 'Owner'} 答复 · {q.answer}</p> : canAnswer && <form onSubmit={e => { e.preventDefault(); void submit() }}>
       <label htmlFor={`answer-${q.id}`}>业务答复</label>
       <textarea id={`answer-${q.id}`} required value={answer} onChange={e => setAnswer(e.target.value)}/>

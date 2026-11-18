@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"forgeos/internal/store"
 )
@@ -53,16 +54,22 @@ func (w *worker) replayRoleProcesses(ctx context.Context, db *sql.DB, role strin
 			}
 			// Older control planes accept the same exit body and ignore this optional receipt.
 			req.Header.Set("ForgeOS-Role-Archive", string(manifest))
+			req.Header.Set("ForgeOS-Role-Archive-Upload", "1")
 		}
 		status := 0
+		var remote int64
 		if reply, err := w.authenticatedRequest(req); err == nil {
 			status = reply.StatusCode
 			reply.Body.Close()
+			if id := reply.Header.Get("ForgeOS-Role-Archive-Process"); status == 204 && id != "" {
+				remote, err = strconv.ParseInt(id, 10, 64)
+				if err != nil || remote <= 0 || !info.Available {
+					return errors.New("invalid role archive confirmation")
+				}
+			}
 		}
 		if status == 204 || status == 409 {
-			_, err = db.Exec(`UPDATE role_process_receipts SET status=?,settled_at=CURRENT_TIMESTAMP,
- conflicting_report=CASE WHEN ?=409 THEN json_remove(CAST(report AS TEXT),'$.lease') END,report=NULL WHERE instance=?`, status, status, instance)
-			if err != nil {
+			if err = settleRoleProcess(db, instance, status, remote, info.Bytes); err != nil {
 				return err
 			}
 			continue
@@ -73,4 +80,27 @@ func (w *worker) replayRoleProcesses(ctx context.Context, db *sql.DB, role strin
 		wait(ctx)
 	}
 	return ctx.Err()
+}
+
+func settleRoleProcess(db *sql.DB, instance int64, status int, remote, size int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if remote > 0 && size > 0 {
+		// Older Daemons also protect pending entries in the common upload queue from pruning.
+		if _, err = tx.Exec("INSERT OR IGNORE INTO process_log_uploads(instance) VALUES(?)", instance); err != nil {
+			return err
+		}
+		if _, err = tx.Exec("INSERT OR IGNORE INTO role_archive_uploads(instance,process_id) VALUES(?,?)", instance, remote); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(`UPDATE role_process_receipts SET status=?,settled_at=CURRENT_TIMESTAMP,
+ conflicting_report=CASE WHEN ?=409 THEN json_remove(CAST(report AS TEXT),'$.lease') END,report=NULL WHERE instance=?`, status, status, instance)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }

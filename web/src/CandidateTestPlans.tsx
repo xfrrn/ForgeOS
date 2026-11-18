@@ -67,8 +67,8 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
       {latest > 1 && <div className="detail-actions"><button className="button" disabled={selected <= 1} onClick={() => setRevision(selected - 1)}>上一版测试计划</button>
         <span>修订 {selected}</span><button className="button" disabled={selected >= latest} onClick={() => setRevision(selected + 1)}>下一版测试计划</button></div>}
       {receipt && <>
-        <ManagementProcesses processes={receipt.test_processes} title="Test Agent 计划进程"/>
-        <ManagementProcesses processes={receipt.management_processes} title="Management 覆盖审核进程"/>
+        <ManagementProcesses request={request} processes={receipt.test_processes} title="Test Agent 计划进程"/>
+        <ManagementProcesses request={request} processes={receipt.management_processes} title="Management 覆盖审核进程"/>
         {receipt.candidate_context && <CandidateRuleEvidence context={receipt.candidate_context} title="测试计划使用的候选依据" digest={receipt.basis.candidate_context_sha256}/>}
         <dl>{receipt.basis.criteria.map(c => <div key={c.id}><dt>{c.id}</dt><dd>{c.text || '业务预期待澄清'}</dd></div>)}</dl>
         {receipt.plan && <><p>Test Agent 会话 <code>{receipt.plan.session_id}</code></p>

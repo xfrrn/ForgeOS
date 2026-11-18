@@ -173,7 +173,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
           page.at_acceptance && ['acceptance', 'bug', 'ui_change'].includes(f.classification?.category ?? '') &&
           <a href={`#/tasks/${task}`}>在候选验收中引用</a>}
         {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
-        <ManagementProcesses processes={f.management_processes} title="Management 分类进程"/>
+        <ManagementProcesses request={request} processes={f.management_processes} title="Management 分类进程"/>
         {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
           <p>Management 会话　<code>{f.classification.session_id}</code></p>
           {f.classification.context && <ClassificationContext context={f.classification.context}/>}

@@ -109,7 +109,7 @@ function ShareList({ project, receipt, direction, request }: { project: number; 
       {'project_id' in row && <>
         <p>来源 · {row.material_key} · 修订 {row.revision}　接收项目 #{row.recipient}</p>
         <p>{row.revoked_at ? '已撤销 · ' + formatTime(row.revoked_at) : row.published_at ? '已发布' : row.review ? verdicts[row.review.verdict] : '等待 Management 审核'}</p>
-        <ManagementProcesses processes={row.review_processes}/>
+        <ManagementProcesses request={request} processes={row.review_processes}/>
         {row.review && <details><summary>审核依据 · {row.review.effective_level}</summary><p>{row.review.rationale}</p>
           <p>证据 · {row.review.evidence}</p><p>原生会话 · <code>{row.review.session_id}</code></p>
           {row.review.profile && <RolePermissions role="Management" profile={row.review.profile}/>}</details>}

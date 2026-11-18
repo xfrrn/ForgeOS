@@ -45,17 +45,31 @@ func (r *archiveEntryReader) Read(dst []byte) (int, error) {
 }
 
 func (w *worker) publishProcessArchives(ctx context.Context) {
-	for ctx.Err() == nil {
-		var task, execution, instance, size int64
-		err := w.journal.QueryRowContext(ctx, `SELECT a.task_id,a.execution_id,p.instance,l.bytes FROM process_log_uploads u
+	w.publishArchiveQueue(ctx, "")
+}
+
+func (w *worker) publishArchiveQueue(ctx context.Context, role string) {
+	query := `SELECT a.task_id,a.execution_id,p.instance,l.bytes FROM process_log_uploads u
  JOIN harness_processes p USING(instance) JOIN attempts a ON a.lease_hash=p.lease_hash JOIN harness_log_archives l ON l.instance=p.instance
- WHERE u.retry_at<=unixepoch() ORDER BY u.retry_at,p.instance LIMIT 1`).Scan(&task, &execution, &instance, &size)
+ WHERE u.retry_at<=unixepoch() ORDER BY u.retry_at,p.instance LIMIT 1`
+	if role != "" {
+		query = `SELECT 0,d.process_id,u.instance,l.bytes FROM process_log_uploads u
+         JOIN role_archive_uploads d USING(instance) JOIN harness_log_archives l USING(instance)
+         WHERE u.retry_at<=unixepoch() ORDER BY u.retry_at,u.instance LIMIT 1`
+	}
+	for ctx.Err() == nil {
+		var task, id, instance, size int64
+		err := w.journal.QueryRowContext(ctx, query).Scan(&task, &id, &instance, &size)
 		if err == nil {
-			err = w.uploadProcessArchive(ctx, task, execution, instance, size)
+			path := fmt.Sprintf("/internal/tasks/%d/executions/%d/processes/%d/archive", task, id, instance)
+			if role != "" {
+				path = fmt.Sprintf("/internal/%s/role-processes/%d/instances/%d/archive", role, id, instance)
+			}
+			err = w.uploadProcessArchive(ctx, w.api+path, instance, size)
 			if err == nil {
 				_, err = w.journal.ExecContext(ctx, "DELETE FROM process_log_uploads WHERE instance=?", instance)
 			} else if ctx.Err() == nil {
-				log.Printf("execution %d process %d archive pending: %v", execution, instance, err)
+				log.Printf("process archive %s pending: %v", path, err)
 				_, err = w.journal.ExecContext(ctx, "UPDATE process_log_uploads SET retry_at=unixepoch()+30 WHERE instance=?", instance)
 			}
 		}
@@ -68,8 +82,7 @@ func (w *worker) publishProcessArchives(ctx context.Context) {
 	}
 }
 
-func (w *worker) uploadProcessArchive(ctx context.Context, task, execution, instance, size int64) error {
-	path := fmt.Sprintf("%s/internal/tasks/%d/executions/%d/processes/%d/archive", w.api, task, execution, instance)
+func (w *worker) uploadProcessArchive(ctx context.Context, path string, instance, size int64) error {
 	head, err := http.NewRequestWithContext(ctx, http.MethodHead, path, nil)
 	if err != nil {
 		return err

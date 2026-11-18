@@ -23,6 +23,14 @@ func recordRoleProcess(w http.ResponseWriter, r *http.Request, data *store.Store
 		}
 		report.Process.Archive = &archive
 	}
+	if report.Process.Archive != nil && r.Header.Get("ForgeOS-Role-Archive-Upload") == "1" {
+		id, err := data.RegisterRoleArchive(r.Context(), project, report)
+		if err == nil {
+			w.Header().Set("ForgeOS-Role-Archive-Process", strconv.FormatInt(id, 10))
+		}
+		respond(w, 204, nil, err)
+		return
+	}
 	respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), project, report))
 }
 
@@ -34,6 +42,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 	if err != nil || id <= 0 || strings.TrimSpace(token) == "" || owner == token || workers.match(token) != nil {
 		return errors.New("set FORGEOS_MANAGEMENT_PROJECT_ID and a distinct FORGEOS_MANAGEMENT_TOKEN")
 	}
+	registerRoleArchiveUploads(mux, data, token, "management", id)
 	mux.HandleFunc("POST /internal/management/claim", authorized(token, idempotentRoleClaim(data, id, "management", func(w http.ResponseWriter, r *http.Request) {
 		var capabilities struct {
 			RepositoryAnalysis bool `json:"supports_repository_analysis"`

@@ -54,10 +54,11 @@ func TestProcessArchiveUploadResumesInsideRecord(t *testing.T) {
 	}))
 	defer server.Close()
 	w.api, w.client = server.URL, server.Client()
-	if err := w.uploadProcessArchive(context.Background(), 2, 3, p.id, int64(len(raw))); err != nil || offset != len(raw) {
+	endpoint := fmt.Sprintf("%s/internal/tasks/2/executions/3/processes/%d/archive", w.api, p.id)
+	if err := w.uploadProcessArchive(context.Background(), endpoint, p.id, int64(len(raw))); err != nil || offset != len(raw) {
 		t.Fatal("archive transfer failed", err, offset)
 	}
-	if err := w.uploadProcessArchive(context.Background(), 2, 3, p.id, int64(len(raw))); err != nil {
+	if err := w.uploadProcessArchive(context.Background(), endpoint, p.id, int64(len(raw))); err != nil {
 		t.Fatal(err)
 	}
 	_, err := w.journal.Exec("INSERT INTO attempts(lease_hash,execution_id,task_id,workspace,outcome,settled_at) VALUES(?,3,2,'test','confirmed','2000-01-01')", p.lease[:])

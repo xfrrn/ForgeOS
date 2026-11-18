@@ -90,6 +90,7 @@ func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manag
 	if err != nil || project < 1 || strings.TrimSpace(token) == "" || token == owner || token == manager || token == os.Getenv("FORGEOS_REVIEWER_TOKEN") || workers.match(token) != nil {
 		return errors.New("set FORGEOS_TEST_AGENT_PROJECT_ID and a distinct FORGEOS_TEST_AGENT_TOKEN")
 	}
+	registerRoleArchiveUploads(mux, data, token, "test-agent", project)
 	mux.HandleFunc("POST /internal/test-agent/claim", authorized(token, idempotentRoleClaim(data, project, "test-agent", func(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength != 0 && !decode(w, r, &struct{}{}) {
 			return

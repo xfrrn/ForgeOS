@@ -37,6 +37,12 @@ func TestRoleExitDeliveryFailurePreservesCompletedResult(t *testing.T) {
 						exits = append(exits, p)
 						if header := r.Header.Get("ForgeOS-Role-Archive"); header != "" {
 							manifests = append(manifests, header)
+							if r.Header.Get("ForgeOS-Role-Archive-Upload") != "1" {
+								t.Error("missing upload capability")
+							}
+							if recovering {
+								rw.Header().Set("ForgeOS-Role-Archive-Process", "72")
+							}
 						}
 						if !recovering {
 							rw.WriteHeader(503)
@@ -101,6 +107,22 @@ func TestRoleExitDeliveryFailurePreservesCompletedResult(t *testing.T) {
 			}
 			defer db.Close()
 			var n int
+			if err = db.QueryRow("SELECT count(*) FROM role_archive_uploads WHERE process_id=72 AND instance=?", exits[0].Process.Instance).Scan(&n); err != nil || n != 1 {
+				t.Fatal("exit acknowledgement failed to queue archive", n, err)
+			}
+			if _, err = db.Exec("UPDATE role_receipts SET settled_at='2000-01-01'"); err != nil {
+				t.Fatal(err)
+			}
+			expiry := time.Now().Add(time.Hour)
+			if count, err := pruneProcessArchives(db, expiry); err != nil || count != 0 {
+				t.Fatal("purged pending role transfer", count, err)
+			}
+			if _, err = db.Exec("DELETE FROM process_log_uploads"); err != nil {
+				t.Fatal(err)
+			}
+			if count, err := pruneProcessArchives(db, expiry); err != nil || count != 1 {
+				t.Fatal("settled role archive did not expire", count, err)
+			}
 			if err = db.QueryRow("SELECT count(*) FROM role_process_receipts WHERE status=204 AND report IS NULL").Scan(&n); err != nil || n != 1 {
 				t.Fatal("exit receipt retained private lease", err)
 			}

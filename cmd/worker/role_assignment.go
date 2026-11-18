@@ -165,7 +165,7 @@ func (w *worker) runIndependentRole(ctx context.Context, role string, run func(c
 	var seq int
 	var name, path string
 	err = db.QueryRow("PRAGMA database_list").Scan(&seq, &name, &path)
-	err = errors.Join(err, db.Close())
+	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
 	if err != nil {
 		return err
 	}
@@ -186,5 +186,11 @@ func (w *worker) runIndependentRole(ctx context.Context, role string, run func(c
 	if err = w.ensureRoleRunID(); err != nil {
 		return err
 	}
+	publisher := *w
+	publisher.journal = db
+	publishing, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); publisher.publishArchiveQueue(publishing, role) }()
+	defer func() { stop(); <-done }()
 	return run(ctx)
 }

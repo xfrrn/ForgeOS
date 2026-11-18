@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"forgeos/internal/store"
@@ -14,27 +15,53 @@ import (
 
 func registerProcessArchives(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
 	const path = "/tasks/{task}/executions/{id}/processes/{instance}/archive"
-	serve := func(w http.ResponseWriter, r *http.Request) {
-		execution, ok := pathID(w, r)
+	serve := serveProcessArchive(data, "", 0)
+	mux.HandleFunc("GET "+path, authorizedFor(owner, 30*time.Minute, serve))
+	workers.handle(mux, "HEAD /internal"+path, workers.execution(data, serve))
+	workers.handle(mux, "PUT /internal"+path, workers.executionFor(data, 5*time.Minute, serve))
+	mux.HandleFunc("GET /role-processes/{id}/instances/{instance}/archive", authorizedFor(owner, 30*time.Minute, serve))
+}
+
+func registerRoleArchiveUploads(mux *http.ServeMux, data *store.Store, token, role string, project int64) {
+	path := "/internal/" + role + "/role-processes/{id}/instances/{instance}/archive"
+	serve := serveProcessArchive(data, role, project)
+	mux.HandleFunc("HEAD "+path, authorized(token, serve))
+	mux.HandleFunc("PUT "+path, authorizedFor(token, 5*time.Minute, serve))
+}
+
+func serveProcessArchive(data *store.Store, role string, project int64) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		task, e1 := strconv.ParseInt(r.PathValue("task"), 10, 64)
-		instance, e2 := strconv.ParseInt(r.PathValue("instance"), 10, 64)
-		if e1 != nil || task <= 0 || e2 != nil || instance <= 0 {
-			problem(w, 400, "invalid task or process instance")
+		instance, err := strconv.ParseInt(r.PathValue("instance"), 10, 64)
+		if err != nil || instance <= 0 {
+			problem(w, 400, "invalid process instance")
 			return
 		}
+		ref := store.ArchiveTarget{Instance: instance}
+		name := "role-process"
+		if raw := r.PathValue("task"); raw != "" {
+			task, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || task <= 0 {
+				problem(w, 400, "invalid task")
+				return
+			}
+			ref.Task, ref.Execution = task, id
+			name = "execution"
+		} else {
+			ref.RoleProcess, ref.Project, ref.Role = id, project, role
+		}
 		ctx := r.Context()
-		var err error
 		switch r.Method {
 		case http.MethodHead:
-			if r.Pattern != "HEAD /internal"+path {
+			if !strings.HasPrefix(r.Pattern, "HEAD /internal/") {
 				problem(w, http.StatusMethodNotAllowed, "use GET to download the archive")
 				return
 			}
 			var status store.ArchiveTransfer
-			status, err = data.ArchiveUploadStatus(ctx, task, execution, instance)
+			status, err = data.ArchiveUploadStatus(ctx, ref)
 			if err == nil {
 				w.Header().Set("ForgeOS-Archive-Offset", strconv.FormatInt(status.Received, 10))
 				w.WriteHeader(204)
@@ -53,7 +80,7 @@ func registerProcessArchives(mux *http.ServeMux, data *store.Store, owner string
 				problem(w, 400, "invalid process archive block")
 				return
 			}
-			err = data.PutArchiveChunk(ctx, task, execution, instance, offset, block)
+			err = data.PutArchiveChunk(ctx, ref, offset, block)
 			if err == nil {
 				w.WriteHeader(204)
 				return
@@ -61,11 +88,11 @@ func registerProcessArchives(mux *http.ServeMux, data *store.Store, owner string
 		default:
 			wrote := false
 			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Minute))
-			err = data.DownloadProcessArchive(ctx, task, execution, instance, func(a store.ProcessArchive) io.Writer {
+			err = data.DownloadProcessArchive(ctx, ref, func(a store.ProcessArchive) io.Writer {
 				w.Header().Set("Cache-Control", "no-store")
 				w.Header().Set("X-Content-Type-Options", "nosniff")
 				w.Header().Set("Content-Type", "application/octet-stream")
-				w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="execution-%d-process-%d.jsonl"`, execution, instance))
+				w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%d-process-%d.jsonl"`, name, id, instance))
 				w.Header().Set("Content-Length", strconv.FormatInt(a.Bytes, 10))
 				w.WriteHeader(200)
 				wrote = true
@@ -73,7 +100,7 @@ func registerProcessArchives(mux *http.ServeMux, data *store.Store, owner string
 			})
 			if wrote {
 				if err != nil && ctx.Err() == nil {
-					log.Printf("process archive download for execution %d instance %d: %v", execution, instance, err)
+					log.Printf("process archive download for %s %d instance %d: %v", name, id, instance, err)
 				}
 				return
 			}
@@ -89,7 +116,4 @@ func registerProcessArchives(mux *http.ServeMux, data *store.Store, owner string
 			respond(w, 200, nil, err)
 		}
 	}
-	mux.HandleFunc("GET "+path, authorizedFor(owner, 30*time.Minute, serve))
-	workers.handle(mux, "HEAD /internal"+path, workers.execution(data, serve))
-	workers.handle(mux, "PUT /internal"+path, workers.executionFor(data, 5*time.Minute, serve))
 }

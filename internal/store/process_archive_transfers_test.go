@@ -41,7 +41,9 @@ func TestCentralArchiveResumesVerifiesAndExpires(t *testing.T) {
 	_, err = s.db.Exec("INSERT INTO process_archive_transfers(execution_id,instance,expires_at) VALUES($1,12,now()+interval '1 day')", execution)
 	must(err)
 	content := append(line, suffix...)
-	put := func(offset int64, b []byte) error { return s.PutArchiveChunk(ctx, task, execution, 12, offset, b) }
+	put := func(offset int64, b []byte) error {
+		return s.PutArchiveChunk(ctx, ArchiveTarget{Task: task, Execution: execution, Instance: 12}, offset, b)
+	}
 	remainder := content[ProcessArchiveChunkSize:]
 	block := content[:ProcessArchiveChunkSize]
 	conflict(put(ProcessArchiveChunkSize, remainder))
@@ -50,13 +52,13 @@ func TestCentralArchiveResumesVerifiesAndExpires(t *testing.T) {
 	bad := bytes.Clone(block)
 	bad[0]++
 	conflict(put(0, bad))
-	if err = s.DownloadProcessArchive(ctx, task, execution, 12, func(ProcessArchive) io.Writer { t.Fatal("partial emitted"); return nil }); !errors.Is(err, ErrProcessArchivePending) {
+	if err = s.DownloadProcessArchive(ctx, ArchiveTarget{Task: task, Execution: execution, Instance: 12}, func(ProcessArchive) io.Writer { t.Fatal("partial emitted"); return nil }); !errors.Is(err, ErrProcessArchivePending) {
 		t.Fatal(err)
 	}
 	inconsistent := bytes.Clone(remainder)
 	inconsistent[0]++
 	conflict(put(ProcessArchiveChunkSize, inconsistent))
-	status, err := s.ArchiveUploadStatus(ctx, task, execution, 12)
+	status, err := s.ArchiveUploadStatus(ctx, ArchiveTarget{Task: task, Execution: execution, Instance: 12})
 	must(err)
 	if status.Received != 0 || status.Verified {
 		t.Fatal(status)
@@ -65,7 +67,7 @@ func TestCentralArchiveResumesVerifiesAndExpires(t *testing.T) {
 	must(put(ProcessArchiveChunkSize, remainder))
 	must(put(ProcessArchiveChunkSize, remainder))
 	var downloaded bytes.Buffer
-	must(s.DownloadProcessArchive(ctx, task, execution, 12, func(got ProcessArchive) io.Writer {
+	must(s.DownloadProcessArchive(ctx, ArchiveTarget{Task: task, Execution: execution, Instance: 12}, func(got ProcessArchive) io.Writer {
 		if got != a {
 			t.Fatal(got)
 		}
@@ -74,13 +76,13 @@ func TestCentralArchiveResumesVerifiesAndExpires(t *testing.T) {
 	if !bytes.Equal(downloaded.Bytes(), content) {
 		t.Fatal("download differs")
 	}
-	_, err = s.ArchiveUploadStatus(ctx, task+1, execution, 12)
+	_, err = s.ArchiveUploadStatus(ctx, ArchiveTarget{Task: task + 1, Execution: execution, Instance: 12})
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
 	_, err = s.db.Exec("UPDATE process_archive_chunks SET content=$1 WHERE execution_id=$2 AND start_byte=0", bad, execution)
 	must(err)
-	conflict(s.DownloadProcessArchive(ctx, task, execution, 12, func(ProcessArchive) io.Writer { t.Fatal("corrupt bytes emitted"); return nil }))
+	conflict(s.DownloadProcessArchive(ctx, ArchiveTarget{Task: task, Execution: execution, Instance: 12}, func(ProcessArchive) io.Writer { t.Fatal("corrupt bytes emitted"); return nil }))
 	_, err = s.db.Exec("UPDATE process_archive_transfers SET expires_at=now() WHERE execution_id=$1", execution)
 	must(err)
 	if err = put(0, block); !errors.Is(err, ErrProcessArchiveExpired) {

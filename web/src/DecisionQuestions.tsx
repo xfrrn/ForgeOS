@@ -92,7 +92,7 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
         <h2 id={`question-${q.id}`}>#{q.id} {q.question}</h2>
         <p>依据 · {q.evidence}</p>
         {q.management_advice && <QuestionAdvice advice={q.management_advice}/>}
-        <ManagementProcesses processes={q.management_processes} title="Management 问题审阅进程"/>
+        <ManagementProcesses request={request} processes={q.management_processes} title="Management 问题审阅进程"/>
         <p>执行 #{q.execution_id} · {q.checkpoint_sequence != null && `检查点 ${q.checkpoint_sequence} · 基础提交 `}<code>{q.commit_sha}</code></p>
         <label htmlFor={`batch-answer-${q.id}`}>问题 #{q.id} 的答复</label>
         <textarea id={`batch-answer-${q.id}`} value={q.draft} disabled={busy} readOnly={!!q.recorded} onChange={e => {

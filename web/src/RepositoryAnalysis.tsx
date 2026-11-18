@@ -46,7 +46,7 @@ export function RepositoryAnalysis({task, request}: {task: number; request: ApiR
     {result?.status==='READY' && <p role="status">等待此项目的 Management Agent 领取。</p>}
     {result?.status==='RUNNING' && <p role="status">正在归纳固定提交的文档和包清单。</p>}
     {result?.status==='FAILED' && <p role="alert">{result.failure==='unverified_evidence' ? '归纳中的引用未通过原文核对。' : 'Agent 本次未返回可用报告。'}</p>}
-    <ManagementProcesses processes={result?.processes} title="Management 归纳进程"/>
+    <ManagementProcesses request={request} processes={result?.processes} title="Management 归纳进程"/>
     {result?.analysis && <>
       <p>Agent 会话 · <code>{result.analysis.session_id}</code></p>
       {result.analysis.profile && <RolePermissions role="Management" profile={result.analysis.profile}/>}
