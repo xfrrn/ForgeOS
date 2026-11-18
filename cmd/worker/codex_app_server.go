@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -133,7 +134,7 @@ func (s *codexServer) read() (codexServerMessage, error) {
 		return m, errors.New("invalid App Server event")
 	}
 	if m.Method != "" && len(m.ID) != 0 && string(m.ID) != "null" {
-		if s.allowCommandRequests && m.Method == nativeApprovalMethod {
+		if s.allowCommandRequests && (m.Method == nativeApprovalMethod || m.Method == nativePatchMethod) {
 			return m, nil
 		}
 		return m, errors.New("App Server requested approval or tool input outside this role's permissions")
@@ -314,7 +315,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		return "", err
 	}
 	policy := store.CodexApproval
-	if len(c.approvalCommands) > 0 && c.sandbox == store.CodexImplementationSandbox && process.turnInputs != nil {
+	if (len(c.approvalCommands) > 0 || len(c.approvalFiles) > 0) && c.sandbox == store.CodexImplementationSandbox && process.turnInputs != nil {
 		policy = "untrusted"
 	}
 	method := "thread/start"
@@ -403,7 +404,9 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		}()
 	}
 	s.allowCommandRequests = policy == "untrusted"
-	seenApproval := map[string]bool{}
+	seenApproval := map[string]string{}
+	pendingPatches := map[string]nativePatchProposal{}
+	var cancelledPatch string
 	if err = s.call("turn/start", start, &turn); err != nil {
 		return session, err
 	}
@@ -428,7 +431,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		} else if m, err = s.read(); err != nil {
 			return session, err
 		}
-		if m.Method == nativeApprovalMethod {
+		if m.Method == nativeApprovalMethod || m.Method == nativePatchMethod {
 			var params nativeCommandParams
 			if !s.allowCommandRequests || len(m.ID) == 0 || string(m.ID) == "null" || json.Unmarshal(m.Params, &params) != nil || inputPoll.Instance == 0 ||
 				params.ThreadID != inputPoll.Session || params.TurnID != inputPoll.Turn || !store.ValidAppTurnID(params.ItemID) {
@@ -437,14 +440,37 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			decision := "decline"
 			_, seen := seenApproval[params.ItemID]
 			if !seen {
-				seenApproval[params.ItemID] = false
-			}
-			if !seen && params.allowed(c.approvalCommands, workspace) {
-				decision = process.turnInputs.awaitCommand(ctx, store.NativeCommandRequest{NativeTurn: inputPoll.NativeTurn, Lease: inputPoll.Lease,
-					Item: params.ItemID, Command: params.Command, Cwd: workspace})
-				seenApproval[params.ItemID] = decision != ""
-				if decision == "" {
-					decision = "cancel"
+				seenApproval[params.ItemID] = ""
+				request := store.NativeCommandRequest{NativeTurn: inputPoll.NativeTurn, Lease: inputPoll.Lease, Item: params.ItemID, Cwd: workspace}
+				tool := "commandExecution"
+				proposal := pendingPatches[params.ItemID]
+				if m.Method == nativePatchMethod {
+					tool = "fileChange"
+					if len(c.approvalFiles) > 0 && params.localScope() && params.Command == "" && params.Kind == "" && params.Cwd == "" {
+						request.Patch = proposal.files
+					}
+				} else if params.allowed(c.approvalCommands, workspace) {
+					request.Command = params.Command
+				}
+				if request.Command != "" || request.Patch != nil {
+					decision = process.turnInputs.awaitCommand(ctx, request)
+					if decision != "" {
+						seenApproval[params.ItemID] = tool
+					} else {
+						decision = "cancel"
+					}
+					if request.Patch != nil && decision == "accept" {
+						current, err := process.turnInputs.inspectPatch(workspace, proposal.changes, c.approvalFiles)
+						if err != nil {
+							return session, err
+						}
+						if !slices.Equal(request.Patch, current) {
+							decision = "decline"
+						}
+					}
+					if request.Patch != nil && decision == "cancel" && seenApproval[params.ItemID] != "" {
+						cancelledPatch = params.ItemID
+					}
 				}
 			}
 			s.mu.Lock()
@@ -529,6 +555,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				if ctx.Err() != nil {
 					return session, ctx.Err()
 				}
+				if event.Turn.Status == "interrupted" && cancelledPatch != "" {
+					if err := process.turnInputs.confirmNativeItem(inputPoll.NativeTurn, cancelledPatch, "turn_interrupted"); err != nil {
+						return session, err
+					}
+				}
 				if event.Turn.Status != "completed" {
 					return session, errTurnFailed
 				}
@@ -575,16 +606,25 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 					process.question.read(last)
 				}
 			}
-			if m.Method == "item/completed" && event.Item.Type == "commandExecution" && seenApproval[event.Item.ID] {
-				receipt := store.NativeCommandReceipt{NativeTurn: inputPoll.NativeTurn, Lease: inputPoll.Lease, Item: event.Item.ID, Status: event.Item.Status}
-				body, marshalErr := json.Marshal(receipt)
-				if marshalErr != nil {
-					return session, marshalErr
+			if m.Method == "item/started" && event.Item.Type == "fileChange" && s.allowCommandRequests && len(c.approvalFiles) > 0 {
+				if _, exists := pendingPatches[event.Item.ID]; exists {
+					return session, errors.New("duplicate native patch proposal")
 				}
-				// Ordinary Owner input keys are UUIDs. Command receipts share their durable native outbox.
-				key := fmt.Sprintf("command:%d:%s", process.id, event.Item.ID)
-				if _, err = process.db.Exec("INSERT INTO turn_input_receipts(execution_id,key,receipt) VALUES(?,?,?) ON CONFLICT DO NOTHING", process.turnInputs.execution, key, body); err != nil {
+				files, err := process.turnInputs.inspectPatch(workspace, event.Item.Changes, c.approvalFiles)
+				if err != nil {
 					return session, err
+				}
+				pendingPatches[event.Item.ID] = nativePatchProposal{changes: event.Item.Changes, files: files}
+			}
+			if m.Method == "item/completed" {
+				delete(pendingPatches, event.Item.ID)
+				if tool := seenApproval[event.Item.ID]; tool != "" && event.Item.Type == tool {
+					if err := process.turnInputs.confirmNativeItem(inputPoll.NativeTurn, event.Item.ID, event.Item.Status); err != nil {
+						return session, err
+					}
+					if cancelledPatch == event.Item.ID {
+						cancelledPatch = ""
+					}
 				}
 			}
 			if process.tools != nil && strings.HasPrefix(m.Method, "item/") {

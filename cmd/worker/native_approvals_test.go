@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -36,5 +40,45 @@ func TestNativeCommandPolicyMatchesExactLocalRequest(t *testing.T) {
 		if other.allowed(p.Commands, workspace) {
 			t.Fatal(other)
 		}
+	}
+}
+
+func TestNativePatchFreezesApprovedFileContentAndPaths(t *testing.T) {
+	root := t.TempDir()
+	allowed := []string{"a.md", "b.md", "new/sub.md"}
+	a := filepath.Join(root, "a.md")
+	if err := os.WriteFile(a, []byte("original\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	changes := []nativeFileChange{{Path: a, Kind: json.RawMessage(`{"type":"update","move_path":"b.md"}`), Diff: "@@\n-original\n+updated\n"},
+		{Path: "new/sub.md", Kind: json.RawMessage(`{"type":"add"}`), Diff: "document\n"}}
+	files := prepareNativePatch(root, changes, allowed, nil)
+	if len(files) != 2 || files[0].MoveTo != "b.md" || files[0].Before != fmt.Sprintf("%x", sha256.Sum256([]byte("original\n"))) {
+		t.Fatal(files)
+	}
+	if err := os.WriteFile(a, []byte("edited\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if after := prepareNativePatch(root, changes, allowed, nil); len(after) != 2 || after[0].Before == files[0].Before {
+		t.Fatal(after)
+	}
+	if got := prepareNativePatch(root, changes, allowed, []string{"document"}); got != nil {
+		t.Fatal("published hidden text")
+	}
+	for _, change := range []nativeFileChange{
+		{Path: a, Kind: json.RawMessage(`{"type":"add"}`)},
+		{Path: "a.md", Kind: json.RawMessage(`{"type":"update","move_path":"other.md"}`)},
+		{Path: "a.md", Kind: json.RawMessage(`{"type":"update","new_permission":true}`)},
+		{Path: "../a.md", Kind: json.RawMessage(`{"type":"delete"}`)},
+	} {
+		if got := prepareNativePatch(root, []nativeFileChange{change}, allowed, nil); got != nil {
+			t.Fatal(got)
+		}
+	}
+	if err := os.Link(a, filepath.Join(root, "b.md")); err != nil {
+		t.Fatal(err)
+	}
+	if got := prepareNativePatch(root, []nativeFileChange{{Path: a, Kind: json.RawMessage(`{"type":"update"}`)}}, allowed, nil); got != nil {
+		t.Fatal("writable hard link admitted")
 	}
 }

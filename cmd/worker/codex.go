@@ -154,6 +154,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 
 type codexCLI struct {
 	approvalCommands []string
+	approvalFiles    []string
 	onAppTurn        func(activeWriterTurn) error
 	onAppCompleted   func(store.NativeTurn) error
 	appServer        bool
@@ -560,6 +561,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			codex := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
 			if job.NativeApprovals && w.codexAppServer && job.ProjectID > 0 && job.ProjectID == w.commandPolicy.Project {
 				codex.approvalCommands = w.commandPolicy.Commands
+				codex.approvalFiles = w.commandPolicy.Files
 			}
 			saveReturn := func(session string, active *activeWriterTurn) error {
 				q := parkedCheckpoint{Job: job, GitDir: dir, Session: session, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step,

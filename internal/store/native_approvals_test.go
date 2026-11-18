@@ -54,8 +54,25 @@ func TestNativeCommandDecisionAndConfirmation(t *testing.T) {
 	if err != nil || d != "" {
 		t.Fatal(d, err)
 	}
+	patch := r
+	patch.Command = ""
+	patch.Item = "patch-1"
+	patch.Patch = []NativePatchFile{{Op: "add", Path: "guide.md", Diff: "Hello\n"}}
+	_, err = s.PollNativeCommand(ctx, id, patch)
+	must(err)
+	var patchID int64
+	var digest string
+	must(s.db.QueryRowContext(ctx, "SELECT id,encode(sha256(convert_to(patch::text,'UTF8')),'hex') FROM native_command_approvals WHERE item_id='patch-1'").Scan(&patchID, &digest))
+	conflict(s.DecideNativeCommand(ctx, patchID, "accept", ""))
+	conflict(s.DecideNativeCommand(ctx, patchID, "accept", strings.Repeat("0", 64)))
+	must(s.DecideNativeCommand(ctx, patchID, "cancel", digest))
+	receiptPatch := NativeCommandReceipt{NativeTurn: turn, Lease: j.LeaseToken, Item: patch.Item, Status: "turn_interrupted"}
+	must(s.ConfirmNativeCommand(ctx, id, receiptPatch))
+	patch.Patch[0].Diff = "different\n"
+	_, err = s.PollNativeCommand(ctx, id, patch)
+	conflict(err)
 	var requestID int64
-	must(s.db.QueryRowContext(ctx, "SELECT id FROM native_command_approvals WHERE execution_id=$1", id).Scan(&requestID))
+	must(s.db.QueryRowContext(ctx, "SELECT id FROM native_command_approvals WHERE execution_id=$1 AND item_id='exec-1'", id).Scan(&requestID))
 	for _, change := range []func(*NativeCommandRequest){
 		func(r *NativeCommandRequest) { r.Lease = strings.Repeat("0", 64) }, func(r *NativeCommandRequest) { r.Cwd += "x" },
 		func(r *NativeCommandRequest) { r.Command += "x" }, func(r *NativeCommandRequest) { r.Turn += "x" },
@@ -65,10 +82,10 @@ func TestNativeCommandDecisionAndConfirmation(t *testing.T) {
 		_, err = s.PollNativeCommand(ctx, id, other)
 		conflict(err)
 	}
-	conflict(s.DecideNativeCommand(ctx, requestID, "acceptForSession"))
-	must(s.DecideNativeCommand(ctx, requestID, "accept"))
-	must(s.DecideNativeCommand(ctx, requestID, "accept"))
-	conflict(s.DecideNativeCommand(ctx, requestID, "decline"))
+	conflict(s.DecideNativeCommand(ctx, requestID, "acceptForSession", ""))
+	must(s.DecideNativeCommand(ctx, requestID, "accept", ""))
+	must(s.DecideNativeCommand(ctx, requestID, "accept", ""))
+	conflict(s.DecideNativeCommand(ctx, requestID, "decline", ""))
 	d, err = s.PollNativeCommand(ctx, id, r)
 	if err != nil || d != "accept" {
 		t.Fatal(d, err)
@@ -88,7 +105,7 @@ func TestNativeCommandDecisionAndConfirmation(t *testing.T) {
 	_, err = s.db.ExecContext(ctx, "UPDATE native_command_approvals SET valid_until=clock_timestamp() WHERE execution_id=$1", id)
 	must(err)
 	must(s.db.QueryRowContext(ctx, "SELECT id FROM native_command_approvals WHERE item_id='exec-2'").Scan(&requestID))
-	conflict(s.DecideNativeCommand(ctx, requestID, "accept"))
+	conflict(s.DecideNativeCommand(ctx, requestID, "accept", ""))
 	r.Item = "exec-1"
 	_, err = s.PollNativeCommand(ctx, id, r)
 	conflict(err)

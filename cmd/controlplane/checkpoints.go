@@ -22,15 +22,16 @@ func registerCheckpoints(mux *http.ServeMux, data *store.Store, owner string, wo
 		id, ok := pathID(w, r)
 		var input struct {
 			Decision string `json:"decision"`
+			Digest   string `json:"digest,omitempty"`
 		}
 		if ok && decode(w, r, &input) {
-			respond(w, 204, nil, data.DecideNativeCommand(r.Context(), id, input.Decision))
+			respond(w, 204, nil, data.DecideNativeCommand(r.Context(), id, input.Decision, input.Digest))
 		}
 	}))
 	workers.handle(mux, "POST /internal/executions/{id}/native-approvals", workers.execution(data, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var req store.NativeCommandRequest
-		if !ok || !decodeLimited(w, r, &req, 32<<10) {
+		if !ok || !decodeLimited(w, r, &req, 256<<10) {
 			return
 		}
 		d, err := data.PollNativeCommand(r.Context(), id, req)
