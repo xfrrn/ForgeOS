@@ -85,7 +85,7 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 在任务详情展开活动执行，支持实时输入的 Codex App Server 会显示“当前原生回合输入”。提交后查看执行中的输入记录，可区分等待节点领取、已领取待确认、原生接受和原生拒绝。每个实例最多接收八条输入，每条最多 4096 字节；同时保留原有“下一回合指令”入口。输入绑定执行、节点进程实例、Thread 和 Turn。旧 Worker、两个 CLI 传输以及已结束或暂停的回合继续使用已有操作。
 
-Owner 使用 `POST /executions/{id}/turn-inputs` 提交 instance、session_id、turn_id、UUID key 和 body。同一次提交重试沿用同一 key 和正文。Worker 使用已绑定项目和执行的租约领取，丢失领取响应时沿用同一领取编号重试。原生进程只发送一次 turn/steer；原生响应先写入节点私有 SQLite，再向控制面补报，直至取得确认。如果节点在发往原生进程后、保存响应前终止，记录显示“节点已领取，投递待确认”。可用原 Thread、Turn 和消息 key 核对历史；恢复任务不会把该输入自动投向另一个回合。[真实工作台验收](acceptance.md#live-workbench-turn-input)
+Owner 使用 `POST /executions/{id}/turn-inputs` 提交 instance、session_id、turn_id、UUID key 和 body。同一次提交重试沿用同一 key 和正文。Worker 使用已绑定项目和执行的租约领取，丢失领取响应时沿用同一领取编号重试。原生进程只发送一次 turn/steer；原生响应先写入节点私有 SQLite，再向控制面补报，直至取得确认。节点在发送前把执行、进程、Thread、Turn、输入 UUID 和正文摘要写入私有 SQLite。若原生响应未能落盘，重启相同身份和版本的 Worker 后，通过只读的 thread/read 核对原工作目录和回合。只有历史中恰有一条 UUID 和正文摘要都相符的输入，才补报已接受。证据缺失、正文不同或 UUID 重复时，工作台保留“节点已领取，投递待确认”。[回执恢复实测](acceptance.md#native-input-history-recovery)[真实工作台验收](acceptance.md#live-workbench-turn-input)
 
 原生回合确认完成或中断时，Worker 正常关闭输入并等待进程退出。App Server 拒绝中断或超时、需要强制终止时，Worker 先终止自己启动的进程，再关闭协议管道，避免 EOF 使强制终止被记录为正常退出。[中断回归与真实节点操作](acceptance.md#native-interrupt-fallback)
 

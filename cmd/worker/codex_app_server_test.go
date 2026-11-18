@@ -223,12 +223,16 @@ func TestAppServerSteerResponseBinding(t *testing.T) {
 			if err := w.journal.QueryRow(`SELECT count(*) FROM turn_input_receipts WHERE json_extract(receipt,'$.outcome')='rejected'`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
+			var pending int
+			if err := w.journal.QueryRow("SELECT count(*) FROM pending_native_inputs").Scan(&pending); err != nil {
+				t.Fatal(err)
+			}
 			if scenario == "steer rejected" {
-				if turnErr != nil || count != 1 {
-					t.Fatal("rejection receipt", turnErr, count)
+				if turnErr != nil || count != 1 || pending != 0 {
+					t.Fatal("rejection receipt", turnErr, count, pending)
 				}
-			} else if turnErr == nil || !strings.Contains(turnErr.Error(), "active turn") || count != 0 {
-				t.Fatal("wrong turn confirmed", turnErr, count)
+			} else if turnErr == nil || !strings.Contains(turnErr.Error(), "active turn") || count != 0 || pending != 1 {
+				t.Fatal("wrong turn confirmed or lost its unresolved input", turnErr, count, pending)
 			}
 		})
 	}

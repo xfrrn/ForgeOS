@@ -107,13 +107,15 @@ func (s *codexServer) call(method string, params, result any) error {
 	}
 }
 
-func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspace, prompt, resume string) (session string, resultErr error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
+func (s *codexServer) initialize() error {
+	var initialized json.RawMessage
+	if err := s.call("initialize", map[string]any{"clientInfo": map[string]string{"name": "forgeos", "version": "1"}}, &initialized); err != nil {
+		return err
 	}
-	if resume != "" && !nativeSessionID.MatchString(resume) {
-		return "", errors.New("invalid Codex recovery thread ID")
-	}
+	return s.write(map[string]string{"method": "initialized"})
+}
+
+func (c codexCLI) appServerArgs(workspace string) []string {
 	args := []string{"app-server", "--listen", "stdio://", "-c", "mcp_servers={}", "-c", `web_search="disabled"`,
 		"-c", "notify=[]", "-c", "project_doc_max_bytes=0", "-c", `developer_instructions=""`,
 		"-c", "sandbox_workspace_write.network_access=false", "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true",
@@ -127,6 +129,16 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	}
 	for _, feature := range disabled {
 		args = append(args, "--disable", feature)
+	}
+	return args
+}
+
+func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspace, prompt, resume string) (session string, resultErr error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if resume != "" && !nativeSessionID.MatchString(resume) {
+		return "", errors.New("invalid Codex recovery thread ID")
 	}
 	var schema json.RawMessage
 	var output string
@@ -149,7 +161,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	}
 	processCtx, kill := context.WithCancel(context.WithoutCancel(ctx))
 	defer kill()
-	cmd := exec.CommandContext(processCtx, c.bin, args...)
+	cmd := exec.CommandContext(processCtx, c.bin, c.appServerArgs(workspace)...)
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
 	input, err := cmd.StdinPipe()
 	if err != nil {
@@ -213,11 +225,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			resultErr = fmt.Errorf("App Server exit: %w", exit)
 		}
 	}()
-	var initialized json.RawMessage
-	if err = s.call("initialize", map[string]any{"clientInfo": map[string]string{"name": "forgeos", "version": "1"}}, &initialized); err != nil {
-		return "", err
-	}
-	if err = s.write(map[string]string{"method": "initialized"}); err != nil {
+	if err = s.initialize(); err != nil {
 		return "", err
 	}
 	method := "thread/start"

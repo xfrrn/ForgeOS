@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -45,6 +46,18 @@ func (c *turnInputClient) run(ctx context.Context, server *codexServer, poll sto
 		poll.Claim = ""
 		server.mu.Lock()
 		if ctx.Err() != nil || server.interrupt || server.turn != poll.Turn {
+			server.mu.Unlock()
+			return
+		}
+		pending := poll
+		pending.Key = item.Key
+		raw, err := json.Marshal(pending)
+		if err == nil {
+			digest := sha256.Sum256([]byte(item.Body))
+			_, err = c.worker.journal.ExecContext(ctx, `INSERT INTO pending_native_inputs(execution_id,key,instance,receipt,body_hash)
+				VALUES(?,?,?,?,?)`, c.execution, item.Key, poll.Instance, raw, digest[:])
+		}
+		if err != nil {
 			server.mu.Unlock()
 			return
 		}

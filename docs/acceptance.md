@@ -8,7 +8,7 @@
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
-| A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
+| A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。 | 首个原生进程启动后至首份完成记录落盘前的中断、下一原生回合启动后的中断、接回仍存活进程以及整机重启恢复。 |
 | C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
@@ -25,6 +25,21 @@
 | 专题 07、16 B.4 保留原生回合结果 | [beta #256–257，名额释放、暂停、取消和业务答复](#returned-writer-recovery) | `94ad23ba0590e9b07e67ac6e8f83d0c39b7a5579` |
 
 在上述最后一项的实现上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
+
+<a id="native-input-history-recovery"></a>
+
+### 专题 07、16 A.1/B.2 · Worker 重启后核对缺失的原生输入回执
+
+2026-11-18，[beta Issue #250](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/250)，Windows 正式 Worker、Chrome、Codex App Server 0.169.0-alpha.11.1 和隔离 PostgreSQL 18。只在测试节点的 SQLite 中注入回执写入丢失。控制面、原生模型和浏览器均使用正常入口。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 Chrome 向执行中的原回合提交标题，令节点无法保存原生确认，等候候选 | 模型取得输入，工作台仍显示待确认 | 原生 PID 27228 正常退出，候选 `5b5efd9bd93ee4fcad402b737abc74d70b71aad2` 恰有一个 `Harbor c3d60f9c` 二级标题。节点有一项待核对输入、零条已保存回执。 |
+| 移除测试故障，重启相同节点身份的 Worker，重新打开任务 | 从原回合取回证据，工作台显示已接受，原候选保持有效 | Thread `01a1ee9a-0cfa-7172-a42d-e506810e60c2`，Turn `01a1ee9a-1052-7ea2-b02b-ca08f7286685`，输入 UUID `fdabd729-7e5b-4a81-a235-3a14ab111292`。Chrome 回读同一正文及接受状态。待核对记录清零，执行只登记了原来的一个模型进程。原生历史仅一个回合，输入项为 `01a1ee9a-2b13-78b0-80e3-65357c16db10`。 |
+| 原生命令仍在执行，节点已收到投递响应但写盘故障仍在；立即终止 Worker，再从原节点启动 | 若原生历史没有该消息，保留待确认，禁止再次向模型发送 | 原生 PID 38540，Turn `01a1ee9d-fb87-7e93-993b-ea8226e345f0` 最终为 interrupted。原生历史中 UUID `690fe7de-c793-4087-b580-ce14dac4eae0` 出现零次。Chrome 显示“节点已领取，投递待确认”；SQLite 保留一条待核对记录，只有原来的一个模型进程。 |
+| 改换 Thread、Turn、工作目录或正文摘要，或使同一 UUID 出现零次／两次 | 这些证据均不能确认投递 | Worker 专项断言通过。原生拒绝正常生成拒绝回执，错绑回合的响应保留未确认记录。 |
+
+实测回执为 `turn-input-history/latest.json` 和 `turn-input-crash-history/latest.json`。原生双版本协议的对照提交为 `fe726b748c4ee942c5fb39024ff126bbf2397a15`。
 
 <a id="native-version-matrix"></a>
 

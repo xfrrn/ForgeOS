@@ -133,6 +133,13 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 		execution_id INTEGER NOT NULL, key TEXT NOT NULL, receipt BLOB NOT NULL,
 		PRIMARY KEY(execution_id,key)
 	);
+	CREATE TABLE IF NOT EXISTS pending_native_inputs (
+		execution_id INTEGER NOT NULL, key TEXT NOT NULL, instance INTEGER NOT NULL,
+		receipt BLOB NOT NULL, body_hash BLOB NOT NULL, PRIMARY KEY(execution_id,key)
+	);
+	CREATE TRIGGER IF NOT EXISTS settle_native_input AFTER INSERT ON turn_input_receipts BEGIN
+		DELETE FROM pending_native_inputs WHERE execution_id=NEW.execution_id AND key=NEW.key;
+	END;
 	CREATE INDEX IF NOT EXISTS harness_processes_attempt ON harness_processes(lease_hash,instance);
 	CREATE TABLE IF NOT EXISTS harness_tool_events (
 		instance INTEGER NOT NULL REFERENCES harness_processes(instance), seq INTEGER NOT NULL, call INTEGER NOT NULL,
