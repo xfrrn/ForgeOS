@@ -502,6 +502,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		if completed != nil && len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 {
 			break
 		}
+		launchFrom := completed
 		completed = nil
 		var prompt string
 		prompt, err = issuePrompt(job, feedback, batch, ownerReply)
@@ -545,6 +546,14 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				checkpoint = &writerCheckpoint{sequence: seq, trees: answeredTrees}
 			} else if job.InterruptedHandoff {
 				checkpoint = &writerCheckpoint{sequence: seq}
+			}
+			if launchFrom != nil {
+				if err := w.consumeCompletedTurn(turn, launchFrom); err != nil {
+					recovery.leaveUnsettled = true
+					return previous, err
+				}
+				launchFrom = nil
+				recovery.waiting = false
 			}
 			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
 		})

@@ -119,8 +119,28 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 				t.Fatal(err, recovery, page)
 			}
 			stillSaved, err := w.readFinalization(ctx, job.ExecutionID)
-			if err != nil || (stillSaved == nil) != advanced {
+			if err != nil || stillSaved == nil {
 				t.Fatal("wrong durable turn after queue read", err)
+			}
+			if advanced {
+				if phase == "comment" {
+					if err := os.WriteFile(file, []byte("Edited while waiting for capacity"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := w.consumeCompletedTurn(ctx, saved); err == nil {
+						t.Fatal("accepted edits made in the queue")
+					}
+					if q, err := w.readFinalization(ctx, job.ExecutionID); err != nil || q == nil {
+						t.Fatal("lost the original receipt", err)
+					}
+				} else {
+					if err := w.consumeCompletedTurn(ctx, saved); err != nil {
+						t.Fatal(err)
+					}
+					if err := w.consumeCompletedTurn(ctx, saved); err == nil {
+						t.Fatal("replayed the same authorization to start")
+					}
+				}
 			}
 		})
 	}

@@ -95,13 +95,8 @@ func (w *worker) advanceCompletedTurn(ctx context.Context, q *parkedCheckpoint, 
 		}
 		return page, err
 	}
-	tip, err := checkedWorktreeTip(ctx, q.Job.Workspace, q.GitDir)
-	if err != nil || tip != q.CompletedTip {
-		return page, errors.New("completed writer worktree HEAD changed")
-	}
-	trees, err := checkpointTrees(ctx, q.Job.Workspace)
-	if err != nil || trees != q.Trees {
-		return page, errors.New("completed writer draft or index changed")
+	if err := verifyCompletedDraft(ctx, q); err != nil {
+		return page, err
 	}
 	if len(page.Comments) == 0 && len(page.OwnerInstructions) == 0 {
 		recovery.leaveUnsettled = false
@@ -110,13 +105,40 @@ func (w *worker) advanceCompletedTurn(ctx context.Context, q *parkedCheckpoint, 
 	if q.Version != w.nativeVersion(q.Job) {
 		return page, errors.New("native harness version changed before the next writer turn")
 	}
-	// Once another turn can start, this receipt must never authorize replay of its input.
-	key := sha256.Sum256([]byte(q.Job.LeaseToken))
-	_, err = w.journal.ExecContext(ctx, "DELETE FROM candidate_finalizations WHERE lease_hash=?", key[:])
-	if err == nil {
-		recovery.waiting, recovery.leaveUnsettled = false, false
+	// Keep the receipt while the next model reservation is queued or its response is in flight.
+	recovery.leaveUnsettled = false
+	return page, nil
+}
+
+func verifyCompletedDraft(ctx context.Context, q *parkedCheckpoint) error {
+	tip, err := checkedWorktreeTip(ctx, q.Job.Workspace, q.GitDir)
+	if err != nil || tip != q.CompletedTip {
+		return errors.New("completed writer worktree HEAD changed")
 	}
-	return page, err
+	trees, err := checkpointTrees(ctx, q.Job.Workspace)
+	if err != nil || trees != q.Trees {
+		return errors.New("completed writer draft or index changed")
+	}
+	return nil
+}
+
+func (w *worker) consumeCompletedTurn(ctx context.Context, q *parkedCheckpoint) error {
+	if err := verifyCompletedDraft(ctx, q); err != nil {
+		return err
+	}
+	key := sha256.Sum256([]byte(q.Job.LeaseToken))
+	result, err := w.journal.ExecContext(ctx, "DELETE FROM candidate_finalizations WHERE lease_hash=?", key[:])
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errors.New("completed writer receipt disappeared before the next turn")
+	}
+	return nil
 }
 
 func (w *worker) lockAttempt(id int64) (func(), error) {
