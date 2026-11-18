@@ -381,6 +381,13 @@ func TestCurationBindsSourceLeaseAndIndependentReview(t *testing.T) {
 		}
 		original = doc
 	}
+	page, err := s.PendingApprovals(ctx, "decision", "", 0)
+	var pending struct {
+		Items []struct{ Level, Verdict string }
+	}
+	if err != nil || json.Unmarshal(page, &pending) != nil || len(pending.Items) != 1 || pending.Items[0].Level != "D2" || pending.Items[0].Verdict != "approve" {
+		t.Fatal(string(page), err)
+	}
 	proposal.Statement = "Change the payload on retry."
 	if _, err := s.ProposeDecision(ctx, p.ID, proposal); !errors.Is(err, ErrConflict) {
 		t.Fatal("changed proposal on retry", err)

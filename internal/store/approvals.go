@@ -15,10 +15,12 @@ func (s *Store) PendingApprovals(ctx context.Context, kind, beforeKind string, b
 		FROM work_items t JOIN LATERAL (SELECT * FROM plan_revisions WHERE task_id=t.id ORDER BY revision DESC LIMIT 1) r ON true
 		WHERE t.status='PLANNING' AND r.revision IS DISTINCT FROM t.active_revision
 		UNION ALL
-		SELECT 'decision',id,project_id,statement,NULL,NULL,NULL,NULL,NULL,valid_until
-		FROM project_decision_index WHERE status='PROPOSED'
+		SELECT 'decision',i.id,i.project_id,i.statement,NULL,c.review->>'verdict',c.review->>'level',NULL,NULL,i.valid_until
+		FROM project_decision_index i JOIN project_decisions d ON d.id=i.id
+		LEFT JOIN material_curations c ON (c.project_id,c.id)=(d.project_id,d.curation_id)
+		WHERE i.status='PROPOSED'
 		UNION ALL
-		SELECT 'share',id,project_id,title,revision,review->>'verdict',NULL,recipient,digest,NULL
+		SELECT 'share',id,project_id,title,revision,review->>'verdict',review->>'effective_level',recipient,digest,NULL
 		FROM knowledge_shares WHERE review->>'verdict'='approve' AND published_at IS NULL AND revoked_at IS NULL
 	), pending AS (
 		SELECT * FROM approvals WHERE ($1='' OR kind=$1) AND ($2='' OR (kind COLLATE "C",id)<($2,$3))

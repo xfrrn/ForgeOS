@@ -81,6 +81,11 @@ func TestShareRequiresReviewedCopyAndRecipientGrant(t *testing.T) {
 		}
 	}
 	assertUsage(0)
+	page, err := s.PendingApprovals(ctx, "share", "", 0)
+	var pending struct{ Items []struct{ Level string } }
+	if err != nil || json.Unmarshal(page, &pending) != nil || len(pending.Items) != 1 || pending.Items[0].Level != "D3" {
+		t.Fatal(string(page), err)
+	}
 	modified := review
 	modified.Verdict = "revise"
 	if err = s.ReviewShare(ctx, source.ID, id, job.Lease, modified); !errors.Is(err, ErrConflict) {

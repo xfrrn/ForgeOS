@@ -43,9 +43,9 @@ export function Approvals({request}: {request: ApiRequest}) {
     {page?.items.map(item => <article className="notification-row" key={item.kind + item.id}>
       <h2>{approvalLabels[item.kind]} · {item.title}</h2>
       <p>项目 #{item.project_id} · {item.kind === 'plan' ? '任务 T-' : '记录 #'}{item.id}
-        {item.level && ' · ' + item.level}{item.revision && ' · 修订 ' + item.revision}
+        {item.level && item.kind !== 'decision' && ' · ' + item.level}{item.revision && ' · 修订 ' + item.revision}
         {item.recipient && ' · 接收项目 #' + item.recipient}</p>
-      {item.verdict && <p>Management 审核 · {verdicts[item.verdict]}</p>}
+      {item.verdict && <p>{item.kind === 'decision' ? '来源知识审核' + (item.level ? ' · ' + item.level : '') : 'Management 审核'} · {verdicts[item.verdict]}</p>}
       {item.digest && <p>副本 SHA-256 · <code>{item.digest}</code></p>}
       {item.valid_until && <p>有效期至 <time dateTime={item.valid_until}>{formatTime(item.valid_until)}</time></p>}
       <a href={approvalPath(item)}>查看{approvalLabels[item.kind]}</a>

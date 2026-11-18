@@ -3613,3 +3613,17 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 验证暂存的角色回合、待发或近期进程回执、仍运行的进程，以及跨目录路径或链接 | 保留尚需恢复的内容，避免操作其他路径 | 节点专项通过。额外文件会在删除任何已知文件之前被发现，移除障碍后重试成功。 |
 
 启用 PostgreSQL 18 与 Docker 的全量 Go 回归共 505 项通过，零失败、零跳过。证据保存在 role_recovery_retention 的 win32.json、linux.json、daemon.json。操作脚本为 role-retention-live.py 和 role-retention-daemon.py。[运行命令与恢复步骤](14-deployment-and-operations.md#role-recovery-retention)
+
+<a id="approval-source-levels"></a>
+
+### 专题 05、16 C.5 · 审批中心的来源审核和有效等级
+
+2026-11-18，在独立 PostgreSQL 18 验收库登记两个项目。使用原生 Codex Curator 提取退款期限变更提议，Management 在另一会话给出 D2、请 Owner 决定。同时审核一份只包含恢复检查方法的跨项目共享副本。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 Chrome 登录审批中心，筛选项目决策，对照两类提案和固定资料的审核回执 | 来源知识的审核可追溯，手工提案只显示已有依据 | 来源提案显示“来源知识审核 · D2 · 请 Owner 决定”。另一项目的手工提案无审核标签。Owner 在原提案页确认。 |
+| 在审批中心打开待发布副本，再由 Owner 发布 | 列表显示生效 D3；发布针对同一副本 | Chrome 列表可见 D3，发布后接收项目回读同一 SHA-256。 |
+| 用普通节点身份读取审批列表；控制面重启后再以 Owner 身份打开队列 | 节点无法读 Owner 队列；已处理项退出 | 节点收到 401。列表中没有资料的内部标记或原生会话字段。重启后仅手工提案仍待确认，已确认决策和已发布副本均可回读。 |
+
+脚本 approval-policy-live.py，证据 approval_policy_a/result.json 与 decision-list.png。来源和共享由独立角色在生产入口审核，审批页使用生产构建。
