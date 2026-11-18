@@ -76,7 +76,7 @@ func (s *Store) ControlModel(ctx context.Context, execution, instance int64, res
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES($1,$2,$3)`, task, execution, event); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,model_pause_instance) VALUES($1,$2,$3,$4)`, task, execution, event, instance); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -161,7 +161,7 @@ func (s *Store) PollModelPause(ctx context.Context, execution int64, input Pause
 			if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='PAUSED',waiting_execution_id=$2 WHERE id=$1`, task, execution); err != nil {
 				return nil, err
 			}
-			if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES($1,$2,'model_paused')`, task, execution); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,model_pause_instance) VALUES($1,$2,'model_paused',$3)`, task, execution, p.Instance); err != nil {
 				return nil, err
 			}
 		}

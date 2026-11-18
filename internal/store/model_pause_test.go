@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -162,5 +163,60 @@ func TestModelPauseBindsProcessWorkspaceAndResourceStep(t *testing.T) {
 	if len(history) != 2 || history[0].Instance != 4 || history[0].Resumed == nil || history[0].Worktree != trees.Worktree ||
 		history[1].Instance != proc.Instance || history[1].Parked != nil || tx.Execution.ModelPause.Instance != proc.Instance {
 		t.Fatalf("unexpected pause history: %+v", history)
+	}
+	var actions []string
+	for _, e := range tx.Events {
+		if !strings.HasPrefix(e.Type, "model_") {
+			continue
+		}
+		actions = append(actions, e.Type)
+		raw, err := s.EventAudit(ctx, p.ID, task.ID, e.ID)
+		must(err)
+		var audit struct {
+			Actor, Source string
+			Session       string `json:"session_id"`
+			Payload       struct {
+				Instance int64  `json:"model_pause_instance"`
+				Step     int64  `json:"resource_step"`
+				Index    string `json:"index_tree"`
+				Worktree string `json:"worktree_tree"`
+			}
+		}
+		must(json.Unmarshal(raw, &audit))
+		actor, source := "owner", "owner"
+		if e.Type == "model_paused" {
+			actor, source = "writer", "worker"
+		}
+		step := int64(1)
+		if len(actions) == 4 {
+			step = 2
+		}
+		frozen := WorktreeTrees{}
+		if e.Type != "model_pause_requested" {
+			frozen = trees
+		}
+		pause := history[step-1]
+		if audit.Actor != actor || audit.Source != source || audit.Session != pause.Session || audit.Payload.Instance != pause.Instance ||
+			audit.Payload.Step != step || audit.Payload.Index != frozen.Index || audit.Payload.Worktree != frozen.Worktree {
+			t.Fatalf("wrong pause evidence for %s: %s", e.Type, raw)
+		}
+	}
+	if strings.Join(actions, ",") != "model_pause_requested,model_paused,model_resumed,model_pause_requested" {
+		t.Fatalf("unexpected pause events: %v", actions)
+	}
+	// Rebuild the legacy layout with one missing request in this test's isolated schema.
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE task_events DROP COLUMN model_pause_instance")
+	must(err)
+	_, err = s.db.ExecContext(ctx, `DELETE FROM task_events WHERE id=(SELECT min(id) FROM task_events
+		WHERE execution_id=$1 AND type='model_pause_requested')`, id)
+	must(err)
+	_, err = s.db.ExecContext(ctx, modelPauseEventInstancesSchema)
+	must(err)
+	var unmatched, linked int
+	must(s.db.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE type='model_pause_requested' AND model_pause_instance IS NULL),
+		count(*) FILTER (WHERE type IN ('model_paused','model_resumed') AND model_pause_instance=4)
+		FROM task_events WHERE execution_id=$1`, id).Scan(&unmatched, &linked))
+	if unmatched != 1 || linked != 2 {
+		t.Fatalf("legacy pause links: %d unmatched requests, %d checkpoint and resume events", unmatched, linked)
 	}
 }

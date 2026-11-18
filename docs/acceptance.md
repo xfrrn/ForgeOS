@@ -57,6 +57,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="model-pause-audit"></a>
+
+### 专题 07、13 · 从模型暂停事件追溯操作者、原生会话和工作树
+
+在空 PostgreSQL 18 上导入 beta #249，以只读 Codex Planner 运行。Owner 从 390 像素宽的 Chrome 请求暂停，等待 Worker 保存检查点后再请求恢复。两轮均由原生模型继续并生成计划修订 1。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在新版暂停、恢复一次，控制面重启后从工作台下载三份回执 | 请求、保存检查点、恢复可按发生时的事实核对 | 执行 1 的事件 3、4、5 均关联 Session `01a1f043-4be8-7811-80be-c3827537ef68`、进程实例 1、资源步骤 1。两次 Owner 操作的发起方均为 `owner`，保存检查点的是 `pause-audit-node`。后两份回执的 Git 树均为 `7e08857110f24a9de45e55927b0094315d1da60a`，最初的请求中没有事后才生成的树。重启前后 API 与下载相同。 |
+| 在旧版同一执行中连续暂停、恢复两次，待计划完成后升级到迁移 127，下载六份旧事件 | 同一 Session 的不同进程分别关联各自的检查点，保存原事件编号与时间 | 旧版六份回执的发起方、来源和 Session 均为空。升级后，事件 3–5 指向实例及步骤 1，事件 6–8 指向实例及步骤 2，原生 Session 均为 `01a1f044-5c0c-7530-8e2f-d063f2d723d2`。工作台下载与 API 逐份一致，编号和原时间保持一致。 |
+| 在隔离的 PostgreSQL 测试库移除一条旧请求，再执行同一迁移 | 历史证据不齐时，不给剩余请求指定进程 | 剩余请求的关联为空，两个能核对的检查点与恢复事件都指向原实例 4。 |
+
+两次工作台实测的逐项 JSON 为 `model-pause-audit/current.json` 和 `model-pause-audit/upgrade.json`。缺失历史的迁移测试结果见 `model-pause-audit/migration-test.jsonl`。
+
 <a id="dependency-release-audit"></a>
 
 ### 专题 06、13 · 从后续子项追查解除阻塞时的计划与 Git 基线
