@@ -323,6 +323,8 @@ git -C /state/work/execution-1 diff --binary
 
 用服务账号执行 Git 检查。对照源记录核对工作项、执行编号、绝对路径、HEAD、索引、工作区差异和未跟踪文件的内容摘要。确认历史任务可从 Owner API 查询后，再派发一个独立 `git_head` 工作项。新的执行应获得自己的目录。若源执行原本失联，另行核对它的租约、会话和远端已产生的结果，再决定如何恢复。
 
+恢复项目配置时，在原 HEAD 检查的任务页点击“读取仓库清单”，核对 `project.yaml`、`validation.yaml`、`acceptance.yaml` 的 Git blob。清单从数据库回读。另以备份前使用的提交查询 `GET /projects/{id}/validation-plan?commit=…&level=V2` 和 `GET /projects/{id}/validation-assessment?base=…&commit=…`，这两个入口会重新读取恢复的 Git 对象。将验证方案、组件匹配和等级与备份前的回执比较，再核对任务的必需审查标志、项目 CI 保留秒数和策略历史。[单项目配套恢复实测](acceptance.md#project-config-restore)
+
 ### 核对恢复的 CI 运行目录
 
 声明式 CI 将日志、报告、产物及 `run.json` 写在 Runner 的工作区根目录下。上节的工作区归档已经包含这些目录。分机部署时，按运行回执的 `runner` 到对应节点保存或恢复文件，同一时间点备份 PostgreSQL。在源端停写后和隔离恢复后分别核对一次。下面从数据库取指定执行的权威回执；也可以从 Owner 的任务详情中选择该次执行的 `result.validation.run`。独立运行 `worker validate-candidate` 时，将其标准输出另存到受限的独立备份介质上，作为对应回执。
