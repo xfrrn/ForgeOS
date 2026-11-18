@@ -74,7 +74,7 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 	if report.ReviewerExecution != 0 {
 		harness = "claude"
 	}
-	if !p.Valid() || p.Archive != nil || p.Harness != harness || report.ResumedFrom < 0 || len(p.Tools) != 0 || p.ToolOutput != nil ||
+	if !p.Valid() || (p.Archive != nil && p.Archive.Central) || p.Harness != harness || report.ResumedFrom < 0 || len(p.Tools) != 0 || p.ToolOutput != nil ||
 		!p.outputExcludes(report.Lease) || len(report.Lease) != 36 || report.Node == "" || len(report.Node) > 128 ||
 		strings.Trim(report.Node, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" {
 		return ErrConflict
@@ -160,6 +160,12 @@ func (s *Store) ObserveManagementProcess(ctx context.Context, project int64, rep
 		var prior HarnessProcess
 		if err = json.Unmarshal(raw, &prior); err != nil {
 			return err
+		}
+		if prior.Archive != nil {
+			if p.Archive != nil && *p.Archive != *prior.Archive {
+				return ErrConflict
+			}
+			p.Archive = prior.Archive
 		}
 		if node != report.Node || resumeFrom != report.ResumedFrom || (missing && !report.MissingSession) || !p.follows(prior) {
 			return ErrConflict

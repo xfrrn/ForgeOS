@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"forgeos/internal/store"
 )
@@ -35,7 +37,28 @@ func (w *worker) replayRoleProcesses(ctx context.Context, db *sql.DB, role strin
 		if err != nil {
 			return err
 		}
-		status, _ := w.post(ctx, "/internal/"+role+"/process", raw, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.api+"/internal/"+role+"/process", bytes.NewReader(raw))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		info, err := scanProcessArchive(db.QueryRowContext(ctx, processArchiveQuery+" WHERE p.instance=?", instance))
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if info.Available && info.Expired == "" {
+			manifest, err := json.Marshal(info.ProcessArchive)
+			if err != nil {
+				return err
+			}
+			// Older control planes accept the same exit body and ignore this optional receipt.
+			req.Header.Set("ForgeOS-Role-Archive", string(manifest))
+		}
+		status := 0
+		if reply, err := w.authenticatedRequest(req); err == nil {
+			status = reply.StatusCode
+			reply.Body.Close()
+		}
 		if status == 204 || status == 409 {
 			_, err = db.Exec(`UPDATE role_process_receipts SET status=?,settled_at=CURRENT_TIMESTAMP,
  conflicting_report=CASE WHEN ?=409 THEN json_remove(CAST(report AS TEXT),'$.lease') END,report=NULL WHERE instance=?`, status, status, instance)

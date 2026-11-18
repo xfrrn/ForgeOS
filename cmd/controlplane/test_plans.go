@@ -111,7 +111,7 @@ func registerTestPlans(mux *http.ServeMux, data *store.Store, root, owner, manag
 				problem(w, 403, "Test Agent identity only reports candidate test planning processes")
 				return
 			}
-			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), project, report))
+			recordRoleProcess(w, r, data, project, report)
 		}
 	}))
 	registerTestPlanResult(mux, "/internal/test-agent/result", data, token, project, "test")

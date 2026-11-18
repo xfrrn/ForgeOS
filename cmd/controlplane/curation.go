@@ -43,7 +43,7 @@ func registerCurator(mux *http.ServeMux, data *store.Store, owner, manager strin
 				problem(w, 403, "Curator identity only reports extraction processes")
 				return
 			}
-			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
+			recordRoleProcess(w, r, data, id, report)
 		}
 	}))
 	mux.HandleFunc("POST /internal/curator/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {

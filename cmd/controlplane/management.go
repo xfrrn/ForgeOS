@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,6 +9,22 @@ import (
 
 	"forgeos/internal/store"
 )
+
+func recordRoleProcess(w http.ResponseWriter, r *http.Request, data *store.Store, project int64, report store.ManagementProcessReport) {
+	if report.Process.Archive != nil {
+		problem(w, 400, "unexpected archive in process body")
+		return
+	}
+	if raw := r.Header.Get("ForgeOS-Role-Archive"); raw != "" {
+		var archive store.ProcessArchive
+		if len(raw) > 1024 || json.Unmarshal([]byte(raw), &archive) != nil {
+			problem(w, 400, "invalid role archive manifest")
+			return
+		}
+		report.Process.Archive = &archive
+	}
+	respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), project, report))
+}
 
 func registerManagement(mux *http.ServeMux, data *store.Store, project, token, owner string, workers *workerRegistry) error {
 	if project == "" && token == "" {
@@ -117,7 +134,7 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 				problem(w, 403, "Process requires its own role identity")
 				return
 			}
-			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
+			recordRoleProcess(w, r, data, id, report)
 		}
 	}))
 	mux.HandleFunc("POST /internal/management/issue-classifications/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {

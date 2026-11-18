@@ -96,7 +96,7 @@ func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, man
 				problem(w, 403, "Reviewer identity only reports candidate review processes")
 				return
 			}
-			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), project, report))
+			recordRoleProcess(w, r, data, project, report)
 		}
 	}))
 	mux.HandleFunc("POST /internal/reviewer/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {

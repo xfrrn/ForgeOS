@@ -14,11 +14,26 @@
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
 
+<a id="role-process-archive-manifest"></a>
+
+### 专题 07、14、16 C.3 · 核对独立角色的节点日志清单
+
+2026-11-18，使用 [beta #247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247)、正式 Management 节点、Chrome、PostgreSQL 18 和节点日志导出 CLI。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 在讨论收件箱展开分类进程，等候原生回合退出 | 进程清单显示实际节点记录数、字节数及摘要 | PID 23556、会话 `01a1ee13-2189-77a3-a411-9ce616651565` 成功退出。公开输出尾部为 239 字节，节点归档为 1 条 JSONL、352 字节，上限 32 MiB，省略 0 条。 |
+| 停止节点，执行 `worker process-logs export`，独立对原始 UTF-8 记录重算链摘要 | 导出的记录与工作台清单逐项一致 | 导出末行标记已验证。记录数、字节数以及 SHA-256 `ed75128172a81580ee44f1685b1308a85c05402010c6b79b2834b862b51b64a7` 均一致。 |
+| 重启控制面，从工作台改选调查，打开任务 6 的需求修订 1 | 进程退出和归档清单保留原值 | Chrome 在历史页显示同一会话及完整链摘要。其他项目查询为 404，节点和角色凭据访问 Owner 入口均为 401。 |
+| 将资料 `queue-handbook` 修订 1 送入 Curator 提取和 Management 知识审核，停止两个节点后从工作台回读 | 两个独立角色各保留自己的节点、原生会话和归档证据 | Curator PID 40364、会话 `01a1ee16-e972-74d2-ba3d-ea2557c10381` 归档 1 条、385 字节；Management PID 28404、会话 `01a1ee17-1f4f-72e0-8f94-67859648312f` 归档 1 条、518 字节。两个角色各自的 CLI 导出均通过逐字节校验，Chrome 所示摘要一致。 |
+
+四种角色共用退出补报协议。自动化测试覆盖各角色在断连、重启后重报原始退出数据和归档摘要，以及控制面拒绝修改已持久化的清单。已实测 Management 和 Curator 原生回合；Test Agent、Reviewer 的该项原生回合仍待验收。PostgreSQL 18 与 Docker 全包回归通过 536 项具名测试及子测试，零失败、零跳过。Go 静态检查、TypeScript 和生产构建通过。独立角色的中央全文下载另行验收。
+
 <a id="issue-classification-process"></a>
 
 ### 专题 03、16 C.3 · 从讨论到需求修订追溯分类进程
 
-2026-11-18，在 390 像素宽的 Chrome、PostgreSQL 18 和实际 Management 节点验收。[beta #247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247) 由原生 Codex 分类。
+实现提交 `792e99012df2657f68b5afc033d3539a04c208ff`。2026-11-18，在 390 像素宽的 Chrome、PostgreSQL 18 和实际 Management 节点验收。[beta #247](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/247) 由原生 Codex 分类。
 
 | 操作 | 预期结果 | 实际结果 |
 | --- | --- | --- |

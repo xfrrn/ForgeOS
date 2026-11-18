@@ -58,6 +58,19 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 	report := ManagementProcessReport{IssueClassificationID: job.IssueClassification.ID, Lease: job.Lease, Node: "classifier", Process: HarnessProcess{Instance: 1, PID: 123, Harness: "codex", Version: "1.0.0", Session: suggestion.Session, Started: end.Add(-time.Second), Exited: &end, ExitCode: &code}}
 	conflict(s.ObserveManagementProcess(ctx, p.ID+1, report))
 	must(s.ObserveManagementProcess(ctx, p.ID, report))
+	manifest := ProcessArchive{Records: 1, Bytes: 120, LimitBytes: 1 << 20, Digest: strings.Repeat("b", 64)}
+	archived := report
+	archived.Process.Archive = &manifest
+	must(s.ObserveManagementProcess(ctx, p.ID, archived))
+	must(s.ObserveManagementProcess(ctx, p.ID, archived))
+	changed := manifest
+	changed.Bytes++
+	archived.Process.Archive = &changed
+	conflict(s.ObserveManagementProcess(ctx, p.ID, archived))
+	changed = manifest
+	changed.Central = true
+	conflict(s.ObserveManagementProcess(ctx, p.ID, archived))
+	must(s.ObserveManagementProcess(ctx, p.ID, report))
 	checkHistory := func(settled bool) {
 		t.Helper()
 		raw, err := s.IssueClassificationProcesses(ctx, p.ID, report.IssueClassificationID)
@@ -67,6 +80,9 @@ func TestIssueClassificationRequiresCurrentSourceProcessAndBudget(t *testing.T) 
 			Processes []ManagementProcess
 		}
 		must(json.Unmarshal(raw, &h))
+		if len(h.Processes) != 1 || h.Processes[0].Archive == nil || *h.Processes[0].Archive != manifest {
+			t.Fatal("node archive changed on replay", h)
+		}
 		if h.Settled != settled || len(h.Processes) != 1 || h.Processes[0].Node != report.Node || h.Processes[0].Session != report.Process.Session || h.Processes[0].Attempt < 1 || strings.Contains(string(raw), job.Lease) {
 			t.Fatal("invalid classification history", h)
 		}

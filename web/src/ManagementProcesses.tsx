@@ -1,6 +1,14 @@
 import { Fact, formatTime } from './shared'
 
-export type ReviewProcess = { attempt: number; instance: number; resumed_from?: number; missing_session?: boolean; handoff_from?: string; node: string; pid: number; version: string; session_id?: string; started_at: string; exited_at?: string; exit_code: number | null; observed_at: string; output?: { sequence: number; text: string } }
+export type ProcessArchive = { central?: boolean; records: number; bytes: number; dropped_records: number; dropped_bytes: number; chain_sha256?: string }
+
+export function ArchiveFacts({instance, archive}: {instance: number; archive: ProcessArchive}) {
+  return <><Fact label="节点进程归档">实例 {instance} · {archive.records} 条 · {archive.bytes} 字节</Fact>
+    {archive.chain_sha256 && <Fact label="归档链 SHA-256" code>{archive.chain_sha256}</Fact>}
+    {archive.dropped_records > 0 && <Fact label="超出归档容量">{archive.dropped_records} 条 · {archive.dropped_bytes} 字节</Fact>}</>
+}
+
+export type ReviewProcess = { archive?: ProcessArchive; attempt: number; instance: number; resumed_from?: number; missing_session?: boolean; handoff_from?: string; node: string; pid: number; version: string; session_id?: string; started_at: string; exited_at?: string; exit_code: number | null; observed_at: string; output?: { sequence: number; text: string } }
 
 export function ManagementProcesses({processes, title = "Management 审核进程"}: {processes?: ReviewProcess[]; title?: string}) {
   return processes?.length ? <section><h3>{title}</h3>
@@ -10,7 +18,8 @@ export function ManagementProcesses({processes, title = "Management 审核进程
         {p.missing_session && <Fact label="原生恢复">会话不存在，保留此次失败记录</Fact>}
         <Fact label="原生版本" code>{p.version}</Fact><Fact label="原生会话" code>{p.session_id || '尚未确认'}</Fact>
         <Fact label="开始时间">{formatTime(p.started_at)}</Fact><Fact label="最近上报">{formatTime(p.observed_at)}</Fact>
-        {p.exited_at && <Fact label="退出">{formatTime(p.exited_at)} · {p.exit_code === -1 ? "未取得正常退出码" : p.exit_code}</Fact>}</dl>
+        {p.exited_at && <Fact label="退出">{formatTime(p.exited_at)} · {p.exit_code === -1 ? "未取得正常退出码" : p.exit_code}</Fact>}
+        {p.archive && <ArchiveFacts instance={p.instance} archive={p.archive}/>}</dl>
       {p.output && <><h4>模型公开消息</h4><p>最近 8 KiB，经脱敏后保存。</p><pre className="material-content">{p.output.text}</pre></>}
     </details>)}
   </section> : null

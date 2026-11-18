@@ -24,6 +24,7 @@ func TestRoleExitDeliveryFailurePreservesCompletedResult(t *testing.T) {
 			recovering := false
 			var sequence []string
 			var exits []store.ManagementProcessReport
+			var manifests []string
 			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -34,6 +35,9 @@ func TestRoleExitDeliveryFailurePreservesCompletedResult(t *testing.T) {
 					}
 					if p.Process.Exited != nil {
 						exits = append(exits, p)
+						if header := r.Header.Get("ForgeOS-Role-Archive"); header != "" {
+							manifests = append(manifests, header)
+						}
 						if !recovering {
 							rw.WriteHeader(503)
 							return
@@ -84,6 +88,10 @@ func TestRoleExitDeliveryFailurePreservesCompletedResult(t *testing.T) {
 			}
 			first, _ := json.Marshal(exits[0])
 			last, _ := json.Marshal(exits[len(exits)-1])
+			var archive store.ProcessArchive
+			if len(manifests) < 2 || json.Unmarshal([]byte(manifests[len(manifests)-1]), &archive) != nil || archive.Records < 1 || archive.Digest == "" || archive.Central || manifests[0] != manifests[len(manifests)-1] || exits[0].Process.Archive != nil {
+				t.Fatal("invalid or changed archive manifest on exit replay", manifests)
+			}
 			if string(first) != string(last) {
 				t.Fatal("exit changed on replay")
 			}
