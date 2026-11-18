@@ -7,7 +7,7 @@ type Node = { worker: string; os: string; arch: string; cpus: number; slots: num
   model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
   last_seen: string; online: boolean; capabilities: Record<string, unknown> & { adapters?: Record<string, Adapter> } }
 
-const agentRoleLabels = { curator: '知识提取', curation_review: '知识审核', plan_review: 'Goal 计划审核', share_review: '共享资料审核', repository_analysis: '仓库分析', feedback_classification: '预览反馈分类', question_advice: '业务问题建议' }
+const agentRoleLabels = { curator: '知识提取', curation_review: '知识审核', plan_review: 'Goal 计划审核', share_review: '共享资料审核', repository_analysis: '仓库分析', issue_classification: 'Issue 分类', feedback_classification: '预览反馈分类', question_advice: '业务问题建议' }
 
 type ModelBudget = { name: string; harness: string; slots: number; reserved: number; workers: string[]; reviewer_projects?: number[]; test_plan_roles?: {project_id: number; role: 'test' | 'management'}[]; agent_roles?: {project_id: number; role: keyof typeof agentRoleLabels}[] }
 

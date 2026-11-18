@@ -78,6 +78,9 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 				job = &store.ManagementJob{Curation: c}
 			}
 		}
+		if err == nil && job == nil && r.URL.Query().Get("supports_issue_classification") == "1" {
+			job, err = data.ClaimIssueClassification(r.Context(), id)
+		}
 		if err == nil && job == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -115,6 +118,16 @@ func registerManagement(mux *http.ServeMux, data *store.Store, project, token, o
 				return
 			}
 			respond(w, 204, nil, data.ObserveManagementProcess(r.Context(), id, report))
+		}
+	}))
+	mux.HandleFunc("POST /internal/management/issue-classifications/result", authorized(token, func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			ID         int64                 `json:"id"`
+			Lease      string                `json:"lease"`
+			Suggestion store.IssueSuggestion `json:"suggestion"`
+		}
+		if decodeLimited(w, r, &input, 32<<10) {
+			respond(w, 204, nil, data.SuggestIssueType(r.Context(), id, input.ID, input.Lease, input.Suggestion))
 		}
 	}))
 	registerCurationReview(mux, data, id, token)

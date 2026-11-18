@@ -50,7 +50,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 			roles[member] = true
 		}
 		for _, member := range b.AgentRoles {
-			if b.Harness != "codex" || member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review", "repository_analysis", "feedback_classification", "question_advice"}, member.Role) || roles[member] {
+			if b.Harness != "codex" || member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review", "repository_analysis", "feedback_classification", "issue_classification", "question_advice"}, member.Role) || roles[member] {
 				return ErrConflict
 			}
 			roles[member] = true
@@ -133,6 +133,12 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	_, err = tx.ExecContext(ctx, `UPDATE repository_analyses a SET model_budget=b.name FROM repository_inventories i,model_budgets b
 		WHERE a.task_id=i.task_id AND a.model_budget IS NULL AND a.finished_at IS NULL AND a.lease_until>clock_timestamp()
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',i.project_id,'role','repository_analysis'))`)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE issue_classifications c SET model_budget=b.name FROM model_budgets b
+  WHERE c.model_budget IS NULL AND c.suggestion IS NULL AND c.lease_until>clock_timestamp()
+  AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',c.project_id,'role','issue_classification'))`)
 	if err != nil {
 		return err
 	}

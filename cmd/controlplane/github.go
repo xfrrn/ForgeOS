@@ -189,6 +189,9 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 				return
 			}
 			issue.OwnerClassified = !store.ValidWorkType(issue.WorkType)
+			if issue.OwnerClassified && issue.WorkType == "clarification" {
+				issue.ClassificationDigest = issueSourceDigest(issue)
+			}
 			issue.WorkType = input.WorkType
 		}
 		if issue.WorkType == "clarification" {

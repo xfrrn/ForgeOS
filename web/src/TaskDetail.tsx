@@ -1,5 +1,6 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { workTypeName } from './workTypes'
+import { ClassificationAdvice, type IssueSuggestion } from './ClassificationAdvice'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import type { GlobalRulesRevision } from './GlobalRules'
 import { PlanEditor } from './PlanEditor'
@@ -170,7 +171,7 @@ function CandidateDiff({ taskID, attempt, request }: { taskID: number; attempt: 
   </div>
 }
 
-type Requirement = { revision: number; feedback_id?: number; feedback_task?: number; feedback_preview?: string; observed_at: string; issue: Issue }
+type Requirement = { revision: number; feedback_id?: number; feedback_task?: number; feedback_preview?: string; observed_at: string; issue: Issue; suggestion?: IssueSuggestion }
 
 function RequirementHistory({ id, latest, request, canApply, onApply }: { id: number; latest: number; request: ApiRequest; canApply: boolean; onApply: (message: string) => void }) {
   const [revision, setRevision] = useState<number | null>(null)
@@ -204,6 +205,7 @@ function RequirementHistory({ id, latest, request, canApply, onApply }: { id: nu
       <button className="button" onClick={() => setRevision(null)}>收起历史</button></div>
     {failed ? <p role="alert">无法读取此需求版本。</p> : value?.revision === revision
       ? <><h4>{value.issue.title}</h4><p className="detail-issue-text">{value.issue.body}</p>
+        {value.suggestion && <ClassificationAdvice suggestion={value.suggestion} />}
         <p>{value.feedback_id ? <a href={`#/tasks/${value.feedback_task}/previews/${value.feedback_preview}/feedback`}>Owner 修订 · 预览反馈 #{value.feedback_id} · {formatTime(value.observed_at)}</a> : `GitHub 更新时间 · ${formatTime(value.issue.updated_at)}`}</p></>
       : <p role="status">正在读取需求修订…</p>}
     {canApply && revision === latest && value?.revision === latest &&

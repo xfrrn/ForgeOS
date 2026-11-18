@@ -13,7 +13,7 @@ import (
 )
 
 func TestRoleReceiptsReplayAfterRestart(t *testing.T) {
-	paths := []string{"/internal/management/result", "/internal/management/questions/result", "/internal/management/feedback/result", "/internal/management/repository-analysis/result", "/internal/management/test-plans/result", "/internal/management/curation/result", "/internal/curator/result", "/internal/test-agent/result", "/internal/reviewer/result"}
+	paths := []string{"/internal/management/result", "/internal/management/questions/result", "/internal/management/feedback/result", "/internal/management/issue-classifications/result", "/internal/management/repository-analysis/result", "/internal/management/test-plans/result", "/internal/management/curation/result", "/internal/curator/result", "/internal/test-agent/result", "/internal/reviewer/result"}
 	for _, path := range paths {
 		for _, mode := range []string{"unavailable", "lost_ack", "conflict", "unauthorized"} {
 			t.Run(path+"/"+mode, func(t *testing.T) {

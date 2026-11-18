@@ -10,14 +10,15 @@ import (
 )
 
 type RequirementRevision struct {
-	FeedbackID      int64     `json:"feedback_id,omitempty"`
-	FeedbackTask    int64     `json:"feedback_task,omitempty"`
-	FeedbackPreview string    `json:"feedback_preview,omitempty"`
-	ID              int64     `json:"id"`
-	TaskID          int64     `json:"task_id"`
-	Revision        int       `json:"revision"`
-	Issue           Issue     `json:"issue"`
-	ObservedAt      time.Time `json:"observed_at"`
+	Suggestion      *IssueSuggestion `json:"suggestion,omitempty"`
+	FeedbackID      int64            `json:"feedback_id,omitempty"`
+	FeedbackTask    int64            `json:"feedback_task,omitempty"`
+	FeedbackPreview string           `json:"feedback_preview,omitempty"`
+	ID              int64            `json:"id"`
+	TaskID          int64            `json:"task_id"`
+	Revision        int              `json:"revision"`
+	Issue           Issue            `json:"issue"`
+	ObservedAt      time.Time        `json:"observed_at"`
 }
 
 // The caller holds the imported task lock. Polling a renamed label or a newer branch tip is not a requirement edit.
@@ -69,6 +70,14 @@ func recordRequirement(ctx context.Context, tx *sql.Tx, taskID int64, issue Issu
 		return err
 	}
 	if revision == 0 {
+		if issue.ClassificationDigest != "" && issue.OwnerClassified {
+			if _, err = tx.ExecContext(ctx, `UPDATE requirement_revisions r SET issue_classification_id=c.id
+				FROM work_items w JOIN issue_classifications c ON c.project_id=w.project_id AND c.issue_id=w.github_issue_id
+				JOIN discussion_inbox d ON d.project_id=c.project_id AND d.issue_id=c.issue_id AND d.source_digest=c.source_digest
+				WHERE r.id=$1 AND w.id=r.task_id AND c.source_digest=$2 AND c.suggestion IS NOT NULL AND d.classification_requested`, rid, issue.ClassificationDigest); err != nil {
+				return err
+			}
+		}
 		_, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2 WHERE id=$1`, taskID, rid)
 	} else {
 		_, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'requirement_observed')`, taskID)
@@ -98,15 +107,21 @@ func (s *Store) ObserveIssue(ctx context.Context, projectID int64, issue Issue) 
 
 func (s *Store) RequirementRevision(ctx context.Context, taskID int64, revision int64) (RequirementRevision, error) {
 	var r RequirementRevision
-	var doc []byte
-	err := s.db.QueryRowContext(ctx, `SELECT r.id,r.task_id,r.revision,r.issue,r.observed_at,COALESCE(r.feedback_id,0),COALESCE(p.task_id,0),COALESCE(p.id,'') FROM work_items t
+	var doc, recommendation []byte
+	err := s.db.QueryRowContext(ctx, `SELECT r.id,r.task_id,r.revision,r.issue,r.observed_at,COALESCE(r.feedback_id,0),COALESCE(p.task_id,0),COALESCE(p.id,''),c.suggestion FROM work_items t
 		JOIN requirement_revisions r ON r.task_id=COALESCE(t.goal_id,t.id) LEFT JOIN preview_feedback f ON f.id=r.feedback_id
-		LEFT JOIN static_preview_receipts p ON p.id=f.preview_id WHERE t.id=$1 AND r.revision=$2`, taskID, revision).Scan(&r.ID, &r.TaskID, &r.Revision, &doc, &r.ObservedAt, &r.FeedbackID, &r.FeedbackTask, &r.FeedbackPreview)
+		LEFT JOIN static_preview_receipts p ON p.id=f.preview_id LEFT JOIN issue_classifications c ON c.id=r.issue_classification_id
+		WHERE t.id=$1 AND r.revision=$2`, taskID, revision).Scan(&r.ID, &r.TaskID, &r.Revision, &doc, &r.ObservedAt, &r.FeedbackID, &r.FeedbackTask, &r.FeedbackPreview, &recommendation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}
 	if err != nil {
 		return r, err
+	}
+	if recommendation != nil {
+		if err = json.Unmarshal(recommendation, &r.Suggestion); err != nil {
+			return r, err
+		}
 	}
 	err = json.Unmarshal(doc, &r.Issue)
 	return r, err

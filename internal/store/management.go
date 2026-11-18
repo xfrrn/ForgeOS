@@ -13,23 +13,24 @@ import (
 )
 
 type ManagementJob struct {
-	CaptureProcess     bool               `json:"capture_process,omitempty"`
-	ReviewContext      json.RawMessage    `json:"review_context,omitempty"`
-	CaptureProfile     bool               `json:"capture_profile,omitempty"`
-	LeaseUntil         *time.Time         `json:"lease_until,omitempty"`
-	Question           *QuestionAdviceJob `json:"question,omitempty"`
-	Curation           *CurationJob       `json:"curation,omitempty"`
-	RepositoryAnalysis *AnalysisJob       `json:"repository_analysis,omitempty"`
-	Feedback           *FeedbackJob       `json:"feedback,omitempty"`
-	TestPlan           *TestPlanJob       `json:"test_plan,omitempty"`
-	Share              *ShareReviewInput  `json:"share,omitempty"`
-	TaskID             int64              `json:"task_id"`
-	ProjectID          int64              `json:"project_id"`
-	Revision           int                `json:"revision"`
-	Lease              string             `json:"lease"`
-	MinimumLevel       string             `json:"minimum_level"`
-	Spec               IssueSpec          `json:"spec"`
-	Plan               Plan               `json:"plan"`
+	IssueClassification *IssueClassificationJob `json:"issue_classification,omitempty"`
+	CaptureProcess      bool                    `json:"capture_process,omitempty"`
+	ReviewContext       json.RawMessage         `json:"review_context,omitempty"`
+	CaptureProfile      bool                    `json:"capture_profile,omitempty"`
+	LeaseUntil          *time.Time              `json:"lease_until,omitempty"`
+	Question            *QuestionAdviceJob      `json:"question,omitempty"`
+	Curation            *CurationJob            `json:"curation,omitempty"`
+	RepositoryAnalysis  *AnalysisJob            `json:"repository_analysis,omitempty"`
+	Feedback            *FeedbackJob            `json:"feedback,omitempty"`
+	TestPlan            *TestPlanJob            `json:"test_plan,omitempty"`
+	Share               *ShareReviewInput       `json:"share,omitempty"`
+	TaskID              int64                   `json:"task_id"`
+	ProjectID           int64                   `json:"project_id"`
+	Revision            int                     `json:"revision"`
+	Lease               string                  `json:"lease"`
+	MinimumLevel        string                  `json:"minimum_level"`
+	Spec                IssueSpec               `json:"spec"`
+	Plan                Plan                    `json:"plan"`
 }
 
 type ManagementReview struct {

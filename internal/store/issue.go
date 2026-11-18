@@ -13,17 +13,18 @@ import (
 )
 
 type Issue struct {
-	WorkType        string `json:"work_type,omitempty"`
-	OwnerClassified bool   `json:"owner_classified,omitempty"`
-	WorkTypeLabels  string `json:"work_type_labels,omitempty"`
-	RepositoryID    int64  `json:"repository_id"`
-	Repository      string `json:"repository"`
-	ID              int64  `json:"id"`
-	Number          int64  `json:"number"`
-	URL             string `json:"url"`
-	Title           string `json:"title"`
-	Body            string `json:"body"`
-	UpdatedAt       string `json:"updated_at"`
+	ClassificationDigest string `json:"-"`
+	WorkType             string `json:"work_type,omitempty"`
+	OwnerClassified      bool   `json:"owner_classified,omitempty"`
+	WorkTypeLabels       string `json:"work_type_labels,omitempty"`
+	RepositoryID         int64  `json:"repository_id"`
+	Repository           string `json:"repository"`
+	ID                   int64  `json:"id"`
+	Number               int64  `json:"number"`
+	URL                  string `json:"url"`
+	Title                string `json:"title"`
+	Body                 string `json:"body"`
+	UpdatedAt            string `json:"updated_at"`
 }
 
 func ValidWorkType(value string) bool {

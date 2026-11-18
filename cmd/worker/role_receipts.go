@@ -13,7 +13,7 @@ import (
 
 func roleForReceipt(path string) string {
 	switch path {
-	case "/internal/management/result", "/internal/management/questions/result", "/internal/management/feedback/result", "/internal/management/repository-analysis/result", "/internal/management/test-plans/result", "/internal/management/curation/result":
+	case "/internal/management/result", "/internal/management/questions/result", "/internal/management/feedback/result", "/internal/management/issue-classifications/result", "/internal/management/repository-analysis/result", "/internal/management/test-plans/result", "/internal/management/curation/result":
 		return "management"
 	case "/internal/curator/result":
 		return "curator"
