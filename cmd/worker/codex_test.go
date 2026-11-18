@@ -164,6 +164,23 @@ func TestMain(m *testing.M) {
 	}
 	body, err := io.ReadAll(os.Stdin)
 	args := strings.Join(os.Args[1:], " ")
+
+	if strings.HasPrefix(string(body), "SIMULATED_FILE_CHANGE") {
+		out := json.NewEncoder(os.Stdout)
+		out.Encode(map[string]any{"type": "thread.started", "thread_id": "file-change-thread"})
+		item := map[string]any{"id": "change-1", "type": "file_change", "status": "in_progress", "changes": testFileChangeFixture(false), "arguments": "private-input"}
+		out.Encode(map[string]any{"type": "item.started", "item": item})
+		item["status"] = "completed"
+		if strings.Contains(string(body), "FAILED") {
+			item["status"] = "failed"
+		}
+		if strings.Contains(string(body), "DECLINED") {
+			item["status"] = "declined"
+		}
+		out.Encode(map[string]any{"type": "item.completed", "item": item})
+		out.Encode(map[string]any{"type": "turn.completed"})
+		os.Exit(0)
+	}
 	if string(body) == "SIMULATED_PUBLIC_OUTPUT" {
 		fmt.Println(`{"type":"thread.started","thread_id":"public-output-thread"}`)
 		fmt.Println(`{"type":"item.started","item":{"id":"tool-1","type":"command_execution","command":"private-input"}}`)

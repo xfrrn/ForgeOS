@@ -93,6 +93,7 @@ func (p *processLog) codexTool(kind string, raw []byte) error {
 	var e struct {
 		Item struct {
 			ID, Type, Status string
+			Changes          []nativeFileChange
 			Output           string `json:"aggregated_output"`
 		}
 	}
@@ -106,7 +107,11 @@ func (p *processLog) codexTool(kind string, raw []byte) error {
 			phase = "failed"
 		}
 	}
-	return p.recordTool(e.Item.ID, e.Item.Type, phase, e.Item.Output)
+	output := e.Item.Output
+	if e.Item.Type == "file_change" && phase != "started" && p.toolOutput != nil {
+		output = fileChangeOutput(e.Item.Changes)
+	}
+	return p.recordTool(e.Item.ID, e.Item.Type, phase, output)
 }
 
 func (p *processLog) claudeTool(kind string, raw []byte) error {

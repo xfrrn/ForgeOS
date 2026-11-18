@@ -3,6 +3,7 @@ package validation
 import (
 	"bytes"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,6 +14,15 @@ const LiveLogWindow = 8 << 10
 var sensitiveLine = regexp.MustCompile(`(?i)(authorization|proxy-authorization|cookie|password|passwd|secret|token|api[-_ ]?key|private[-_ ]?key|bearer\s+|://[^/\s]+:[^/\s]+@|gh[pousr]_[a-z0-9]+|github_pat_|sk-[a-z0-9_-]+|AKIA[A-Z0-9]{16}|eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+|-----BEGIN [A-Z ]*CREDENTIAL)`)
 
 func RedactedLog(data []byte, secrets []string) string {
+	// Structured paths may quote known credentials; match their escaped forms too.
+	matches := make([]string, 0, len(secrets)*2)
+	for _, secret := range secrets {
+		matches = append(matches, secret)
+		quoted := strconv.Quote(secret)
+		if quoted[1:len(quoted)-1] != secret {
+			matches = append(matches, quoted[1:len(quoted)-1])
+		}
+	}
 	// Only publish complete lines. Classify them before cutting the display window.
 	end := bytes.LastIndexByte(data, '\n')
 	if end < 0 {
@@ -30,7 +40,7 @@ func RedactedLog(data []byte, secrets []string) string {
 		}
 		hidden := privateKey || !utf8.ValidString(line) || strings.IndexFunc(line, func(r rune) bool { return unicode.IsControl(r) && r != '\t' }) >= 0 || sensitiveLine.MatchString(line)
 		if !hidden {
-			for _, secret := range secrets {
+			for _, secret := range matches {
 				if secret != "" && strings.Contains(line, secret) {
 					hidden = true
 					break

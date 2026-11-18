@@ -117,6 +117,19 @@ func testAppServerProcess() int {
 				turn = ""
 			}
 			message := `{"forgeos_question":"Which heading?","evidence":"No heading selected."}`
+
+			if strings.HasPrefix(prompt, "SIMULATED_FILE_CHANGE") {
+				item := map[string]any{"id": "change-1", "type": "fileChange", "status": "inProgress", "changes": testFileChangeFixture(true), "arguments": "private-input"}
+				notify("item/started", map[string]any{"threadId": id, "turnId": turn, "item": item})
+				item["status"] = "completed"
+				if strings.Contains(prompt, "FAILED") {
+					item["status"] = "failed"
+				}
+				if strings.Contains(prompt, "DECLINED") {
+					item["status"] = "declined"
+				}
+				notify("item/completed", map[string]any{"threadId": id, "turnId": turn, "item": item})
+			}
 			if prompt == "SIMULATED_PUBLIC_OUTPUT" {
 				notify("item/started", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{"id": "tool-1", "type": "commandExecution", "command": "private-input"}})
 				notify("item/completed", map[string]any{"threadId": id, "turnId": turn, "item": map[string]string{"id": "tool-1", "type": "commandExecution", "status": "completed", "aggregatedOutput": "Tool output sample.\npassword=private-value"}})

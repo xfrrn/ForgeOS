@@ -3371,3 +3371,25 @@ PostgreSQL 18／真实 Docker 最终全包 452 项测试及子测试通过，零
 Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付，但权限集合没有 Shell，未执行长输出命令，因此未记为长日志验收通过。保持原权限，改用 #218 的 706 行文档及完整 Read 取得长输出。前一个场景记录保留在 process_archive_claude/proof.json。
 
 本阶段 PostgreSQL 18／真实 Docker 全包 463 项测试及子测试通过，零失败、零跳过，报告 process-archive-regression.jsonl。随后补入的后台维护及清理失败回滚以受影响专项复验；最终 Windows 受影响专项 30 项测试及子测试通过，零失败、零跳过（process-archive-tests.log）。Linux 非 root 专项 14 项通过，零失败、零跳过（process-archive-linux.log），另以正式 Linux CLI 实测真实日志导出和到期拒绝。Go 静态检查及 git diff 检查通过；本次没有修改前端代码，全路线最终回归仍待完成。
+
+上述节点日志归档、导出与保留实现及验收对应 ForgeOS 提交 772840a7b2e3ae0a78ac86e34a3a721c8a71d29a。
+
+### 专题 07、13、16 C.3 · Codex 文件改动结构化回执
+
+本项使用既有工具输出窗口和节点归档保存原生 apply_patch 的结果：CLI 记录实际改动清单，App Server 另记录原生补丁。适配器测试以实际测试子进程核对完成与失败回执、调用编号、脱敏、归档，以及未知类型不伪造输出。正式权限配置保持不变。2026-11-18 已从正式 Worker、Chrome、节点导出 CLI 和真实 GitHub 完成以下验收。
+
+最初的 CLI 验收脚本将返回的 Windows 绝对路径与斜线分隔的相对路径直接比较；窗口已经显示，但断言失败。脚本清理又在模型退出后、Worker 最终结果保存前结束了 Daemon，留下原进程退出 0 和未结算执行，不能记为恢复或交付成功。原 file_change_output_cli 库及日志保留，重新启动时因控制面地址变化也未接回旧作业。修复路径判据，并使脚本在清理前等待业务结果；隔离 v2 验收库复用仍开放的同一 QA Issue，重新核对实际模型、运行中 Chrome 和重启回读。没有改写原进程或伪造最终结果。该普通 Worker 中断窗口继续属于未完成的恢复范围。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 原生 apply_patch 添加文档，后续工具保持运行 20 秒 | 运行中即可查看实际回执 | 两种传输均从 Chrome 看到 file_change；CLI 是实际清单，App Server 含原生补丁。 |
+| 补丁含合成 password 字段 | 敏感行不进入公开窗口和归档 | App Server 仅显示 [redacted]，CLI 未伪造不存在的补丁。 |
+| 模型运行中重启控制面 | 原进程继续，回执可读 | 两种传输均回读原 PID／Session，未重跑模型。 |
+| 节点 CLI 导出、Chrome 验收、通过必需检查并交付，再重启 | 归档可验证，交付及历史一致 | 两份导出 verified=true；真实 CI 首次失败后重跑成功，PR 合并、Issue 关闭，重启可读原回执。 |
+
+| 原生传输 | 进程和归档 | 真实交付 |
+| --- | --- | --- |
+| cli | PID 42248；Session 01a1ec7f-8825-7cc3-8138-ce9933592b10；6 条，1116 字节；摘要 daf16ea1d55983abaef16a2291fe721224cb5f88f05d2a646218ce54944ab513。 | beta #220；候选 e10b5e9bff44985b4314b955c54cf14f16c8833c；[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/221)；合并 d8ddd6551685fad9a5083ca2b075d681a3310769。 |
+| appserver | PID 9756；Session 01a1ec82-ef7e-7271-a7ff-e67235812c52；5 条，1022 字节；摘要 a6a4d2d4235ca1bed0c7bb8261424ef4af27e2723be1db9ddc0095a6244b0d5f。 | beta #222；候选 0b1a736e715f73328d58a17047daf46b6cc9f5d6；[PR](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/223)；合并 f876ae7b9c0f3a439e18afd2c0a7349357d9b412。 |
+
+证据 file_change_output_v2_cli/proof.json、file_change_output_v2_appserver/proof.json 及各目录 process.jsonl；操作脚本 file-change-output-v2-live.py。Windows 受影响专项 28 项、Ubuntu 非 root 专项 9 项测试及子测试通过，零失败、零跳过；报告 file-change-tests.log 和 file-change-linux.log。完成、失败、拒绝、禁用正文采集和转义凭据均有覆盖。Go 静态检查及 git diff 检查通过。本项没有改动前端或数据库合同，未重复上一阶段全包回归；全路线最终回归仍待完成。

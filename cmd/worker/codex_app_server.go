@@ -303,7 +303,10 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				ThreadID string `json:"threadId"`
 				TurnID   string `json:"turnId"`
 				Turn     struct{ ID, Status string }
-				Item     struct{ ID, Type, Status, Text, AggregatedOutput string }
+				Item     struct {
+					ID, Type, Status, Text, AggregatedOutput string
+					Changes                                  []nativeFileChange
+				}
 			}
 			isTurn := strings.HasPrefix(m.Method, "turn/")
 			if json.Unmarshal(m.Params, &event) != nil || event.ThreadID != session ||
@@ -354,7 +357,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 						phase = "failed"
 					}
 				}
-				if err = process.recordTool(event.Item.ID, name, phase, event.Item.AggregatedOutput); err != nil {
+				output := event.Item.AggregatedOutput
+				if name == "file_change" && phase != "started" && process.toolOutput != nil {
+					output = fileChangeOutput(event.Item.Changes)
+				}
+				if err = process.recordTool(event.Item.ID, name, phase, output); err != nil {
 					return session, err
 				}
 			}
