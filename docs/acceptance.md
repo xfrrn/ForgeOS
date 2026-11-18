@@ -410,6 +410,8 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 | 停止 Worker 和控制面，先重启控制面再尝试领取，随后恢复网络与原 Worker | 控制面恢复旧执行，Worker 用节点日志补报，再运行任务 2 | 重启后两个任务的状态仍为 RUNNING、READY，另一节点领取仍为 204。Worker 重启补报后两项均为 DONE，各只有一次执行，工作区分别为 `execution-1`、`execution-2`。 |
 | 再提交最初被截留的成功回报，比较任务详情和时间线 | 同一执行只完成一次 | 返回 204。首次任务的完整 JSON 逐字段相同，两条时间线均只有创建、领取、完成。原始回执为 `foundation-pending-current/latest.json`。 |
 
+在 `83640fa4832a621a55624789dea21e2fbc4d50d1` 的空库重复上述全流程。首项回报被截留时，任务状态为 RUNNING、READY，第二节点领取得到 204。替换控制面（26456 → 37148）和 Worker（11668 → 27312）后，两项各执行一次，分别在 `execution-1` 和 `execution-2` 读到 `20c0974e81d68aac6177492caebd5aa8bb55f1a8`。两项均为 DONE，首份回执再次提交返回 204，任务详情逐字段相同。证据为 `foundation-83640fa/latest.json`。
+
 <a id="ci-backup-pending"></a>
 
 ### 专题 10、13、14 · 从节点备份补传 CI 日志和报告
