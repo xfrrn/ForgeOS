@@ -12,7 +12,19 @@ import (
 
 type activeWriterTurn struct {
 	store.NativeTurn
-	Deadline time.Time
+	Deadline   time.Time
+	RequestID  string `json:",omitempty"`
+	PromptHash []byte `json:",omitempty"`
+}
+
+var errPendingWriterStart = errors.New("writer startup awaiting native confirmation")
+var errRejectedWriterStart = errors.New("App Server rejected turn/start")
+
+func (a activeWriterTurn) validReceipt() bool {
+	if a.Turn != "" {
+		return store.ValidAppTurnID(a.Turn) && a.RequestID == "" && len(a.PromptHash) == 0
+	}
+	return nativeSessionID.MatchString(a.RequestID) && len(a.PromptHash) == sha256.Size
 }
 
 // Only the process that started the child can collect its exit code.
@@ -26,7 +38,8 @@ func (w *worker) waitForWriterExit(ctx context.Context, q *parkedCheckpoint) err
 	if err != nil {
 		return err
 	}
-	if p.PID <= 0 || p.Harness != "codex" || p.Version != q.Version || p.Instance != q.Active.Instance || p.Turn != q.Active.Turn || p.Session != q.Session {
+	if p.PID <= 0 || p.Harness != "codex" || p.Version != q.Version || p.Instance != q.Active.Instance ||
+		(q.Active.Turn != "" && p.Turn != q.Active.Turn) || p.Session != q.Session {
 		return errors.New("latest process does not match the interrupted writer")
 	}
 	return w.waitWriterTree(ctx, p)
@@ -87,6 +100,20 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 	if err != nil {
 		return err
 	}
+	if q.Active.Turn == "" {
+		id := history.writerStart(q)
+		if id == "" {
+			return errors.New("native history does not identify the latest writer startup request")
+		}
+		process := processLog{db: w.journal, id: q.Active.Instance, recordAppTurn: true}
+		if err := process.appTurn(id); err != nil {
+			return err
+		}
+		q.Active.Turn, q.Active.RequestID, q.Active.PromptHash = id, "", nil
+		if err := w.saveFinalization(ctx, q); err != nil {
+			return err
+		}
+	}
 	if !history.interruptedWriter(q) {
 		return errors.New("native history does not confirm the interrupted writer as the latest turn")
 	}
@@ -129,6 +156,34 @@ func (w *worker) recoverActiveWriter(ctx context.Context, b *executionResources,
 	}
 	q.Active = nil
 	return w.saveParkedCheckpoint(ctx, *q)
+}
+
+func (h inputHistory) writerStart(q *parkedCheckpoint) string {
+	turns := h.Thread.Turns
+	if len(turns) == 0 || !q.Active.validReceipt() || q.Active.RequestID == "" {
+		return ""
+	}
+	latest := turns[len(turns)-1]
+	poll := store.TurnInputPoll{NativeTurn: store.NativeTurn{Session: q.Session, Turn: latest.ID}, Key: q.Active.RequestID}
+	if !store.ValidAppTurnID(latest.ID) || !h.confirms(q.Job.Workspace, poll, q.Active.PromptHash) {
+		return ""
+	}
+	for _, item := range latest.Items {
+		if item.Type == "userMessage" {
+			if item.ClientID != poll.Key {
+				return ""
+			}
+			break
+		}
+	}
+	for _, turn := range turns[:len(turns)-1] {
+		for _, item := range turn.Items {
+			if item.ClientID == poll.Key {
+				return ""
+			}
+		}
+	}
+	return latest.ID
 }
 
 func (h inputHistory) interruptedWriter(q *parkedCheckpoint) bool {

@@ -126,12 +126,22 @@ func verifyWriterDraft(ctx context.Context, q *parkedCheckpoint) error {
 	return nil
 }
 
-func (w *worker) consumeWriterStart(ctx context.Context, q *parkedCheckpoint) error {
+func (w *worker) consumeWriterStart(ctx context.Context, q, pending *parkedCheckpoint) error {
 	if err := verifyWriterDraft(ctx, q); err != nil {
 		return err
 	}
 	key := sha256.Sum256([]byte(q.Job.LeaseToken))
-	result, err := w.journal.ExecContext(ctx, "DELETE FROM candidate_finalizations WHERE lease_hash=?", key[:])
+	var result sql.Result
+	var err error
+	if pending == nil {
+		result, err = w.journal.ExecContext(ctx, "DELETE FROM candidate_finalizations WHERE lease_hash=?", key[:])
+	} else {
+		raw, encodeErr := json.Marshal(pending)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		result, err = w.journal.ExecContext(ctx, "UPDATE candidate_finalizations SET checkpoint=? WHERE lease_hash=? AND json_extract(CAST(checkpoint AS TEXT),'$.Active') IS NULL", raw, key[:])
+	}
 	if err != nil {
 		return err
 	}
@@ -228,7 +238,7 @@ func (w *worker) readFinalization(ctx context.Context, id int64) (*parkedCheckpo
 			q.Writer == nil || q.Writer.Finished || q.Writer.Asked || q.Sequence < 0 || q.ResourceStep < 1 ||
 			!q.Job.ManageResources || !q.Job.ModelPause || !q.Job.RecoverWriterPause || !q.Job.SupportsCheckpoints || !q.Job.RecordAppTurn ||
 			(q.Job.Spec.Harness != "" && q.Job.Spec.Harness != "codex") ||
-			q.Active.Instance < 1 || q.Active.Deadline.IsZero() || q.Session != q.Active.Session || !nativeSessionID.MatchString(q.Session) || !store.ValidAppTurnID(q.Active.Turn) {
+			q.Active.Instance < 1 || q.Active.Deadline.IsZero() || q.Session != q.Active.Session || !nativeSessionID.MatchString(q.Session) || !q.Active.validReceipt() {
 			return nil, fmt.Errorf("invalid active writer for execution %d", id)
 		}
 	} else if q.ReturnedTip != "" {

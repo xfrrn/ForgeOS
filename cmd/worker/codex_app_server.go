@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"forgeos/internal/store"
+	"github.com/google/uuid"
 )
 
 var errExcludeTurnsUnsupported = errors.New("resuming without turn history requires an experimental capability")
@@ -91,6 +93,9 @@ func (s *codexServer) call(method string, params, result any) error {
 		}
 		if string(m.ID) == strconv.Itoa(s.seq) {
 			if m.Error != nil {
+				if method == "turn/start" {
+					return fmt.Errorf("%w (code %d)", errRejectedWriterStart, m.Error.Code)
+				}
 				if method == "thread/resume" && m.Error.Code == -32600 && m.Error.Message == "thread/resume.excludeTurns requires experimentalApi capability" {
 					return errExcludeTurnsUnsupported
 				}
@@ -305,10 +310,24 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if schema != nil {
 		start["outputSchema"] = schema
 	}
-	if c.beforeAppTurn != nil {
-		if err := c.beforeAppTurn(); err != nil {
+	pendingStart := false
+	if c.onAppTurn != nil {
+		key, err := uuid.NewRandom()
+		if err != nil {
 			return session, err
 		}
+		digest := sha256.Sum256([]byte(prompt))
+		intent := activeWriterTurn{NativeTurn: store.NativeTurn{Instance: process.id, Session: session}, RequestID: key.String(), PromptHash: digest[:]}
+		if err := c.onAppTurn(intent); err != nil {
+			return session, err
+		}
+		start["clientUserMessageId"] = intent.RequestID
+		pendingStart = true
+		defer func() {
+			if pendingStart && ctx.Err() == nil && !errors.Is(resultErr, errRejectedWriterStart) {
+				resultErr = fmt.Errorf("%w: %v", errPendingWriterStart, resultErr)
+			}
+		}()
 	}
 	if err = s.call("turn/start", start, &turn); err != nil {
 		return session, err
@@ -423,9 +442,10 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 					return session, err
 				}
 				if c.onAppTurn != nil {
-					if err := c.onAppTurn(store.NativeTurn{Instance: process.id, Session: session, Turn: event.Turn.ID}); err != nil {
+					if err := c.onAppTurn(activeWriterTurn{NativeTurn: store.NativeTurn{Instance: process.id, Session: session, Turn: event.Turn.ID}}); err != nil {
 						return session, err
 					}
+					pendingStart = false
 				}
 				if process.turnInputs != nil && stopInputs == nil {
 					inputPoll = store.TurnInputPoll{NativeTurn: store.NativeTurn{Instance: process.id, Session: session, Turn: turn.Turn.ID}, Lease: process.turnInputs.lease}

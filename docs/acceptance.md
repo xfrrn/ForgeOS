@@ -9,7 +9,7 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。[Worker 重启后按原生历史确认工作台输入](#native-input-history-recovery)已验；原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。 | 消费启动记录至登记原生 Turn 之间、原生已完成但结果尚未落盘、接回存活进程及整机重启。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。 | 原生历史缺少唯一启动证据、原生已完成但结果尚未落盘、接回存活进程及整机重启。 |
 | C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
@@ -36,6 +36,21 @@
 
 此前在 `94ad23b` 上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
 
+<a id="writer-start-confirmation"></a>
+
+### 专题 07、16 B.4 · 启动请求已送达，Worker 丢失原生 Turn 记录
+
+使用独立 PostgreSQL 18、真实 Windows Worker、Codex App Server 和 Chrome 派发文档任务。在本次验收节点的 SQLite 临时延迟指定进程的 Turn 插入。确认待确认请求已写盘、工作树已有模型生成的草稿、进程记录仍无 Turn，然后强制终止 Worker，去掉故障并启动替代 Worker。[beta #261](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/261)
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 首次写入时丢失记录，再从 Chrome 读取候选 | 从原生历史找回准确 Turn，保留原草稿编号，只补一个最终标题 | UUID `82dda415-8edd-4e14-bbbf-911b305391e5` 找回 Turn `01a1eed9-021d-7ef0-af2b-44cc515747c2`。原 PID 33224 的退出码为未知值 -1，PID 2532 在原 Session 正常退出。候选 `d174b230a25621e7d8d5191af97e1acc1f4509d5` 保留 `e7be940ecdde`。 |
+| 将 Owner 指令排入下一回合，在该回合已写下标记时丢失记录 | 从原 Session 完成这条指令，先前草稿和新标记各保留一份 | 三条进程记录的退出码为 0、-1、0，Session 均为 `01a1eed8-eecd-7e21-a78c-5d66415ff970`。候选 `2d7551acda1a3dc2d9f8ff56c9720b52638fbe81` 保留草稿 `a1d2a7c41774` 和一份 Owner 标记。 |
+| 停机期间从 Chrome 取消任务 | 结束执行，保留原进程观测，候选为空 | 原 PID 35020 的 Turn 未确认；任务进入 `CANCELLED`，没有第二个进程。 |
+| 在独立副本中将待确认输入的摘要改错，再重启 | 无法证明原始输入，保留待确认记录 | UUID `8bd74330-1cd8-4f08-b16c-f005405f5467` 保留，状态为 `RUNNING`，新进程数为 0。 |
+
+四份回执位于 `receipt-start-final-{resume,next,cancel,negative}/latest.json`。专项测试另覆盖不确定响应保留模型名额、明确拒绝后释放名额、其他工作目录、不同正文、旧回合和重复 UUID 的拒绝。
+
 <a id="native-start-receipts"></a>
 
 ### 专题 07、16 A.1/B.4 · 从原生历史核对启动请求
@@ -47,7 +62,7 @@
 | 0.147.0 | `01a1eecf-5bab-7b90-9e60-040cf4709e44` | `d7ca2629-f5dc-4678-8984-e72c99bb77e0` | `5dfd5a56-96f5-4efe-b5b7-1069dd2c953d` | 两条均唯一，全文一致，终态分别为 completed、interrupted。 |
 | 0.169.0-alpha.11.1 | `01a1eecf-5b4f-7f02-afe4-7a9fea798082` | `9b2635be-bfbb-445e-9a00-13a99aca44a9` | `7e918fe6-fc77-46c2-8695-0644e9a6f39e` | 两条均唯一，全文一致，终态分别为 completed、interrupted。 |
 
-完整回执为 `worker-start-147.json` 和 `worker-start-169.json`。正式 Worker 在消费启动记录至保存 Turn 之间丢失响应的恢复，仍须从任务入口单独实测。
+完整回执为 `worker-start-147.json` 和 `worker-start-169.json`。正式 Worker 的任务入口实测见[启动请求恢复](#writer-start-confirmation)。
 
 <a id="writer-startup-recovery"></a>
 

@@ -153,8 +153,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 }
 
 type codexCLI struct {
-	beforeAppTurn    func() error
-	onAppTurn        func(store.NativeTurn) error
+	onAppTurn        func(activeWriterTurn) error
 	appServer        bool
 	disabledFeatures []string
 	bin              string
@@ -558,14 +557,23 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed *store.WorktreeTrees) (string, error) {
 			codex := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
 			if supportsWriterProcessTree && job.RecordAppTurn && job.ManageResources && job.SupportsCheckpoints && job.RecoverWriterPause && job.ModelPause && w.journal != nil && job.LeaseSeconds > 0 {
-				codex.onAppTurn = func(active store.NativeTurn) error {
+				codex.onAppTurn = func(active activeWriterTurn) error {
+					active.Deadline = deadline
 					q := parkedCheckpoint{Job: job, GitDir: dir, Session: active.Session, Version: codex.version,
-						Active: &activeWriterTurn{NativeTurn: active, Deadline: deadline}, Sequence: seq, ResourceStep: budget.step, Remaining: time.Until(deadline),
+						Active: &active, Sequence: seq, ResourceStep: budget.step, Remaining: time.Until(deadline),
 						Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply}}
-					if err := w.saveFinalization(turn, &q); err != nil {
-						return err
+					var saveErr error
+					if launchFrom != nil {
+						saveErr = w.consumeWriterStart(turn, launchFrom, &q)
+					} else {
+						saveErr = w.saveFinalization(turn, &q)
 					}
-					recovery.waiting, recovery.leaveUnsettled = false, false
+					if saveErr != nil {
+						recovery.leaveUnsettled = true
+						return saveErr
+					}
+					launchFrom = nil
+					recovery.waiting, recovery.leaveUnsettled = active.Turn == "", false
 					return nil
 				}
 			}
@@ -584,24 +592,13 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			} else if job.InterruptedHandoff {
 				checkpoint = &writerCheckpoint{sequence: seq}
 			}
-			if launchFrom != nil {
-				consume := func() error {
-					if launchFrom == nil {
-						return nil
-					}
-					if err := w.consumeWriterStart(turn, launchFrom); err != nil {
-						recovery.leaveUnsettled = true
-						return err
-					}
-					launchFrom = nil
-					recovery.waiting, recovery.leaveUnsettled = false, false
-					return nil
-				}
-				if codex.appServer && codex.onAppTurn != nil && spec.Harness != "claude" {
-					codex.beforeAppTurn = consume
-				} else if err := consume(); err != nil {
+			if launchFrom != nil && (!codex.appServer || codex.onAppTurn == nil || spec.Harness == "claude") {
+				if err := w.consumeWriterStart(turn, launchFrom, nil); err != nil {
+					recovery.leaveUnsettled = true
 					return previous, err
 				}
+				launchFrom = nil
+				recovery.waiting, recovery.leaveUnsettled = false, false
 			}
 			var adapter harnessAdapter = codex
 			if spec.Harness == "claude" {
@@ -609,6 +606,9 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				adapter = w.claude
 			}
 			session, err := w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
+			if errors.Is(err, errPendingWriterStart) {
+				recovery.waiting, recovery.leaveUnsettled = true, true
+			}
 			if err != nil || session == "" || !job.ManageResources || !job.SupportsCheckpoints || w.journal == nil || job.LeaseSeconds <= 0 || (job.ModelPause && !job.RecoverWriterPause) {
 				return session, err
 			}

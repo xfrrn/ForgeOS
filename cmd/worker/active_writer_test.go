@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,37 @@ func TestInterruptedWriterHistory(t *testing.T) {
 		}
 		if h.interruptedWriter(&q) != tc.want {
 			t.Errorf("session %s cwd %s turns %s: want %t", tc.session, tc.cwd, tc.turns, tc.want)
+		}
+	}
+}
+
+func TestPendingWriterStartHistory(t *testing.T) {
+	const key = "42d015ea-b797-4f3f-a58f-daa7e5ffe334"
+	const item = `{"type":"userMessage","id":"message","clientId":"` + key + `","content":[{"type":"text","text":"Exact prompt"}]}`
+	digest := sha256.Sum256([]byte("Exact prompt"))
+	q := parkedCheckpoint{Session: "original", Active: &activeWriterTurn{RequestID: key, PromptHash: digest[:]}}
+	q.Job.Workspace = t.TempDir()
+	latest := `{"id":"latest","items":[` + item + `]}`
+	for _, tc := range []struct{ turns, want string }{
+		{latest, "latest"},
+		{strings.Replace(latest, "Exact prompt", "Other prompt", 1), ""},
+		{strings.Replace(latest, key, "wrong", 1), ""},
+		{strings.Replace(latest, item, item+","+item, 1), ""},
+		{strings.Replace(latest, item, `{"type":"userMessage","clientId":"earlier"},`+item, 1), ""},
+		{strings.Replace(latest, "latest", "earlier", 1) + "," + latest, ""},
+		{latest + `,{"id":"next","items":[]}`, ""},
+	} {
+		var h inputHistory
+		h.Thread.ID, h.Thread.Cwd = q.Session, q.Job.Workspace
+		if err := json.Unmarshal([]byte("["+tc.turns+"]"), &h.Thread.Turns); err != nil {
+			t.Fatal(err)
+		}
+		if got := h.writerStart(&q); got != tc.want {
+			t.Errorf("resolved %s, want %s for %s", got, tc.want, tc.turns)
+		}
+		h.Thread.Cwd = t.TempDir()
+		if h.writerStart(&q) != "" {
+			t.Fatal("accepted another workspace")
 		}
 	}
 }

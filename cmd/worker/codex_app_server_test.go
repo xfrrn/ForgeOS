@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +86,16 @@ func testAppServerProcess() int {
 				"type": sandbox, "writableRoots": roots, "networkAccess": filepath.Base(req.Params.Cwd) == "network", "excludeTmpdirEnvVar": true, "excludeSlashTmp": true}}
 		case "turn/start":
 			prompt := req.Params.Input[0].Text
+			switch prompt {
+			case "lost start response":
+				return 0
+			case "rejected start":
+				if !nativeSessionID.MatchString(req.Params.ClientUserMessageID) {
+					return 10
+				}
+				_ = out.Encode(map[string]any{"id": req.ID, "error": map[string]any{"code": -32600}})
+				continue
+			}
 			scenario = prompt
 			if prompt != "before turn" {
 				notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]string{"id": "turn-1", "status": "inProgress"}})
@@ -372,6 +385,61 @@ func TestAppServerInterruptAndFallback(t *testing.T) {
 			}
 			if _, e := os.Stat(output); !errors.Is(e, os.ErrNotExist) {
 				t.Fatal("canceled turn published output", e)
+			}
+		})
+	}
+}
+
+func TestAppServerPendingStartFailure(t *testing.T) {
+	if !supportsWriterProcessTree {
+		t.Skip("requires a supported Worker platform")
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		prompt string
+		want   error
+	}{
+		{"lost start response", errPendingWriterStart}, {"rejected start", errRejectedWriterStart},
+	} {
+		t.Run(tc.prompt, func(t *testing.T) {
+			var saved []activeWriterTurn
+			c := codexCLI{bin: bin, appServer: true, sandbox: "read-only", onAppTurn: func(a activeWriterTurn) error {
+				saved = append(saved, a)
+				return nil
+			}}
+			requests := make(chan bool, 2)
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				var req store.ResourceRequest
+				if json.NewDecoder(r.Body).Decode(&req) != nil || req.Step != 1 || req.Kind != "model" {
+					t.Error("invalid resource request")
+				}
+				requests <- req.Release
+				rw.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+			b := executionResources{worker: &worker{api: server.URL, client: server.Client()}, job: store.Job{ManageResources: true}}
+			ctx := context.Background()
+			session, err := withResource(ctx, &b, "model", func() (string, error) {
+				return c.runTurn(ctx, processLog{}, t.TempDir(), tc.prompt, "")
+			})
+			close(requests)
+			var got []bool
+			for release := range requests {
+				got = append(got, release)
+			}
+			want := []bool{false}
+			if tc.want == errRejectedWriterStart {
+				want = append(want, true)
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("model reservation release flags %v, want %v", got, want)
+			}
+			digest := sha256.Sum256([]byte(tc.prompt))
+			if !errors.Is(err, tc.want) || errors.Is(err, errTurnInterrupted) || len(saved) != 1 || !saved[0].validReceipt() || saved[0].Session != session || !bytes.Equal(saved[0].PromptHash, digest[:]) {
+				t.Fatal(session, saved, err)
 			}
 		})
 	}

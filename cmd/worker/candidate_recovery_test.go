@@ -139,17 +139,17 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 					if err := os.WriteFile(file, []byte("Edited while waiting for capacity"), 0600); err != nil {
 						t.Fatal(err)
 					}
-					if err := w.consumeWriterStart(ctx, saved); err == nil {
+					if err := w.consumeWriterStart(ctx, saved, nil); err == nil {
 						t.Fatal("accepted edits made in the queue")
 					}
 					if q, err := w.readFinalization(ctx, job.ExecutionID); err != nil || q == nil {
 						t.Fatal("lost the original receipt", err)
 					}
 				} else {
-					if err := w.consumeWriterStart(ctx, saved); err != nil {
+					if err := w.consumeWriterStart(ctx, saved, nil); err != nil {
 						t.Fatal(err)
 					}
-					if err := w.consumeWriterStart(ctx, saved); err == nil {
+					if err := w.consumeWriterStart(ctx, saved, nil); err == nil {
 						t.Fatal("replayed the same authorization to start")
 					}
 				}

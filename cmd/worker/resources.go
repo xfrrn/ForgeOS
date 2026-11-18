@@ -43,5 +43,8 @@ func withResource[T any](ctx context.Context, b *executionResources, kind string
 		return empty, err
 	}
 	result, err := run()
+	if errors.Is(err, errPendingWriterStart) {
+		return result, err
+	}
 	return result, errors.Join(err, b.request(ctx, kind, true))
 }
