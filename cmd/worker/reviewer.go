@@ -25,7 +25,10 @@ func (w *worker) runReviewer(ctx context.Context) error {
 			wait(ctx)
 			continue
 		}
-		if err != nil || status != http.StatusOK || job.ExecutionID < 1 || job.Lease == "" {
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK || job.ExecutionID < 1 || job.Lease == "" {
 			return fmt.Errorf("invalid reviewer claim (HTTP %d)", status)
 		}
 		turn := ctx
@@ -60,7 +63,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 func (w *worker) reviewJob(ctx context.Context, job store.ReviewJob) (review.Report, error) {
 	input := candidateReview{Repo: job.Repo, relative: job.RepoRelativePath, Base: job.Base, Commit: job.Commit, Requirement: job.Requirement, CandidateContext: job.CandidateContext}
 	if !job.CaptureProcess {
-		return reviewCandidate(ctx, input, processLog{})
+		return reviewCandidate(ctx, input, processLog{beforeStart: w.roleStartHook("reviewer", job.Lease)})
 	}
 	name := os.Getenv("FORGEOS_CLAUDE_BIN")
 	if name == "" {

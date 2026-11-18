@@ -96,6 +96,11 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
  id INTEGER PRIMARY KEY CHECK(id=1), request_key TEXT NOT NULL, path TEXT NOT NULL,
  body BLOB NOT NULL, requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
  );
+ CREATE TABLE IF NOT EXISTS role_assignment (
+ id INTEGER PRIMARY KEY CHECK(id=1), request_key TEXT NOT NULL, lease_hash BLOB NOT NULL,
+ run_id TEXT NOT NULL, response BLOB NOT NULL, started INTEGER NOT NULL DEFAULT 0,
+ received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+ );
  CREATE TABLE IF NOT EXISTS parked_questions (
 		lease_hash BLOB PRIMARY KEY REFERENCES attempts(lease_hash), checkpoint BLOB NOT NULL
 	);

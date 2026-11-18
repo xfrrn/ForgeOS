@@ -21,7 +21,7 @@ func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJ
 
 func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.ManagementProcessReport, contract, prompt string, limit int64, dest any) (string, error) {
 	if !capture {
-		return readOnlyJSONTurn(ctx, w.codex, contract, prompt, limit, dest)
+		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, processLog{beforeStart: w.roleStartHook(roleForProcess(target), target.Lease)})
 	}
 	version, err := readCodexVersion(w.codex)
 	if err != nil {
@@ -32,7 +32,7 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 	})
 }
 
-func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
+func roleForProcess(target store.ManagementProcessReport) string {
 	role := "management"
 	if target.CurationRole == "curator" {
 		role = "curator"
@@ -43,6 +43,11 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 	if target.ReviewerExecution != 0 {
 		role = "reviewer"
 	}
+	return role
+}
+
+func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
+	role := roleForProcess(target)
 	db, node, err := w.openRoleJournal(ctx, role)
 	if err != nil {
 		return "", err
@@ -93,6 +98,7 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		}
 	}()
 	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, harness, version)
+	process.beforeStart = func() error { return w.markRoleStarted(db, key[:]) }
 	session, turnErr := run(reporting, process)
 	stop()
 	<-done

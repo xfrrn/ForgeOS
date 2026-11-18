@@ -3253,3 +3253,30 @@ PostgreSQL 18／真实 Docker 全包 438 项测试及子测试通过，零失败
 真实证据 role_claim_current/proof.json；故障注入及 Chrome 入口脚本 role-claim-live.py。迁移证据 role_exit_current/claim-migration-proof.json。首个脚本在 Curator 完成后把下一次空闲轮询误判为原请求未清除；改为核对原请求编号后，从同一已完成结果恢复验证，未再次启动 Curator。受控结束 Daemon 时，代理记录的空闲连接关闭不影响已确认的业务回执。
 
 尚未实现领取确认后、最终结果持久化前的 Daemon 恢复或独立角色的原 Session 恢复；完整归档、全路线最终回归及外部条件继续待完成。旧组件的原有协议由回归覆盖，本节的真实响应丢失恢复要求两端均支持请求编号。
+
+上述领取响应重放实现与验收对应 ForgeOS 提交 a34944823569b22a7c35444b98a8e054b88690fc。
+
+### 专题 07、13、16 C.3 · 模型启动前的独立角色作业恢复
+
+2026-11-18 在隔离 PostgreSQL 18 库还原 beta #163，从实际 Chrome 入口导入 assignment-lab 资料、生成测试计划并请求独立审查。使用正式 Daemon、Codex 0.169.0-alpha.11.1 与 Claude Code 2.1.310。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 领取完整响应后，在模型版本探测处暂停，核对日志后结束 Daemon | 已确认领取的作业在本地保留，模型尚未启动 | 四类角色均有逐字节相同的冻结响应，原请求已移除，started=0，原生进程表为空。仅版本探测使用暂停包装程序，未执行模型回合。 |
+| 结束已核实属于该 Daemon 的版本探测进程，重启控制面及原身份 Daemon | 直接使用本地原作业，不重新领取 | 恢复进程使用真实原生可执行文件；首个请求为进程报告，没有新领取；启动标记写为 1。各回合在原截止时间前完成。 |
+| 原生进程运行时启动第二个同身份 Daemon | 拒绝重复运行 | 四次均非零退出并记录节点锁错误；每份角色日志仅有一个原生模型进程。 |
+| 再次重启控制面，从 Chrome 展开四类记录 | 固定来源与原生会话可回读 | 四条记录均可展开，任务保持 WAITING_ACCEPTANCE；没有执行测试计划中的用例，也没有再次交付 GitHub 候选。 |
+| 用新 Worker 打开上一项的四份实际 SQLite | 新表不改历史，不重跑已完成模型 | 原进程、已结算退出和最终结果逐项相同；role_assignment 表已创建，未重发旧结果。 |
+
+| 原生角色 | 真实进程 | 结果 |
+| --- | --- | --- |
+| Curator | PID 45224，会话 01a1ec2c-ecc6-74c0-8320-35ce9b61c43f | 一个进程，退出码 0；实际退出与最终结果均获 204。 |
+| Management 知识审核 | PID 49120，会话 01a1ec2d-1f3b-7ee0-9dcf-db79c59129ed | 一个进程，退出码 0；实际退出与最终结果均获 204。 |
+| Test Agent | PID 40952，会话 01a1ec2d-5a03-7ce0-9f22-9c65b99bfb5a | 一个进程，退出码 0；实际退出与最终结果均获 204。 |
+| Reviewer | PID 45596，会话 f1ea39c7-1c92-45bb-946d-595b1406ea23 | 一个进程，退出码 0；实际退出与最终结果均获 204。 |
+
+PostgreSQL 18／真实 Docker 全包 445 项测试及子测试通过，零失败、零跳过；Go 静态检查通过。专项核对四类冻结作业的无网络恢复、启动后换 Daemon 明确拒绝、已结算作业不重跑，以及同身份锁排他、不同角色不互锁和退出后可重新取得锁。将 Linux 测试程序交叉编译后，在 Ubuntu 的非 root 用户（UID 1000）实际执行角色专项，73 项测试及子测试通过；包含上述恢复和锁测试，不能据此宣称 Linux 服务账号的模型登录已验收。
+
+证据为 role_assignment_current/proof.json、role-assignment-live.py、assignment-gates.py、assignment-evidence-check.py；旧日志升级为 role_claim_current/assignment-node-upgrade-proof.json，Linux 输出为 assignment-linux.log，全包报告为 role-assignment-regression.jsonl。受控结束 Daemon 时代理的空闲连接被关闭，业务退出与结果已逐项核对为 204。最初直接通过 PowerShell 传递 Linux 测试参数被拆分，改用 Python 参数数组后实际执行通过。
+
+仍待补齐已启动回合的原生 Session 恢复、最终结果入队前的恢复、完整归档及全路线最终端到端验收。已有启动标记的跨 Daemon 作业保留日志并明确停止，不将其记为自动恢复。外部设备、受限 GitHub 身份及独立审查者继续待验收；总工作包估算不因本次细分项单独扣减。

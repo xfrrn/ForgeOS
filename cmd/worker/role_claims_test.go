@@ -102,7 +102,7 @@ func TestRoleClaimConcurrentDaemonsConsumeOnce(t *testing.T) {
 		mu.Unlock()
 		<-ready
 		w.Header().Set("X-ForgeOS-Claim-Key", r.Header.Get("X-ForgeOS-Claim-Key"))
-		json.NewEncoder(w).Encode(map[string]int{"id": 7})
+		json.NewEncoder(w).Encode(map[string]any{"id": 7, "lease": "12345678-1234-1234-1234-123456789abc"})
 	}))
 	defer server.Close()
 	var wg sync.WaitGroup

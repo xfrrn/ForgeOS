@@ -12,6 +12,7 @@ import (
 )
 
 type processLog struct {
+	beforeStart func() error
 	handoffFrom string
 	db          *sql.DB
 	lease       [32]byte
@@ -50,6 +51,15 @@ func (p *processLog) notify() {
 	}
 }
 func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
+	if p.beforeStart != nil {
+		if err := p.beforeStart(); err != nil {
+			stream.Close()
+			if output, ok := cmd.Stdout.(io.Closer); ok {
+				output.Close()
+			}
+			return err
+		}
+	}
 	configureHarnessCancellation(cmd)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start harness process: %w", err)

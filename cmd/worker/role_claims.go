@@ -17,6 +17,14 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 		return 0, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	if err = w.ensureRoleRunID(); err != nil {
+		return 0, err
+	}
+	if resumed, e := w.resumeRoleAssignment(db, out); e != nil {
+		return 409, e
+	} else if resumed {
+		return 200, nil
+	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return 0, err
@@ -51,12 +59,17 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 	if echo := resp.Header.Get("X-ForgeOS-Claim-Key"); echo != "" && echo != key {
 		return resp.StatusCode, errors.New("role claim response key mismatch")
 	}
-	status, err = decodeJobResponse(resp, out)
+	status, response, err := decodeJobResponse(resp, out)
 	if err != nil || (status != 200 && status != 204) {
 		return status, err
 	}
 	// Only one Daemon sharing this node journal may consume the received assignment.
-	result, err := db.Exec("DELETE FROM role_claim_request WHERE id=1 AND request_key=?", key)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec("DELETE FROM role_claim_request WHERE id=1 AND request_key=?", key)
 	if err != nil {
 		return 0, err
 	}
@@ -67,5 +80,14 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 	if n == 0 {
 		return 204, nil
 	}
-	return status, nil
+	if status == 200 {
+		lease, err := roleAssignmentLease(response)
+		if err != nil {
+			return 0, err
+		}
+		if _, err = tx.Exec("INSERT INTO role_assignment(id,request_key,lease_hash,run_id,response) VALUES(1,?,?,?,?)", key, lease, w.roleRunID, response); err != nil {
+			return 0, err
+		}
+	}
+	return status, tx.Commit()
 }

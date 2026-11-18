@@ -38,6 +38,7 @@ type worker struct {
 	modelSlots, ciSlots                     int
 	client                                  *http.Client
 	journal                                 *sql.DB
+	roleRunID                               string
 }
 
 func fromEnv(role string) (*worker, error) {
@@ -240,11 +241,13 @@ func (w *worker) post(ctx context.Context, path string, body any, out any) (int,
 		return 0, err
 	}
 	defer resp.Body.Close()
-	return decodeJobResponse(resp, out)
+	status, _, err := decodeJobResponse(resp, out)
+	return status, err
 }
 
-func decodeJobResponse(resp *http.Response, out any) (int, error) {
+func decodeJobResponse(resp *http.Response, out any) (int, []byte, error) {
 	var err error
+	var data []byte
 	if out != nil && resp.StatusCode == http.StatusOK {
 		maxJob := int64(2 << 20)
 		switch out.(type) {
@@ -252,7 +255,6 @@ func decodeJobResponse(resp *http.Response, out any) (int, error) {
 			// A 16 KiB plan can cite hundreds of decisions with separately bounded text.
 			maxJob = 32 << 20
 		}
-		var data []byte
 		data, err = io.ReadAll(io.LimitReader(resp.Body, maxJob+1))
 		if err == nil && int64(len(data)) > maxJob {
 			err = errors.New("claim response too large")
@@ -261,7 +263,7 @@ func decodeJobResponse(resp *http.Response, out any) (int, error) {
 			err = json.Unmarshal(data, out)
 		}
 	}
-	return resp.StatusCode, err
+	return resp.StatusCode, data, err
 }
 
 func wait(ctx context.Context) {
@@ -497,13 +499,13 @@ func main() {
 		log.Fatal(err)
 	}
 	if role == "test-agent" {
-		err = w.runTestAgent(ctx)
+		err = w.runIndependentRole(ctx, role, w.runTestAgent)
 	} else if role == "curator" {
-		err = w.runCurator(ctx)
+		err = w.runIndependentRole(ctx, role, w.runCurator)
 	} else if role == "reviewer" {
-		err = w.runReviewer(ctx)
+		err = w.runIndependentRole(ctx, role, w.runReviewer)
 	} else if role == "management" {
-		err = w.runManagement(ctx)
+		err = w.runIndependentRole(ctx, role, w.runManagement)
 	} else {
 		err = w.run(ctx)
 	}

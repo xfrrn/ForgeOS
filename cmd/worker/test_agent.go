@@ -20,7 +20,10 @@ func (w *worker) runTestAgent(ctx context.Context) error {
 			wait(ctx)
 			continue
 		}
-		if err != nil || status != 200 || job.Lease == "" {
+		if err != nil {
+			return err
+		}
+		if status != 200 || job.Lease == "" {
 			return fmt.Errorf("invalid Test Agent claim (HTTP %d)", status)
 		}
 		if err = w.finishTestJob(ctx, job, false); err != nil {

@@ -260,7 +260,7 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 控制面设置 `FORGEOS_MANAGEMENT_PROJECT_ID` 和独立的 `FORGEOS_MANAGEMENT_TOKEN` 后，为指定项目开放审核队列。用普通用户启动 `go run ./cmd/worker management`，给这个进程设置同一 Management 令牌和回环 `FORGEOS_API_URL`。它只需已登录的本地 Codex CLI，无需仓库目录、数据库密码或 Owner、Worker、GitHub 令牌。
 
-管理进程自动领取最新的待规划修订，在单独的只读会话中审阅冻结的 Issue 和草案。任务详情显示建议、判定等级、理由、依据和原生会话 ID。Owner 可通过 `GET /tasks/{id}/plans/{revision}` 查阅历史版本。模型执行限时五分钟，领取租约六分钟；进程退出后可重新领取。
+管理进程自动领取最新的待规划修订，在单独的只读会话中审阅冻结的 Issue 和草案。任务详情显示建议、判定等级、理由、依据和原生会话 ID。Owner 可通过 `GET /tasks/{id}/plans/{revision}` 查阅历史版本。模型执行限时五分钟，领取租约六分钟；模型启动前的 Daemon 重启可恢复原分配，已启动回合的恢复限制见本文末尾。
 
 未指定策略时，最低决定等级为 D2。Owner 保存修订时可附加 `minimum_level`，也可在首次领取前向 `POST /tasks/{id}/plans/{revision}/policy` 提交该字段。已指定的等级绑定当前修订。D1 只开放给 docs 验证的低风险范围；管理建议只能提高等级。D1 通过会在同一事务中激活子任务；退回、请求人工决定、D2 或 D3 均保留草案，Owner 可保存下一版或通过现有激活入口明确批准。代码交付仍经过独立的候选验收与 GitHub 门禁。
 
@@ -272,7 +272,7 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 在控制面设置 `FORGEOS_CURATOR_PROJECT_ID` 和该项目独立的 `FORGEOS_CURATOR_TOKEN`。把 Management 配置到同一项目，用两个单独的进程启动 `go run ./cmd/worker curator` 和 `go run ./cmd/worker management`。每个进程只需自己的角色令牌、回环 `FORGEOS_API_URL` 和能输出结构化结果的已登录本地 Codex。可用 `FORGEOS_CODEX_BIN` 指定可执行文件。
 
-从工作台导入含有实测观察的项目资料，或选择“记住一条项目经验”并提交观察原文。打开已保存修订的“知识提取与审核”。也可在项目决策中确认含实测观察的提案，点开其决策编号查看同一审核流程及确认事件。依次核对原文引句、两个会话和审核决定；项目节点可通过 `GET /internal/projects/{id}/experience` 回读审核通过的当前修订。在“知识提取与审核”展开“Curator 提取进程”或“Management 知识审核进程”，可核对节点、PID、原生会话、退出和最近公开消息；“刷新审核记录”可立即读取。两个角色即便使用相同节点名和状态目录，也分别保存本地日志。引文修复产生的两次原生尝试各自保留；新旧组件组合不补造进程。提取和审核分别使用六分钟租约。原进程中断且没有成功回报时，角色进程会在租约到期后重新领取。
+从工作台导入含有实测观察的项目资料，或选择“记住一条项目经验”并提交观察原文。打开已保存修订的“知识提取与审核”。也可在项目决策中确认含实测观察的提案，点开其决策编号查看同一审核流程及确认事件。依次核对原文引句、两个会话和审核决定；项目节点可通过 `GET /internal/projects/{id}/experience` 回读审核通过的当前修订。在“知识提取与审核”展开“Curator 提取进程”或“Management 知识审核进程”，可核对节点、PID、原生会话、退出和最近公开消息；“刷新审核记录”可立即读取。两个角色即便使用相同节点名和状态目录，也分别保存本地日志。引文修复产生的两次原生尝试各自保留；新旧组件组合不补造进程。提取和审核分别使用六分钟租约。模型回合失败后仍运行的 Daemon 可在原租约到期后重新领取；Daemon 自身退出且已有原生启动标记时，会保留日志并停止，恢复限制见本文末尾。
 
 ## 为多个 Worker 分配项目
 
@@ -315,7 +315,7 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 重启 Management、Curator、Test Agent 或 Reviewer 时，保持原 FORGEOS_API_URL、FORGEOS_WORKER_ID 和 FORGEOS_WORKER_STATE_DIR，并配置该角色当前有效的凭据。节点先补报本身份已写入 SQLite 的结果，再领取作业。凭据错误时不要删除日志；修复角色令牌后重启。控制面接收的重复结果保持幂等，过时结果按 409 冲突结束，不覆盖新修订。需要排查时，在私有角色 SQLite 的 role_receipts 查看 path、buffered_at、settled_at、status；不要把待发正文中的租约复制到公开日志。
 
-这个入口仅恢复已持久化的最终结果。运行中的模型会话中断及尚未记录的领取仍按原租约处理，不能宣称会自动接回原会话。
+这个结果补报入口恢复已持久化的最终结果；未确认领取和已领取但尚未启动模型的作业另见下文。运行中的模型会话仍不能自动接回。
 
 若模型已经退出而控制面暂时不可达，同时检查 role_process_receipts 与 role_receipts。重启会先补报退出、再提交原结果；401／403 时修复同一角色的授权后重启，不删除私有日志。409 退出冲突保留在 conflicting_report 中，最终结果仍按自己的端点结算；不要把退出冲突解释为任务完成。
 
@@ -323,3 +323,9 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 ## 恢复未确认的独立角色领取
 
 领取响应丢失时，保持原控制面地址、节点名和私有状态目录，重启原角色 Daemon。节点重发 role_claim_request 中的原请求，新控制面以同一编号返回原作业；不需要修改租约期限。401／403 时先修复原角色授权，不清空节点日志；请求编号与路径或正文不一致时控制面返回 409。控制面是否支持此恢复可由领取响应的 X-ForgeOS-Claim-Key 回显核对。该恢复仅覆盖尚未确认接收的领取，不会自动恢复已经开始的原生回合。
+
+## 恢复已领取但未启动模型的独立角色作业
+
+保持同一 FORGEOS_API_URL、FORGEOS_WORKER_ID、FORGEOS_WORKER_STATE_DIR 和角色，重新启动 Daemon。它在取得节点锁后读取 role_assignment：没有启动标记则使用原固定作业继续；已有最终回执则先结算再领取。相同身份重复启动会报节点锁错误，应继续使用原 Daemon。锁文件可以保留，不要用删除文件的方式绕过锁。
+
+如果报 saved role assignment has started a native turn，说明已存在持久化启动标记，目前还不能自动接回该回合。保留整个私有日志及原生会话，不要清空 started 或删除作业来重复调用模型。该情况继续列为待补齐；控制面中的原租约与历史仍保持原值。
