@@ -15,6 +15,111 @@ import (
 	"forgeos/internal/store"
 )
 
+func TestCompletedWriterCheckpoint(t *testing.T) {
+	for _, phase := range []string{"empty", "comment", "instruction", "changed-draft", "changed-index", "changed-tip", "changed-version", "cancelled", "closed", "unconfirmed-next"} {
+		t.Run(phase, func(t *testing.T) {
+			ctx := context.Background()
+			w, job, base := fixture(t)
+			job.Kind, job.LeaseSeconds, job.SupportsCheckpoints = "codex_issue", 300, true
+			job.Spec = &store.IssueSpec{BaseCommit: base, Validation: "docs"}
+			dir, err := checkedWorktree(ctx, job.RepoPath, job.Workspace, base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			file := filepath.Join(job.Workspace, "README.md")
+			if err := os.WriteFile(file, []byte("Original draft\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			w.journal, err = w.openJournal(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.journal.Close()
+			key := sha256.Sum256([]byte(job.LeaseToken))
+			if _, err := w.journal.Exec("INSERT INTO attempts(lease_hash,execution_id,task_id,workspace) VALUES(?,?,?,?)", key[:], job.ExecutionID, job.TaskID, job.Workspace); err != nil {
+				t.Fatal(err)
+			}
+			q := parkedCheckpoint{Job: job, GitDir: dir, Session: "original", Sequence: 2, Version: w.nativeVersion(job), Remaining: time.Minute}
+			if err := captureCompletedTree(ctx, &q, base); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.saveFinalization(ctx, &q); err != nil {
+				t.Fatal(err)
+			}
+			saved, err := w.readFinalization(ctx, job.ExecutionID)
+			if err != nil || saved == nil || saved.CompletedTip != base || saved.Trees != q.Trees || saved.Finalization != nil {
+				t.Fatal(saved, err)
+			}
+			switch phase {
+			case "changed-draft":
+				if err := os.WriteFile(file, []byte("External edit\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "changed-index":
+				git(t, job.Workspace, "add", "README.md")
+			case "changed-tip":
+				git(t, job.Workspace, "-c", "user.name=QA", "-c", "user.email=qa@localhost", "commit", "--allow-empty", "-m", "External commit")
+			case "changed-version":
+				w.codexVersion += "-changed"
+			}
+			var confirmed bool
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/renew") {
+					status := http.StatusNoContent
+					if phase == "cancelled" {
+						status = http.StatusLocked
+					} else if phase == "closed" {
+						status = http.StatusGone
+					}
+					rw.WriteHeader(status)
+					return
+				}
+				var in store.CheckpointRequest
+				if !strings.HasSuffix(r.URL.Path, "/checkpoints") || json.NewDecoder(r.Body).Decode(&in) != nil || in.Sequence == nil {
+					t.Error("unexpected request", r.URL.Path)
+					rw.WriteHeader(400)
+					return
+				}
+				if *in.Sequence == 2 && in.Session == q.Session {
+					confirmed = true
+					rw.WriteHeader(204)
+					return
+				}
+				if !confirmed || *in.Sequence != 3 || in.Session != "" {
+					t.Error("wrong checkpoint order")
+				}
+				if phase == "unconfirmed-next" {
+					rw.WriteHeader(409)
+					return
+				}
+				var page store.CheckpointPage
+				page.ExecutionID, page.Sequence = job.ExecutionID, 3
+				if phase == "comment" {
+					page.Comments = []store.CommentInput{{Body: "Keep the original heading"}}
+				} else if phase == "instruction" || phase == "changed-version" {
+					page.OwnerInstructions = json.RawMessage(`[{"body":"Append one heading"}]`)
+				}
+				json.NewEncoder(rw).Encode(page)
+			}))
+			defer server.Close()
+			w.api, w.client = server.URL, server.Client()
+			recovery := checkpointRecovery{saved: saved, leaveUnsettled: true}
+			page, err := w.advanceCompletedTurn(ctx, saved, &recovery)
+			advanced := phase == "instruction" || phase == "comment"
+			stop := phase == "cancelled" || phase == "closed"
+			if (err == nil) != (advanced || phase == "empty") || recovery.leaveUnsettled != (err != nil && !stop) ||
+				advanced != (len(page.OwnerInstructions)+len(page.Comments) > 0 && err == nil) {
+				t.Fatal(err, recovery, page)
+			}
+			stillSaved, err := w.readFinalization(ctx, job.ExecutionID)
+			if err != nil || (stillSaved == nil) != advanced {
+				t.Fatal("wrong durable turn after queue read", err)
+			}
+		})
+	}
+}
+
 func TestCandidateFinalizationRecovery(t *testing.T) {
 	for _, phase := range []string{"before-staging", "after-staging", "cached-index", "changed-draft", "changed-index", "before-head", "after-head", "validated", "changed-worktree", "expired-lease", "cancelled", "save-failed", "validation-failed", "receipt-failed", "owner-stop", "source-close"} {
 		t.Run(phase, func(t *testing.T) {

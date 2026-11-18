@@ -17,6 +17,7 @@ import (
 // Written after the native turn exits, before exposing its checkpoint for Owner input.
 type parkedCheckpoint struct {
 	Finalization                         *candidateFinalization `json:",omitempty"`
+	CompletedTip                         string                 `json:",omitempty"`
 	Job                                  store.Job
 	Sequence                             int
 	Session, Question, Evidence, Version string

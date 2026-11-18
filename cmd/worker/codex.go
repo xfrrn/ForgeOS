@@ -467,12 +467,22 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	var dir []byte
 	var ownerReply json.RawMessage
 	var answeredTrees *store.WorktreeTrees
+	var completed *parkedCheckpoint
 	seq := 0
 	if saved := recovery.saved; saved != nil {
 		dir = saved.GitDir
 		budget.step = saved.ResourceStep
 		result.SessionID = saved.Session
-		if saved.Writer != nil {
+		if saved.CompletedTip != "" {
+			if spec.Harness == "claude" {
+				result.Harness, result.HarnessVersion = "claude", saved.Version
+			}
+			resumeBudget(saved.Remaining)
+			seq = saved.Sequence + 1
+			completed = saved
+			recovery.saved = nil
+			batch, err = w.advanceCompletedTurn(ctx, saved, recovery)
+		} else if saved.Writer != nil {
 			seq, batch, ownerReply = saved.Sequence, saved.Writer.Batch, saved.Writer.OwnerReply
 		} else {
 			if !activeTime.Stop() {
@@ -489,6 +499,10 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		dir, err = checkedWorktree(ctx, repo, workspace, start)
 	}
 	for ; err == nil; seq++ {
+		if completed != nil && len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 {
+			break
+		}
+		completed = nil
 		var prompt string
 		prompt, err = issuePrompt(job, feedback, batch, ownerReply)
 		if err != nil {
@@ -542,6 +556,18 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		if err != nil || !job.SupportsCheckpoints {
 			break
 		}
+		if w.journal != nil && job.LeaseSeconds > 0 && session != "" && (question == nil || !question.requested) {
+			completed = &parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step}
+			err = captureCompletedTree(ctx, completed, start)
+			if err == nil {
+				err = w.saveFinalization(ctx, completed)
+			}
+			if err == nil {
+				ownerReply = nil
+				batch, err = w.advanceCompletedTurn(ctx, completed, recovery)
+			}
+			continue
+		}
 		if _, err = w.checkpoint(ctx, job, seq, result.SessionID); err != nil {
 			break
 		}
@@ -591,7 +617,16 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	}
 	if err == nil && w.journal != nil && job.LeaseSeconds > 0 {
 		q := parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Remaining: time.Until(deadline), ResourceStep: budget.step}
-		err = w.prepareFinalization(ctx, &q, start, result)
+		if completed != nil {
+			q = *completed
+			q.Remaining = time.Until(deadline)
+			err = w.promoteCompletedTurn(ctx, &q, start, result)
+			if q.Finalization != nil && err != nil {
+				recovery.leaveUnsettled = true
+			}
+		} else {
+			err = w.prepareFinalization(ctx, &q, start, result)
+		}
 		if err == nil {
 			return w.finishCandidate(ctx, repo, &q, recovery)
 		}

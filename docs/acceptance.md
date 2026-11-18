@@ -9,7 +9,7 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | 正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生回合的输入和审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选；进程、会话、回合可追溯。 | 草稿首次保存前中断、接回仍存活进程以及整机重启恢复。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input) | 首份回合记录写入前中断、下一回合开始时中断、接回仍存活进程以及整机重启恢复。 |
 | C.3、C.7 · 进程日志与知识上下文 | 节点已能导出经脱敏和校验的全文；中文查询已能检索英文项目决策。多个独立角色在实际会话使用冻结依据。 | 工作台中央全文调阅、其余结构化工具输出及尚未核对的角色上下文。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
@@ -3610,6 +3610,21 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | Windows、Ubuntu UID 1000 分别重开 SQLite，模拟已暂存、索引有缓存标记、索引被单独修改及工作树变动 | 原内容可恢复，外部改动阻止结算，兼容原先已有 SHA 的记录 | 专项通过。新建候选的 Git 树与保存的真实草稿相同。索引或文件被更改时零次验证、零次结果回报，保留记录供核对。 |
 
 开发期间另在两个私库使用同一套任务及 Chrome 验收入口，原生 Codex 完成 [beta PR #232](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/232)，原生 Claude Code 完成 [alpha PR #37](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/37)。最终实现的 SHA 保存故障通过 beta #233 实测。启用 PostgreSQL 18 与真实 Docker 的全量 Go 回归 503 项通过，零失败、零跳过。go vet、TypeScript 与前端生产构建通过。操作脚本 draft-final-live.py，证据 draft_final_recovery_codex/proof.json。原生回合退出至最终输入检查点和草稿首次持久化之间中断，仍待验收。
+
+<a id="completed-writer-input"></a>
+
+### 专题 07、13、16 B.4 · 草稿恢复后继续处理排队指令
+
+2026-11-18，Windows 原生 Codex、正式控制面与 Worker、节点 SQLite、Chrome 及私有 beta 仓库。使用测试代理暂停 Worker 发往当前检查点的确认请求，在控制面仍持有执行租约时终止本次验收的 Daemon。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 导入 beta #237，在模型名额释放前经 Chrome 将一个新标题排入下一回合。首个模型退出后，中断 Worker。 | 原草稿和待处理指令均可找回，尚无候选。 | 进程 13936 退出 0。SQLite 有检查点 0、原 HEAD、索引及草稿树 `ac3af4739a80421f14ca21ca13c821c2bdee75f6`，没有候选。控制面接受了排队指令。 |
+| 重启控制面和 Worker，第二回合退出后，在确认检查点 1 前再次中断。 | 新进程沿用同一 Session，在原文后只追加一次指定标题。 | 进程 5920 退出 0，两个进程的 Session 均为 `01a1ed52-3998-7992-a643-d0428125f7d1`。原文完整，标题 `## Receipt 237` 出现一次。第二份草稿树为 `e74d8e68882f6bc03d07a31090a1afe320eb7367`。 |
+| 再次重启、等待本地验证，从 Chrome 批准，核对 GitHub 门禁和来源 Issue。 | 从第二份草稿生成候选，保留两条进程记录，只领取一次 CI。 | 候选 `e82061193ae3e3b7ddd476e9863fb92b9cfbb42c` 的树与第二份草稿相同，仅修改约定文档。两项门禁通过，合并提交 `34c03d512b6018110659bae8742b91286884e5f0`。[来源 #237](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/237) 已关闭，[PR #238](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/238) 已合并。 |
+| Windows 和 Ubuntu 非 root 用户执行专项测试 | 正常评论与指令均能继续，空队列可结算；索引、文件、HEAD 或版本变化时保留现场；取消和来源关闭可结算。 | `TestCompletedWriterCheckpoint` 的 10 个场景在两个系统上全部通过。未确认下一检查点时保留本地记录。 |
+
+最早的中断点在完成回合记录已写入 SQLite 之后。原生进程退出到首份记录写入，以及上一轮记录撤销到下一轮保存之间的中断仍待验收。操作脚本为 `completed-turn-live.py`，节点证据为 `completed_turn_queue_codex/proof.json`。
 
 <a id="role-recovery-retention"></a>
 
