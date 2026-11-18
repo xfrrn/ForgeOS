@@ -1,4 +1,4 @@
-"""Check the installed Codex App Server over its local stdio transport."""
+"""Check the installed Codex App Server using isolated local sessions."""
 import argparse
 from contextlib import contextmanager
 import json
@@ -123,13 +123,16 @@ class Client:
                 return turn, message
 
 
-@contextmanager
-def server(binary, workspace):
-    args = [binary, "app-server", "--listen", "stdio://", "--disable", "apps",
+def server_args(binary, listen):
+    args = [binary, "app-server", "--listen", listen, "--disable", "apps",
             "--disable", "plugins", "--disable", "hooks", "-c", "mcp_servers={}",
             "-c", 'web_search="disabled"']
     if os.name == "nt":
         args += ["-c", 'windows.sandbox="unelevated"']
+    return args
+
+
+def server_env():
     keep = {
         "PATH", "PATHEXT", "HOME", "USER", "LOGNAME", "USERPROFILE", "USERNAME",
         "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR",
@@ -137,8 +140,12 @@ def server(binary, workspace):
         "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
         "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR",
     }
-    env = {k: v for k, v in os.environ.items() if k.upper() in keep}
-    with subprocess.Popen(args, cwd=workspace, env=env, stdin=subprocess.PIPE,
+    return {k: v for k, v in os.environ.items() if k.upper() in keep}
+
+
+@contextmanager
+def server(binary, workspace):
+    with subprocess.Popen(server_args(binary, "stdio://"), cwd=workspace, env=server_env(), stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                           text=True, encoding="utf-8") as proc:
         timer = threading.Timer(120, proc.kill)
@@ -162,6 +169,7 @@ def main():
     parser.add_argument("--bin", default="codex", help="native Codex executable")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--approvals", action="store_true", help="exercise one-time approval, decline and cancel")
+    modes.add_argument("--reconnect", action="store_true", help="reconnect to an active turn on a private local socket (requires wsproto)")
     modes.add_argument("--steer", action="store_true", help="verify input delivered during an active turn")
     args = parser.parse_args()
     binary = shutil.which(args.bin)
@@ -171,6 +179,15 @@ def main():
     marker = "FORGE-" + secrets.token_hex(8)
     with tempfile.TemporaryDirectory(prefix="forgeos-app-server-") as tmp:
         workspace = Path(tmp)
+        if args.reconnect:
+            try:
+                from probe_codex_reconnect import reconnect
+            except ModuleNotFoundError as exc:
+                if exc.name != "wsproto":
+                    raise
+                parser.error("--reconnect requires the wsproto Python package")
+            print(json.dumps(reconnect(binary, workspace, marker, version)))
+            return
         if args.steer:
             instruction = f"Reply with exactly {marker}. Do not use tools."
             client_id = str(uuid.uuid4())

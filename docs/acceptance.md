@@ -26,6 +26,20 @@
 
 在上述最后一项的实现上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
 
+<a id="native-active-reattach"></a>
+
+### 专题 07、16 A.1/B.4 · Codex 执行命令时断开并接回同一原生进程
+
+2026-11-18，Windows，`codex-cli 0.169.0-alpha.11.1`。运行 `python -B scripts/probe_codex_app_server.py --bin codex.exe --reconnect`。本次只读 Thread 和套接字由探针创建。控制目录的 Windows ACL 仅授予当前用户访问权。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 收到命令开始事件后关闭第一条连接，在新代理中读取并恢复同一 Thread | 原服务进程继续运行，读到一个进行中的原回合 | PID `11516`，Thread `01a1ee8f-0973-7682-b2f5-ad19273e498c`，Turn `01a1ee8f-0d83-7200-b589-9d184777660d` 为 `inProgress`。 |
+| 绑定原回合追加一条含随机标识的输入，再按原生命令编号和输入编号读取历史 | 原命令成功退出，输入只出现一次，最终回复与标识相同 | 命令 `exec-a4a4602a-1116-45a2-8ef5-e476a0933753` 退出码 0。历史中的输入 `01a1ee8f-29d4-7930-9b90-045ed3fae0f3` 保留请求 UUID `31e5dac9-08e8-443f-ab13-0865a70bb4eb`。回合完成，回复 `FORGE-b25d28f488f4ef45`，工作区为空。 |
+| 复跑原有 stdio 输入和审批模式 | 过时回合被拒，单次批准、再次拒绝及取消仍生效 | stdio 输入历史核对通过，过时回合返回 `-32600`。四个审批回合分别返回一次成功、两次拒绝和一次取消，标记文件始终不存在。 |
+
+原始回执为 `native-reattach-key.json`、`native-stdio-final.json` 和 `native-approvals-regression.json`。正式 Worker 的进程接回和整机重启继续列为待验收。
+
 <a id="returned-writer-recovery"></a>
 
 ### 专题 07、16 B.4 · 写入回合返回后、模型名额释放期间重启
