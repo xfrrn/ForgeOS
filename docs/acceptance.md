@@ -1,6 +1,6 @@
 # 全路线验收记录
 
-状态按当前工作树的实测结果记录。下表中的历史运行可作交叉核对，真实环境要求仍需按当前版本复验。验收仓库的合并提交与 ForgeOS 实现提交分别记录。[18 份 ADR 验收对照](adr-acceptance.md)列出原始决策、验收入口与实现提交。[专题 16 的 28 项对照](16-open-decisions.md#requirement-status)记录真实环境、协议和产品交互的剩余条件。
+状态按当前工作树的实测结果记录。下表中的历史运行可作交叉核对，真实环境要求仍需按当前版本复验。验收仓库的合并提交与 ForgeOS 实现提交分别记录。[18 份 ADR 验收对照](adr-acceptance.md)列出原始决策、验收入口与实现提交。[44 类工作台事件](task-event-acceptance.md)逐项列出下载回执。[专题 16 的 28 项对照](16-open-decisions.md#requirement-status)记录真实环境、协议和产品交互的剩余条件。
 
 ## 当前验收进度
 
@@ -50,6 +50,10 @@
 | 专题 07、13，暂停和恢复事件关联原会话及其检查点 | [新库三份回执及旧库同一 Session 的两次暂停](#model-pause-audit) | `562b666cff9888733a26928e0416aa4125d66f71` |
 | 专题 06、10、13，暂停和恢复 CI 使用同一候选 | [beta #55 历史回读及 alpha #41 至 PR #42 实际交付](#ci-pause-event-audit) | `9428f07d2792dc5f104c12374151f39c5d59fe22` |
 | 专题 11、13，预览反馈接收、分类和媒体归档在时间线可辨认 | [手机与桌面各 15 份下载](#feedback-timeline-labels) | `be4c84920ad9d963e6d72199c7a112bf63981bc1` |
+| 专题 05、13，业务问题审核的等级、会话与项目决策 | [beta #285、PR #286 和两次独立的原生 Management 审核](#question-advice-event-audit) | `92127c35e9c72ec216fdb3c9ecdc4a5e2acbab1e` |
+| 专题 06、13，从历史 Planner 完成事件定位原始计划 | [旧库升级后下载 Planner 及 Management 回执](#legacy-planner-event) | `13ccb3b3de7cab185274ae929c365230aee222a5` |
+
+上述两次变更分别在 PostgreSQL 18 和真实 Docker 上通过 586 项具名测试及子测试，均无失败或跳过。回归记录为 `advice-audit-regression.jsonl` 和 `planner-event-revision-regression.jsonl`。
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
@@ -59,6 +63,18 @@
 | 空库启动控制面和普通 Worker，运行 `scripts/smoke.ps1 -ProjectPath <新建测试仓库>`，替换控制面并重放原始结果 | 独立 Worktree 的 HEAD 和结果一致，控制面重启后同一任务可查，重复回报只确认一次 | 任务 1、执行 1、工作树 `execution-1`、提交 `9a577153966f9b527acd9be4ffe68f16c68c3e03`，退出码 0，状态 DONE。控制面 PID 13420 → 27612，再次提交原回执得 HTTP 204，前后完整任务记录相同。回执为 `roadmap-regression-362a15a/foundation.json`。 | `362a15a13d81739be37aa30a55b3440b9b6fe4ba` |
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
+
+<a id="additional-task-events"></a>
+
+### 专题 06、13 · 执行失败、结束失联执行与计划移除子项
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 alpha #38 的交付备份恢复控制面，在手机尺寸的 Chrome 下载失败尝试的回执 | 回执指向原失败尝试和失败的 Go 验证 | 任务 1 的事件 3 对应执行 1，节点 `builtin-log`、候选 `854572a754d66f5da9db9ea6f30fc5e6fb294bf7` 和 Session 都与失败尝试匹配。执行与验证的退出码均为 1。 |
+| 恢复带有过期租约的执行 3，在原工作树核对 HEAD，从工作台勾选确认并结束失联执行，再重放请求 | 操作幂等，保留原工作树与人工结束时间 | 两次请求均返回 204，任务为 FAILED，只有一个事件 9。操作者为 Owner，事件时间与 `abandoned_at` 相同。工作树仍为 `f0e767426662ab396be6d709cca5fd3365405232`。原执行没有 Worker 结果或交付记录。 |
+| 在独立空库导入 beta #267，归档并激活两项计划，再归档和激活仅保留第一项的修订 2 | 被移除的子项以 Owner 为来源，指向实施移除的计划修订 | 任务 3 的状态为 SUPERSEDED，事件 7 指向父任务 1 的修订 2。重启后 390 像素宽工作台中的链接指向该版计划。 |
+
+三份工作台下载均与重启前的 Owner API 回执逐字段相同。见[逐事件回执与提交](task-event-acceptance.md)。
 
 <a id="legacy-planner-event"></a>
 
@@ -496,7 +512,7 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 | 从任务 API 连续发布并激活两个计划版本，每次重发相同请求。修订 2 修改同一子项目标 | 父任务可追到两次发布和两次激活；子项可追到创建它和修改它的两个版本 | 父任务 1 的四条事件依序对应修订 1、1、2、2；子项 2 的创建和修订事件分别对应父计划 1、2。重放未增加事件 |
 | 重启控制面，从父、子时间线分别点击两个修订，再点击两个问题 | 历史链接打开当时的计划正文或答复；原事件保留 | 390 像素工作台从两条路线都读到对应的 Archive verification 1 或 2，两条历史答复可读。原归档中的 3 条事件逐字段相同 |
 
-实现提交 `2891472875e734aac58ed2b63f344b5c11d0e0fe`。回执为 `timeline-evidence/latest.json`。缺少原始编号的旧事件保留其已有字段。其他事件种类的审计载荷仍单独跟踪。
+实现提交 `2891472875e734aac58ed2b63f344b5c11d0e0fe`。回执为 `timeline-evidence/latest.json`。缺少原始编号的旧事件保留其已有字段。其余具名事件的实测见[工作台任务事件对照](task-event-acceptance.md)。
 
 <a id="supervised-claude"></a>
 
@@ -1287,7 +1303,7 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 10 审查与验证 | 真实 Docker V1–V4 检查、GitHub Status、Actions 门禁、重新验证、独立审查和页面验收。Issue 强制风险等级，Management 可提高下限。任务页跨节点下载 CI 文件（beta #49），中央及 Windows、Linux 节点按策略清理，真实候选 CI 的取消和恢复见专题 06。beta #88 和归档的 #55 已核对实现会话及重验来源 | `1a17822`、`32c0fa0`、`85cd1cb`、`9400068`、`427bc24`、`35866ba`、`ee695b3`、`80836d6`、`749351c`、`fdc4192`、`48a32f2`、`0420f45`、`6f9b0c1`、`b465048`、`9f0c704`、`84758c5`、`a221a0d`、`85d9c5c` | 其他验证器与独立审核角色场景 |
 | 11 预览与人工验收 | 工作项归档计划、覆盖审核及用例实测；Caddy、静态预览、DOM/Canvas 和同源嵌套 iframe 选择、用例关联、六类 Management 分类、阻塞澄清、按反馈退回和批准、从反馈修订需求及派发独立工作项（beta #19–21）、工作台 PNG 标注与遮挡归档。扩展截图、标签页录屏及归档回放，动态应用预览，隔离网络中的独立 Staging 网关均已实测。测试计划的规则和候选 SHA 在 beta #88、#91 复验 | `1a17822`、`70781ba`、`fdc4192`、`86aff28`、`7565fa6`、`e71b7c8`、`978d184`、`71e6c9a`、`7fe001f`、`ec7a462`、`17bb819`、`c561e40`、`99de4f6`、`bf27241`、`7cbd8a3`、`5a5d685`、`d34260b`、`2b805b4`、`5279f11`、`c382473`、`732a4a8`、`6280acd`、`a6ade1d`、`9a08b44`、`f876721`、`ba4a31d`、`da40dd4`、`36ebbfd` | 真实提供方回调投递、外部 tailnet 设备访问 |
 | 12 GitHub 接入与交付 | 标签派单、普通讨论转换、受保护分支阻塞与合并、子 PR 按序合并、来源需求修订与检查点换版、目标分支前移后重新验证与交付。签名 Webhook 原文归档与补充轮询见 beta #51。来源 Issue 关闭后终止候选 CI（beta #52）或正在运行的原生模型及工具（beta #131） | `319aa65`、`32c0fa0`、`94b6b08`、`5447445`、`a7f8b48`、`20c30e6`、`391309e`、`4d31e7f`、`e2912c5`、`4ea0363`、`a5d2193` | 细粒度凭据、第二人审查 |
-| 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照、交付证据链与反馈截图校验回读。已从配套备份恢复节点 SQLite 并补报。中央与节点 CI 文件、反馈截图及录屏均有保留与到期证据。四类独立角色还已验证[冻结输入与私有工作目录到期清理](#role-recovery-retention)。 | `1a17822`、`83ea262`、`5447445`、`c382473`、`ab36ad9`、`75b1495`、`b465048`、`9f0c704`、`b5f3992`、`6280acd`、`2bbf2cc`、`404ca39` | [普通执行](#central-process-archive)、[独立角色](#role-process-central)和[环境启动](#startup-log-download)的中央日志下载均已验收。[问题与计划事件](#timeline-decisions-plans)可按发生时的记录追查。[父子任务的 GitHub 来源取消](#source-closure-audit)已核对。其他事件的审计载荷与缓冲仍需逐项核对 |
+| 13 数据与审计 | 数据库迁移、重启恢复、幂等事件、Git 计划快照、交付证据链与反馈截图校验回读。已从配套备份恢复节点 SQLite 并补报。中央与节点 CI 文件、反馈截图及录屏均有保留与到期证据。四类独立角色还已验证[冻结输入与私有工作目录到期清理](#role-recovery-retention)。 | `1a17822`、`83ea262`、`5447445`、`c382473`、`ab36ad9`、`75b1495`、`b465048`、`9f0c704`、`b5f3992`、`6280acd`、`2bbf2cc`、`404ca39` | [普通执行](#central-process-archive)、[独立角色](#role-process-central)和[环境启动](#startup-log-download)的中央日志下载均已验收。[问题与计划事件](#timeline-decisions-plans)可按发生时的记录追查。[父子任务的 GitHub 来源取消](#source-closure-audit)已核对。[44 类工作台事件回执](task-event-acceptance.md)已逐项核对。节点缓冲见[中断补报](#foundation-before-report)和[离线节点交付](#offline-node-deliveries)，阶段四当前版本的双项目联验待验收。 |
 | 14 部署与运维 | Windows 主机、Docker Linux 引擎、Ubuntu systemd 重启与派发；PostgreSQL、OpenBao 和反馈截图备份恢复；Caddy 双向 TLS 网关。恢复工作区后已用独立 Worker 继续派发。CI 文件与原始回执、Worker SQLite 与配套数据库的恢复见本页。具名节点与独立角色均已实测共享账号名额；Linux 服务重启后能读取实际 CLI 版本 | `1a17822`、`32c0fa0`、`bd1c734`、`06ed00b`、`ab013b6`、`ec7a462`、`42ba820`、`ff5d714`、`ff58493`、`c18af6d`、`f0cd68f` | 普通 Worker 的模型与候选 CI 独立名额见 alpha #20、beta #45。普通 Worker 的跨节点共享预算见本页 alpha #22、beta #115。[同盘及跨盘的 Git 结果断电恢复](#linux-power-loss-worktree)已验。外部设备私网访问、Linux 模型登录复用、其他工件恢复、失联模型会话恢复待验收 |
 | 15–16 路线与开放项 | 基座、单项目闭环、两子项 Goal 场景、第二个项目交付有以上记录。当前可从[28 项逐项对照](16-open-decisions.md#requirement-status)及[18 份 ADR](adr-acceptance.md)回到实测。 | 本表所列提交、`0899cf3` | [开放事项 A–C](16-open-decisions.md)中其余真实环境与协议要求，以及全路线最终回归 |
 

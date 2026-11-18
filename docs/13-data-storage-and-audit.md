@@ -83,7 +83,7 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 从工作台的任务时间线可以打开事件当时的问题或计划。任务详情 API 的 `events[].question_id` 用于提问、Owner 答复和 Management 审核；`events[].plan_revision` 标识 Planner 首稿、计划发布、审核、激活及激活引起的子项创建、修订或撤换。子项链接指向父 Goal 的对应修订。重复提交同一决定沿用原事件。历史事件有已保存的编号时同样可打开，缺少编号时仅显示原事件。[两次答复与两版计划的验收记录](acceptance.md#timeline-decisions-plans)
 
-工作台时间线中每个事件的「下载事件回执」使用 Owner 入口 `GET /projects/{project}/tasks/{task}/events/{event}`。回执按项目、任务和事件三者定位。序号使用 PostgreSQL 已分配的事件 ID，按编号排序，允许间隔。有执行的事件按 `EXECUTION-{id}` 关联，否则使用 `TASK-{id}`。时间为原事件时间。适用字段未知时为 null；载荷只含已确认的关联、版本和结果字段。
+工作台时间线中每个事件的「下载事件回执」使用 Owner 入口 `GET /projects/{project}/tasks/{task}/events/{event}`。回执按项目、任务和事件三者定位。序号使用 PostgreSQL 已分配的事件 ID，按编号排序，允许间隔。有执行的事件按 `EXECUTION-{id}` 关联，否则使用 `TASK-{id}`。时间为原事件时间。适用字段未知时为 null；载荷只含已确认的关联、版本和结果字段。[44 类事件的逐项验收回执](task-event-acceptance.md)
 
 领取回执标明节点，执行结果回执可含退出码、提交、Session 和验证信息。Owner 验收关联原决定与候选 SHA。取消请求与 Worker 最终回报分别归属各自的发起方，计划激活时记录 Owner 或 Management。历史记录按已保存的事实读取。旧取消记录无法区分发起方时保留未知，领取时亦不会附上事后才出现的结果。[操作、重放与下载核对](acceptance.md#task-event-audit)
 

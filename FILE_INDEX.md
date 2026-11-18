@@ -1,6 +1,6 @@
 # 文件索引
 
-[全路线验收记录](docs/acceptance.md)列出各阶段已有能力、实际操作结果和未完成的验收。 · [18 份 ADR 验收对照](docs/adr-acceptance.md)
+[全路线验收记录](docs/acceptance.md)列出各阶段已有能力、实际操作结果和未完成的验收。 · [18 份 ADR 验收对照](docs/adr-acceptance.md) · [44 类工作台事件的验收回执](docs/task-event-acceptance.md)
 
 从[项目首页](README.md)了解项目现状，再按手头的开发任务查阅下表。编号 00–16 是专题文档，ADR 记录已确认的架构决策。
 
