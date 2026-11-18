@@ -380,3 +380,19 @@ test "$(sqlite3 -bail -readonly "$state_dir/$journal_name" 'PRAGMA integrity_che
 公开模型消息与工具结果的本地归档随 Worker 私有 SQLite 一同备份，采用同一时点的 SQLite 快照，不能只复制正在写入的单个文件。归档默认每进程 32 MiB、已确认结果保留 30 天；服务环境可设置 FORGEOS_PROCESS_LOG_MAX_MIB 与 FORGEOS_PROCESS_LOG_DAYS。普通 Daemon 启动及每小时清理，独立角色打开日志时清理；离线维护可运行 process-logs prune。
 
 还原后先用 process-logs list 核对实例和原生 Session，再 export 校验正文序号、字节数与摘要。过期正文按当前策略重新清理，原进程、业务回执及摘要保留；旧备份不会永久绕过期限。此流程已从四类真实角色日志副本和非 root Linux CLI 验证。导出文件、原生 Harness 自己的会话记录和恢复工作目录不由本项清理。
+
+<a id="role-recovery-retention"></a>
+
+### 独立角色的恢复资料保留期限
+
+Curator、Management、Test Agent 和 Reviewer 首次领取前检查节点 SQLite，此后在领取时至多每小时扫描一次。`FORGEOS_ROLE_RECOVERY_DAYS` 取 1–3650 天，默认 30。计时覆盖该租约的原生进程退出、进程回报确认、业务结果结算三个时间点。仍在使用的分配、待补报结果和未结束的进程继续占用原恢复目录。
+
+服务账号可对一个角色日志单独执行清理：
+
+```shell
+worker prune-role-recovery --journal /var/lib/forgeos/state/<角色日志>.sqlite --days 30
+```
+
+返回 JSON 的 expired 为这次完成清理的回合数。每个回合只移除登记在该私有状态目录下的 schema.json、output.json 和空目录；Reviewer 可只有空目录。链接、异常路径和额外文件保留现场，命令返回非零，其他合格回合仍可完成。排查后用相同命令重试。自动扫描遇到异常会记入节点日志，角色继续领取工作。
+
+恢复时将私有角色 SQLite 快照和对应工作目录配套还原到登记路径。再次启动角色或执行上述命令后，当前期限适用于还原的资料。已确认的进程记录、Session、业务结果摘要和清理时间可复核。[操作与验收证据](acceptance.md#role-recovery-retention)

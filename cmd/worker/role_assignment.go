@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"time"
 
 	"forgeos/internal/store"
 )
@@ -152,6 +153,11 @@ func (w *worker) roleStartHook(role, lease string, turn int) func() error {
 }
 
 func (w *worker) runIndependentRole(ctx context.Context, role string, run func(context.Context) error) (resultErr error) {
+	days, err := archiveSetting("FORGEOS_ROLE_RECOVERY_DAYS", 30, 3650)
+	if err != nil {
+		return err
+	}
+	w.roleRecoveryRetention = time.Duration(days) * 24 * time.Hour
 	db, _, err := w.openRoleJournal(ctx, role)
 	if err != nil {
 		return err

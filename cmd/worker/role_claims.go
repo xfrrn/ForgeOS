@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 func (w *worker) claimRole(ctx context.Context, role, path string, body, out any) (status int, resultErr error) {
@@ -17,6 +19,12 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 		return 0, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	if now := time.Now(); w.roleRecoveryRetention > 0 && !now.Before(w.nextRoleCleanup) {
+		if _, err := pruneRoleRecovery(db, now.Add(-w.roleRecoveryRetention)); err != nil {
+			log.Printf("role recovery retention remains pending: %v", err)
+		}
+		w.nextRoleCleanup = now.Add(time.Hour)
+	}
 	if err = w.ensureRoleRunID(); err != nil {
 		return 0, err
 	}

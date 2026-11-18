@@ -39,6 +39,8 @@ type worker struct {
 	client                                  *http.Client
 	journal                                 *sql.DB
 	roleRunID                               string
+	nextRoleCleanup                         time.Time
+	roleRecoveryRetention                   time.Duration
 	roleNativeResume                        bool
 }
 
@@ -452,6 +454,12 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "prune-role-recovery" {
+		if err := pruneRoleRecoveryCommand(os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "process-logs" {
 		if err := processLogsCommand(os.Args[2:], os.Stdout); err != nil {
 			log.Fatal(err)
@@ -507,7 +515,7 @@ func main() {
 		role = os.Args[1]
 	}
 	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" && role != "curator" {
-		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs]")
+		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs|prune-role-recovery]")
 	}
 	w, err := fromEnv(role)
 	if err != nil {

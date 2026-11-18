@@ -126,28 +126,11 @@ func processLogsCommand(args []string, output io.Writer) error {
 	if flags.NArg() != 0 || !filepath.IsAbs(*path) || (*instance < 1 && action == "export") || (*instance != 0 && action != "export") || *days < 1 || *days > 3650 {
 		return errors.New("invalid process-logs arguments")
 	}
-	info, err := os.Lstat(*path)
-	if err != nil || !info.Mode().IsRegular() {
-		return errors.New("journal must be an existing regular file")
-	}
-	dir, err := os.Stat(filepath.Dir(*path))
-	if err != nil {
-		return err
-	}
-	if runtime.GOOS != "windows" && (info.Mode().Perm()&0077 != 0 || dir.Mode().Perm()&0077 != 0) {
-		return errors.New("journal and directory must be private to the service account")
-	}
-	mode := "ro"
-	if action == "prune" {
-		mode = "rw"
-	}
-	uri := url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(*path), "/"), RawQuery: "mode=" + mode + "&_pragma=busy_timeout(5000)&_pragma=secure_delete(ON)&_pragma=synchronous(FULL)"}
-	db, err := sql.Open("sqlite", uri.String())
+	db, err := openExistingJournal(*path, action == "prune")
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	db.SetMaxOpenConns(1)
 	if action == "export" {
 		return exportProcessArchive(db, *instance, output)
 	}
@@ -174,4 +157,29 @@ func processLogsCommand(args []string, output io.Writer) error {
 		}
 	}
 	return rows.Err()
+}
+
+func openExistingJournal(path string, write bool) (*sql.DB, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("journal must be an existing regular file")
+	}
+	dir, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	if runtime.GOOS != "windows" && (info.Mode().Perm()&0077 != 0 || dir.Mode().Perm()&0077 != 0) {
+		return nil, errors.New("journal and directory must be private to the service account")
+	}
+	mode := "ro"
+	if write {
+		mode = "rw"
+	}
+	uri := url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(path), "/"), RawQuery: "mode=" + mode + "&_pragma=busy_timeout(5000)&_pragma=secure_delete(ON)&_pragma=synchronous(FULL)"}
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	return db, nil
 }

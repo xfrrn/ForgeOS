@@ -267,7 +267,7 @@ HTTP 204 表示已确认，409 表示结果与当前状态冲突，两者均结�
 
 原生 CLI 明确报告 Session 不存在时，保存该次实际失败进程，再在相同工作目录用冻结输入启动新 Session。新进程记录 handoff_from，控制面校验同节点、相同业务目标、前一进程退出及递增实例；工作台展示恢复来源、失败尝试和交接会话。模型业务失败不会据此转为成功，恢复仍受原期限及业务验证限制。新进程不能用旧成功进程绕过结果门禁。
 
-已从 Chrome 和正式 Daemon 验证 Curator、Management 知识审核、Test Agent、Claude Reviewer 的原会话恢复，以及 Codex／Claude 的会话缺失交接。测试还覆盖同 Daemon 内原生子进程中断后恢复。缺少 PID／Session 的启动间隙、仍运行的 CLI 事件流接回、版本变化、工作目录丢失不能自动恢复，保留日志并报错。旧领取响应没有协商字段时沿用原协议。私有工作目录和输入元数据目前保留，统一归档及到期清理仍待补齐。
+已从 Chrome 和正式 Daemon 验证 Curator、Management 知识审核、Test Agent、Claude Reviewer 的原会话恢复，以及 Codex／Claude 的会话缺失交接。测试还覆盖同 Daemon 内原生子进程中断后恢复。缺少 PID／Session 的启动间隙、仍运行的 CLI 事件流接回、版本变化、工作目录丢失不能自动恢复，保留日志并报错。旧领取响应没有协商字段时沿用原协议。角色 Worker 在后续领取前按期限清理已结算回合的私有输入和工作目录；在途回合保留恢复资料。[清理与恢复](14-deployment-and-operations.md#role-recovery-retention)
 
 ### 节点公开消息与工具输出归档
 

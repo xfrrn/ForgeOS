@@ -340,7 +340,7 @@ Worker 失联时，先从任务详情查 `execution.lease_expired`、执行 ID �
 
 保持原角色、控制面地址、节点身份、状态目录和 Harness 版本，重启 Daemon。新领取协议保存了 recover_native 时，节点自动核对已记录的 PID、Session 和私有工作目录；原进程已退出则在原期限内恢复会话。原进程仍运行时会报 original native role process is still running，应核实原进程状态，不能删除记录或按未经确认的 PID 强制结束进程。工作目录丢失、Harness 版本改变或未记录 Session 时也会保留作业并停止。
 
-原生 CLI 明确报告 Session 不存在后，会保留失败尝试并交接给新 Session。从对应资料、测试计划或审查历史展开进程记录，核对实例、恢复来源、原生会话、交接来源、实际退出及最终业务结果。退出码 -1 在页面显示“未取得正常退出码”，不代表成功。原工作目录和冻结提示包含项目内容，须随私有状态目录保护；目前尚无自动到期清理。
+原生 CLI 明确报告 Session 不存在后，会保留失败尝试并交接给新 Session。从对应资料、测试计划或审查历史展开进程记录，核对实例、恢复来源、原生会话、交接来源、实际退出及最终业务结果。退出码 -1 在页面显示“未取得正常退出码”，不代表成功。原工作目录和冻结提示包含项目内容，随私有状态目录保护。已结算角色回合默认保留 30 天，可配置 `FORGEOS_ROLE_RECOVERY_DAYS`。离线维护可运行 `worker prune-role-recovery --journal <角色 SQLite 绝对路径> --days 30`。[清理条件与备份恢复](14-deployment-and-operations.md#role-recovery-retention)
 
 ## 导出和清理节点进程日志
 

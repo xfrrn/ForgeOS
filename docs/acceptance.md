@@ -3598,3 +3598,18 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | Windows、Ubuntu UID 1000 分别重开 SQLite，模拟已暂存、索引有缓存标记、索引被单独修改及工作树变动 | 原内容可恢复，外部改动阻止结算，兼容原先已有 SHA 的记录 | 专项通过。新建候选的 Git 树与保存的真实草稿相同。索引或文件被更改时零次验证、零次结果回报，保留记录供核对。 |
 
 开发期间另在两个私库使用同一套任务及 Chrome 验收入口，原生 Codex 完成 [beta PR #232](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/232)，原生 Claude Code 完成 [alpha PR #37](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/37)。最终实现的 SHA 保存故障通过 beta #233 实测。启用 PostgreSQL 18 与真实 Docker 的全量 Go 回归 503 项通过，零失败、零跳过。go vet、TypeScript 与前端生产构建通过。操作脚本 draft-final-live.py，证据 draft_final_recovery_codex/proof.json。原生回合退出至最终输入检查点和草稿首次持久化之间中断，仍待验收。
+
+<a id="role-recovery-retention"></a>
+
+### 专题 07、13、14、16 B.9 · 独立角色的恢复资料到期清理
+
+2026-11-18，从此前实际执行和恢复的四类角色取四份节点 SQLite 一致性备份与五个工作目录。在独立副本中将已结算记录回拨至 2001 年以跨越一天的验收期限，保留一条近期业务结果及一份还在登记的 Reviewer 分配。原始数据库和原目录单独核对。测试使用生产 Worker 命令、Windows 和非 root Ubuntu；另在 PostgreSQL 18 上启动正式控制面和 Reviewer。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在 Windows 和 Ubuntu 对四份副本分别运行 prune-role-recovery，再次执行同一命令 | 清除到期输入、合同、输出和空目录。近期、在途内容和业务证据可继续回读 | 两个系统各清理 Curator、Management 和 Test Agent 各一回合，保留近期 Test Agent 和已登记 Reviewer。重复执行均为 0。原进程、原生交接、业务及进程回执逐字段相同。 |
+| 在真实 Reviewer 启动时使用尚有原分配的日志；下一次启动前在过期工作目录加入未登记文件 | 分配释放前保留现场；异常目录可查且不影响领取 | 首次扫描保留目录，随后原分配正常释放。第二次启动保留额外文件且没有清理回执，两次均从正式控制面收到 204。 |
+| 移走测试额外文件并重启；将清理前 SQLite 快照和工作目录实际还原到同一绝对路径，再启动 Reviewer | 自动清理，已恢复的过期内容按相同策略再次到期 | 两次都清除原目录及冻结输入，保存一条回合清理回执，原两条进程记录完整。四轮真实领取均返回 204。 |
+| 验证暂存的角色回合、待发或近期进程回执、仍运行的进程，以及跨目录路径或链接 | 保留尚需恢复的内容，避免操作其他路径 | 节点专项通过。额外文件会在删除任何已知文件之前被发现，移除障碍后重试成功。 |
+
+启用 PostgreSQL 18 与 Docker 的全量 Go 回归共 505 项通过，零失败、零跳过。证据保存在 role_recovery_retention 的 win32.json、linux.json、daemon.json。操作脚本为 role-retention-live.py 和 role-retention-daemon.py。[运行命令与恢复步骤](14-deployment-and-operations.md#role-recovery-retention)
