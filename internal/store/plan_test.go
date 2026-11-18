@@ -53,6 +53,34 @@ func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
 	if err != nil || got.Status != "PLANNING" || got.Plan == nil || got.Plan.Revision != 1 || len(got.Children) != 0 || len(got.Events) != 3 || got.Events[2].PlanRevision != 1 {
 		t.Fatalf("unexpected draft: %+v %v", got, err)
 	}
+	// Restore the pre-link event, then add an ambiguous duplicate in a rolled-back transaction.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "UPDATE task_events SET plan_revision=NULL WHERE id=$1", got.Events[2].ID); err != nil {
+		t.Fatal(err)
+	}
+	checkLinks := func(want int64) {
+		t.Helper()
+		res, err := tx.ExecContext(ctx, plannerEventRevisionSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := res.RowsAffected(); err != nil || n != want {
+			t.Fatalf("linked %d planner events, expected %d: %v", n, want, err)
+		}
+	}
+	checkLinks(1)
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,at)
+		SELECT task_id,execution_id,type,at FROM task_events WHERE id=$1`, got.Events[2].ID); err != nil {
+		t.Fatal(err)
+	}
+	checkLinks(0)
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.ActivatePlan(ctx, task.ID, 1); err != nil {
 		t.Fatal(err)
 	}

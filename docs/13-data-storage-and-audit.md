@@ -89,6 +89,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 Management 审阅业务问题时，事件回执记录该次审核的原生 Session、决策等级和提问时的 Git 提交。按 D1 引用已确认项目决策答复时，回执还保存决策编号。Owner 的提问和答复仍由各自事件记录。[D1 引用与 D2 审核](acceptance.md#question-advice-event-audit)
 
+历史 Planner 完成事件可从工作台打开初版计划。升级时核对任务、执行结果中的计划正文和初版计划创建时间。只有三者与原事件唯一匹配才补记版本。原事件编号、时间与会话保持可核对。[真实备份升级与工作台下载](acceptance.md#legacy-planner-event)
+
 CI 的暂停请求、Worker 暂停回报、Owner 恢复请求均关联原执行已登记的候选 SHA。登记时保存了模型 Session 的执行可在三份回执中查到该会话。较早版本只在结算时记录 Session 的执行，可以在暂停回报与恢复时查到。只运行 CI 的执行保留自己的执行号，模型 Session 为空。[暂停与恢复的候选回执](acceptance.md#ci-pause-event-audit)
 
 模型暂停请求和恢复请求的发起方是 Owner，确认已暂停的发起方是保存检查点的 Worker。三种事件的下载回执按原执行关联原生 Session、进程实例及资源步骤。Worker 确认时，回执才开始显示当时保存的暂存区和工作树的 Git 树 SHA。若执行历史中某类事件的数量与该类暂停记录不符，该类旧事件的 Session 和实例保持未知。[工作台暂停、恢复及升级回读](acceptance.md#model-pause-audit)

@@ -60,6 +60,18 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="legacy-planner-event"></a>
+
+### 专题 06、13 · 从历史 Planner 完成事件打开初版计划
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 恢复原生 Planner 的 PostgreSQL 备份，从任务 1 读取事件 3，在同一库启动新版控制面 | 可从原事件找到当时产出的计划，保留原有身份、时间和正文 | 升级前缺少版本。升级后指向修订 1，正文与执行 1 的原始结果一致。事件时间仍为 `2026-11-18T01:46:10.919708+08:00`，原生会话仍为 `01a1ea9d-558d-7ab1-8be6-054fabf2631e`。 |
+| 启动独立 Management 审核该版本，重启控制面，用 390 像素宽的 Chrome 打开时间线并下载两份回执 | Planner 和 Management 各自关联原会话，计划链接能定位修订 1 | Planner 事件链接指向任务 1 的修订 1。Management 事件 4 记录 D2、approve 和独立会话 `01a1f064-a20d-79a0-a9bf-2329032a25bf`，与该版审核一致。两份下载与重启前 API 逐字段一致。 |
+| 在数据库测试中加入同任务、同执行、同时间的第二个完成事件，再运行补记 | 来源有歧义时保留未知 | 第二次补记影响 0 行。 |
+
+原始回执位于 `remaining-event-audit/planner-before.json` 与 `remaining-event-audit/plan.json`。
+
 <a id="question-advice-event-audit"></a>
 
 ### 专题 05、13 · 从业务问题事件核对 Management 会话、等级和引用
