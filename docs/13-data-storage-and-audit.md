@@ -81,6 +81,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 重复事件通过唯一键去重。
 
+从工作台的任务时间线可以打开事件当时的问题或计划。任务详情 API 的 `events[].question_id` 用于提问、Owner 答复和 Management 审核；`events[].plan_revision` 标识 Planner 首稿、计划发布、审核、激活及激活引起的子项创建、修订或撤换。子项链接指向父 Goal 的对应修订。重复提交同一决定沿用原事件。历史事件有已保存的编号时同样可打开，缺少编号时仅显示原事件。[两次答复与两版计划的验收记录](acceptance.md#timeline-decisions-plans)
+
 ## 3. 审计
 
 审计记录：

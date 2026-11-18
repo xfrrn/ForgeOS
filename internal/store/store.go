@@ -464,6 +464,8 @@ type Execution struct {
 }
 
 type Event struct {
+	QuestionID      int64      `json:"question_id,omitempty"`
+	PlanRevision    int        `json:"plan_revision,omitempty"`
 	IssueFeedbackAt *time.Time `json:"issue_feedback_at,omitempty"`
 	ID              int64      `json:"id"`
 	ExecutionID     *int64     `json:"execution_id,omitempty"`
@@ -634,7 +636,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
 		     LEFT JOIN LATERAL (SELECT state,revision,execution_state,attempt_count FROM candidate_test_plan_status WHERE execution_id=e.id ORDER BY revision DESC LIMIT 1) tp ON true
 		     LEFT JOIN code_reviews r ON r.execution_id=e.id WHERE e.task_id = t.id), '[]'),
 		    (SELECT jsonb_agg(jsonb_build_object(
-		        'id', v.id, 'execution_id', v.execution_id, 'type', v.type, 'at', v.at,'issue_feedback_at',f.confirmed_at) ORDER BY v.id)
+		        'id', v.id, 'execution_id', v.execution_id, 'type', v.type, 'at', v.at, 'question_id',v.question_id, 'plan_revision',v.plan_revision,'issue_feedback_at',f.confirmed_at) ORDER BY v.id)
 		     FROM task_events v LEFT JOIN issue_outcome_feedback f ON f.event_id=v.id WHERE v.task_id = t.id),
 		    COALESCE((SELECT jsonb_agg(to_jsonb(r) || jsonb_build_object('feedback_ids',
 		        ARRAY(SELECT feedback_id FROM acceptance_review_feedback WHERE execution_id=r.execution_id ORDER BY feedback_id)) ORDER BY r.execution_id)
@@ -1230,7 +1232,8 @@ func finishTask(ctx context.Context, tx *sql.Tx, taskID, executionID int64, stat
   WITH finished AS (
 		    UPDATE work_items SET status = $2,waiting_execution_id=NULL WHERE id=$1 AND (status='RUNNING' OR (waiting_execution_id=$3 AND $2 IN ('FAILED','CANCELLED'))) RETURNING id
 		)
-		INSERT INTO task_events(task_id, execution_id, type) SELECT id, $3, $4 FROM finished
+		INSERT INTO task_events(task_id, execution_id, type, plan_revision)
+		SELECT id, $3, $4, CASE WHEN $4='planner_completed' THEN 1 END FROM finished
 		RETURNING id`, taskID, status, executionID, eventType).Scan(&eventID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict

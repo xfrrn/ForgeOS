@@ -305,7 +305,7 @@ func (s *Store) AnswerQuestion(ctx context.Context, id, qID int64, answer string
 		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status=CASE WHEN waiting_execution_id IS NULL THEN 'WAITING_ACCEPTANCE' ELSE 'RUNNING' END,waiting_execution_id=NULL WHERE id=$1`, id); err != nil {
 			return Task{}, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type) VALUES ($1,$2,'decision_answered')`, id, execution); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,execution_id,type,question_id) VALUES ($1,$2,'decision_answered',$3)`, id, execution, qID); err != nil {
 			return Task{}, err
 		}
 	}

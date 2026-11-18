@@ -45,7 +45,7 @@ func TestPlannerLeaseCannotDeliverCode(t *testing.T) {
 		}
 	}
 	got, err := s.Task(ctx, task.ID)
-	if err != nil || got.Status != "PLANNING" || got.Plan == nil || got.Plan.Revision != 1 || len(got.Children) != 0 || len(got.Events) != 3 {
+	if err != nil || got.Status != "PLANNING" || got.Plan == nil || got.Plan.Revision != 1 || len(got.Children) != 0 || len(got.Events) != 3 || got.Events[2].PlanRevision != 1 {
 		t.Fatalf("unexpected draft: %+v %v", got, err)
 	}
 	if _, err := s.ActivatePlan(ctx, task.ID, 1); err != nil {

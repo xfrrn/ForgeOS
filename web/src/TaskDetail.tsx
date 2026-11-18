@@ -64,7 +64,7 @@ type Attempt = {
 type Issue = { title: string; number: number; body: string; url: string; repository: string; updated_at: string; work_type?: string; owner_classified?: boolean }
 type Review = { execution_id: number; commit: string; decision: string; note: string; actor: string; at: string; feedback_ids?: number[] }
 type Delivery = { execution_id: number; commit: string; state: string; detail?: string; branch: string; target_branch: string; pr_url?: string; pr_number?: number; merge_sha?: string }
-type TaskEvent = { id: number; execution_id?: number; type: string; at: string; issue_feedback_at?: string }
+type TaskEvent = { id: number; execution_id?: number; question_id?: number; plan_revision?: number; type: string; at: string; issue_feedback_at?: string }
 type Question = { id: number; execution_id: number; commit_sha: string; question: string; evidence: string; requester: string; at: string; checkpoint_sequence?: number; trees?: { index: string; worktree: string }; management_processes?: ReviewProcess[]; management_advice?: Advice; withdrawn_at?: string; answer?: string; answered_by?: string; answered_at?: string }
 type Task = {
   feedback_sources?: { feedback_id: number; task_id: number; preview: string; execution_id: number; commit: string }[]
@@ -805,6 +805,8 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
           <ol className="detail-timeline">{[...task.events].reverse().map(event =>
             <li key={event.id}><strong>{events[event.type] || event.type}</strong>
               <div><time dateTime={event.at}>{formatTime(event.at)}</time>{event.execution_id != null && <span> · 执行 #{event.execution_id}</span>}</div>
+              {event.question_id && <a href={`#/tasks/${task.id}/questions/${event.question_id}`}>问题 #{event.question_id}</a>}
+              {event.plan_revision && <a href={`#/tasks/${task.goal_id || task.id}/plans/${event.plan_revision}`}>计划修订 {event.plan_revision}</a>}
               {event.issue_feedback_at && issue && <div><OutLink href={issue.url}>已回写 Issue #{issue.number}</OutLink> · <time dateTime={event.issue_feedback_at}>{formatTime(event.issue_feedback_at)}</time></div>}
               {(event.type === 'pr_merged' || event.type === 'goal_delivered') && <KnowledgeCuration project={task.project_id} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}/curation`} request={request}/>}</li>)}</ol>
           {!task.events.length && <p className="detail-empty-text">暂无事件。</p>}</section>

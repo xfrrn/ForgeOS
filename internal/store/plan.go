@@ -168,7 +168,7 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET status='PLANNING' WHERE id=$1`, taskID); err != nil {
 		return rev, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type) VALUES ($1,'plan_revised')`, taskID); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,plan_revision) VALUES ($1,'plan_revised',$2)`, taskID, rev.Revision); err != nil {
 		return rev, err
 	}
 	return rev, tx.Commit()

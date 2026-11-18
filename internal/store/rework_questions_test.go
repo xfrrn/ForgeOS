@@ -49,8 +49,12 @@ func TestReworkCarriesAnsweredQuestionsAcrossRejections(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := task.Questions[0].ID
-	if _, err = s.AnswerQuestion(ctx, task.ID, id, "Harbor"); err != nil {
+	task, err = s.AnswerQuestion(ctx, task.ID, id, "Harbor")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if events := task.Events; len(events) < 2 || events[len(events)-1].QuestionID != id || events[len(events)-2].QuestionID != id {
+		t.Fatal("question and answer must identify the original question", events)
 	}
 	if _, err = s.Review(ctx, task.ID, first.ExecutionID, b, "reject", "Add the index link.", false, ""); err != nil {
 		t.Fatal(err)
