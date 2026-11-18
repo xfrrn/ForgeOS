@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -52,6 +53,15 @@ func idempotentRoleClaim(data *store.Store, project int64, role string, next htt
 			call.Body = io.NopCloser(bytes.NewReader(body))
 			buffer := &roleClaimBuffer{header: make(http.Header)}
 			next(buffer, call)
+			if buffer.status == 200 && buffer.err == nil && r.URL.Query().Get("supports_role_resume") == "1" {
+				var job map[string]json.RawMessage
+				if err := json.Unmarshal(buffer.body.Bytes(), &job); err != nil {
+					return 0, nil, err
+				}
+				job["recover_native"] = json.RawMessage("true")
+				raw, err := json.Marshal(job)
+				return buffer.status, raw, err
+			}
 			return buffer.status, buffer.body.Bytes(), buffer.err
 		})
 		if err != nil {

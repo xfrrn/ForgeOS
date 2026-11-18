@@ -79,14 +79,19 @@ func (w *worker) resumeRoleAssignment(db *sql.DB, out any) (bool, error) {
 		}
 		return false, tx.Commit()
 	}
+	w.readRoleRecoveryCapability(raw)
 	if started {
 		var completed bool
 		if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM role_turn_results WHERE lease_hash=?) AND NOT EXISTS(SELECT 1 FROM role_turn_results WHERE lease_hash=? AND result IS NULL)", key, key).Scan(&completed); err != nil {
 			return false, err
 		}
-		// shortcut: Unfinished turns remain blocked until native session recovery is implemented.
 		if !completed {
-			return false, errors.New("saved role assignment has started a native turn; preserve its journal for session recovery")
+			if !w.roleNativeResume {
+				return false, errors.New("saved role assignment has started a native turn; preserve its journal for session recovery")
+			}
+			if err = w.validateRoleNativeRecovery(db, key); err != nil {
+				return false, err
+			}
 		}
 	}
 	if err = json.Unmarshal(raw, out); err != nil {

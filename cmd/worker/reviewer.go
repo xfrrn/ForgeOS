@@ -5,10 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"os/exec"
-	"strings"
-	"time"
 
 	"forgeos/internal/review"
 	"forgeos/internal/store"
@@ -20,7 +16,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 			return err
 		}
 		var job store.ReviewJob
-		status, err := w.claimRole(ctx, "reviewer", "/internal/reviewer/claim?supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
+		status, err := w.claimRole(ctx, "reviewer", "/internal/reviewer/claim?supports_role_resume=1&supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue
@@ -70,20 +66,11 @@ func (w *worker) reviewJob(ctx context.Context, job store.ReviewJob) (review.Rep
 	if !job.CaptureProcess {
 		return reviewCandidate(ctx, input, processLog{beforeStart: w.roleStartHook("reviewer", job.Lease, 0)})
 	}
-	name := os.Getenv("FORGEOS_CLAUDE_BIN")
-	if name == "" {
-		name = "claude"
+	version, err := w.roleHarnessVersion("claude")
+	if err != nil {
+		return review.Report{}, err
 	}
-	call, stop := context.WithTimeout(ctx, 10*time.Second)
-	cmd := exec.CommandContext(call, name, "--version")
-	cmd.Env = harnessEnv()
-	raw, err := cmd.Output()
-	stop()
-	version := claudeVersion.FindStringSubmatch(strings.TrimSpace(string(raw)))
-	if err != nil || len(version) != 2 {
-		return review.Report{}, fmt.Errorf("cannot identify the Claude Code reviewer version")
-	}
-	_, err = w.roleProcessTurn(ctx, target, "claude", version[1], &report, func(ctx context.Context, p processLog) (string, error) {
+	_, err = w.roleProcessTurn(ctx, target, "claude", version, &report, func(ctx context.Context, p processLog) (string, error) {
 		var e error
 		report, e = reviewCandidate(ctx, input, p)
 		return report.Session, e

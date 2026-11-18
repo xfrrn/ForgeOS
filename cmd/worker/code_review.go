@@ -60,11 +60,16 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 	if err != nil || (runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(bin), ".exe")) {
 		return report, errors.New("configure a native Claude Code executable with FORGEOS_CLAUDE_BIN")
 	}
-	dir, err := os.MkdirTemp("", "forgeos-review-")
-	if err != nil {
-		return report, err
+	var dir string
+	if process.roleNative != nil {
+		dir = process.roleNative.Workspace
+	} else {
+		dir, err = os.MkdirTemp("", "forgeos-review-")
+		if err != nil {
+			return report, err
+		}
+		defer os.RemoveAll(dir)
 	}
-	defer os.RemoveAll(dir)
 	payload, err := json.Marshal(struct {
 		CandidateContext json.RawMessage `json:"candidate_context,omitempty"`
 		Requirement      string          `json:"requirement"`
@@ -79,10 +84,19 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 		"Report actionable defects introduced or left unresolved by the change. Only report supported findings. For each finding provide a unique ID, severity, " +
 		"one-based line in the specified file and side, the exact complete line as evidence, description, recommendation, confidence from 0 to 1, and whether it blocks acceptance. " +
 		"Before and after arrays contain one entry per source line. Use base for deleted lines and candidate for present lines. Return an empty findings array if there are no supported findings.\n"
+	fullPrompt, contract := prompt+string(payload), codeReviewSchema
+	resume := ""
+	if process.roleNative != nil {
+		fullPrompt, contract, err = process.freezeRoleInput(fullPrompt, contract)
+		if err != nil {
+			return report, err
+		}
+		resume = process.roleNative.Resume
+	}
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 	profile := review.ClaudeProfile()
-	cmd := exec.CommandContext(ctx, bin, "-p", "--output-format", "json", "--json-schema", codeReviewSchema, "--tools", strings.Join(*profile.Tools, ","), "--strict-mcp-config",
+	cmd := exec.CommandContext(ctx, bin, "-p", "--output-format", "json", "--json-schema", contract, "--tools", strings.Join(*profile.Tools, ","), "--strict-mcp-config",
 		"--disable-slash-commands", "--no-chrome", "--permission-mode", profile.Permission, "--setting-sources", "user", "--settings", `{"disableAllHooks":true}`)
 	if process.db != nil {
 		for i, arg := range cmd.Args {
@@ -91,6 +105,9 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 			}
 		}
 		cmd.Args = append(cmd.Args, "--verbose")
+	}
+	if resume != "" {
+		cmd.Args = append(cmd.Args, "--resume", resume)
 	}
 	cmd.Dir, cmd.WaitDelay = dir, 3*time.Second
 	for _, entry := range harnessEnv() {
@@ -103,7 +120,7 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 			cmd.Env = append(cmd.Env, key+"="+value)
 		}
 	}
-	cmd.Stdin = io.MultiReader(strings.NewReader(prompt), strings.NewReader(string(payload)))
+	cmd.Stdin = strings.NewReader(fullPrompt)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return report, err
@@ -114,11 +131,12 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 	closeStream := context.AfterFunc(ctx, func() { stdout.Close() })
 	defer closeStream()
 	var raw []byte
+	var observedSession string
+	var completed bool
 	if process.db == nil {
 		raw, err = io.ReadAll(io.LimitReader(stdout, (1<<20)+1))
 	} else {
-		var completed bool
-		_, completed, err = readClaudeEvents(stdout, "", process.session, func(kind string, body []byte) error {
+		observedSession, completed, err = readClaudeEvents(stdout, resume, process.session, func(kind string, body []byte) error {
 			if kind == "result" {
 				if len(body) > 1<<20 {
 					return errors.New("Claude review result too large")
@@ -136,6 +154,12 @@ func reviewSnapshot(ctx context.Context, snapshot review.Snapshot, input candida
 		cancel()
 	}
 	exit, journalErr := process.wait(cmd)
+	if errors.Is(err, errSessionMissing) && journalErr == nil {
+		return report, errSessionMissing
+	}
+	if exit != nil && journalErr == nil && !completed && nativeSessionID.MatchString(observedSession) {
+		return report, errTurnInterrupted
+	}
 	if exit != nil || journalErr != nil || err != nil || len(raw) > 1<<20 {
 		return report, errors.New("Claude review did not finish with a bounded result")
 	}

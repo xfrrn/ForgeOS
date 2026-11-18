@@ -15,7 +15,7 @@ func (w *worker) runTestAgent(ctx context.Context) error {
 			return err
 		}
 		var job store.TestPlanJob
-		status, err := w.claimRole(ctx, "test-agent", "/internal/test-agent/claim?supports_process=1&supports_candidate_context=1&supports_budget_deadline=1", struct{}{}, &job)
+		status, err := w.claimRole(ctx, "test-agent", "/internal/test-agent/claim?supports_role_resume=1&supports_process=1&supports_candidate_context=1&supports_budget_deadline=1", struct{}{}, &job)
 		if status == 204 || temporary(status) {
 			wait(ctx)
 			continue

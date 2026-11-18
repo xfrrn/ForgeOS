@@ -62,7 +62,7 @@ func (s *Store) RepositoryAnalysis(ctx context.Context, id int64) (json.RawMessa
 	var raw json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT jsonb_build_object('status',CASE WHEN result IS NOT NULL THEN 'DONE' WHEN failure IS NOT NULL THEN 'FAILED'
 		WHEN lease_until>now() THEN 'RUNNING' ELSE 'READY' END,'attempt',attempt,'analysis',result,'failure',failure,'finished_at',finished_at,
-		'processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.analysis_task=a.task_id),'[]'::jsonb),
+		'processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id) FROM management_processes p WHERE p.analysis_task=a.task_id),'[]'::jsonb),
  'omitted',source->'omitted','truncated',source->'truncated','sources',COALESCE((SELECT jsonb_agg(d-'text') FROM jsonb_array_elements(source->'sources') d),'[]'::jsonb))
 		FROM repository_analyses a WHERE task_id=$1`, id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {

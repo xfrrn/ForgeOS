@@ -13,6 +13,7 @@ import (
 
 type processLog struct {
 	beforeStart func() error
+	roleNative  *roleNativeTurn
 	handoffFrom string
 	db          *sql.DB
 	lease       [32]byte
@@ -71,6 +72,20 @@ func (p *processLog) start(cmd *exec.Cmd, stream io.Closer) error {
 		p.lease[:], p.harness, p.version, cmd.Process.Pid)
 	if err == nil {
 		p.id, err = record.LastInsertId()
+	}
+	if err == nil && p.roleNative != nil {
+		_, err = p.db.Exec("INSERT INTO role_native_attempts(instance,resumed_from) VALUES(?,?)", p.id, p.roleNative.Instance)
+	}
+	if err == nil && p.roleNative != nil {
+		var changed sql.Result
+		changed, err = p.db.Exec("UPDATE role_native_turns SET instance=? WHERE lease_hash=? AND turn=? AND instance IS NULL", p.id, p.lease[:], p.roleNative.Turn)
+		if err == nil {
+			var n int64
+			n, err = changed.RowsAffected()
+			if err == nil && n != 1 {
+				err = fmt.Errorf("native role turn lost its startup slot")
+			}
+		}
 	}
 	if err != nil {
 		stream.Close()

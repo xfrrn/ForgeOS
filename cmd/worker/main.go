@@ -39,6 +39,7 @@ type worker struct {
 	client                                  *http.Client
 	journal                                 *sql.DB
 	roleRunID                               string
+	roleNativeResume                        bool
 }
 
 func fromEnv(role string) (*worker, error) {

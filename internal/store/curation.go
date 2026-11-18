@@ -159,8 +159,8 @@ func (s *Store) ReviewCuration(ctx context.Context, project, id int64, lease str
 
 const curationReceipt = `SELECT jsonb_build_object('id',c.id,'revision',s.revision,'content_sha256',s.content_sha256,
 		'extraction',c.extraction,'extracted_at',c.extracted_at,'review',c.review,'reviewed_at',c.reviewed_at,
-        'extraction_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.curation_id=c.id AND p.curation_role='curator'),'[]'::jsonb),
-        'review_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.curation_id=c.id AND p.curation_role='management'),'[]'::jsonb),
+        'extraction_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id) FROM management_processes p WHERE p.curation_id=c.id AND p.curation_role='curator'),'[]'::jsonb),
+        'review_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id) FROM management_processes p WHERE p.curation_id=c.id AND p.curation_role='management'),'[]'::jsonb),
 		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
 		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
 		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id,'event_id',c.event_id,'source',CASE WHEN c.event_id IS NOT NULL THEN s.source END,'delivery',s.delivery,'goal',s.goal,'document',s.document,'content',CASE WHEN c.document_id IS NOT NULL THEN s.content END))

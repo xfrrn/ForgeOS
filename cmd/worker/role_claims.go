@@ -81,6 +81,7 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 		return 204, nil
 	}
 	if status == 200 {
+		w.readRoleRecoveryCapability(response)
 		lease, err := roleAssignmentLease(response)
 		if err != nil {
 			return 0, err

@@ -75,11 +75,21 @@ func readOnlyJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 }
 
 func recordedJSONTurn(ctx context.Context, bin, contract, prompt string, limit int64, dest any, process processLog) (string, error) {
-	workspace, err := os.MkdirTemp("", "forgeos-readonly-")
-	if err != nil {
-		return "", err
+	var workspace string
+	var err error
+	if process.roleNative != nil {
+		workspace = process.roleNative.Workspace
+		prompt, contract, err = process.freezeRoleInput(prompt, contract)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		workspace, err = os.MkdirTemp("", "forgeos-readonly-")
+		if err != nil {
+			return "", err
+		}
+		defer os.RemoveAll(workspace)
 	}
-	defer os.RemoveAll(workspace)
 	schema, output := filepath.Join(workspace, "schema.json"), filepath.Join(workspace, "output.json")
 	if err = os.WriteFile(schema, []byte(contract), 0600); err != nil {
 		return "", err
@@ -87,7 +97,11 @@ func recordedJSONTurn(ctx context.Context, bin, contract, prompt string, limit i
 	options := []string{"--skip-git-repo-check", "--output-schema", schema, "--output-last-message", output}
 	profile := store.StructuredCodexProfile()
 	adapter := codexCLI{bin: bin, sandbox: profile.Sandbox, disabledFeatures: profile.DisabledFeatures, options: options}
-	session, err := adapter.runTurn(ctx, process, workspace, prompt, "")
+	resume := ""
+	if process.roleNative != nil {
+		resume = process.roleNative.Resume
+	}
+	session, err := adapter.runTurn(ctx, process, workspace, prompt, resume)
 	if err != nil {
 		return "", err
 	}
@@ -119,7 +133,7 @@ func (w *worker) runManagement(ctx context.Context) error {
 			return err
 		}
 		var job store.ManagementJob
-		status, err := w.claimRole(ctx, "management", "/internal/management/claim?supports_test_plan_process=1&supports_curation_process=1&supports_feedback_process=1&supports_question_process=1&supports_analysis_process=1&supports_share_review_process=1&supports_plan_review_process=1&supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
+		status, err := w.claimRole(ctx, "management", "/internal/management/claim?supports_role_resume=1&supports_test_plan_process=1&supports_curation_process=1&supports_feedback_process=1&supports_question_process=1&supports_analysis_process=1&supports_share_review_process=1&supports_plan_review_process=1&supports_feedback_context=1&supports_question_context=1&supports_plan_review_context=1&supports_question_deadline=1&supports_feedback_deadline=1&supports_analysis_deadline=1&supports_share_review_deadline=1&supports_plan_review_deadline=1&supports_curation=1&supports_candidate_context=1&supports_question_advice=1&supports_decision_lookups=1&supports_budget_deadline=1", map[string]bool{"supports_shares": true, "supports_test_plans": true, "supports_feedback": true, "supports_repository_analysis": true}, &job)
 		if err != nil && !temporary(status) {
 			return err
 		}

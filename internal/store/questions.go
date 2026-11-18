@@ -20,7 +20,7 @@ type QuestionRequest struct {
 	Evidence    string `json:"evidence"`
 }
 
-const questionProcessesJSON = `COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id)
+const questionProcessesJSON = `COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id)
  FROM management_processes p WHERE p.question_id=q.id),'[]'::jsonb)`
 
 type DecisionQuestion struct {

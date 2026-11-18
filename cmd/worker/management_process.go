@@ -50,12 +50,23 @@ func roleForProcess(target store.ManagementProcessReport) string {
 }
 
 func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, dest any, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
+	target.ResumedFrom, target.MissingSession = 0, false
 	role := roleForProcess(target)
 	db, node, err := w.openRoleJournal(ctx, role)
 	if err != nil {
 		return "", err
 	}
 	defer func() { resultErr = errors.Join(resultErr, db.Close()) }()
+	var native *roleNativeTurn
+	if w.roleNativeResume {
+		native, err = w.prepareRoleNative(db, target, harness, version)
+		if err != nil {
+			return "", err
+		}
+	}
+	if native != nil {
+		target.ResumedFrom = native.Instance
+	}
 	// A quote-repair turn cannot overtake the previous turn's exit observation.
 	if err = w.replayRoleProcesses(ctx, db, role); err != nil {
 		return "", err
@@ -101,7 +112,16 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		}
 	}()
 	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, harness, version)
-	process.beforeStart = func() error { return w.markRoleStarted(db, key[:], target.Turn) }
+	if native != nil {
+		process.handoffFrom = native.HandoffFrom
+	}
+	process.roleNative = native
+	process.beforeStart = func() error {
+		if native != nil && native.Instance != 0 {
+			return w.markRoleResuming(db, key[:], native)
+		}
+		return w.markRoleStarted(db, key[:], target.Turn)
+	}
 	session, turnErr := run(reporting, process)
 	stop()
 	<-done
@@ -115,6 +135,12 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		return session, errors.Join(turnErr, err)
 	}
 	defer tx.Rollback()
+	if native != nil && native.Resume != "" && errors.Is(turnErr, errSessionMissing) {
+		target.MissingSession = true
+		if _, err = tx.Exec("INSERT INTO role_native_handoffs(lease_hash,turn,missing_instance,missing_session) VALUES(?,?,?,?)", key[:], target.Turn, p.Instance, native.Resume); err != nil {
+			return session, err
+		}
+	}
 	if err = bufferRoleProcess(tx, target); err != nil {
 		return session, errors.Join(turnErr, err)
 	}
@@ -131,6 +157,9 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 	defer cancel()
 	if err = w.replayRoleProcesses(call, db, role); err != nil {
 		log.Printf("%s process exit remains buffered: %v", role, err)
+	}
+	if native != nil && ctx.Err() == nil && ((native.Resume == "" && errors.Is(turnErr, errTurnInterrupted)) || (native.Resume != "" && errors.Is(turnErr, errSessionMissing))) {
+		return w.roleProcessTurn(ctx, target, harness, version, dest, run)
 	}
 	return session, turnErr
 }

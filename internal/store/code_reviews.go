@@ -160,7 +160,7 @@ func (s *Store) CompleteCodeReview(ctx context.Context, project, execution int64
 func (s *Store) ReviewReceipt(ctx context.Context, task, execution int64) (json.RawMessage, error) {
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `SELECT to_jsonb(r) || CASE WHEN c.candidate_context IS NULL THEN '{}'::jsonb
-		ELSE jsonb_build_object('candidate_context',c.candidate_context) END || jsonb_build_object('processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.reviewer_execution=r.execution_id),'[]'::jsonb))
+		ELSE jsonb_build_object('candidate_context',c.candidate_context) END || jsonb_build_object('processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id) FROM management_processes p WHERE p.reviewer_execution=r.execution_id),'[]'::jsonb))
 		FROM code_review_receipts r JOIN code_reviews c USING(execution_id) WHERE r.task_id=$1 AND r.execution_id=$2`, task, execution).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

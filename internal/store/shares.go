@@ -57,7 +57,7 @@ func (s *Store) DraftShare(ctx context.Context, project int64, d ShareDraft) (js
 	return s.ShareReceipt(ctx, project, id)
 }
 
-const shareReceiptJSON = `to_jsonb(s) || jsonb_build_object('review_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at) ORDER BY p.id) FROM management_processes p WHERE p.share_id=s.id),'[]'::jsonb))`
+const shareReceiptJSON = `to_jsonb(s) || jsonb_build_object('review_processes',COALESCE((SELECT jsonb_agg(p.process || jsonb_strip_nulls(jsonb_build_object('node',p.node,'attempt',p.id,'observed_at',p.observed_at,'resumed_from',NULLIF(p.resumed_from,0),'missing_session',NULLIF(p.missing_session,false))) ORDER BY p.id) FROM management_processes p WHERE p.share_id=s.id),'[]'::jsonb))`
 
 func (s *Store) ShareReceipt(ctx context.Context, project, id int64) (json.RawMessage, error) {
 	var doc json.RawMessage

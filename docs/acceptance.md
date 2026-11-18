@@ -3308,3 +3308,34 @@ PostgreSQL 18／真实 Docker 全包 445 项测试及子测试通过，零失败
 真实证据 role_completed_current/proof.json、role-completed-live.py、completed-proof-check.py；升级证据 role_assignment_current/completed-node-upgrade-proof.json。测试计划额外核对最初把模型草案与完成绑定的计划直接比较，因正常添加用例 ID 和 pending 状态而失败；按既有 Bind 合同分别核对新增字段及原正文后通过，未重跑原生模型。
 
 PostgreSQL 18／真实 Docker 最终全包 452 项测试及子测试通过，零失败、零跳过，报告 role-completed-final-regression.jsonl；Go 静态检查通过。Ubuntu 非 root 身份实际执行角色恢复、结果补报及本次完成快照专项，80 项测试及子测试通过，报告 completed-linux.log。旧协议继续由回归覆盖，但没有进程采集的旧控制面不提供本项完成快照保证。仍未覆盖原生模型运行中的 Daemon 恢复、输出尚未保存的中断、原 Session 恢复、完整归档与全路线最终验收。外部条件继续保持待验收，本项不单独扣减总工作包估算。
+
+上述已完成回合恢复实现与验收对应 ForgeOS 提交 4ba64cf1c35b1fd4f7f3a89a849948f64b38982b。
+
+### 专题 07、13、16 C.3 · 独立角色原生恢复及缺失会话交接
+
+2026-11-18 在独立 PostgreSQL 18 库还原 beta #163，通过 Chrome 导入资料、生成候选测试计划并请求 Reviewer。使用正式角色 Daemon、本机 Codex 0.169.0-alpha.11.1 和 Claude Code 2.1.310。验收固定候选 d689d8e011d2c9e1e49e93cfa632d31b132c2228，不重新交付 GitHub。
+
+| 操作 | 预期结果 | 实际结果 |
+| --- | --- | --- |
+| 原生 Session 已记录时暂停本次原生进程，结束 Daemon，再启动同身份 Daemon | 原进程仍活着时不能重复模型 | 四类角色均明确阻断；核实并结束本次原生进程后才继续。 |
+| 重启控制面及 Daemon | 原 Session、工作目录、提示及合同不变，保持原期限 | 四类角色均恢复同一 Session，实际退出及业务结果获 204；未取得原退出码的实例记为 -1。 |
+| 原生恢复时 CLI 报 Session 不存在 | 保留失败实例，以冻结输入创建有来源的新会话 | Codex Curator、Claude Reviewer 均保留原实例、失败恢复实例（退出 1）和新实例（退出 0），handoff_from 指向原 Session。 |
+| 再次重启，从 Chrome 展开历史 | 能解释每次失败、恢复及交接 | 四类会话可回读；两种交接显示失败标签、恢复实例与交接来源。任务仍为 WAITING_ACCEPTANCE。 |
+| 升级已有 PostgreSQL 106 和四份真实节点 SQLite | 保留原业务及进程历史，不重跑模型 | 数据库到 108，原四条进程 ID 与业务 JSON 相同；节点原退出及结果相同，未重报已结算结果。 |
+
+| 角色／场景 | 原生进程与 Session |
+| --- | --- |
+| Curator 原会话恢复 | PID 11548 → 2476；01a1ec47-467e-72b0-b20b-9ccfe6f74ecd。 |
+| Management 原会话恢复 | PID 46972 → 46592；01a1ec4a-3e0c-7230-98f1-ee93d2fe0db0。 |
+| Test Agent 修订 2 原会话恢复 | PID 45268 → 39144；01a1ec54-1233-7970-8032-4089c8b2150e。 |
+| Reviewer 原会话恢复 | PID 47700 → 41912；f48ccf5b-6235-41cb-8796-cf74e8cde4f5。 |
+| Codex 缺失会话交接 | PID 29164 → 29976（失败）→ 34720；01a1ec57-bea3-78f3-a461-7c9727a7a1d3 → 01a1ec57-d600-7bc1-881e-19e1b3d02897。 |
+| Claude 缺失会话交接 | PID 25524 → 48028（失败）→ 44812；b2fee81a-e9ee-4489-a622-123eecbe52c1 → e403d691-7250-46ab-bf51-2ccbeec80fcb。 |
+
+首次实测发现迁移文件未注册，退出报告得到 503；补齐注册后原作业在原期限内恢复。测试计划修订 1 的 Session 在 CLI 落盘前中断，恢复失败；该失败保留，补齐缺失会话交接后用修订 2 验收原会话恢复，另用两种真实 Harness 验收交接。Claude 交接仅临时隐藏本次验收自己的会话文件，结束后已恢复；Codex 的原 Session 本身未持久化，无需隐藏文件。
+
+证据：role_native_current/proof.json、role_native_handoff_current/proof.json，操作脚本 role-native-live.py、role-native-handoff-live.py；升级证据 role_completed_current/native-migration-proof.json 和 native-node-upgrade-proof.json。私有输入与租约不复制到本仓库。
+
+本次 Windows Worker 受影响回归 107 项、PostgreSQL 进程／领取与会话交接回归 16 项、Linux 非 root 原生恢复专项 17 项测试及子测试通过，均零失败、零跳过。报告分别为 role-native-worker-tests.log、role-native-pg-tests.log、role-native-handoff-pg-test.log 和 native-role-linux.log。Go 静态分析、前端 TypeScript／Vite 构建和 git diff 检查通过。上一阶段全包为 452 项通过，本次不冒充已重跑全量。全路线最终回归及端到端验收仍待完成。
+
+尚未覆盖未记录 PID／Session 的启动间隙、接回仍存活 CLI 的事件流、完整归档及到期清理；外部设备私网、受限 GitHub 身份、第二位审查者和 Linux 服务账号模型登录继续待验收。固定输入和工作目录目前在私有节点目录中保留。

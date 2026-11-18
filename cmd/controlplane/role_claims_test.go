@@ -42,9 +42,9 @@ func TestRoleClaimHTTPIdentityAndCapabilities(t *testing.T) {
 		mux.ServeHTTP(w, r)
 		return w
 	}
-	path := "/internal/curator/claim?supports_process=1&supports_budget_deadline=1"
+	path := "/internal/curator/claim?supports_role_resume=1&supports_process=1&supports_budget_deadline=1"
 	first := request("node", "curator-token", path, "{}")
-	if first.Code != 200 || first.Header().Get("X-ForgeOS-Claim-Key") != key || !bytes.Contains(first.Body.Bytes(), []byte(`"capture_process":true`)) {
+	if first.Code != 200 || first.Header().Get("X-ForgeOS-Claim-Key") != key || (!bytes.Contains(first.Body.Bytes(), []byte(`"capture_process":true`)) || !bytes.Contains(first.Body.Bytes(), []byte(`"recover_native":true`))) {
 		t.Fatal("missing frozen capability", first.Code, first.Body.String())
 	}
 	replay := request("node", "curator-token", path, "{}")

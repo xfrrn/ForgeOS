@@ -292,7 +292,30 @@ func TestMain(m *testing.M) {
 				if os.WriteFile(os.Args[k+1], []byte(output), 0600) != nil {
 					os.Exit(3)
 				}
-				if strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") && strings.Contains(string(body), "previous extraction") {
+				if strings.Contains(string(body), "SIMULATED_NATIVE_ROLE") {
+					_, prior := os.Stat("native-started")
+					resuming := strings.Contains(args, "resume a7090935-460b-4930-8484-0f2008435a45")
+					missingMode := strings.Contains(string(body), "SIMULATED_NATIVE_ROLE_MISSING")
+					if missingMode && resuming {
+						if os.WriteFile("native-missing", []byte("missing"), 0600) != nil {
+							os.Exit(8)
+						}
+						fmt.Fprintln(os.Stderr, "Error: thread/resume: thread/resume failed: no rollout found for thread id a7090935-460b-4930-8484-0f2008435a45 (code -32600)")
+						os.Exit(1)
+					}
+					_, missing := os.Stat("native-missing")
+					if (prior == nil) != resuming && !(missingMode && missing == nil && !resuming) {
+						os.Exit(8)
+					}
+					if os.WriteFile("native-started", []byte("first turn"), 0600) != nil {
+						os.Exit(8)
+					}
+					if missingMode && missing == nil {
+						fmt.Println(`{"type":"thread.started","thread_id":"b7090935-460b-4930-8484-0f2008435a45"}`)
+					} else {
+						fmt.Println(`{"type":"thread.started","thread_id":"a7090935-460b-4930-8484-0f2008435a45"}`)
+					}
+				} else if strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") && strings.Contains(string(body), "previous extraction") {
 					fmt.Println(`{"type":"thread.started","thread_id":"curator-repaired"}`)
 				} else {
 					fmt.Println(`{"type":"thread.started","thread_id":"planner-test"}`)
@@ -300,6 +323,9 @@ func TestMain(m *testing.M) {
 				if strings.Contains(string(body), "SIMULATED_MANAGEMENT_PROCESS") || strings.Contains(string(body), "SIMULATED_ANALYSIS_PROCESS") || strings.Contains(string(body), "SIMULATED_ADVICE_PROCESS") || strings.Contains(string(body), "SIMULATED_FEEDBACK_PROCESS") || strings.Contains(string(body), "SIMULATED_CURATOR_PROCESS") || strings.Contains(string(body), "SIMULATED_TEST_PLAN_PROCESS") {
 					fmt.Println(`{"type":"item.completed","item":{"type":"agent_message","text":"Reviewing the plan.\npassword=private-sample"}}`)
 					time.Sleep(500 * time.Millisecond)
+					if strings.Contains(string(body), "SIMULATED_NATIVE_ROLE_INTERRUPT") && !strings.Contains(args, "resume ") {
+						os.Exit(9)
+					}
 					if strings.Contains(string(body), "FAIL_PROCESS") {
 						fmt.Println(`{"type":"turn.failed"}`)
 						os.Exit(7)

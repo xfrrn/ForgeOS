@@ -101,6 +101,18 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
  run_id TEXT NOT NULL, response BLOB NOT NULL, started INTEGER NOT NULL DEFAULT 0,
  received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
  );
+ CREATE TABLE IF NOT EXISTS role_native_attempts (
+ instance INTEGER PRIMARY KEY, resumed_from INTEGER NOT NULL
+ );
+ CREATE TABLE IF NOT EXISTS role_native_handoffs (
+ lease_hash BLOB NOT NULL, turn INTEGER NOT NULL, missing_instance INTEGER NOT NULL, missing_session TEXT NOT NULL,
+ PRIMARY KEY(lease_hash,turn,missing_instance)
+ );
+ CREATE TABLE IF NOT EXISTS role_native_turns (
+ lease_hash BLOB NOT NULL, turn INTEGER NOT NULL, harness TEXT NOT NULL, version TEXT NOT NULL,
+ workspace TEXT NOT NULL, prompt TEXT, contract TEXT, instance INTEGER,
+ PRIMARY KEY(lease_hash,turn)
+ );
  CREATE TABLE IF NOT EXISTS role_turn_results (
  lease_hash BLOB NOT NULL, turn INTEGER NOT NULL, session_id TEXT, result BLOB,
  completed_at TEXT, PRIMARY KEY(lease_hash,turn)

@@ -123,8 +123,8 @@ func (s *Store) TestPlanReceipt(ctx context.Context, task, execution int64, revi
 		SELECT jsonb_object_agg(CASE role WHEN 'test' THEN 'test_profile' ELSE 'management_profile' END,profile)
 		FROM candidate_test_plan_jobs WHERE plan_id=r.id AND profile IS NOT NULL),'{}'::jsonb)||CASE WHEN p.source ? 'candidate_context'
 		THEN jsonb_build_object('candidate_context',p.source->'candidate_context') ELSE '{}'::jsonb END||jsonb_build_object(
- 'test_processes',COALESCE((SELECT jsonb_agg(mp.process || jsonb_build_object('node',mp.node,'attempt',mp.id,'observed_at',mp.observed_at) ORDER BY mp.id) FROM management_processes mp WHERE mp.test_plan_id=r.id AND mp.test_plan_role='test'),'[]'::jsonb),
- 'management_processes',COALESCE((SELECT jsonb_agg(mp.process || jsonb_build_object('node',mp.node,'attempt',mp.id,'observed_at',mp.observed_at) ORDER BY mp.id) FROM management_processes mp WHERE mp.test_plan_id=r.id AND mp.test_plan_role='management'),'[]'::jsonb),
+ 'test_processes',COALESCE((SELECT jsonb_agg(mp.process || jsonb_strip_nulls(jsonb_build_object('node',mp.node,'attempt',mp.id,'observed_at',mp.observed_at,'resumed_from',NULLIF(mp.resumed_from,0),'missing_session',NULLIF(mp.missing_session,false))) ORDER BY mp.id) FROM management_processes mp WHERE mp.test_plan_id=r.id AND mp.test_plan_role='test'),'[]'::jsonb),
+ 'management_processes',COALESCE((SELECT jsonb_agg(mp.process || jsonb_strip_nulls(jsonb_build_object('node',mp.node,'attempt',mp.id,'observed_at',mp.observed_at,'resumed_from',NULLIF(mp.resumed_from,0),'missing_session',NULLIF(mp.missing_session,false))) ORDER BY mp.id) FROM management_processes mp WHERE mp.test_plan_id=r.id AND mp.test_plan_role='management'),'[]'::jsonb),
  'case_results',COALESCE(
 		(SELECT jsonb_agg(to_jsonb(c) ORDER BY c.case_id,c.attempt) FROM candidate_test_case_results c WHERE c.plan_id=r.id),'[]'))
 		FROM candidate_test_plan_status r JOIN candidate_test_plans p USING(id) WHERE r.task_id=$1 AND r.execution_id=$2 AND ($3=0 OR r.revision=$3) ORDER BY r.revision DESC LIMIT 1`, task, execution, revision).Scan(&doc)
