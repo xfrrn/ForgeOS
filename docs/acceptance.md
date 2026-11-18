@@ -2344,6 +2344,8 @@ PostgreSQL 18 与 Docker 回归 131 项通过、零测试跳过，`go vet ./...`
 
 跨项目批量回答验收问题对应提交 `abb5257b9899049c22868821721030556f70a5ab`。
 
+<a id="github-webhook-replay"></a>
+
 ## 专题 12、13 · 真实 GitHub Webhook 接入
 
 在私有 beta 仓库使用 GitHub 官方 CLI 转发器建立临时开发 Webhook，将 GitHub 实际发送的原始请求头和正文转发给回环控制面。仓库数字 ID 为 1459615168。工作项留在 READY，以便核对 Webhook 的派发结果。[Issue #51](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/51)
