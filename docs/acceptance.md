@@ -26,6 +26,21 @@
 
 在上述最后一项的实现上，以空的独立 PostgreSQL 18 实例并启用 Docker 用例，执行 `go test -count=1 -json ./...`。550 个具名测试及子测试通过，9 个测试包通过，3 个包无测试，具名测试没有跳过或失败。原始输出为 `writer-return-regression.jsonl`。同时执行 `go vet ./...` 和 web 目录的 `npm run build`，类型检查及生产构建通过。四阶段最终端到端复验仍待执行。
 
+<a id="native-version-matrix"></a>
+
+### 专题 07、16 A.1 · 两个已安装版本的 Codex 原生协议
+
+2026-11-18，Windows。分别使用 npm 安装的 `codex-cli 0.147.0` 与桌面版的 `0.169.0-alpha.11.1` 原生可执行文件。0.147.0 使用本机已配置模型运行时，服务返回 HTTP 400，提示升级客户端。读取该版本的 `model/list` 后，用 `--model gpt-5.6-sol` 指定其返回的默认模型，仅对本次探针进程生效。
+
+| 操作及预期 | 0.147.0 实际结果 | 0.169.0-alpha.11.1 交叉核对 |
+| --- | --- | --- |
+| stdio 首轮完成，换进程恢复同一 Thread 并中断下一轮 | PID 47952 → 46004，Thread `01a1ee94-0578-73d2-bca0-59f8e9f659db`，两轮完成，第三轮中断 | [初始化、恢复与中断](#native-thread-interrupt) |
+| 拒绝错回合，追加输入并核对历史 | 错回合返回 -32600。回合 `01a1ee94-0d66-7600-8ee2-2218d36a1782` 的输入 UUID、正文和随机回复一致 | [原生输入回执](#native-active-reattach) |
+| 同一 Thread 批准一次、再次拒绝、拒绝写文件、取消 | Thread `01a1ee94-05c6-7b22-939c-a69de763d682` 四次请求均有独立工具编号，获准命令输出 125810899301，标记文件始终不存在 | [四回合回归](#native-active-reattach) |
+| 命令运行期间断线，接回原进程，要求原命令退出 0、输入 UUID 和随机回复一致 | PID 23604，Turn `01a1ee95-57ec-75d1-9bed-89bc5624f6c9`。重连后收到原命令 `exec-72acf194-35ab-47c1-8087-3b770e52a1a1` 完成事件，退出 0。重建历史包含输入和回复，省略命令项 | PID 25788，Turn `01a1ee95-5e29-76f2-ad08-fad5a0feaa01`，原命令实时完成事件和历史项均可查，退出 0 |
+
+复验命令为 `python -B scripts/probe_codex_app_server.py --bin <原生路径>`，分别运行默认模式、`--steer`、`--approvals` 和 `--reconnect`。稳定版各命令另加上述模型参数。原始回执为 `protocol-matrix-{baseline,steer,approvals}.json`、`compat-147-events.json`、`compat-169-events.json`。新版的私有套接字探针首次实现提交为 `9f80869e8f68737f6cd6c4e0e67afebab1997cf5`。正式 Worker 交付的双版本兼容性和 Owner 原生工具审批仍待验收。
+
 <a id="native-active-reattach"></a>
 
 ### 专题 07、16 A.1/B.4 · Codex 执行命令时断开并接回同一原生进程
@@ -522,6 +537,8 @@ PostgreSQL 恢复演练对应提交 `06ed00b8e47fa764e31611b655fbc5ca9e7fa2d1`�
 | 退出进程，使用 --resume 在新进程 44392 恢复 | 新进程返回相同 Session ID，并能同时回忆第一轮随机标识和已选答案 | 第二次结果与随机标识和 Green 完全匹配。此项覆盖协议探测，Worker 自动恢复、Linux 登录与并发仍需独立验收 |
 
 Claude Code 原生探测对应提交 `1d9617e11095434c41f68956f6e8a0d45c014108`。
+
+<a id="native-thread-interrupt"></a>
 
 ## 专题 07、16 A.1 · Codex App Server 线程与中断
 

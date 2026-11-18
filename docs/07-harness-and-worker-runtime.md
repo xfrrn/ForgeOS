@@ -77,7 +77,7 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 在已登录的 Harness 用户下执行 `python scripts/probe_codex_app_server.py --bin <原生可执行文件>`，通过本地 stdio 启动两个独立 App Server。探测核对服务返回的只读 sandbox，完成首轮后关闭进程，在第二个进程恢复原 Thread 并读取随机标识，再中断第三轮。以返回的 Turn ID 和 `turn/completed` 状态核对中断。当前实测版本要求先接收 `turn/started` 通知，再调用 `turn/interrupt`。可用 `codex app-server generate-json-schema --out <目录>` 对照安装版本的字段。[App Server 协议说明](https://developers.openai.com/codex/app-server/)
 
-同一命令加 `--reconnect` 可验证原生进程仍在执行时的连接恢复。该模式需要 Python 包 `wsproto`，在临时私有目录启动独立的 App Server，用两个先后启动的原生代理连接同一套接字。探针在只读命令执行期间关闭第一条连接，从第二条连接读取原回合并追加输入，核对命令退出码、原生消息编号和最终回复。正式 Worker 的 stdio 进程恢复另行验收。[重连实测](acceptance.md#native-active-reattach)
+同一命令加 `--reconnect` 可验证原生进程仍在执行时的连接恢复。该模式需要 Python 包 `wsproto`，在临时私有目录启动独立的 App Server，用两个先后启动的原生代理连接同一套接字。探针在只读命令执行期间关闭第一条连接，从第二条连接读取原回合并追加输入，核对命令退出码、原生消息编号和最终回复。若本机的默认模型要求较新的客户端，可在探针上加 `--model <该版本支持的模型>`。Windows 上的 0.147.0 已用其模型列表返回的默认模型验证。该版本重建的历史会省略命令项，须从重连后的实时事件核对原命令退出。正式 Worker 的 stdio 进程恢复另行验收。[重连实测](acceptance.md#native-active-reattach)
 
 用同一命令加 `--approvals` 实测命令审批。探针在只读 Thread 中用 `accept` 批准一次只输出随机数的 Python 命令，核对工具项状态和标准输出，然后在同一 Thread 再次提交相同命令，核对新的审批请求并拒绝。接下来分别拒绝和取消临时目录中的标记脚本，检查标记文件始终不存在、拒绝后回合完成、取消后回合中断。每次审批均比对工作目录、命令、Thread、Turn 和工具项编号。输出保留原生回执。
 

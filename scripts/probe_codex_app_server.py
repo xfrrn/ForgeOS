@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 
 
@@ -123,12 +124,14 @@ class Client:
                 return turn, message
 
 
-def server_args(binary, listen):
+def server_args(binary, listen, model=None):
     args = [binary, "app-server", "--listen", listen, "--disable", "apps",
             "--disable", "plugins", "--disable", "hooks", "-c", "mcp_servers={}",
             "-c", 'web_search="disabled"']
     if os.name == "nt":
         args += ["-c", 'windows.sandbox="unelevated"']
+    if model:
+        args += ["-c", "model=" + json.dumps(model)]
     return args
 
 
@@ -144,8 +147,8 @@ def server_env():
 
 
 @contextmanager
-def server(binary, workspace):
-    with subprocess.Popen(server_args(binary, "stdio://"), cwd=workspace, env=server_env(), stdin=subprocess.PIPE,
+def server(binary, workspace, model=None):
+    with subprocess.Popen(server_args(binary, "stdio://", model), cwd=workspace, env=server_env(), stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                           text=True, encoding="utf-8") as proc:
         timer = threading.Timer(120, proc.kill)
@@ -164,9 +167,28 @@ def server(binary, workspace):
                 proc.kill()
 
 
+@contextmanager
+def probe_workspace():
+    temporary = tempfile.TemporaryDirectory(prefix="forgeos-app-server-")
+    try:
+        yield Path(temporary.name)
+    finally:
+        # Older Windows runtimes briefly retain the working directory after App Server exits.
+        deadline = time.monotonic() + 20
+        while True:
+            try:
+                temporary.cleanup()
+                break
+            except PermissionError as exc:
+                if getattr(exc, "winerror", None) != 32 or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.25)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin", default="codex", help="native Codex executable")
+    parser.add_argument("--model", help="override the configured model for this probe process")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--approvals", action="store_true", help="exercise one-time approval, decline and cancel")
     modes.add_argument("--reconnect", action="store_true", help="reconnect to an active turn on a private local socket (requires wsproto)")
@@ -177,8 +199,7 @@ def main():
         parser.error("supply the path to the native CLI executable with --bin")
     version = subprocess.check_output([binary, "--version"], text=True, timeout=10).strip()
     marker = "FORGE-" + secrets.token_hex(8)
-    with tempfile.TemporaryDirectory(prefix="forgeos-app-server-") as tmp:
-        workspace = Path(tmp)
+    with probe_workspace() as workspace:
         if args.reconnect:
             try:
                 from probe_codex_reconnect import reconnect
@@ -186,17 +207,17 @@ def main():
                 if exc.name != "wsproto":
                     raise
                 parser.error("--reconnect requires the wsproto Python package")
-            print(json.dumps(reconnect(binary, workspace, marker, version)))
+            print(json.dumps(reconnect(binary, workspace, marker, version, args.model)))
             return
         if args.steer:
             instruction = f"Reply with exactly {marker}. Do not use tools."
             client_id = str(uuid.uuid4())
-            with server(binary, workspace) as client:
+            with server(binary, workspace, args.model) as client:
                 thread = client.thread(workspace)
                 turn, answer = client.turn(thread, "Write a paragraph about winter. Do not use tools.", steer=(instruction, client_id))
                 if answer != marker:
                     raise RuntimeError("Final response did not match the input delivered during the turn")
-            with server(binary, workspace) as client:
+            with server(binary, workspace, args.model) as client:
                 history = client.call("thread/read", {"threadId": thread, "includeTurns": True})["thread"]
                 turns = [t for t in history["turns"] if t["id"] == turn]
                 if history["id"] != thread or len(turns) != 1:
@@ -215,7 +236,7 @@ def main():
             (workspace / "approval_probe.py").write_text(
                 "from pathlib import Path\nPath('executed.txt').write_text('ran')\n", encoding="utf-8")
             receipts = []
-            with server(binary, workspace) as client:
+            with server(binary, workspace, args.model) as client:
                 thread = client.thread(workspace, approval="untrusted")
                 stamp = str(secrets.randbelow(10**12))
                 read_command = f'python -c "print({stamp})"'
@@ -232,13 +253,13 @@ def main():
                     receipts.append({"thread": thread, "turn": turn, **client.approval})
             print(json.dumps({"version": version, "sandbox": "read-only", "approvals": receipts}))
             return
-        with server(binary, workspace) as first:
+        with server(binary, workspace, args.model) as first:
             thread = first.thread(workspace)
             start, answer = first.turn(thread, f"Test case {marker}. Do not use tools. Reply only OK.")
             if answer != "OK":
                 raise RuntimeError("Unexpected first turn response")
             first_pid = first.process.pid
-        with server(binary, workspace) as second:
+        with server(binary, workspace, args.model) as second:
             second.thread(workspace, thread)
             resumed, answer = second.turn(thread, "Return only the test case identifier from my last message. Do not use tools.")
             if answer != marker:

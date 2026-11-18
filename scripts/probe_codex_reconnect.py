@@ -52,7 +52,9 @@ class SocketClient(Client):
                 if event.message_finished:
                     break
         message = json.loads("".join(parts))
-        if message.get("method") in {"item/started", "turn/completed"}:
+        if (message.get("method") in {"item/started", "turn/completed"}
+                or (message.get("method") == "item/completed"
+                    and message["params"]["item"]["type"] == "commandExecution")):
             self.notifications.append(message)
         return message
 
@@ -75,7 +77,7 @@ def connection(binary, workspace, endpoint):
             proxy.kill()
 
 
-def reconnect(binary, root, marker, version):
+def reconnect(binary, root, marker, version, model=None):
     workspace, private = root / "work", root / "control"
     workspace.mkdir()
     if os.name == "nt":
@@ -87,7 +89,7 @@ def reconnect(binary, root, marker, version):
     else:
         private.mkdir(mode=0o700)
     endpoint = private / "s"
-    with subprocess.Popen(server_args(binary, "unix://" + endpoint.as_posix()), cwd=workspace,
+    with subprocess.Popen(server_args(binary, "unix://" + endpoint.as_posix(), model), cwd=workspace,
                           env=server_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                           stderr=subprocess.DEVNULL) as native:
         try:
@@ -112,6 +114,9 @@ def reconnect(binary, root, marker, version):
                     if (event["method"] == "item/started" and params.get("turnId") == turn
                             and params["item"]["type"] == "commandExecution"):
                         command_id = params["item"]["id"]
+                        command_line = params["item"]["command"]
+                        if command.lower() not in command_line.lower():
+                            raise RuntimeError("The first command does not match the requested sleep")
                         break
                     if event["method"] == "turn/completed" and params["turn"]["id"] == turn:
                         raise RuntimeError("Turn ended before its command started")
@@ -138,9 +143,15 @@ def reconnect(binary, root, marker, version):
                 replies = [i["text"].strip() for i in current["items"] if i["type"] == "agentMessage"]
                 inputs = [i for i in current["items"] if i["type"] == "userMessage"
                           and any(block.get("text") == instruction for block in i.get("content", []))]
-                commands = [item for item in current["items"] if item["type"] == "commandExecution" and item["id"] == command_id]
-                if len(commands) != 1 or commands[0]["status"] != "completed" or commands[0].get("exitCode") != 0:
-                    raise RuntimeError("The command active at disconnect did not finish successfully")
+                # Older runtimes can omit command items from reconstructed history.
+                commands = [i for i in current["items"] if i["type"] == "commandExecution" and i["id"] == command_id]
+                receipts = [e["params"] for e in second.notifications if e["method"] == "item/completed"]
+                observed = [p["item"] for p in receipts if p["threadId"] == thread and p["turnId"] == turn
+                            and p["item"]["id"] == command_id]
+                evidence = commands + observed
+                if not evidence or any(i["status"] != "completed" or i.get("exitCode") != 0
+                                       or i["command"] != command_line for i in evidence):
+                    raise RuntimeError(f"Missing original command completion in turn {turn} of thread {thread}")
                 if current["status"] != "completed" or not replies or replies[-1] != marker:
                     raise RuntimeError("Reconnected turn did not answer the new instruction")
                 if len(inputs) != 1 or inputs[0].get("clientId") != key:
@@ -148,7 +159,8 @@ def reconnect(binary, root, marker, version):
                 if native.poll() is not None or any(workspace.iterdir()):
                     raise RuntimeError("Server exited or its read-only workspace changed")
                 return {"version": version, "pid": native.pid, "thread": thread, "turn": turn, "input_item": inputs[0]["id"],
-                        "command_item": command_id, "command_exit": commands[0]["exitCode"], "client_id": key,
+                        "command_item": command_id, "command_in_history": bool(commands),
+                        "command_completion_received": bool(observed), "command_exit": evidence[0]["exitCode"], "client_id": key,
                         "history_client_id": inputs[0]["clientId"], "reply": marker, "status": current["status"],
                         "sandbox": "read-only"}
         finally:
