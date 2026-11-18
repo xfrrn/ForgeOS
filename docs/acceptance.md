@@ -14,9 +14,11 @@
 | B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。[#256、#257](#returned-writer-recovery) 已验原生回合返回后、名额释放期间的恢复及 Owner 控制。[beta #258](#active-writer-recovery) 已验原生 Turn 登记后，首回合和排队指令回合在写入中途恢复。[beta #260](#writer-startup-recovery) 已验发送模型请求前的启动中断。[beta #261](#writer-start-confirmation) 已验请求发出后丢失回合记录的恢复与取消。[已完成回合](#writer-terminal-receipt)可从原进程的退出回执与冻结草稿恢复。 | [缺少启动或退出证据时的取消与到期](#writer-evidence-deadline)已验。普通 Codex 写入回合已验证 [App Server](#supervised-writer) 和 [CLI](#supervised-cli-writer) 两种接回方式。[只读规划的同进程接回与暂停后恢复](#supervised-planner)已验。[Curator、Management 和 Test Agent 的存活进程接回](#supervised-roles)已验。[Claude 原生失败和工作台取消](#supervised-claude)已验。[Linux 断电后的工作树与结果补报](#linux-power-loss-worktree)已验。Claude 成功交付、Reviewer 成功审查及活动模型的整机重启恢复仍待验。 |
 | C.3 · 进程日志与工具输出 | 普通执行和四个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)、[Reviewer 的失败进程](#reviewer-central-log)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | [MCP 正文与错误](#mcp-public-output)和[网页搜索文本结果](#web-search-public-output)已分别取得双协议回执并在工作台回放核对。[两版 CLI 的实测命令](#cli-command-output-timing)只在完成时返回正文。Claude 的工具增量输出仍待验收。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方、独立 Staging 接收外部提供方的真实回调。 |
-| 路线一至四最终复验 | `83640fa` 已复验[基座中断补报](#foundation-before-report)、[单项目交付](#single-project-287)和[双子项 Goal](#dependent-goal-289)。CI 分类变更 `e91fcfd` 已复验[引擎故障后的单项目交付](#single-project-292)。阶段四已将[两个离线节点的原始回执与 GitHub 交付记录](#offline-node-deliveries)逐项核对。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
+| 路线一至四最终复验 | `ad9ec2b` 已复验[基座中断补报](#foundation-before-report)。`83640fa` 已复验[单项目交付](#single-project-287)和[双子项 Goal](#dependent-goal-289)。CI 分类变更 `e91fcfd` 已复验[引擎故障后的单项目交付](#single-project-292)。阶段四已核对[两个离线节点的原始交付记录](#offline-node-deliveries)和[两库的同名文档与执行回执](#two-project-merged-documents)。 | 阶段四在当前版本从空库重新交付两个项目、跨项目权限和资源隔离的最终复验，以及其余功能完成后的全路线联验。 |
 
 2026-11-19 再以只读权限启动原生 Claude，会话 `93b56ffe-419e-40cf-9e17-bc02ce26dd03` 收到五个事件，提供方报告 HTTP 403 和余额不足。未取得成功读取工具的回执，B.2、B.4、C.3 维持部分验收。脱敏回执为 `native-claude-tool-20261119-025122.json`。
+
+阶段四从空库联验需要在同一次运行中配置两项目的凭据并核对资源隔离。自动审批拒绝了准备这组敏感配置的操作，此项维持待验收。
 
 <a id="material-literal-source"></a>
 
@@ -46,6 +48,8 @@
 原始回执在 `material-cold/` 下的 `material-literal-plane.exe.json`、`material-cold-plane.exe.json` 与 `material-cold-plane.exe-node.json`。
 
 ### 本轮回归与基座复验
+
+2026-11-19，`ad9ec2b5b59686f7aaaa5e59c11d1b84e66e8619` 在空 PostgreSQL 18 和真实 Docker 上执行 `go test -count=1 -json ./...`，590 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。`go vet ./...`、TypeScript 和 Vite 生产构建通过。全包日志为 `material-cold-regression.jsonl`。阶段一的独立进程与持久化复验见[基座中断补报](#foundation-before-report)。专题 08 的[八种查询入口和证据](08-project-knowledge-and-context.md#6-agent-项目查询-api)独立列出。
 
 2026-11-19 完成下列逐项复验。前四项以及需求修订回执的实现版本分别通过空 PostgreSQL 18 与真实 Docker 全包回归，每轮 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。反馈媒体备份命令在 Linux PostgreSQL 17 上独立实测，中央日志与 CI 恢复使用 PostgreSQL 18。
 
@@ -540,6 +544,8 @@ beta #235 为开放讨论，未声明工作类型。修复前在空收件箱按�
 | 再提交最初被截留的成功回报，比较任务详情和时间线 | 同一执行只完成一次 | 返回 204。首次任务的完整 JSON 逐字段相同，两条时间线均只有创建、领取、完成。原始回执为 `foundation-pending-current/latest.json`。 |
 
 在 `83640fa4832a621a55624789dea21e2fbc4d50d1` 的空库重复上述全流程。首项回报被截留时，任务状态为 RUNNING、READY，第二节点领取得到 204。替换控制面（26456 → 37148）和 Worker（11668 → 27312）后，两项各执行一次，分别在 `execution-1` 和 `execution-2` 读到 `20c0974e81d68aac6177492caebd5aa8bb55f1a8`。两项均为 DONE，首份回执再次提交返回 204，任务详情逐字段相同。证据为 `foundation-83640fa/latest.json`。
+
+在 `ad9ec2b5b59686f7aaaa5e59c11d1b84e66e8619` 重新构建控制面和 Worker，在新库重跑同一场景。回报中断时任务 1 为 RUNNING、任务 2 为 READY，另一节点领取返回 204。替换两个进程后，任务 1、2 各有一次执行，各自工作区的 HEAD 均为 `8c53e23bbf57fcd9f57bfbf5a50c404d42210d5f`。重放原结果仍为 204，时间线均只含创建、领取、完成。回执为 `foundation-ad9ec2b/latest.json`。
 
 <a id="ci-backup-pending"></a>
 
