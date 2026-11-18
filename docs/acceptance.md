@@ -101,8 +101,6 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 从固定提交 `469cef06b81601ac2f382e230157c2e125787e39` 核实两个文件，将摘录和检查步骤纳入修订 3 | D1 批准后派发独立项并阻塞依赖项 | 会话 `01a1e330-3dec-73d2-bb84-d017aa401852` 批准，Goal ACTIVE，一个 READY、一个 BLOCKED。Chrome 的任务详情显示 D1、依据和同一会话 ID |
 | PostgreSQL 集成测试提交过期租约、旧版结果、跨项目结果、重复结果和试图降低 D3 的建议 | 过期和越权写入被拒；重放不重复派发，D3 留待 Owner | 全部通过。启用 PostgreSQL 与 Docker 的回归 52 项通过、零跳过；Go vet、前端生产构建通过 |
 
-<a id="adr-evidence-006"></a>
-
 ## 专题 06 · 已激活 Goal 的滚动修订
 
 | 操作 | 预期 | 实际 |
@@ -3508,3 +3506,17 @@ Claude 首个 beta #214 场景完成了允许的 Read/Write 及 PR #215 交付�
 | 再次重启，通过 Chrome 回读任务时间线 | 两次尝试和回执分别展示 | 原失败事件和 Owner 取消事件各有确认时间，两条链接均指向来源 Issue。 |
 
 GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/228#issuecomment-6968072667)和[取消回写](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/228#issuecomment-6968106519)。操作脚本 issue-outcome-live.py、outcome-browser.py，证据 outcome_feedback_live/proof.json。PostgreSQL 专项验证重复 Worker 回报、项目隔离、重领、旧租约确认冲突与事件回读。来源关闭、Owner 取消、迁移、失败重试及既有远端交付门禁回归通过。前端生产构建、go vet、git diff 检查通过。
+
+<a id="adr-evidence-006"></a>
+
+### ADR-006 · 已有失败执行的简单任务升级为 Goal
+
+2026-11-18，正式控制面与 PostgreSQL 18 从 beta 私库导入 [Issue #229](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/229)。首次领取与回报使用 Worker HTTP 入口，规划和激活使用 Chrome 工作台。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 领取简单任务 1 的执行 1，在执行中提交有效计划 | 保护活动租约，保留原任务 | HTTP 409，原执行仍可回报。 |
+| Worker 回报退出码 3；待失败反馈抵达 Issue，在任务页起草带决策引用的 Goal | 在安全检查点允许升级，沿用原任务 ID | Chrome 发布修订 1 返回 200。归档得到 Git 提交 `c7ca95b43d585ba1c5b30dcadafef0a01db3fc6f`。 |
+| 在 Chrome 批准并激活修订，重启控制面后读取父子两项 | 保留原执行及来源事件，生成可派发子项 | Goal 仍为任务 1，生效修订 1。工作项 2 的 goal_id 为 1。原执行 1 逐字段相同，导入、领取及失败三个原始事件均存在。 |
+
+操作记录 adr-goal-live.py、adr-publish-live.py；回执 adr_decision_goal/proof.json。对应 ForgeOS 实现 `5d30bcf451d838fae10d684d5c6bd718f5a4f73a`、`94b6b0845c7bbb370701110c1ab2f841fffdc953`。同一实现版本启用 PostgreSQL 18 与 Docker 的全量 Go 回归得到 498 项通过、零跳过、零失败（issue-outcomes-stage-regression.jsonl）。
