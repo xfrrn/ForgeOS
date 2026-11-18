@@ -135,6 +135,20 @@ beta Issue #8 规定了 `CanEnqueue` 的业务语义、表驱动测试和四类�
 
 原始证据为 `project-config-restore/latest.json` 与同目录 `single-v1/config-sources.json`。固定提交验证方案、风险选级与归档仓库清单分别见 `35866ba`、`fdc4192`、`e73088c`。
 
+<a id="ci-engine-failure-classification"></a>
+
+### 专题 10 · 区分本地 Docker 引擎故障、缺少镜像与安全检查失败
+
+使用正式 `worker validate-candidate` 对固定 Git 配置运行 V1。配置声明两项必需检查，第一项检查 README，第二项为 security 类型，检查 NOTICE 文件存在。修复前，指定不存在的本地 Docker 管道和指定不存在的镜像均得到 TEST_ENV_FAILURE。修复后，在同一候选 `ab03547bc1f8201414454e925926ba2f0edc4541` 上逐一复验。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 只给本次 Worker 指定不存在的本地 Docker 管道，保持主机 Docker 正常运行 | 引擎不可用归入基础设施故障；没有已执行的仓库检查 | `ci-run-322250927` 为 INFRA_FAILURE，检查列表为空。修复前运行 `ci-run-3279407170` 将此场景报为镜像缺失。 |
+| 在可连接的引擎上指定本地不存在的镜像 | 记录测试环境缺失；无需拉取镜像或启动容器 | `ci-run-4054238225` 为 TEST_ENV_FAILURE，检查列表为空。 |
+| 使用已安装的镜像，对只有 README 的候选运行两项检查 | 两项各自记录退出码，整次运行采用必需安全检查的失败分类 | `ci-run-1881127115` 的 label 退出 0，notice 退出 1。notice 和运行均为 SECURITY_FAILURE。 |
+
+三次 CLI 均按失败返回退出码 1；运行回执保留各自编号和候选 SHA。原始记录为 `ci-failure-classes/before.json`、`ci-failure-classes/after.json`。Docker 集成测试先复现离线引擎误判，再验证缺镜像和引擎离线两个分支。
+
 <a id="ci-resource-worktree"></a>
 
 ### 专题 03、10 · 在 CI 容器内读取资源限额并核对临时工作树

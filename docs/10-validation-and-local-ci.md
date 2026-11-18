@@ -159,7 +159,7 @@ Runner 读取基础提交的配置，在候选文件的隔离副本中运行。�
 - CONFIG_FAILURE；
 - SECURITY_FAILURE。
 
-基础设施故障不应被当成代码缺陷。
+基础设施故障不应被当成代码缺陷。 固定候选运行声明检查时，本地 Docker 引擎不可连接记为 INFRA_FAILURE；引擎可用并确认缺少所配镜像时记为 TEST_ENV_FAILURE。必需的 security 检查返回失败则记为 SECURITY_FAILURE，并保留实际退出码。[三种场景的正式 Runner 回执](acceptance.md#ci-engine-failure-classification)
 
 关闭来源 Issue 时，已开始的容器检查会随 Worker 中断。运行和被中断的检查记录 CANCELLED，该检查的退出码为空。已完成的检查、候选 SHA 和写入的日志仍可按运行回执读取。
 

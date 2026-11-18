@@ -218,8 +218,15 @@ func runLocalCI(ctx context.Context, req ciRequest, root, work, runner string) (
 		return finish("CONFIG_FAILURE", "invalid local CI image")
 	}
 	pinned, err := docker.command(ctx, "image", "inspect", "--format", "{{.Id}}", image).Output()
-	if err != nil || !imageID.MatchString(strings.TrimSpace(string(pinned))) {
-		return finish("TEST_ENV_FAILURE", "configured CI image is unavailable locally")
+	if err != nil {
+		matches, listErr := docker.command(ctx, "image", "ls", "--quiet", "--no-trunc", image).Output()
+		if listErr == nil && len(bytes.TrimSpace(matches)) == 0 {
+			return finish("TEST_ENV_FAILURE", "configured CI image is unavailable locally")
+		}
+		return finish("INFRA_FAILURE", "cannot inspect the configured image on the local Docker engine")
+	}
+	if !imageID.MatchString(strings.TrimSpace(string(pinned))) {
+		return finish("INFRA_FAILURE", "local Docker engine returned an invalid image ID")
 	}
 	run.Image = strings.TrimSpace(string(pinned))
 	snapshot, release, err := ciSnapshot(ctx, repo, req.Commit)

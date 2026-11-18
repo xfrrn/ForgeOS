@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -102,4 +103,23 @@ profiles:
 	if run.Failure != "TEST_ENV_FAILURE" || len(run.Checks) != 2 || run.Checks[0].ExitCode == nil || *run.Checks[0].ExitCode != 0 {
 		t.Fatalf("missing promised report: %+v", run)
 	}
+	t.Run("missing local image", func(t *testing.T) {
+		t.Setenv("FORGEOS_CI_IMAGE", "forgeos-missing-image:"+candidate)
+		r := validate(base, candidate)
+		if r.Failure != "TEST_ENV_FAILURE" || len(r.Checks) != 0 {
+			t.Fatalf("missing image: %+v", r)
+		}
+	})
+	t.Run("unavailable local engine", func(t *testing.T) {
+		host := "unix://" + filepath.Join(t.TempDir(), "absent.sock")
+		if runtime.GOOS == "windows" {
+			host = "npipe:////./pipe/forgeos-absent-" + candidate
+		}
+		t.Setenv("DOCKER_CONTEXT", "")
+		t.Setenv("DOCKER_HOST", host)
+		r := validate(base, candidate)
+		if r.Failure != "INFRA_FAILURE" || len(r.Checks) != 0 {
+			t.Fatalf("unavailable engine: %+v", r)
+		}
+	})
 }
