@@ -341,6 +341,8 @@ FORGEOS_WORKSPACE_ROOT="$restored_workspace_root" worker verify-ci-run < "$backu
 
 控制面还保存已上传文件的独立副本。在同一维护窗口，将控制面工件根下的 `ci/` 连同上述数据库、截图和节点运行目录纳入备份及校验清单。恢复时将 `ci/` 放回恢复控制面的工件根，使用 Owner 工作台逐项下载，按恢复数据库的回执复算摘要。中央副本缺失时，仍可从对应节点的运行目录取原文件补传。[下载与补传入口](10-validation-and-local-ci.md#5-local-ci-runner)
 
+若下载返回 503，先在恢复节点的 SQLite 中查询 `SELECT file,bytes,retry_at FROM ci_uploads WHERE run_id = ?`，绑定回执中的运行编号。恢复原节点身份并启动 Worker 后，各文件独立重试。若队列只剩一个文件，按上述回执核对该文件，从可信备份恢复原件并再次运行 `verify-ci-run`。队列清空后从工作台下载复核。登记为零字节的文件也须匹配空文件的 SHA-256。[五个待传文件的恢复记录](acceptance.md#ci-backup-pending)
+
 ### 备份和恢复 Worker 的 SQLite 日志
 
 在暂停派发的维护窗口中，先让活动的 Harness 和 CI 写完结果，保留尚未送达或尚未确认的回执。停止源 Worker 后，配套备份控制面数据库、项目克隆和工作区。SQLite 也支持在 Worker 运行时读取一致快照；与 PostgreSQL 配套恢复时，需要记录两个快照之间实际送达了哪些回报。恢复时只有一台 Worker 使用原节点身份。

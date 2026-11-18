@@ -34,6 +34,18 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="ci-backup-pending"></a>
+
+### 专题 10、13、14 · 从节点备份补传 CI 日志和报告
+
+使用 beta #273 已交付执行的 PostgreSQL 18 备份、原节点 SQLite 快照及 CI 运行目录。运行编号 `ci-run-714359397`，候选 `3a780d671236e8ce85ec98d35871698384abd070`。隔离恢复的控制面使用空工件目录。相关的[普通执行和角色进程日志恢复](#central-process-backup)已在 `755c6c095ffecfabf21fb3f5672f9650eebf19e2` 记录。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 从 Owner 任务详情读取运行回执，逐项下载，再运行 `worker verify-ci-run` | 区分中央缺件和节点文件损坏 | 三份日志、两份报告在中央均返回 503，节点五份原件全部通过校验。仅改动恢复副本中的 `unit-1.bin` 后，校验退出非零。 |
+| 启动原身份 Worker，然后从可信备份恢复损坏的报告 | 其他文件先到达，修复后剩余报告自动补传 | 队列由 5 降至 1，四份零字节文件均返回 200，损坏的报告仍返回 503。恢复原件后校验输出 `verified_files=5`，自动重试后队列清零。原任务的事件序列未变。 |
+| 停止 Worker，归档中央 `ci/`，解包到新的工件根并重启控制面。在 390 像素 Chrome 工作台展开「逐项检查」下载 | 离线时 Owner 可取回每份原件，Worker 身份不能下载 | 五份下载逐字节等于源文件，长度与 SHA-256 均符合运行回执。`unit-1.bin` 为 7,270 字节，SHA-256 为 `dad96c55d02a2beeb89050912e0efa6ca5c4bf8fb9a16684a914eecf383657e8`。五次 Worker 下载均返回 401。回执为 `ci-restore-retry/latest.json`。 |
+
 <a id="central-process-backup"></a>
 
 ### 专题 13、14 · 从数据库与节点备份恢复中央进程日志
