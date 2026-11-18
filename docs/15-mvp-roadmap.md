@@ -23,6 +23,8 @@
 
 首批实现涉及的职责和状态定义见[系统架构](02-system-architecture.md)、[领域模型](04-domain-model.md)和[Worker 运行时](07-harness-and-worker-runtime.md)。租约超时、事件幂等以及重试时的 Worktree 处置随这次联调细化，见[待决事项 B.4–B.5](16-open-decisions.md)。
 
+Linux 整机断电复验覆盖了项目与工作区同盘、分盘两种部署。重启后首项从原执行补报，两个工作树均可核对 HEAD。修复前同一场景曾出现任务已完成但工作树损坏。[断电时点、内核启动 ID 与回执](acceptance.md#linux-power-loss-worktree)
+
 ## 二、单项目交付与基础管理页
 
 **当前实测进度**　在公开项目的临时克隆上，本地 Codex 修正了 README 中两处仍存在的拼写问题。候选 `5aa24090` 通过文档验证，等待维护者验收。[原始 Issue](https://github.com/galiakr/ai-dev-toolkit/issues/20)
