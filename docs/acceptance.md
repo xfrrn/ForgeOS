@@ -112,8 +112,6 @@ Goal 激活与首项交付对应 `94b6b0845c7bbb370701110c1ab2f841fffdc953`。PR
 | 从旧的依赖检查返回结果、覆盖已交付子项、在关闭租约期间再提交计划 | 各次写入被拒，旧结果不能放行已改版任务 | PostgreSQL 集成测试通过，已交付子项的执行 ID 和 Merge SHA 保留。全套 PostgreSQL/Docker 回归 53 项通过、零跳过 |
 | 完成修订后的任务 18 | 从前置 Merge SHA 开始验证，两个必需子项交付后关闭父 Issue | 执行 15 基于 `1dea711e585b05dc1d6aa4a79cc9cf1c96e565ab`，候选 `8ee909d7b313ca88cb3877ced22b44102ff69d65` 经 docs 验证与必需 CI 后合并为 `b179f04fec439a392af1fe1504450931f9f1f203`。Goal 16 为 DONE，Issue 已关闭，回写计数为 2。[PR #6](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/6) · [Actions](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/actions/runs/43823799864) · [父 Issue](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/issues/4) |
 
-<a id="adr-evidence-007"></a>
-
 ## 专题 04、12 · 来源需求修订与执行绑定
 
 | 操作 | 预期 | 实际 |
@@ -3532,3 +3530,16 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 从登记克隆按合并提交查询工程文档，并回读项目决策 | 工程文件和运营索引可分别复核 | API、GitHub 和本地 Git 返回同一 blob `9fda8b0a63058b2b0dd8fd22d3a5e70efa06849a`。文档含确认原文和适用条件，中台决定仍为 CONFIRMED。 |
 
 在同一项目中复用计划引用和已有交付流程。主要实现为 `ddbaae25eb110553bcc3d958bd268117ea57331d`。
+
+<a id="adr-evidence-007"></a>
+
+### ADR-007 · 回退项目 Git 内容后核对运行历史
+
+2026-11-18，从同一控制面读取已交付的父 Goal 1、子项 2、计划修订 1 和已确认决策 1。子项关联原生执行、验证、Owner 验收、[PR #230](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/230) 和 Merge SHA。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 在干净的登记克隆，以合并提交单独建立本地验证分支，执行 git revert | 工程文档从当前树撤下，仍可按原提交查回 | 从 `aa59e90be074a63476136edc119afc802fc4ed76` 回退得到 `952b92546b5009fa809cc0b2e380cb1e3b57ab4c`，差异仅删除该 ADR。当前 HEAD 的文档查询没有该文件；按原 SHA 的响应逐字段相同。远端目标分支保留已交付版本。 |
+| 回退前后读取四份完整记录，再重启控制面，用 Chrome 查看子项 | 运行历史独立保留，仍可核对原候选和远端合并 | 三次回读相同，排序 JSON 的 SHA-256 均为 `446a7f9c47df5bb3af4b6fb7a9d7029373eecd2ddb68792aac37c415215c6a21`。任务页显示原候选 `7b5484c22dee55f942628c1426ae95aa48553aee` 和原 Merge SHA。 |
+
+证据 adr_decision_goal/proof.json，操作脚本 adr-revert-live.py。阶段三父项关闭实现为 `544744520aeb6ea13724c7aaf4166ebf0a5c09b0`，运行历史与候选证据的提交见 ADR 对照表。
