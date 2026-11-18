@@ -54,9 +54,9 @@ Windows 本机已验证 GitHub Issue 导入、`codex exec --json` 的原生 Sess
 
 ## 节点日志归档补充状态
 
-公开模型文本、已完成工具文本以及 App Server 命令增量已接入节点 SQLite 脱敏归档，并通过正式 process-logs CLI 导出、顺序／摘要校验和到期清理。完整记录超出 8 KiB 页面窗口仍可回读；容量省略、旧记录无归档和已到期均明确返回。四类原生角色的 Daemon 恢复、最近结果保护、旧备份再次清理及非 root Linux CLI 已实测。普通原生适配器的真实交付与本阶段回归见验收记录。普通执行的[中央日志下载](acceptance.md#central-process-archive)已验证；Curator、Management 和 Test Agent 的[中央传输、重启与离线下载](acceptance.md#role-process-central)已验收。[启动日志中央下载](acceptance.md#startup-log-download)已在 Docker 的成功和失败终态验收。Reviewer 原生复验及其余结构化工具内容待补齐。角色冻结提示、输出合同和私有目录的到期清理已从四类角色备份及正式 Reviewer 领取入口验收。
+公开模型文本、已完成工具文本以及 App Server 命令增量已接入节点 SQLite 脱敏归档，并通过正式 process-logs CLI 导出、顺序／摘要校验和到期清理。完整记录超出 8 KiB 页面窗口仍可回读；容量省略、旧记录无归档和已到期均明确返回。四类原生角色的 Daemon 恢复、最近结果保护、旧备份再次清理及非 root Linux CLI 已实测。普通原生适配器的真实交付与本阶段回归见验收记录。普通执行的[中央日志下载](acceptance.md#central-process-archive)已验证；Curator、Management 和 Test Agent 的[中央传输、重启与离线下载](acceptance.md#role-process-central)已验收。[启动日志中央下载](acceptance.md#startup-log-download)已在 Docker 的成功和失败终态验收。[真实 Claude Reviewer 失败进程的离线下载](acceptance.md#reviewer-central-log)已验收。其余结构化工具内容待补齐。角色冻结提示、输出合同和私有目录的到期清理已从四类角色备份及正式 Reviewer 领取入口验收。
 
-文件改动结构化回执补充：已接入 Codex CLI 的原生改动清单和 App Server 的原生补丁，复用现有窗口及节点归档；完成、失败／拒绝、移动路径、未知类型和转义凭据通过适配器测试。正式 Codex CLI 与 App Server 已分别通过 beta #220／PR #221 和 beta #222／PR #223 验证运行中回读、控制面重启、脱敏导出及交付，证据见 acceptance.md。MCP 等其他结构化内容及中央全文调阅仍待补齐。
+文件改动结构化回执补充：已接入 Codex CLI 的原生改动清单和 App Server 的原生补丁，复用现有窗口及节点归档；完成、失败／拒绝、移动路径、未知类型和转义凭据通过适配器测试。正式 Codex CLI 与 App Server 已分别通过 beta #220／PR #221 和 beta #222／PR #223 验证运行中回读、控制面重启、脱敏导出及交付，证据见 acceptance.md。中央全文调阅见[下载验收](acceptance.md#central-process-archive)。MCP 等其他结构化内容仍待补齐。
 
 <a id="requirement-status"></a>
 
