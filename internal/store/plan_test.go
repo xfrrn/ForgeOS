@@ -235,6 +235,23 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if err := s.ReleaseDependent(ctx, next.TaskID, next.Revision, merged); err != nil {
 		t.Fatal(err)
 	}
+	released, err := s.Task(ctx, next.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := released.Events[len(released.Events)-1]
+	rawRelease, err := s.EventAudit(ctx, p.ID, next.TaskID, release.ID)
+	var releaseAudit struct {
+		Source, Actor string
+		Payload       struct {
+			Base     string `json:"base_commit"`
+			Revision int    `json:"plan_revision"`
+		}
+	}
+	if err != nil || json.Unmarshal(rawRelease, &releaseAudit) != nil || release.Type != "dependencies_delivered" ||
+		releaseAudit.Source != "controlplane" || releaseAudit.Actor != "delivery_manager" || releaseAudit.Payload.Revision != 3 || releaseAudit.Payload.Base != merged {
+		t.Fatalf("dependency release receipt: %s %v", rawRelease, err)
+	}
 	secondJob, err := s.Claim(ctx, "worker", root, true)
 	if err != nil || secondJob == nil || secondJob.TaskID != next.TaskID || secondJob.Spec.BaseCommit != merged {
 		t.Fatalf("did not freeze delivered base: %+v %v", secondJob, err)

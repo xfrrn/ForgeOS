@@ -97,6 +97,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 导入 Issue 时，回执记录首次派发来自 Owner 还是 GitHub 标签轮询。载荷从需求修订 1 读取仓库和 Issue 的编号、原链接、工作类型及修订编号；后来轮询、重新派发或采用新需求仍可查到首次导入的依据。旧事件可查原需求，首次派发者未知时保留空值。[手动导入和标签轮询实测](acceptance.md#issue-import-audit)
 
+依赖交付事件 `dependencies_delivered` 的来源为 `controlplane`，发起方为 `delivery_manager`。新事件在解除阻塞的同一条写入中保存子项的计划修订和已核对的基线 SHA。升级旧事件时，只从该子项在事件之前最近的一次创建或修订读取计划版本。缺少记录的字段保持未知。[新派发与旧备份回读](acceptance.md#dependency-release-audit)
+
 ## 3. 审计
 
 需求变更事件的回执记录被观察、采用或从反馈新建的具体修订。来源是预览反馈时，载荷还给出原反馈、任务、执行和候选 SHA。新建修订与采用修订分别记录。历史观察可按同一事务唯一匹配修订，旧采用事件缺少版本依据时保留未知。[Issue 编辑、工作台采用与反馈修订的实测](acceptance.md#requirement-event-audit)

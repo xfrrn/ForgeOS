@@ -56,6 +56,18 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="dependency-release-audit"></a>
+
+### 专题 06、13 · 从后续子项追查解除阻塞时的计划与 Git 基线
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 还原 beta #275 的真实交付备份，用旧版和新版依次打开任务 3，再重启新版并在手机宽度的 Chrome 下载回执 | 保留原事件、时间及确有依据的计划版本，缺少历史依据的基线保持未知 | 旧版事件 12 的发起方和来源均为空。升级后同一事件标出 `delivery_manager`、`controlplane` 和计划修订 1。下载 JSON 与 Owner API 一致，计划链接指向父 Goal 1 的修订 1。旧回执没有基线字段。 |
+| 在空库为 beta #282 激活两项有依赖的计划，批准第一项并等待 GitHub 合并 | 首项合并后父 Issue 仍开放，交付管理器确认依赖后才派发第二项 | PR #283 合并到 `c1aa12a556fbaad4a3a78268369efb6ad797226f`。父 Issue 仍开放，子项 3 的事件 12 记录同一基线、计划修订 1 和 `TASK-3`。 |
+| 运行第二项，从工作台验收交付，重启后再从该子项下载回执并打开父计划 | Worker 使用回执中的基线，后续交付不改变原回执 | Worker 的候选 `179663a144b697bcd898a092022ef010f4a048c2` 以 PR #283 的合并 SHA 为基线。PR #284 通过必需 CI 后合并为 `7fa6bbfffb658e24ab4da1530d7cc19d6da0a5b6`。父 Issue 于 20:00:11 UTC 关闭。390 像素宽的 Chrome 下载与首次 API 回读一致；从事件打开了父计划修订 1，其归档 SHA 为 `44bd168dc70bc50cfa873406888ce4beda5131e0`。 |
+
+历史升级与新交付的回执分别为 `dependency-release-live/upgrade.json` 和 `dependency-release-live/latest.json`。空 PostgreSQL 18 和真实 Docker 的全包回归共 586 项具名测试及子测试通过，0 项失败、0 项具名跳过，3 个包无测试文件。回归包括父计划滚动到修订 4 时，按子项实际采用的修订 3 放行。Go 静态检查通过。原始结果为 `dependency-release-regression.jsonl`。[父 Issue #282](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/282) · [首项 PR #283](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/283) · [后续 PR #284](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/284)
+
 <a id="linux-power-loss-worktree"></a>
 
 ### 阶段一、专题 07、14、16 B.4 · Linux 整机断电后的工作树与结果补报

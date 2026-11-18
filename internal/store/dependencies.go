@@ -53,8 +53,9 @@ func (s *Store) ReleaseDependent(ctx context.Context, id int64, revision int, ba
 		AND EXISTS(SELECT 1 FROM work_dependencies WHERE task_id=w.id)
 		AND NOT EXISTS(SELECT 1 FROM work_dependencies e JOIN work_items prev ON prev.id=e.prerequisite
 		    LEFT JOIN deliveries d ON d.task_id=prev.id WHERE e.task_id=w.id AND (prev.status<>'DONE' OR d.state IS DISTINCT FROM 'DONE'))
-		RETURNING w.id)
-		INSERT INTO task_events(task_id,type) SELECT id,'dependencies_delivered' FROM released`, id, base, revision)
+		RETURNING w.id,w.plan_revision)
+		INSERT INTO task_events(task_id,type,plan_revision,dependency_base)
+		SELECT id,'dependencies_delivered',plan_revision,$2 FROM released`, id, base, revision)
 	if err != nil {
 		return err
 	}

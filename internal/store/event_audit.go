@@ -21,7 +21,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                        CASE WHEN q.checkpoint_sequence IS NULL THEN 'owner' ELSE 'worker' END
                    WHEN v.type IN ('management_reviewed','management_decision_answered','management_question_reviewed') THEN 'management'
                    WHEN v.type='source_cancel_requested' THEN 'github'
-                   WHEN v.type IN ('pr_created','pr_merged','delivery_completed','goal_delivered') THEN 'controlplane'
+                   WHEN v.type IN ('pr_created','pr_merged','delivery_completed','goal_delivered','dependencies_delivered') THEN 'controlplane'
                    WHEN v.type IN ('delivery_base_refreshed','preview_feedback_received','feedback_screenshot_saved','feedback_recording_saved') THEN 'owner'
                    WHEN v.type='preview_feedback_classified' THEN 'management' END) AS source,
                CASE WHEN v.type IN ('execution_completed','execution_failed','execution_retry_requested','planner_completed','ci_paused')
@@ -78,7 +78,7 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
         'payload',jsonb_strip_nulls(jsonb_build_object(
             'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,'source_closure',source_closure,
             'task_kind',CASE WHEN type='task_created' THEN kind END,
-            'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
+            'commit',COALESCE(reviewed_commit,delivery_commit,feedback_commit,revision_candidate,NULLIF(result->>'commit','')),'base_commit',COALESCE(dependency_base,NULLIF(result->>'base_commit','')),
             'abandoned_at',abandoned_at,'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',
             'validation_profile',result#>>'{validation,profile}','validation_run',result#>>'{validation,run,id}',
             'decision',COALESCE(decision,plan_review->>'verdict'),'decision_level',plan_review->>'effective_level',
