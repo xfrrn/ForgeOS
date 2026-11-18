@@ -225,6 +225,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 			resultErr = fmt.Errorf("App Server exit: %w", exit)
 		}
 	}()
+	if c.onAppTurn != nil {
+		if err := trackWriterProcess(cmd.Process.Pid); err != nil {
+			return "", fmt.Errorf("track writer tools: %w", err)
+		}
+	}
 	if err = s.initialize(); err != nil {
 		return "", err
 	}
@@ -388,6 +393,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 				s.mu.Unlock()
 				if err := process.appTurn(event.Turn.ID); err != nil {
 					return session, err
+				}
+				if c.onAppTurn != nil {
+					if err := c.onAppTurn(store.NativeTurn{Instance: process.id, Session: session, Turn: event.Turn.ID}); err != nil {
+						return session, err
+					}
 				}
 				if process.turnInputs != nil && stopInputs == nil {
 					inputPoll = store.TurnInputPoll{NativeTurn: store.NativeTurn{Instance: process.id, Session: session, Turn: turn.Turn.ID}, Lease: process.turnInputs.lease}

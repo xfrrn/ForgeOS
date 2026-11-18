@@ -50,6 +50,14 @@ func (w *worker) runModelTurn(ctx context.Context, b *executionResources, sequen
 	stopClock func() time.Duration, resumeClock func(time.Duration), run func(context.Context, string, *store.WorktreeTrees) (string, error)) (string, error) {
 	var resumeTrees *store.WorktreeTrees
 	var returned string
+	if b.recovery != nil && b.recovery.saved != nil && b.recovery.saved.Active != nil {
+		q := b.recovery.saved
+		if err := w.recoverActiveWriter(ctx, b, q, base); err != nil {
+			return q.Session, err
+		}
+		session, resumeTrees = q.Session, &q.Trees
+		resumeClock(q.Remaining)
+	}
 	if b.recovery != nil && b.recovery.saved != nil && b.recovery.saved.ReturnedTip != "" {
 		q := b.recovery.saved
 		if err := w.confirmWriterLease(ctx, q, b.recovery); err != nil {

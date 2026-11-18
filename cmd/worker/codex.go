@@ -153,6 +153,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 }
 
 type codexCLI struct {
+	onAppTurn        func(store.NativeTurn) error
 	appServer        bool
 	disabledFeatures []string
 	bin              string
@@ -549,14 +550,27 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			returned = saved
 		}
 		session, turnErr := w.runModelTurn(ctx, &budget, seq, result.SessionID, start, dir, stopBudget, resumeBudget, func(turn context.Context, previous string, resumed *store.WorktreeTrees) (string, error) {
-			var adapter harnessAdapter = codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
+			codex := codexCLI{bin: w.codex, version: w.codexVersion, sandbox: store.CodexImplementationSandbox, appServer: w.codexAppServer}
+			if supportsWriterProcessTree && job.RecordAppTurn && job.ManageResources && job.SupportsCheckpoints && job.RecoverWriterPause && job.ModelPause && w.journal != nil && job.LeaseSeconds > 0 {
+				codex.onAppTurn = func(active store.NativeTurn) error {
+					q := parkedCheckpoint{Job: job, GitDir: dir, Session: active.Session, Version: codex.version,
+						Active: &activeWriterTurn{NativeTurn: active, Deadline: deadline}, Sequence: seq, ResourceStep: budget.step, Remaining: time.Until(deadline),
+						Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply}}
+					if err := w.saveFinalization(turn, &q); err != nil {
+						return err
+					}
+					recovery.waiting, recovery.leaveUnsettled = false, false
+					return nil
+				}
+			}
+			var adapter harnessAdapter = codex
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", w.claude.version
 				adapter = w.claude
 			}
 			turnPrompt := prompt
 			if resumed != nil {
-				turnPrompt = "The Owner resumed this interrupted turn. Inspect existing changes and finish only the remaining authorized work.\n" + prompt
+				turnPrompt = "Continue the interrupted turn. Inspect existing changes and finish only the remaining authorized work.\n" + prompt
 			}
 			var checkpoint *writerCheckpoint
 			if resumed != nil {

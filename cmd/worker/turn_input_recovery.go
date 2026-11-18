@@ -20,8 +20,8 @@ type inputHistory struct {
 	Thread struct {
 		ID, Cwd string
 		Turns   []struct {
-			ID    string
-			Items []struct {
+			ID, Status string
+			Items      []struct {
 				Type, ID, ClientID string
 				Content            []struct{ Type, Text string }
 			}
@@ -29,13 +29,17 @@ type inputHistory struct {
 	}
 }
 
-func (h inputHistory) confirms(workspace string, poll store.TurnInputPoll, digest []byte) bool {
-	if h.Thread.ID != poll.Session {
+func (h inputHistory) matchesThread(workspace, session string) bool {
+	if h.Thread.ID != session {
 		return false
 	}
 	expected, err := os.Stat(workspace)
 	actual, statErr := os.Stat(h.Thread.Cwd)
-	if err != nil || statErr != nil || !os.SameFile(expected, actual) {
+	return err == nil && statErr == nil && os.SameFile(expected, actual)
+}
+
+func (h inputHistory) confirms(workspace string, poll store.TurnInputPoll, digest []byte) bool {
+	if !h.matchesThread(workspace, poll.Session) {
 		return false
 	}
 	turns, messages := 0, 0

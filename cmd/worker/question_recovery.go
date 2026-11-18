@@ -16,6 +16,7 @@ import (
 
 // The journal binds each recoverable boundary to its original lease and worktree.
 type parkedCheckpoint struct {
+	Active                               *activeWriterTurn      `json:",omitempty"`
 	ReturnedTip                          string                 `json:",omitempty"`
 	InitialTip                           string                 `json:",omitempty"`
 	Finalization                         *candidateFinalization `json:",omitempty"`
