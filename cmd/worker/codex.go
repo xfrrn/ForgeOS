@@ -330,10 +330,6 @@ func checkedWorktreeTip(ctx context.Context, workspace string, originalGitDir []
 }
 
 func commitChanges(ctx context.Context, workspace, base, start string, issueNumber int64, originalGitDir []byte) (string, error) {
-	return commitChangesCheckpoint(ctx, workspace, base, start, issueNumber, originalGitDir, nil)
-}
-
-func commitChangesCheckpoint(ctx context.Context, workspace, base, start string, issueNumber int64, originalGitDir []byte, save func(string, string) error) (string, error) {
 	current, err := checkedWorktreeTip(ctx, workspace, originalGitDir)
 	if err != nil {
 		return "", err
@@ -348,32 +344,41 @@ func commitChangesCheckpoint(ctx context.Context, workspace, base, start string,
 	if err != nil {
 		return "", errors.New("could not write the candidate tree")
 	}
-	before, err := localrepo.Git(ctx, workspace, "rev-parse", base+"^{tree}")
-	if err != nil || bytes.Equal(before, tree) {
-		return "", errors.New("harness produced no changes relative to the pinned base")
+	if err := validateCandidateTree(ctx, workspace, base, start, strings.TrimSpace(string(tree))); err != nil {
+		return "", err
 	}
-	if start != base {
-		rejected, err := localrepo.Git(ctx, workspace, "rev-parse", start+"^{tree}")
-		if err != nil || bytes.Equal(rejected, tree) {
-			return "", errors.New("harness did not change the rejected candidate")
-		}
-	}
-	// Keep a single candidate on the pinned base even if the CLI made its own local commits.
-	out, err := localrepo.Git(ctx, workspace, "-c", "user.name=ForgeOS Worker", "-c", "user.email=worker@forgeos.local",
-		"commit-tree", "--no-gpg-sign", strings.TrimSpace(string(tree)), "-p", base, "-m", fmt.Sprintf("Implement GitHub issue #%d", issueNumber))
+	candidate, err := createCandidateCommit(ctx, workspace, strings.TrimSpace(string(tree)), base, issueNumber)
 	if err != nil {
-		return "", errors.New("could not create candidate commit")
-	}
-	candidate := strings.TrimSpace(string(out))
-	if save != nil {
-		if err := save(current, candidate); err != nil {
-			return "", err
-		}
+		return "", err
 	}
 	if _, err := localrepo.Git(ctx, workspace, "update-ref", "--no-deref", "HEAD", candidate, current); err != nil {
 		return "", errors.New("could not attach candidate to the execution worktree")
 	}
 	return candidate, nil
+}
+
+// Keep a single candidate on the pinned base even if the CLI made its own local commits.
+func createCandidateCommit(ctx context.Context, workspace, tree, base string, issueNumber int64) (string, error) {
+	out, err := localrepo.Git(ctx, workspace, "-c", "user.name=ForgeOS Worker", "-c", "user.email=worker@forgeos.local",
+		"commit-tree", "--no-gpg-sign", tree, "-p", base, "-m", fmt.Sprintf("Implement GitHub issue #%d", issueNumber))
+	if err != nil {
+		return "", errors.New("could not create candidate commit")
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func validateCandidateTree(ctx context.Context, workspace, base, start, tree string) error {
+	before, err := localrepo.Git(ctx, workspace, "rev-parse", base+"^{tree}")
+	if err != nil || strings.TrimSpace(string(before)) == tree {
+		return errors.New("harness produced no changes relative to the pinned base")
+	}
+	if start != base {
+		rejected, err := localrepo.Git(ctx, workspace, "rev-parse", start+"^{tree}")
+		if err != nil || strings.TrimSpace(string(rejected)) == tree {
+			return errors.New("harness did not change the rejected candidate")
+		}
+	}
+	return nil
 }
 
 func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, job store.Job, deadline time.Time, recovery *checkpointRecovery) store.Result {
@@ -585,17 +590,8 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 	}
 	if err == nil && w.journal != nil && job.LeaseSeconds > 0 {
-		// shortcut: recovery starts at the saved candidate; earlier Daemon crashes still need native-turn checkpoints.
 		q := parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Remaining: time.Until(deadline), ResourceStep: budget.step}
-		_, err = commitChangesCheckpoint(ctx, workspace, spec.BaseCommit, start, spec.Issue.Number, dir, func(tip, candidate string) error {
-			result.Commit = candidate
-			q.Finalization = &candidateFinalization{Tip: tip, Result: result}
-			if err := w.saveFinalization(ctx, &q); err != nil {
-				return err
-			}
-			recovery.leaveUnsettled = true
-			return nil
-		})
+		err = w.prepareFinalization(ctx, &q, start, result)
 		if err == nil {
 			return w.finishCandidate(ctx, repo, &q, recovery)
 		}

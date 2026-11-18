@@ -24,6 +24,27 @@ type candidateFinalization struct {
 	Validated bool
 }
 
+// Save the completed draft before changing its index or creating a candidate SHA.
+func (w *worker) prepareFinalization(ctx context.Context, q *parkedCheckpoint, start string, result store.Result) error {
+	workspace := q.Job.Workspace
+	tip, err := checkedWorktreeTip(ctx, workspace, q.GitDir)
+	if err != nil {
+		return err
+	}
+	if _, err := localrepo.Git(ctx, workspace, "merge-base", "--is-ancestor", start, tip); err != nil {
+		return errors.New("worktree history has diverged from the execution's starting commit")
+	}
+	q.Trees, err = checkpointTrees(ctx, workspace)
+	if err != nil {
+		return err
+	}
+	if err := validateCandidateTree(ctx, workspace, q.Job.Spec.BaseCommit, start, q.Trees.Worktree); err != nil {
+		return err
+	}
+	q.Finalization = &candidateFinalization{Tip: tip, Result: result}
+	return w.saveFinalization(ctx, q)
+}
+
 func (w *worker) lockAttempt(id int64) (func(), error) {
 	var seq int
 	var name, path string
@@ -100,7 +121,8 @@ func (w *worker) readFinalization(ctx context.Context, id int64) (*parkedCheckpo
 		q.Job.Kind != "codex_issue" || q.Job.Spec == nil || q.Job.Spec.Mode == "plan" || q.Job.Spec.VerifyCommit != "" ||
 		q.Job.LeaseSeconds <= 0 || q.Remaining <= 0 || q.Remaining > 20*time.Minute || len(q.GitDir) == 0 ||
 		q.ResourceStep < 0 || q.Planner != nil || q.Writer != nil || q.Finalization == nil || q.Finalization.Tip == "" ||
-		q.Finalization.Result.Commit == "" || q.Finalization.Result.BaseCommit != q.Job.Spec.BaseCommit || q.Finalization.Result.SessionID != q.Session {
+		q.Finalization.Result.BaseCommit != q.Job.Spec.BaseCommit || q.Finalization.Result.SessionID != q.Session ||
+		q.Finalization.Result.Commit == "" && (q.Finalization.Validated || q.Trees.Index == "" || q.Trees.Worktree == "") {
 		return nil, fmt.Errorf("invalid saved candidate for execution %d", id)
 	}
 	return &q, nil
@@ -132,6 +154,22 @@ func (w *worker) finishCandidate(parent context.Context, repo string, q *parkedC
 	if tip != saved.Tip && tip != saved.Result.Commit {
 		return fail(errors.New("candidate worktree HEAD changed"))
 	}
+	trees, err := checkpointTrees(ctx, job.Workspace)
+	if err != nil {
+		return fail(err)
+	}
+	if q.Trees.Worktree != "" && (trees.Worktree != q.Trees.Worktree || (trees.Index != q.Trees.Index && trees.Index != q.Trees.Worktree)) {
+		return fail(errors.New("completed draft or index changed before candidate validation"))
+	}
+	if saved.Result.Commit == "" {
+		saved.Result.Commit, err = createCandidateCommit(ctx, job.Workspace, q.Trees.Worktree, job.Spec.BaseCommit, job.Spec.Issue.Number)
+		if err != nil {
+			return fail(err)
+		}
+		if err := w.saveFinalization(ctx, q); err != nil {
+			return fail(err)
+		}
+	}
 	parents, err := localrepo.Git(ctx, job.Workspace, "rev-list", "-1", "--parents", saved.Result.Commit, "--")
 	if err != nil || strings.TrimSpace(string(parents)) != saved.Result.Commit+" "+job.Spec.BaseCommit {
 		return fail(errors.New("saved candidate has an unexpected parent"))
@@ -140,9 +178,17 @@ func (w *worker) finishCandidate(parent context.Context, repo string, q *parkedC
 	if err != nil {
 		return fail(err)
 	}
-	trees, err := checkpointTrees(ctx, job.Workspace)
-	if err != nil || trees.Index != strings.TrimSpace(string(tree)) || trees.Worktree != trees.Index {
+	if trees.Worktree != strings.TrimSpace(string(tree)) {
 		return fail(errors.New("candidate index or worktree changed after checkpoint"))
+	}
+	if trees.Index != trees.Worktree {
+		// Older candidate receipts were saved after staging. Only a recorded original index may advance.
+		if tip != saved.Tip || q.Trees.Index != trees.Index || q.Trees.Worktree != trees.Worktree {
+			return fail(errors.New("candidate index changed after checkpoint"))
+		}
+		if _, err := localrepo.Git(ctx, job.Workspace, "read-tree", trees.Worktree); err != nil {
+			return fail(err)
+		}
 	}
 	if tip != saved.Result.Commit {
 		if _, err = localrepo.Git(ctx, job.Workspace, "update-ref", "--no-deref", "HEAD", saved.Result.Commit, tip); err != nil {

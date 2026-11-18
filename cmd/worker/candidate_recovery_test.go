@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,7 +16,7 @@ import (
 )
 
 func TestCandidateFinalizationRecovery(t *testing.T) {
-	for _, phase := range []string{"before-head", "after-head", "validated", "changed-worktree", "expired-lease", "cancelled", "save-failed", "validation-failed", "receipt-failed", "owner-stop", "source-close"} {
+	for _, phase := range []string{"before-staging", "after-staging", "cached-index", "changed-draft", "changed-index", "before-head", "after-head", "validated", "changed-worktree", "expired-lease", "cancelled", "save-failed", "validation-failed", "receipt-failed", "owner-stop", "source-close"} {
 		t.Run(phase, func(t *testing.T) {
 			ctx, cancel := context.WithCancelCause(context.Background())
 			defer cancel(nil)
@@ -33,6 +32,13 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 			filename := "README.md"
 			if phase == "validation-failed" {
 				filename = "source.go"
+			}
+			if phase == "cached-index" {
+				if err := os.WriteFile(filepath.Join(job.Workspace, filename), []byte("Before the model edit\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				git(t, job.Workspace, "add", filename)
+				git(t, job.Workspace, "update-index", "--assume-unchanged", filename)
 			}
 			if err = os.WriteFile(filepath.Join(job.Workspace, filename), []byte("Completed by the original model.\n"), 0600); err != nil {
 				t.Fatal(err)
@@ -99,18 +105,40 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			q := parkedCheckpoint{Job: job, GitDir: dir, Session: "original-session", Remaining: time.Minute, ResourceStep: 1}
-			_, err = commitChangesCheckpoint(ctx, job.Workspace, base, base, 1, dir, func(tip, candidate string) error {
-				q.Finalization = &candidateFinalization{Tip: tip, Result: store.Result{BaseCommit: base, Commit: candidate, SessionID: q.Session}}
+			switch phase {
+			case "before-staging", "after-staging", "cached-index", "changed-draft", "changed-index":
+				result := store.Result{BaseCommit: base, SessionID: q.Session}
+				if err = w.prepareFinalization(ctx, &q, base, result); err != nil {
+					t.Fatal(err)
+				}
+				if q.Finalization.Result.Commit != "" || q.Trees.Index == q.Trees.Worktree || git(t, job.Workspace, "write-tree") != q.Trees.Index {
+					t.Fatal("draft snapshot changed the real index or already created a candidate")
+				}
+				switch phase {
+				case "after-staging":
+					git(t, job.Workspace, "add", "-A")
+				case "changed-index":
+					empty := git(t, job.Workspace, "hash-object", "-w", "--stdin")
+					git(t, job.Workspace, "update-index", "--add", "--cacheinfo", "100644", empty, filename)
+				case "changed-draft":
+					if err := os.WriteFile(filepath.Join(job.Workspace, filename), []byte("Different draft\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			default:
+				// Journals written by older Workers first recorded the SHA after staging.
+				git(t, job.Workspace, "add", "-A")
+				candidate, err := createCandidateCommit(ctx, job.Workspace, git(t, job.Workspace, "write-tree"), base, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				q.Finalization = &candidateFinalization{Tip: base, Result: store.Result{BaseCommit: base, Commit: candidate, SessionID: q.Session}}
 				if err := w.saveFinalization(ctx, &q); err != nil {
-					return err
+					t.Fatal(err)
 				}
-				if phase == "before-head" {
-					return errors.New("simulated Daemon exit before HEAD update")
+				if phase != "before-head" {
+					git(t, job.Workspace, "update-ref", "--no-deref", "HEAD", candidate, base)
 				}
-				return nil
-			})
-			if err != nil && phase != "before-head" {
-				t.Fatal(err)
 			}
 			if phase == "before-head" && git(t, job.Workspace, "rev-parse", "HEAD") != base {
 				t.Fatal("candidate attached before snapshot")
@@ -173,7 +201,7 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 			if err := w.runAttempt(ctx, saved.Job, time.Now(), saved); err != nil {
 				t.Fatal(err)
 			}
-			blocked := phase == "changed-worktree" || phase == "expired-lease" || phase == "save-failed"
+			blocked := phase == "changed-worktree" || phase == "changed-draft" || phase == "changed-index" || phase == "expired-lease" || phase == "save-failed"
 			if blocked {
 				if reports != 0 || releases != 0 {
 					t.Fatal("unconfirmed candidate was settled or released")
@@ -196,7 +224,11 @@ func TestCandidateFinalizationRecovery(t *testing.T) {
 			if kept, err := w.readFinalization(context.Background(), job.ExecutionID); err != nil || kept != nil {
 				t.Fatal("settled candidate retained private snapshot", err)
 			}
-			if !stopped && git(t, job.Workspace, "rev-parse", "HEAD") != q.Finalization.Result.Commit {
+			if phase == "before-staging" || phase == "after-staging" || phase == "cached-index" {
+				if git(t, job.Workspace, "rev-parse", "HEAD^{tree}") != q.Trees.Worktree || git(t, job.Workspace, "rev-parse", "HEAD^") != base {
+					t.Fatal("recovery did not commit the original draft on its base")
+				}
+			} else if !stopped && git(t, job.Workspace, "rev-parse", "HEAD") != q.Finalization.Result.Commit {
 				t.Fatal("recovery created another SHA")
 			}
 			if phase == "receipt-failed" {

@@ -3543,3 +3543,16 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 回退前后读取四份完整记录，再重启控制面，用 Chrome 查看子项 | 运行历史独立保留，仍可核对原候选和远端合并 | 三次回读相同，排序 JSON 的 SHA-256 均为 `446a7f9c47df5bb3af4b6fb7a9d7029373eecd2ddb68792aac37c415215c6a21`。任务页显示原候选 `7b5484c22dee55f942628c1426ae95aa48553aee` 和原 Merge SHA。 |
 
 证据 adr_decision_goal/proof.json，操作脚本 adr-revert-live.py。阶段三父项关闭实现为 `544744520aeb6ea13724c7aaf4166ebf0a5c09b0`，运行历史与候选证据的提交见 ADR 对照表。
+
+### 专题 07、13、16 B.4 · 从尚无候选 SHA 的已完成草稿恢复
+
+2026-11-18，在正式控制面与独立 Worker 中让 Codex 完成私有 beta #233 的文档修改。最后一个评论／指令检查点处理结束后，通过本次测试专用的代理暂停续约，在候选尚未创建时结束 Daemon。生产实现通过节点 SQLite 保存租约、原生会话、当前 Git HEAD、索引树和完整工作树。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 终止节点，检查进程、工作区和节点记录 | 原生回合已结束，真实索引保持原样，尚无候选 SHA | 执行 1，进程 29508 已退出 0。HEAD `b3d0b5dca465411606df56d49aeaac9ed2e8fbad`，索引 `9bd90e60a844526cbb5af46b1501760b636bd00a`，草稿树 `26962decb9aef90dff92e50c169c8963a32bf7c8`，SQLite 中没有候选 SHA。 |
+| 重启控制面，向专用 SQLite 注入一次候选 SHA 保存故障，再结束替代 Worker | 先保存 SHA 再更新索引和 HEAD；失败可重试 | 原生进程仍只有一个，HEAD、索引和草稿凭据保持原值。撤除故障后新 Worker 核对租约与草稿，从原树产生候选 `def592e21ed781b89f23556da2101c0e6ee5a365`，本地验证只领取一次。 |
+| 从 Chrome 审阅并批准候选，等待目标分支门禁，再重启查询 | 仅交付原草稿；原执行和会话可追溯 | 两项 GitHub 必需检查成功，[beta PR #234](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/234) 合并为 `2d182947f93b2799232110afbfe5403b8138ae63`，来源 Issue 关闭。重启后页面仍显示同一候选。 |
+| Windows、Ubuntu UID 1000 分别重开 SQLite，模拟已暂存、索引有缓存标记、索引被单独修改及工作树变动 | 原内容可恢复，外部改动阻止结算，兼容原先已有 SHA 的记录 | 专项通过。新建候选的 Git 树与保存的真实草稿相同。索引或文件被更改时零次验证、零次结果回报，保留记录供核对。 |
+
+开发期间另在两个私库使用同一套任务及 Chrome 验收入口，原生 Codex 完成 [beta PR #232](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/232)，原生 Claude Code 完成 [alpha PR #37](https://github.com/xfrrn/forgeos-accept-fb8e915b-alpha/pull/37)。最终实现的 SHA 保存故障通过 beta #233 实测。启用 PostgreSQL 18 与真实 Docker 的全量 Go 回归 503 项通过，零失败、零跳过。go vet、TypeScript 与前端生产构建通过。操作脚本 draft-final-live.py，证据 draft_final_recovery_codex/proof.json。原生回合退出至最终输入检查点和草稿首次持久化之间中断，仍待验收。
