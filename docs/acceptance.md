@@ -38,6 +38,18 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="foundation-before-report"></a>
+
+### 阶段一 · 两个进程重启后补报原执行，再放行同项目下一项
+
+使用空 PostgreSQL 18、全新本地 Git 仓库和正式 Worker。环回代理仅在第一个结果到达控制面前返回 503。数据库时间和执行租约按实际时间运行。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 创建任务 1，确认其独立工作区的 HEAD 已算出，在回报未送达时提交同项目任务 2，由另一节点尝试领取 | 任务 1 保留执行和项目名额，任务 2 排队 | 第一份成功回报和工作区 HEAD 均为 `72f5acd08eab9074f32bc9c78e32679346e85223`。任务 1 仍为 RUNNING，另一节点领取返回 204，任务 2 为 READY。 |
+| 停止 Worker 和控制面，先重启控制面再尝试领取，随后恢复网络与原 Worker | 控制面恢复旧执行，Worker 用节点日志补报，再运行任务 2 | 重启后两个任务的状态仍为 RUNNING、READY，另一节点领取仍为 204。Worker 重启补报后两项均为 DONE，各只有一次执行，工作区分别为 `execution-1`、`execution-2`。 |
+| 再提交最初被截留的成功回报，比较任务详情和时间线 | 同一执行只完成一次 | 返回 204。首次任务的完整 JSON 逐字段相同，两条时间线均只有创建、领取、完成。原始回执为 `foundation-pending-current/latest.json`。 |
+
 <a id="ci-backup-pending"></a>
 
 ### 专题 10、13、14 · 从节点备份补传 CI 日志和报告

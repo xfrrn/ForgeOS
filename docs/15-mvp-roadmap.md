@@ -19,6 +19,8 @@
 
 **基座验收**　从空数据库运行迁移，启动两个进程，通过 API 完成上述操作。维护者能从 Work Item 查到对应 Execution、工作区、提交版本和结果。执行失败时能定位到这次尝试，进程退出本身不会被当作任务成功。这个场景跑通后即可开始接交付链。
 
+2026-11-19，在第一项工作已经读到 HEAD、成功回报尚未送达时停掉 Worker 与控制面。重启后，原节点补报同一次执行，第二项才取得独立工作区。两条任务各有一次执行，重放首份回报后历史完全相同。[操作与结果](acceptance.md#foundation-before-report)
+
 首批实现涉及的职责和状态定义见[系统架构](02-system-architecture.md)、[领域模型](04-domain-model.md)和[Worker 运行时](07-harness-and-worker-runtime.md)。租约超时、事件幂等以及重试时的 Worktree 处置随这次联调细化，见[待决事项 B.4–B.5](16-open-decisions.md)。
 
 ## 二、单项目交付与基础管理页
