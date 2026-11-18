@@ -60,6 +60,18 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="question-advice-event-audit"></a>
+
+### 专题 05、13 · 从业务问题事件核对 Management 会话、等级和引用
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Owner 确认项目决策 1，派发 beta #285。原生实现者查询指定决策，由独立 Management 回答 | D1 回执关联原生会话、引用编号和查询时的提交 | 旧版事件 4 仅关联问题 1，审核会话和等级均为空。升级后，同一事件记录 Session `01a1f05c-b38d-7b32-ad19-b91e5267675e`、D1、项目决策 1 及当时的提交 `7fa6bbfffb658e24ab4da1530d7cc19d6da0a5b6`。 |
+| 在固定候选上询问对外发布范围，等 Management 审阅，再由 Owner 答复、验收和合并 | 审核建议与 Owner 的最终决定分别归属正确的事件 | 旧版事件 7 同样缺少等级和会话。升级后显示问题 2、D2、Session `01a1f05d-cf24-7751-8323-da87f107fa75` 和候选 `c6a0c0a21b1a6a89d7f6e5e919c1fffaba9c9f56`。两份提问和 Owner 答复均未带入审核会话。PR #286 通过必需检查后合入，来源 Issue 关闭。 |
+| 重启后从手机宽度的 Chrome 分别下载两份回执 | 回执与 Owner API 逐字段一致，可追查原问题和当时的版本 | 两份均一致，D1 回执保留引用编号，D2 回执保留审核等级。原文引句均未写入下载载荷。 |
+
+脱敏回执为 `question-advice-audit/latest.json`，完整 Go 回归日志为 `advice-audit-regression.jsonl`。[Issue #285](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/285) · [PR #286](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/286)
+
 <a id="feedback-timeline-labels"></a>
 
 ### 专题 11、13 · 从工作台时间线识别预览反馈、分类和录屏

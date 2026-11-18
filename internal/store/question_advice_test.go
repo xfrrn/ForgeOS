@@ -18,6 +18,26 @@ func checkAdviceBudget(t *testing.T, s *Store, want int) {
 	}
 }
 
+func checkQuestionAdviceAudit(t *testing.T, s *Store, project, task, question, reference int64, kind string, advice QuestionAdvice) {
+	t.Helper()
+	var event int64
+	if err := s.db.QueryRow("SELECT id FROM task_events WHERE task_id=$1 AND question_id=$2 AND type=$3", task, question, kind).Scan(&event); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := s.EventAudit(context.Background(), project, task, event)
+	var receipt struct {
+		Session string `json:"session_id"`
+		Payload struct {
+			Level     string `json:"decision_level"`
+			Reference int64  `json:"reference_decision_id"`
+		}
+	}
+	if err != nil || json.Unmarshal(raw, &receipt) != nil || receipt.Session != advice.Session ||
+		receipt.Payload.Level != advice.Level || receipt.Payload.Reference != reference || strings.Contains(string(raw), advice.Quote) {
+		t.Fatalf("unexpected question advice receipt: %s %v", raw, err)
+	}
+}
+
 func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testing.T) {
 	ctx := context.Background()
 	s := New(isolatedDatabase(t))
@@ -183,6 +203,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM task_events WHERE question_id=$1 AND type='management_question_reviewed'`, id).Scan(&events); err != nil || events != 1 {
 		t.Fatal(events, err)
 	}
+	checkQuestionAdviceAudit(t, s, project.ID, task, id, 0, "management_question_reviewed", a)
 }
 
 func TestManagementDecisionLookup(t *testing.T) {
@@ -326,6 +347,7 @@ func TestManagementDecisionLookup(t *testing.T) {
 			if err != nil || got != a.Quote {
 				t.Fatal(got, err)
 			}
+			checkQuestionAdviceAudit(t, s, project.ID, task.ID, m.Question.ID, decision.ID, "management_decision_answered", a)
 			msg, err := s.QuestionMessages(ctx, task.ID, m.Question.ID)
 			if err != nil || len(msg) != 2 || msg[1].From.ID != "management" || msg[1].Trust != "agent_generated" {
 				t.Fatal(msg, err)
