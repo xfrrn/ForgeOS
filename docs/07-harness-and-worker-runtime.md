@@ -91,6 +91,8 @@ App Server 使用当前 Harness 身份的登录状态，按角色固定 `never` 
 
 在已登录的 Harness 用户下运行 `python scripts/probe_claude.py --bin <原生可执行文件>`。探测会发起两次真实模型调用。第一次在临时目录启动会话，接收并回答 AskUserQuestion，拒绝 Write 权限。第二次启动新的 CLI 进程，按 Session ID 恢复，要求返回第一次消息中的随机标识和选择的答案。脚本核对答复、权限请求的目标路径和文件实际状态后输出版本、Session 和两个 PID。Windows 上将 `--bin` 指向原生 `.exe`。
 
+追加 `--interrupt` 可单独验证文本生成期间的原生中断。探针在同一会话收到首个文本增量后，经标准输入发送 interrupt，核对相同请求编号的成功响应、原生终态及进程退出码。正式 Worker 的交互仍单独验收。[实测](acceptance.md#claude-stream-interrupt) · [Anthropic SDK 控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)
+
 ### 将实现任务交给 Claude Code
 
 在 Worker 专用账号的环境中设置 `FORGEOS_CLAUDE_BIN` 为本机 Claude Code 可执行文件；Windows 使用原生 `.exe`。Worker 启动时检查版本、`--restricted` 和 `--safe-mode`。通过探测的节点才会声明 `supports_claude`。模型认证沿用服务账号的登录或专用用户设置。用户设置位于该账号的 Claude 配置目录，受限模式下由 Worker 显式传给本机 CLI。[Claude Code 设置来源](https://code.claude.com/docs/en/settings)

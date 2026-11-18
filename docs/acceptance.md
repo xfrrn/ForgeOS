@@ -3780,3 +3780,18 @@ GitHub 原始证据为[失败回写](https://github.com/xfrrn/forgeos-accept-fb8
 | 将 #1 标记失效，分别查询默认、已失效和待确认状态 | 默认结果撤下 #1，历史可按状态检索，私有项目数据始终隔离 | 已失效查询找到 #1，待确认查询找到 #3，项目 2 的 #4 始终未写入缓存。另有 PostgreSQL 测试在编码期间使决定失效，验证不会留下越过状态筛选的缓存。 |
 
 操作脚本 decision-search-live.py，证据 forgeos_decisions_604a056e/proof.json 与 rank.png。此项覆盖项目决策检索；其他角色上下文仍按专题 16 保留为部分验收。
+
+本项实现为 `e6fb688acf9d5626455b8c5bc1d182319fa7c97e`。包含新增并发状态测试的全量回归使用空 PostgreSQL 18 和真实 Docker，507 项具名测试和子测试通过，零失败、零跳过，另有 3 个无测试包。go vet、TypeScript 与前端生产构建通过。
+
+<a id="claude-stream-interrupt"></a>
+
+### 专题 07、16 B.2 · 在 Claude Code 正在输出文本时中断
+
+2026-11-18，Windows 原生 Claude Code 2.1.310，运行 python scripts/probe_claude.py --bin <原生程序> --interrupt。探针使用独立临时目录、受限模式和空工具列表。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 收到当前会话首段文本后发送 interrupt，在进程仍受探针控制时等待回执和结果 | 请求编号匹配，原回合报告中断并退出 | PID 47332、Session 08063236-867c-427c-8a58-bfe064b4c683；请求 e568b96e-46d9-44b5-81ab-2d98f0ff6563 得到 success，终态 aborted_streaming，退出码 1。另一独立回合观察到同样的顺序和退出码。 |
+| 再跑原有问答、拒绝写入及恢复模式 | 回答 Green，拒绝写入临时文件，第二进程恢复同一 Session 并读回标识和颜色 | 首次复验有一轮请求其他写入目标，探针拒绝。提示改为明确临时文件绝对路径后，进程 4932、42120 完成同一会话，未写入文件。 |
+
+证据 claude-interrupt-final.json、claude-native-interrupt.json、claude-original-regression-final.json。工作台取消普通 Claude Worker 的原生协议中断仍待接入和实测。
