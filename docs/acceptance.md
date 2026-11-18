@@ -52,8 +52,12 @@
 | 专题 11、13，预览反馈接收、分类和媒体归档在时间线可辨认 | [手机与桌面各 15 份下载](#feedback-timeline-labels) | `be4c84920ad9d963e6d72199c7a112bf63981bc1` |
 | 专题 05、13，业务问题审核的等级、会话与项目决策 | [beta #285、PR #286 和两次独立的原生 Management 审核](#question-advice-event-audit) | `92127c35e9c72ec216fdb3c9ecdc4a5e2acbab1e` |
 | 专题 06、13，从历史 Planner 完成事件定位原始计划 | [旧库升级后下载 Planner 及 Management 回执](#legacy-planner-event) | `13ccb3b3de7cab185274ae929c365230aee222a5` |
+| 专题 13，工作台每类具名事件均可定位下载回执 | [44 个事件与各自样本](task-event-acceptance.md) | `5f37d25471d26417e3d2f9336f8e0d4422318c89` |
+| 专题 04、ADR-007，返工前后的验收记录各自关联原候选 | [任务 3 的记录 #2、#3 与 PR #277](#candidate-record-identity) | `683d14fed8f47a568420cc9df652012e304c3198` |
+| 专题 03、10，本地 CI 容器资源和临时工作树 | [Linux 上通过、失败、超时三次运行](#ci-resource-worktree) | `4ef15ca556ab794649d71edff1d32c406241d4df` |
+| 专题 03 的控制面、Worker 与横向能力 | [33 项模块职责的实测入口和提交](03-module-catalog.md) | `aa53425b1415dc2223be90f2b7e31e25f4503286` |
 
-上述两次变更分别在 PostgreSQL 18 和真实 Docker 上通过 586 项具名测试及子测试，均无失败或跳过。回归记录为 `advice-audit-regression.jsonl` 和 `planner-event-revision-regression.jsonl`。
+业务问题审核、历史计划回填、验收记录编号三次代码变更分别在空 PostgreSQL 18 和真实 Docker 上通过 586 项具名测试及子测试，均无失败或跳过。原始回归记录依次为 `advice-audit-regression.jsonl`、`planner-event-revision-regression.jsonl` 和 `acceptance-id-regression.jsonl`。
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |

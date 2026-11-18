@@ -45,8 +45,8 @@
 | `owner_cancel_requested` | Owner 请求取消，等待执行结算 | owner | 1/1/3 · `event-audit-cancel/foundation.json` | [操作与结果](acceptance.md#task-event-audit) · `2c755f3` |
 | `owner_cancelled` | 已按 Owner 请求取消任务 | worker / foundation-regression | 1/1/4 · `event-audit-cancel/foundation.json` | [操作与结果](acceptance.md#task-event-audit) · `2c755f3` |
 | `execution_retry_requested` | 请求重新执行 | owner | 1/1/4 · `retry-audit-live/latest.json` | [操作与结果](acceptance.md#workbench-failed-execution-retry) · `6b56a2c` |
-| `acceptance_approved` | 候选版本通过验收 | owner | 1/1/4 · `event-audit-approve/latest.json` | [操作与结果](acceptance.md#task-event-audit) · `2c755f3` |
-| `acceptance_rejected` | 候选版本已退回 | owner | 1/1/4 · `event-audit-reject/latest.json` | [操作与结果](acceptance.md#task-event-audit) · `2c755f3` |
+| `acceptance_approved` | 候选版本通过验收 | owner | 1/3/20 · `acceptance-record-id/after.json` | [候选、决定和验收记录编号](acceptance.md#candidate-record-identity) · `683d14f` |
+| `acceptance_rejected` | 候选版本已退回 | owner | 1/3/17 · `acceptance-record-id/after.json` | [候选、决定和验收记录编号](acceptance.md#candidate-record-identity) · `683d14f` |
 | `pr_created` | 已创建 PR | controlplane / delivery_manager | 1/1/5 · `delivery-audit-270/latest.json` | [操作与结果](acceptance.md#delivery-event-audit) · `8015110` |
 | `pr_merged` | PR 已合并 | controlplane / delivery_manager | 1/1/6 · `delivery-audit-270/latest.json` | [操作与结果](acceptance.md#delivery-event-audit) · `8015110` |
 | `delivery_completed` | 交付完成 | controlplane / delivery_manager | 1/1/7 · `delivery-audit-270/latest.json` | [操作与结果](acceptance.md#delivery-event-audit) · `8015110` |
