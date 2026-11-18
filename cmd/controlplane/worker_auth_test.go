@@ -143,6 +143,18 @@ func TestWorkerProjectGrants(t *testing.T) {
 	renew := fmt.Sprintf("/internal/executions/%d/renew", job.ExecutionID)
 	lease := map[string]string{"lease_token": job.LeaseToken}
 	processPath := fmt.Sprintf("/internal/executions/%d/process", job.ExecutionID)
+	archivePath := fmt.Sprintf("/internal/tasks/%d/executions/%d/processes/1/archive?offset=0", job.TaskID, job.ExecutionID)
+	for _, method := range []string{http.MethodHead, http.MethodPut} {
+		for token, want := range map[string]int{"alpha": 404, "beta": 403, "owner": 401} {
+			r := httptest.NewRequest(method, archivePath, bytes.NewReader([]byte("x")))
+			r.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, r)
+			if w.Code != want {
+				t.Fatalf("archive %s %s: got %d want %d", method, token, w.Code, want)
+			}
+		}
+	}
 	pulse := store.ProcessReport{LeaseToken: job.LeaseToken, Process: store.HarnessProcess{Instance: 1, PID: 7, Harness: "codex", Version: "1.2.3", Started: time.Now()}}
 	post("beta", processPath, pulse, 403)
 	post("owner", processPath, pulse, 401)

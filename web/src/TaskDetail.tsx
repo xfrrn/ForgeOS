@@ -22,7 +22,7 @@ type CheckRun = { id: string; runner: string; level: string; profile?: string; c
     started_at: string; finished_at: string; outputs?: { source: string; kind: string; file: string; bytes: number; sha256: string }[] }[] }
 type Validation = { profile: string; commit: string; exit_code: number; output: string; run?: CheckRun }
 type ToolEvent = { seq: number; call: number; tool: string; phase: 'started' | 'output' | 'completed' | 'failed'; at: number }
-type HarnessProcess = { archive?: { records: number; bytes: number; dropped_records: number; dropped_bytes: number; chain_sha256?: string }; tool_output?: { seq: number; call: number; tool: string; text: string; partial?: boolean }; output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; turn_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
+type HarnessProcess = { archive?: { central?: boolean; records: number; bytes: number; dropped_records: number; dropped_bytes: number; chain_sha256?: string }; tool_output?: { seq: number; call: number; tool: string; text: string; partial?: boolean }; output?: { sequence: number; text: string }; tools?: ToolEvent[]; instance: number; pid: number; harness: string; version: string; session_id?: string; turn_id?: string; handoff_from?: string; started_at: string; exited_at: string; exit_code: number }
 function ToolActivity({events}: {events?: ToolEvent[]}) {
   if (!events?.length) return null
   const phases = {started: '开始', output: '输出更新', completed: '完成', failed: '失败'}
@@ -108,17 +108,38 @@ function OutLink({ href, children }: { href?: string; children: ReactNode }) {
   return url ? <a className="detail-link" href={url} target="_blank" rel="noopener noreferrer">{children}<Icon name="ExternalLink" size={13} /></a> : <span>{children}</span>
 }
 
+async function downloadFile(request: ApiRequest, path: string, file: string) {
+  const blob = await request<Blob>(path, undefined, 'blob')
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = file
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+}
+
+function ArchiveDownload({ task, execution, instance, request }: { task: number; execution: number; instance: number; request: ApiRequest }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function download() {
+    setBusy(true); setError('')
+    try { await downloadFile(request, `/tasks/${task}/executions/${execution}/processes/${instance}/archive`, `execution-${execution}-process-${instance}.jsonl`) }
+    catch (e) {
+      setError(e instanceof ApiError && e.status === 409 ? '节点尚未完成日志传输，请稍后重试。' :
+        e instanceof ApiError && e.status === 410 ? '中央日志已到期，进程摘要仍可查阅。' :
+        e instanceof Error ? e.message : '无法下载进程归档')
+    }
+    finally { setBusy(false) }
+  }
+  return <div><button disabled={busy} onClick={() => void download()}>{busy ? '正在下载…' : '下载进程日志 JSONL'}</button>
+    {error && <p role="alert">{error}</p>}</div>
+}
+
 function DeclaredChecks({ run, path, request }: { run: CheckRun; path: string; request: ApiRequest }) {
   const [error, setError] = useState('')
   const download = async (file: string) => {
     setError('')
     try {
-      const blob = await request<Blob>(path + '/' + encodeURIComponent(run.id) + '/' + encodeURIComponent(file), undefined, 'blob')
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = file
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+      await downloadFile(request, path + '/' + encodeURIComponent(run.id) + '/' + encodeURIComponent(file), file)
     } catch (e) { setError(e instanceof Error ? e.message : '文件下载失败') }
   }
   return <details><summary>逐项检查</summary>
@@ -442,7 +463,8 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
         {p.archive && <><Fact label="节点进程归档">实例 {p.instance} · {p.archive.records} 条 · {p.archive.bytes} 字节</Fact>
           {p.archive.chain_sha256 && <Fact label="归档链 SHA-256" code>{p.archive.chain_sha256}</Fact>}
           {p.archive.dropped_records > 0 && <Fact label="超出归档容量">{p.archive.dropped_records} 条 · {p.archive.dropped_bytes} 字节</Fact>}</>}
-      </dl><ToolActivity events={p.tools}/><ModelOutput output={p.output}/><ToolOutput output={p.tool_output}/></div>)}
+      </dl>{p.archive?.central && <ArchiveDownload task={task.id} execution={attempt.id} instance={p.instance} request={request}/>}
+        <ToolActivity events={p.tools}/><ModelOutput output={p.output}/><ToolOutput output={p.tool_output}/></div>)}
     </details>}
     {attempt.uses_checkpoints && <CheckpointHistory task={task} attempt={attempt} request={request}/>}
     {!!attempt.model_pauses?.length && <details><summary>模型暂停记录（{attempt.model_pauses.length}）</summary>

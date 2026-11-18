@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -73,6 +74,13 @@ func run(ctx context.Context) error {
 	defer db.Close()
 	db.SetMaxIdleConns(8)
 	data := store.New(db)
+	if value := os.Getenv("FORGEOS_PROCESS_LOG_DAYS"); value != "" {
+		days, err := strconv.Atoi(value)
+		if err != nil || days < 1 || days > 3650 {
+			return errors.New("FORGEOS_PROCESS_LOG_DAYS must be between 1 and 3650")
+		}
+		data.ProcessArchiveDays = days
+	}
 	initCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	if err := db.PingContext(initCtx); err != nil {

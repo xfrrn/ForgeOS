@@ -38,6 +38,7 @@ type HarnessProcess struct {
 }
 
 type ProcessArchive struct {
+	Central        bool   `json:"central,omitempty"`
 	Bytes          int64  `json:"bytes"`
 	Records        int64  `json:"records"`
 	DroppedRecords int64  `json:"dropped_records"`

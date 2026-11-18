@@ -199,7 +199,7 @@ func (w *worker) runAttempt(ctx context.Context, job store.Job, requested time.T
 		}
 		if result.Processes != nil {
 			if job.RecordArchiveDigests {
-				if err = w.attachProcessArchives(context.WithoutCancel(ctx), key[:], *result.Processes); err != nil {
+				if err = w.attachProcessArchives(context.WithoutCancel(ctx), key[:], *result.Processes, job.UploadProcessArchives); err != nil {
 					return fmt.Errorf("read process archives for execution %d: %w", job.ExecutionID, err)
 				}
 			}
@@ -290,9 +290,11 @@ func (w *worker) sendReceipt(ctx context.Context, key []byte, id int64, report j
 		resp, err := w.postJSON(confirmCtx, path, report)
 		var status int
 		var archive bool
+		var processArchive bool
 		if err == nil {
 			status = resp.StatusCode
 			archive = resp.Header.Get("ForgeOS-CI-Archive") == "1" && status == http.StatusNoContent
+			processArchive = resp.Header.Get("ForgeOS-Process-Archive") == "1" && status == http.StatusNoContent
 			resp.Body.Close()
 		}
 		outcome := ""
@@ -308,6 +310,23 @@ func (w *worker) sendReceipt(ctx context.Context, key []byte, id int64, report j
 				return err
 			}
 			defer tx.Rollback()
+			if processArchive {
+				var result store.Result
+				if err = json.Unmarshal(report, &result); err != nil {
+					return err
+				}
+				if result.Processes != nil {
+					for _, p := range *result.Processes {
+						if p.Archive == nil || !p.Archive.Central || p.Archive.Bytes == 0 {
+							continue
+						}
+						if _, err = tx.ExecContext(confirmCtx, `INSERT OR IGNORE INTO process_log_uploads(instance)
+						 SELECT instance FROM harness_processes WHERE instance=? AND lease_hash=?`, p.Instance, key); err != nil {
+							return err
+						}
+					}
+				}
+			}
 			if archive {
 				if err = queueCIFiles(confirmCtx, tx, key, report); err != nil {
 					return err

@@ -85,6 +85,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	registerInitializationReports(mux, data, owner)
 	registerValidationPlan(mux, data, root, owner, workers)
 	registerCIFiles(mux, data, owner, workers)
+	registerProcessArchives(mux, data, owner, workers)
 	registerDecisions(mux, data, owner, workers)
 	registerMaterials(mux, data, owner, workers)
 	registerGlobalRules(mux, data, owner, workers)
@@ -292,6 +293,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		if job != nil {
 			job.RepoRelativePath = localrepo.RelativePath(root, job.RepoPath)
 			job.RecordArchiveDigests = job.RecordProcesses && r.URL.Query().Get("supports_archive_digests") == "1"
+			job.UploadProcessArchives = job.RecordArchiveDigests && r.URL.Query().Get("supports_archive_upload") == "1"
 		}
 		respond(w, http.StatusOK, job, err)
 	}))
@@ -404,6 +406,9 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			result.Validation = &store.ValidationResult{Profile: v.Profile, Commit: v.Commit, ExitCode: *v.ExitCode, Output: v.Output, Run: v.Run}
 		}
 		err = data.CompleteWithChecks(r.Context(), id, input.LeaseToken, result, verifyDeclaredChecks(root))
+		if err == nil && result.Processes != nil {
+			w.Header().Set("ForgeOS-Process-Archive", "1")
+		}
 		if err == nil && input.Validation != nil && input.Validation.Run != nil {
 			w.Header().Set("ForgeOS-CI-Archive", "1")
 		}
@@ -413,13 +418,17 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 }
 
 func authorized(token string, next http.HandlerFunc) http.HandlerFunc {
+	return authorizedFor(token, 15*time.Second, next)
+}
+
+func authorizedFor(token string, timeout time.Duration, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			problem(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
 		next(w, r.WithContext(ctx))
 	}

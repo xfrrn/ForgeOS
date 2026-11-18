@@ -90,7 +90,7 @@ func TestProcessArchiveKeepsLongOutputAndStreamOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := store.ProcessHistory{{Instance: p.id}, {Instance: p.id + 1}}
-	if err := w.attachProcessArchives(context.Background(), p.lease[:], history); err != nil {
+	if err := w.attachProcessArchives(context.Background(), p.lease[:], history, false); err != nil {
 		t.Fatal(err)
 	}
 	receipt := history[0].Archive

@@ -187,6 +187,9 @@ func sweepArtifacts(ctx context.Context, data *store.Store) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
+		if err := data.PurgeProcessArchiveChunks(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("process archive cleanup: %v", err)
+		}
 		if err := data.ExpireLocalCIFiles(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("local CI retention: %v", err)
 		}

@@ -169,6 +169,10 @@ func (a *workerRegistry) handle(mux *http.ServeMux, pattern string, handler http
 }
 
 func (a *workerRegistry) authorize(next func(http.ResponseWriter, *http.Request, *workerGrant)) http.HandlerFunc {
+	return a.authorizeFor(15*time.Second, next)
+}
+
+func (a *workerRegistry) authorizeFor(timeout time.Duration, next func(http.ResponseWriter, *http.Request, *workerGrant)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		grant := a.match(token)
@@ -188,14 +192,18 @@ func (a *workerRegistry) authorize(next func(http.ResponseWriter, *http.Request,
 				return
 			}
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
 		next(w, r.WithContext(ctx), grant)
 	}
 }
 
 func (a *workerRegistry) execution(data *store.Store, next http.HandlerFunc) http.HandlerFunc {
-	return a.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	return a.executionFor(data, 15*time.Second, next)
+}
+
+func (a *workerRegistry) executionFor(data *store.Store, timeout time.Duration, next http.HandlerFunc) http.HandlerFunc {
+	return a.authorizeFor(timeout, func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		if grant.id != "" {
 			id, ok := pathID(w, r)
 			if !ok {

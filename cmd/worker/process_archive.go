@@ -16,7 +16,7 @@ import (
 	"forgeos/internal/store"
 )
 
-func (w *worker) attachProcessArchives(ctx context.Context, key []byte, processes store.ProcessHistory) error {
+func (w *worker) attachProcessArchives(ctx context.Context, key []byte, processes store.ProcessHistory, central bool) error {
 	rows, err := w.journal.QueryContext(ctx, `SELECT p.instance,l.bytes,l.records,l.dropped_records,l.dropped_bytes,l.limit_bytes,l.digest
  FROM harness_processes p JOIN harness_log_archives l USING(instance) WHERE p.lease_hash=? AND l.expired_at IS NULL ORDER BY p.instance`, key)
 	if err != nil {
@@ -36,6 +36,7 @@ func (w *worker) attachProcessArchives(ctx context.Context, key []byte, processe
 		if index == len(processes) || processes[index].Instance != id {
 			return errors.New("archive process missing from execution history")
 		}
+		a.Central = central
 		processes[index].Archive = &a
 	}
 	return rows.Err()
@@ -70,6 +71,10 @@ func prepareProcessArchives(db *sql.DB) error {
  CREATE TABLE IF NOT EXISTS harness_log_entries (
  instance INTEGER NOT NULL REFERENCES harness_processes(instance), seq INTEGER NOT NULL, entry BLOB NOT NULL,
  PRIMARY KEY(instance,seq)
+ );
+ CREATE TABLE IF NOT EXISTS process_log_uploads (
+ instance INTEGER PRIMARY KEY REFERENCES harness_processes(instance),
+ retry_at INTEGER NOT NULL DEFAULT 0
  );`)
 	if err != nil {
 		return err
@@ -139,6 +144,7 @@ func pruneProcessArchives(db *sql.DB, before time.Time) (int64, error) {
 	result, err := tx.Exec(`UPDATE harness_log_archives SET expired_at=CURRENT_TIMESTAMP
  WHERE expired_at IS NULL AND instance IN (
  SELECT p.instance FROM harness_processes p WHERE p.exited_at IS NOT NULL
+ AND NOT EXISTS(SELECT 1 FROM process_log_uploads u WHERE u.instance=p.instance)
  AND julianday(p.exited_at)<julianday(?)
  AND NOT EXISTS(SELECT 1 FROM role_assignment r WHERE r.lease_hash=p.lease_hash)
  AND NOT EXISTS(SELECT 1 FROM parked_questions q WHERE q.lease_hash=p.lease_hash)

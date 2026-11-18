@@ -343,6 +343,9 @@ var discussionWorkTypesSchema string
 //go:embed 113_issue_classifications.sql
 var issueClassificationsSchema string
 
+//go:embed 114_process_archive_transfers.sql
+var processArchiveTransfersSchema string
+
 //go:embed 104_test_plan_processes.sql
 var testPlanProcessesSchema string
 
@@ -442,47 +445,48 @@ type Event struct {
 }
 
 type Job struct {
-	ModelPause           bool            `json:"model_pause,omitempty"`
-	RecoverPlannerPause  bool            `json:"recover_planner_pause,omitempty"`
-	PlannerHandoff       bool            `json:"planner_handoff,omitempty"`
-	WriterHandoff        bool            `json:"writer_handoff,omitempty"`
-	CheckpointHandoff    bool            `json:"checkpoint_handoff,omitempty"`
-	QuestionHandoff      bool            `json:"question_handoff,omitempty"`
-	InterruptedHandoff   bool            `json:"interrupted_handoff,omitempty"`
-	RecoverWriterPause   bool            `json:"recover_writer_pause,omitempty"`
-	ProjectID            int64           `json:"project_id,omitempty"`
-	DecisionLookups      bool            `json:"decision_lookups,omitempty"`
-	DecisionProtocol     string          `json:"decision_protocol,omitempty"`
-	InstructionProtocol  string          `json:"instruction_protocol,omitempty"`
-	CheckpointWorktrees  bool            `json:"checkpoint_worktrees,omitempty"`
-	ResumeQuestions      bool            `json:"resume_questions,omitempty"`
-	OwnerClarifications  json.RawMessage `json:"owner_clarifications,omitempty"`
-	GlobalRules          json.RawMessage `json:"global_rules,omitempty"`
-	GoalContext          json.RawMessage `json:"goal_context,omitempty"`
-	RecordToolActivity   bool            `json:"record_tool_activity,omitempty"`
-	RecordModelOutput    bool            `json:"record_model_output,omitempty"`
-	RecordToolOutput     bool            `json:"record_tool_output,omitempty"`
-	RecordToolStream     bool            `json:"record_tool_stream,omitempty"`
-	RecordAppTurn        bool            `json:"record_app_turn,omitempty"`
-	ReportLiveProcess    bool            `json:"report_live_process,omitempty"`
-	ReportLiveCILog      bool            `json:"report_live_ci_log,omitempty"`
-	ReportCICandidate    bool            `json:"report_ci_candidate,omitempty"`
-	Startup              *StartupSpec    `json:"startup,omitempty"`
-	ManageResources      bool            `json:"manage_resources,omitempty"`
-	RecordProcesses      bool            `json:"record_processes,omitempty"`
-	RecordArchiveDigests bool            `json:"record_archive_digests,omitempty"`
-	LeaseSeconds         int             `json:"lease_seconds,omitempty"`
-	SupportsCheckpoints  bool            `json:"supports_checkpoints,omitempty"`
-	RuntimeQuestions     bool            `json:"runtime_questions,omitempty"`
-	Kind                 string          `json:"kind"`
-	Spec                 *IssueSpec      `json:"spec,omitempty"`
-	Rework               *Review         `json:"rework,omitempty"`
-	ExecutionID          int64           `json:"execution_id"`
-	TaskID               int64           `json:"task_id"`
-	RepoPath             string          `json:"repo_path"`
-	RepoRelativePath     string          `json:"repo_relative_path,omitempty"`
-	Workspace            string          `json:"workspace"`
-	LeaseToken           string          `json:"lease_token"`
+	ModelPause            bool            `json:"model_pause,omitempty"`
+	RecoverPlannerPause   bool            `json:"recover_planner_pause,omitempty"`
+	PlannerHandoff        bool            `json:"planner_handoff,omitempty"`
+	WriterHandoff         bool            `json:"writer_handoff,omitempty"`
+	CheckpointHandoff     bool            `json:"checkpoint_handoff,omitempty"`
+	QuestionHandoff       bool            `json:"question_handoff,omitempty"`
+	InterruptedHandoff    bool            `json:"interrupted_handoff,omitempty"`
+	RecoverWriterPause    bool            `json:"recover_writer_pause,omitempty"`
+	ProjectID             int64           `json:"project_id,omitempty"`
+	DecisionLookups       bool            `json:"decision_lookups,omitempty"`
+	DecisionProtocol      string          `json:"decision_protocol,omitempty"`
+	InstructionProtocol   string          `json:"instruction_protocol,omitempty"`
+	CheckpointWorktrees   bool            `json:"checkpoint_worktrees,omitempty"`
+	ResumeQuestions       bool            `json:"resume_questions,omitempty"`
+	OwnerClarifications   json.RawMessage `json:"owner_clarifications,omitempty"`
+	GlobalRules           json.RawMessage `json:"global_rules,omitempty"`
+	GoalContext           json.RawMessage `json:"goal_context,omitempty"`
+	RecordToolActivity    bool            `json:"record_tool_activity,omitempty"`
+	RecordModelOutput     bool            `json:"record_model_output,omitempty"`
+	RecordToolOutput      bool            `json:"record_tool_output,omitempty"`
+	RecordToolStream      bool            `json:"record_tool_stream,omitempty"`
+	RecordAppTurn         bool            `json:"record_app_turn,omitempty"`
+	ReportLiveProcess     bool            `json:"report_live_process,omitempty"`
+	ReportLiveCILog       bool            `json:"report_live_ci_log,omitempty"`
+	ReportCICandidate     bool            `json:"report_ci_candidate,omitempty"`
+	Startup               *StartupSpec    `json:"startup,omitempty"`
+	ManageResources       bool            `json:"manage_resources,omitempty"`
+	RecordProcesses       bool            `json:"record_processes,omitempty"`
+	UploadProcessArchives bool            `json:"upload_process_archives,omitempty"`
+	RecordArchiveDigests  bool            `json:"record_archive_digests,omitempty"`
+	LeaseSeconds          int             `json:"lease_seconds,omitempty"`
+	SupportsCheckpoints   bool            `json:"supports_checkpoints,omitempty"`
+	RuntimeQuestions      bool            `json:"runtime_questions,omitempty"`
+	Kind                  string          `json:"kind"`
+	Spec                  *IssueSpec      `json:"spec,omitempty"`
+	Rework                *Review         `json:"rework,omitempty"`
+	ExecutionID           int64           `json:"execution_id"`
+	TaskID                int64           `json:"task_id"`
+	RepoPath              string          `json:"repo_path"`
+	RepoRelativePath      string          `json:"repo_relative_path,omitempty"`
+	Workspace             string          `json:"workspace"`
+	LeaseToken            string          `json:"lease_token"`
 }
 
 type Result struct {
@@ -504,11 +508,12 @@ func (r Result) succeeded() bool {
 }
 
 type Store struct {
-	db         *sql.DB
-	embeddings *materialEncoder
+	ProcessArchiveDays int
+	db                 *sql.DB
+	embeddings         *materialEncoder
 }
 
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store { return &Store{db: db, ProcessArchiveDays: 30} }
 
 func (s *Store) Migrate(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -525,7 +530,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -1107,6 +1112,17 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	}
 	if err != nil {
 		return err
+	}
+	if result.Processes != nil {
+		for _, p := range *result.Processes {
+			if p.Archive == nil || !p.Archive.Central {
+				continue
+			}
+			if _, err = tx.ExecContext(ctx, `INSERT INTO process_archive_transfers(execution_id,instance,verified,expires_at)
+      VALUES ($1,$2,$3,clock_timestamp()+make_interval(days=>$4))`, id, p.Instance, p.Archive.Bytes == 0, s.ProcessArchiveDays); err != nil {
+				return err
+			}
+		}
 	}
 	status, eventType := "DONE", "execution_completed"
 	if sourceClosed {

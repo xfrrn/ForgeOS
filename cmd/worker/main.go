@@ -217,12 +217,16 @@ func (w *worker) credential() (string, error) {
 }
 
 func (w *worker) authenticatedRequest(req *http.Request) (*http.Response, error) {
+	return w.authenticatedWithClient(req, w.client)
+}
+
+func (w *worker) authenticatedWithClient(req *http.Request, client *http.Client) (*http.Response, error) {
 	token, err := w.credential()
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	return w.client.Do(req)
+	return client.Do(req)
 }
 
 func (w *worker) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
@@ -350,7 +354,7 @@ func (w *worker) run(ctx context.Context) error {
 	}
 	child, stop := context.WithCancel(ctx)
 	var maintenance sync.WaitGroup
-	for _, run := range []func(context.Context){w.publishCIFiles, w.sweepLocalCI, w.sweepProcessLogs} {
+	for _, run := range []func(context.Context){w.publishCIFiles, w.publishProcessArchives, w.sweepLocalCI, w.sweepProcessLogs} {
 		maintenance.Add(1)
 		go func() { defer maintenance.Done(); run(child) }()
 	}
@@ -380,7 +384,7 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-const workerCapabilityQuery = "supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1"
+const workerCapabilityQuery = "supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1"
 
 func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
 	ctx, stop := context.WithCancelCause(parent)
