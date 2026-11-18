@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -55,8 +56,24 @@ func (w *worker) promoteCompletedTurn(ctx context.Context, q *parkedCheckpoint, 
 	return w.saveFinalization(ctx, q)
 }
 
-// The server freezes each sequence. Replay both requests before deciding whether the draft is final.
-func (w *worker) advanceCompletedTurn(ctx context.Context, q *parkedCheckpoint, recovery *checkpointRecovery) (store.CheckpointPage, error) {
+func (w *worker) confirmWriterLease(ctx context.Context, q *parkedCheckpoint, recovery *checkpointRecovery) error {
+	status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/renew", q.Job.ExecutionID), map[string]string{"lease_token": q.Job.LeaseToken}, nil)
+	switch status {
+	case http.StatusLocked:
+		recovery.waiting, recovery.leaveUnsettled = false, false
+		return store.ErrOwnerStop
+	case http.StatusGone:
+		recovery.waiting, recovery.leaveUnsettled = false, false
+		return store.ErrSourceClosed
+	}
+	if err != nil || status != http.StatusNoContent {
+		return errors.New("cannot confirm writer lease")
+	}
+	return nil
+}
+
+// Read the frozen input again after a restart. A completed turn must first confirm its own sequence.
+func (w *worker) readWriterInputs(ctx context.Context, q *parkedCheckpoint, recovery *checkpointRecovery) (store.CheckpointPage, error) {
 	var page store.CheckpointPage
 	recovery.waiting, recovery.leaveUnsettled = true, true
 	defer func() {
@@ -64,66 +81,53 @@ func (w *worker) advanceCompletedTurn(ctx context.Context, q *parkedCheckpoint, 
 			recovery.waiting, recovery.leaveUnsettled = false, false
 		}
 	}()
-	confirmLease := func() error {
-		status, err := w.post(ctx, fmt.Sprintf("/internal/executions/%d/renew", q.Job.ExecutionID), map[string]string{"lease_token": q.Job.LeaseToken}, nil)
-		switch status {
-		case http.StatusLocked:
-			recovery.waiting, recovery.leaveUnsettled = false, false
-			return store.ErrOwnerStop
-		case http.StatusGone:
-			recovery.waiting, recovery.leaveUnsettled = false, false
-			return store.ErrSourceClosed
-		}
-		if err != nil || status != http.StatusNoContent {
-			return errors.New("cannot confirm lease for completed writer turn")
-		}
-		return nil
-	}
-	if err := confirmLease(); err != nil {
+
+	if err := w.confirmWriterLease(ctx, q, recovery); err != nil {
 		return page, err
 	}
-	_, err := w.checkpoint(ctx, q.Job, q.Sequence, q.Session)
+	var err error
+	sequence := 0
+	if q.InitialTip == "" {
+		_, err = w.checkpoint(ctx, q.Job, q.Sequence, q.Session)
+		sequence = q.Sequence + 1
+	}
 	if err == nil {
-		page, err = w.checkpoint(ctx, q.Job, q.Sequence+1, "")
+		page, err = w.checkpoint(ctx, q.Job, sequence, "")
 	}
 	if err != nil {
 		// A checkpoint conflict can also mean the Owner stopped the task after renewal.
 		if ctx.Err() == nil {
-			if leaseErr := confirmLease(); leaseErr != nil {
+			if leaseErr := w.confirmWriterLease(ctx, q, recovery); leaseErr != nil {
 				return page, leaseErr
 			}
 		}
 		return page, err
 	}
-	if err := verifyCompletedDraft(ctx, q); err != nil {
+	if err := verifyWriterDraft(ctx, q); err != nil {
 		return page, err
 	}
-	if len(page.Comments) == 0 && len(page.OwnerInstructions) == 0 {
-		recovery.leaveUnsettled = false
-		return page, nil
-	}
-	if q.Version != w.nativeVersion(q.Job) {
-		return page, errors.New("native harness version changed before the next writer turn")
+	if (q.InitialTip != "" || len(page.Comments) > 0 || len(page.OwnerInstructions) > 0) && q.Version != w.nativeVersion(q.Job) {
+		return page, errors.New("native harness version changed before writer startup")
 	}
 	// Keep the receipt while the next model reservation is queued or its response is in flight.
 	recovery.leaveUnsettled = false
 	return page, nil
 }
 
-func verifyCompletedDraft(ctx context.Context, q *parkedCheckpoint) error {
+func verifyWriterDraft(ctx context.Context, q *parkedCheckpoint) error {
 	tip, err := checkedWorktreeTip(ctx, q.Job.Workspace, q.GitDir)
-	if err != nil || tip != q.CompletedTip {
-		return errors.New("completed writer worktree HEAD changed")
+	if err != nil || tip != cmp.Or(q.InitialTip, q.CompletedTip) {
+		return errors.New("saved writer worktree HEAD changed")
 	}
 	trees, err := checkpointTrees(ctx, q.Job.Workspace)
 	if err != nil || trees != q.Trees {
-		return errors.New("completed writer draft or index changed")
+		return errors.New("saved writer draft or index changed")
 	}
 	return nil
 }
 
-func (w *worker) consumeCompletedTurn(ctx context.Context, q *parkedCheckpoint) error {
-	if err := verifyCompletedDraft(ctx, q); err != nil {
+func (w *worker) consumeWriterStart(ctx context.Context, q *parkedCheckpoint) error {
+	if err := verifyWriterDraft(ctx, q); err != nil {
 		return err
 	}
 	key := sha256.Sum256([]byte(q.Job.LeaseToken))
@@ -136,7 +140,7 @@ func (w *worker) consumeCompletedTurn(ctx context.Context, q *parkedCheckpoint) 
 		return err
 	}
 	if n != 1 {
-		return errors.New("completed writer receipt disappeared before the next turn")
+		return errors.New("writer receipt disappeared before native startup")
 	}
 	return nil
 }
@@ -219,7 +223,11 @@ func (w *worker) readFinalization(ctx context.Context, id int64) (*parkedCheckpo
 		q.ResourceStep < 0 || q.Planner != nil || q.Writer != nil {
 		return nil, fmt.Errorf("invalid saved candidate for execution %d", id)
 	}
-	if q.CompletedTip != "" {
+	if q.InitialTip != "" {
+		if q.Finalization != nil || q.CompletedTip != "" || q.Session != "" || q.Sequence != 0 || q.ResourceStep != 0 || !q.Job.SupportsCheckpoints || !q.Job.ManageResources || q.Trees.Index == "" || q.Trees.Worktree == "" {
+			return nil, fmt.Errorf("invalid unstarted writer turn for execution %d", id)
+		}
+	} else if q.CompletedTip != "" {
 		if q.Finalization != nil || !q.Job.SupportsCheckpoints || q.Sequence < 0 || q.Session == "" || q.Trees.Index == "" || q.Trees.Worktree == "" {
 			return nil, fmt.Errorf("invalid completed writer turn for execution %d", id)
 		}

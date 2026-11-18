@@ -16,11 +16,13 @@ import (
 )
 
 func TestCompletedWriterCheckpoint(t *testing.T) {
-	for _, phase := range []string{"empty", "comment", "instruction", "changed-draft", "changed-index", "changed-tip", "changed-version", "cancelled", "closed", "cancel-during-confirm", "close-during-next", "unconfirmed-next"} {
+	for _, phase := range []string{"initial", "initial-version", "empty", "comment", "instruction", "changed-draft", "changed-index", "changed-tip", "changed-version", "cancelled", "closed", "cancel-during-confirm", "close-during-next", "unconfirmed-next"} {
 		t.Run(phase, func(t *testing.T) {
 			ctx := context.Background()
 			w, job, base := fixture(t)
 			job.Kind, job.LeaseSeconds, job.SupportsCheckpoints = "codex_issue", 300, true
+			initial := strings.HasPrefix(phase, "initial")
+			job.ManageResources = initial
 			job.Spec = &store.IssueSpec{BaseCommit: base, Validation: "docs"}
 			dir, err := checkedWorktree(ctx, job.RepoPath, job.Workspace, base)
 			if err != nil {
@@ -44,11 +46,14 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 			if err := captureCompletedTree(ctx, &q, base); err != nil {
 				t.Fatal(err)
 			}
+			if initial {
+				q.InitialTip, q.CompletedTip, q.Session, q.Sequence = q.CompletedTip, "", "", 0
+			}
 			if err := w.saveFinalization(ctx, &q); err != nil {
 				t.Fatal(err)
 			}
 			saved, err := w.readFinalization(ctx, job.ExecutionID)
-			if err != nil || saved == nil || saved.CompletedTip != base || saved.Trees != q.Trees || saved.Finalization != nil {
+			if err != nil || saved == nil || (saved.CompletedTip != base && saved.InitialTip != base) || saved.Trees != q.Trees || saved.Finalization != nil {
 				t.Fatal(saved, err)
 			}
 			switch phase {
@@ -60,7 +65,7 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 				git(t, job.Workspace, "add", "README.md")
 			case "changed-tip":
 				git(t, job.Workspace, "-c", "user.name=QA", "-c", "user.email=qa@localhost", "commit", "--allow-empty", "-m", "External commit")
-			case "changed-version":
+			case "changed-version", "initial-version":
 				w.codexVersion += "-changed"
 			}
 			var confirmed, checkpointRejected bool
@@ -79,6 +84,13 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 				if !strings.HasSuffix(r.URL.Path, "/checkpoints") || json.NewDecoder(r.Body).Decode(&in) != nil || in.Sequence == nil {
 					t.Error("unexpected request", r.URL.Path)
 					rw.WriteHeader(400)
+					return
+				}
+				if initial {
+					if *in.Sequence != 0 || in.Session != "" {
+						t.Error("expected only the unconfirmed first checkpoint")
+					}
+					json.NewEncoder(rw).Encode(store.CheckpointPage{Checkpoint: store.Checkpoint{ExecutionID: job.ExecutionID, Sequence: 0}})
 					return
 				}
 				if *in.Sequence == 2 && in.Session == q.Session {
@@ -111,10 +123,10 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 			defer server.Close()
 			w.api, w.client = server.URL, server.Client()
 			recovery := checkpointRecovery{saved: saved, leaveUnsettled: true}
-			page, err := w.advanceCompletedTurn(ctx, saved, &recovery)
+			page, err := w.readWriterInputs(ctx, saved, &recovery)
 			advanced := phase == "instruction" || phase == "comment"
 			stop := phase == "cancelled" || phase == "closed" || phase == "cancel-during-confirm" || phase == "close-during-next"
-			if (err == nil) != (advanced || phase == "empty") || recovery.leaveUnsettled != (err != nil && !stop) ||
+			if (err == nil) != (advanced || phase == "empty" || phase == "initial") || recovery.leaveUnsettled != (err != nil && !stop) ||
 				advanced != (len(page.OwnerInstructions)+len(page.Comments) > 0 && err == nil) {
 				t.Fatal(err, recovery, page)
 			}
@@ -127,17 +139,17 @@ func TestCompletedWriterCheckpoint(t *testing.T) {
 					if err := os.WriteFile(file, []byte("Edited while waiting for capacity"), 0600); err != nil {
 						t.Fatal(err)
 					}
-					if err := w.consumeCompletedTurn(ctx, saved); err == nil {
+					if err := w.consumeWriterStart(ctx, saved); err == nil {
 						t.Fatal("accepted edits made in the queue")
 					}
 					if q, err := w.readFinalization(ctx, job.ExecutionID); err != nil || q == nil {
 						t.Fatal("lost the original receipt", err)
 					}
 				} else {
-					if err := w.consumeCompletedTurn(ctx, saved); err != nil {
+					if err := w.consumeWriterStart(ctx, saved); err != nil {
 						t.Fatal(err)
 					}
-					if err := w.consumeCompletedTurn(ctx, saved); err == nil {
+					if err := w.consumeWriterStart(ctx, saved); err == nil {
 						t.Fatal("replayed the same authorization to start")
 					}
 				}

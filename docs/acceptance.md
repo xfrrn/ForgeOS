@@ -9,16 +9,28 @@
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
 | A.1、B.2、C.5 · 运行中输入、审批与适配器控制 | [工作台向活动 Codex 回合投递并取得原生回执](#live-workbench-turn-input)，正式 Worker 已记录 Codex 原生 Turn，并从工作台中断真实 Claude 回合。原生协议追加输入、拒绝过时回合、Owner 处理 D2/D3 业务问题均已实测。 | 从工作台到运行中原生工具请求的审批闭环、Claude 恢复后的完整交付（模型服务 HTTP 403，余额不足）。 |
-| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 已验下一回合获得名额但回执丢失时的重启。 | 首份回合记录写入前中断、下一原生回合启动后的中断、接回仍存活进程以及整机重启恢复。 |
+| B.4 · 执行恢复 | 已从原工作树恢复完成的草稿并产生候选。beta #237 在确认两个原生回合前分别终止 Worker，Owner 排队指令只执行一次。[操作与结果](#completed-writer-input)。[beta #254](#queued-model-grant-recovery) 和 [#255](#first-model-grant-recovery) 分别验收下一回合和首个回合在名额回执丢失时的重启。 | 首个原生进程启动后至首份完成记录落盘前的中断、下一原生回合启动后的中断、接回仍存活进程以及整机重启恢复。 |
 | C.3 · 进程日志与工具输出 | 普通执行和三个独立角色已从工作台下载并核对中央日志（[普通执行](#central-process-archive)、[独立角色](#role-process-central)），环境检查已验收[启动日志下载](#startup-log-download)；中文查询已能检索英文项目决策和[已发布给本项目的脱敏经验](#shared-experience-search)。六类角色的冻结依据已从[原生记录](#knowledge-role-matrix)核对。 | Reviewer 中央日志的原生复验及其余结构化工具输出。 |
 | A.3、A.4、A.5、A.7 及外部通知 | 本机节点、已授权的两座私库和站内通知已有验收记录。 | Linux 服务账号的模型登录和限额、受限 GitHub 身份与第二人批准、外部 tailnet 设备、Telegram／飞书测试接收方。 |
 | 路线一至四最终复验 | 四个阶段分别有运行记录，见下方阶段对照。 | 其余功能完成后，从空库派发、单项目交付、复杂 Goal 到多项目隔离重新执行，核对最终提交和证据。 |
+
+<a id="first-model-grant-recovery"></a>
+
+### 专题 07、16 B.4 · 首个写入回合启动前重启
+
+在 [beta #255](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/255) 上使用两个隔离 PostgreSQL 18 实例分别验证恢复和取消。两次均在控制面实际批准第一个模型名额后丢弃 204 响应并终止 Worker。操作前后从工作台、控制面 API、节点 SQLite 和 Git 交叉核对。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 阻断第一次名额回执，查看日志再终止 Worker | 已保存任务来源和工作区；尚无模型进程 | 检查点 0，基线 `6114d2205497635a8f25348f3df0bb8057048817`，两棵树均为 `7e08857110f24a9de45e55927b0094315d1da60a`。进程表为空；工作区中尚无目标文件。 |
+| 重启正式控制面和同身份 Worker，恢复响应，用 Chrome 核对结果 | 在原工作区启动一次模型、使用一次 CI，生成符合要求的候选 | 名额成功响应的资源步骤依次为 1、1；唯一模型进程 44352，会话 `01a1ee79-d78b-7e80-a1b6-7e5cd5b75fa3`，仅一次 CI（步骤 2）。候选 `00de3032a14f0a7e90da3927e25ffc7e76a0ac04` 中有要求的标题和正文，页面与 Git 一致，恢复记录已消费。 |
+| 在第二套实例用 Chrome 取消同一来源的任务，再启动 Worker | 取消生效，无模型或 CI 执行 | 取消请求返回 204；终态 CANCELLED，原生进程数 0，无 CI 名额、无候选，恢复记录已清理。 |
 
 <a id="queued-model-grant-recovery"></a>
 
 ### 专题 07、16 B.4 · 下一写入回合已获模型名额时重启
 
-2026-11-18，在 [beta #254](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/254) 上运行正式 Windows Worker、Codex App Server 和 PostgreSQL 18。Chrome 在首次写入完成后排入 Owner 指令，要求保留原文并追加一次指定标题。
+实现提交 `a7ca585a1395d5f284ecd4db2ad8754f7c5d3f28`。2026-11-18，在 [beta #254](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/254) 上运行正式 Windows Worker、Codex App Server 和 PostgreSQL 18。Chrome 在首次写入完成后排入 Owner 指令，要求保留原文并追加一次指定标题。
 
 | 操作 | 预期 | 实际 |
 | --- | --- | --- |

@@ -14,8 +14,9 @@ import (
 	"forgeos/internal/store"
 )
 
-// Written after the native turn exits, before exposing its checkpoint for Owner input.
+// The journal binds each recoverable boundary to its original lease and worktree.
 type parkedCheckpoint struct {
+	InitialTip                           string                 `json:",omitempty"`
 	Finalization                         *candidateFinalization `json:",omitempty"`
 	CompletedTip                         string                 `json:",omitempty"`
 	Job                                  store.Job

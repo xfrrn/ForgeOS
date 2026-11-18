@@ -467,13 +467,21 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	var dir []byte
 	var ownerReply json.RawMessage
 	var answeredTrees *store.WorktreeTrees
-	var completed *parkedCheckpoint
+	var completed, launchFrom *parkedCheckpoint
 	seq := 0
 	if saved := recovery.saved; saved != nil {
 		dir = saved.GitDir
 		budget.step = saved.ResourceStep
 		result.SessionID = saved.Session
-		if saved.CompletedTip != "" {
+		if saved.InitialTip != "" {
+			if saved.InitialTip != start {
+				return failed("unstarted writer base changed", nil)
+			}
+			resumeBudget(saved.Remaining)
+			batch, err = w.readWriterInputs(ctx, saved, recovery)
+			launchFrom = saved
+			recovery.saved = nil
+		} else if saved.CompletedTip != "" {
 			if spec.Harness == "claude" {
 				result.Harness, result.HarnessVersion = "claude", saved.Version
 			}
@@ -481,7 +489,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			seq = saved.Sequence + 1
 			completed = saved
 			recovery.saved = nil
-			batch, err = w.advanceCompletedTurn(ctx, saved, recovery)
+			batch, err = w.readWriterInputs(ctx, saved, recovery)
 		} else if saved.Writer != nil {
 			seq, batch, ownerReply = saved.Sequence, saved.Writer.Batch, saved.Writer.OwnerReply
 		} else {
@@ -497,13 +505,23 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 	} else {
 		dir, err = checkedWorktree(ctx, repo, workspace, start)
+		if err == nil && job.ManageResources && job.SupportsCheckpoints && job.LeaseSeconds > 0 && w.journal != nil {
+			launchFrom = &parkedCheckpoint{Job: job, GitDir: dir, InitialTip: start, Version: w.nativeVersion(job), Remaining: time.Until(deadline)}
+			launchFrom.Trees, err = checkpointTrees(ctx, workspace)
+			if err == nil {
+				err = w.saveFinalization(ctx, launchFrom)
+			}
+			recovery.waiting = err == nil
+		}
 	}
 	for ; err == nil; seq++ {
 		if completed != nil && len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 {
 			break
 		}
-		launchFrom := completed
-		completed = nil
+		if completed != nil {
+			launchFrom = completed
+			completed = nil
+		}
 		var prompt string
 		prompt, err = issuePrompt(job, feedback, batch, ownerReply)
 		if err != nil {
@@ -548,12 +566,12 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				checkpoint = &writerCheckpoint{sequence: seq}
 			}
 			if launchFrom != nil {
-				if err := w.consumeCompletedTurn(turn, launchFrom); err != nil {
+				if err := w.consumeWriterStart(turn, launchFrom); err != nil {
 					recovery.leaveUnsettled = true
 					return previous, err
 				}
 				launchFrom = nil
-				recovery.waiting = false
+				recovery.waiting, recovery.leaveUnsettled = false, false
 			}
 			return w.runJobTurn(turn, adapter, job, turnPrompt, previous, start, dir, question, "", checkpoint)
 		})
@@ -573,7 +591,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			}
 			if err == nil {
 				ownerReply = nil
-				batch, err = w.advanceCompletedTurn(ctx, completed, recovery)
+				batch, err = w.readWriterInputs(ctx, completed, recovery)
 			}
 			continue
 		}
