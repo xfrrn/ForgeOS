@@ -23,6 +23,13 @@
 
 等级不能由 Agent 自行降低。Policy Engine 根据操作对象和环境执行硬性规则。
 
+| 等级 | 从实际入口核对的决定 | ForgeOS 提交 |
+| --- | --- | --- |
+| D0 | beta #8 规定队列接纳规则和测试类别，执行 26 自行选取表驱动用例名称和输入，包括空队列、零容量和两个输入均为负。已从 PR #9 的固定候选重新运行全部 8 个子测试。[需求、测试对象与结果](acceptance.md#worker-local-decisions) | `80836d6` |
+| D1 | 实现节点请求查阅已确认的项目决策，独立 Management 核对适用范围，按原文答复并保存决策编号与原生会话。[beta #285 的审核回执](acceptance.md#question-advice-event-audit) | `92127c3` |
+| D2 | 工作台显示 Management 建议和依据，Owner 可填写不同的业务答复。两者均保留，回到原候选。[答复与建议的回读](acceptance.md#management-question-levels) | `770717a` |
+| D3 | 审核生产删除问题时，Management 将建议留空。控制面重启后仍等待 Owner，Owner 拒绝删除后回到原候选。[原会话与候选](acceptance.md#management-question-levels) | `770717a` |
+
 ## 3. Management Agent 主要职责
 
 - 检查 Goal 和 Work Item 状态；
