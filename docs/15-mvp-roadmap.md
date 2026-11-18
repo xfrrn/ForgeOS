@@ -35,6 +35,8 @@
 
 **MVP 验收**　用一个简单 Issue 在管理页完成人工验收，从 Issue 能追到 PR 和最终 Merge SHA。重复同步该 Issue 只生成一个工作项。必需 CI 失败时交付停在验证环节，候选 SHA 变化后重新执行受影响的检查并复核验收，旧记录不能直接放行新版本。交付条件见[本地验证](10-validation-and-local-ci.md)和[GitHub 交付](12-github-delivery-and-feedback.md)。
 
+2026-11-19，beta #273 在空数据库上从正式 Worker 到受保护 main 完成复验。第一次必需检查失败，PR 保持开放；同一候选的第二次检查通过后合并并关闭 Issue。[候选、两次检查和合并回执](acceptance.md#single-project-273)
+
 ## 三、复杂需求协作
 
 进入本阶段前，已在两个临时私有仓库从工作台复验按 SHA 交付，包括必需检查失败、重跑、合并与 Issue 回写。[逐项验收证据](acceptance.md)

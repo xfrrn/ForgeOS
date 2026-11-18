@@ -34,6 +34,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="single-project-273"></a>
+
+### 路线二 · 从空库重新交付 beta #273
+
+在 ForgeOS `5bce0416c81059fec7088b87e79a9dbc76ad312e` 对应代码上，使用独立的空 PostgreSQL 18 和全新 beta 克隆。将本轮验收 Issue 的最终正文固定为单文件文档需求。此交付实例从需求修订 1 起步；上一次修订历史演练使用另一独立数据库。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| 启动正式控制面及 Worker，执行 `scripts/smoke.ps1 -IssueNumber 273 -Validation auto`，重复导入相同 Issue | 仅产生一个任务，原生实现和本地验证绑定同一候选 | 任务 1、执行 1、Session `01a1efbe-9ca0-7d70-b0de-f1c2e179d26e`。本地验证退出 0。Git 差异只有 `docs/requirement-receipts.md`，标题、空行和正文与 Issue 逐字一致。[Issue #273](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/273) |
+| 在 Chrome 对该 SHA 通过验收，等待第一次 GitHub Actions 运行 | 必需检查失败时不得合并或关闭 Issue | 候选 `3a780d671236e8ce85ec98d35871698384abd070` 对应 PR #274。GitHub 的 main 为受保护分支，必需检查为 acceptance-check。第一次检查失败，控制面回报 `GitHub checks failed for the accepted head`，当时 PR 未合并、Issue 仍开放。[第一次检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44361447379/attempts/1) |
+| 在该运行重跑失败作业，等待正式交付器，再重启控制面 | 同一候选检查成功后可合并，Issue 回写完成，重启可查询原交付 | 第二次检查成功，PR 合并为 `39a8b8b996ab319ff9a266f941c77933c85d6b83`。Issue 已关闭，任务 DONE，事件 5、6、7 依次为创建 PR、合并和交付完成；重启后证据与 GitHub 相同。[第二次检查](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/actions/runs/44361447379/attempts/2) · [PR #274](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/274) |
+
+原始证据为 `requirement-delivery/latest.json`。本次两次检查使用同一候选。候选变化时重新验证和验收的既有证据另见[换基回执](#delivery-event-audit)，四阶段最终联验仍待完成。
+
 <a id="requirement-event-audit"></a>
 
 ### 专题 06、12、13 · 观察、采用和从预览反馈修订需求
@@ -46,7 +60,7 @@
 | 两次编辑同一 Issue 正文，通过 Owner 手动同步和 GitHub 轮询分别观察新版本；在 Chrome 采用各版、重放采用、重启 | 工作台文件与 API 相同，每次只采用一次；较早回执仍指向各自版本 | 事件 4、5 关联修订 3，均由 Owner 发起。事件 19、20 关联修订 4，发起方分别为 GitHub 轮询器和 Owner。重启后六份回执逐字段相同。 |
 | 还原实际候选，在正式预览提交容量规则变更，等待原生 Management 分类，在 Chrome 保存修订、重放并重启 | 可从需求修订查到反馈、执行和候选，保存操作归属 Owner | 反馈 1 由 Session `01a1efbd-732b-7662-9a8e-28e6f75f48b3` 判为需求变更。事件 6 指向修订 2、任务 1、执行 1、候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228`。重放沿用同一修订，只有一条新建事件。下载未包含私有正文或预览访问标识。[beta #163](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/163) |
 
-原始回执为 `requirement-event-live/latest.json`、`requirement-feedback-live/latest.json`。PostgreSQL 18 和真实 Docker 全包回归 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件；报告为 `requirement-event-regression.jsonl`。Go 静态检查通过。
+实现提交 `5bce0416c81059fec7088b87e79a9dbc76ad312e`。原始回执为 `requirement-event-live/latest.json`、`requirement-feedback-live/latest.json`。PostgreSQL 18 和真实 Docker 全包回归 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件；报告为 `requirement-event-regression.jsonl`。Go 静态检查通过。
 
 <a id="feedback-backup-restore"></a>
 
