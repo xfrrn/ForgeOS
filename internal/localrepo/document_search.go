@@ -3,12 +3,15 @@ package localrepo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
 )
+
+var ErrDocumentRevision = errors.New("revision unavailable in registered history")
 
 type DocumentMatch struct {
 	Path         string `json:"path"`
@@ -26,8 +29,9 @@ type DocumentSearch struct {
 	More        bool            `json:"more"`
 }
 
-// SearchDocuments reads the registered checkout's committed history and never follows working-tree links.
-func SearchDocuments(ctx context.Context, repo, revision, query string) (DocumentSearch, error) {
+// SearchDocuments pins the revision and validates the entire blob before reporting a text file.
+// With a visitor, all eligible files are visited for ranking, including those without a literal match.
+func SearchDocuments(ctx context.Context, repo, revision, query string, visit func(DocumentMatch) error) (DocumentSearch, error) {
 	var result DocumentSearch
 	if revision != "" && !objectID.MatchString(revision) {
 		return result, errors.New("invalid document revision")
@@ -42,7 +46,7 @@ func SearchDocuments(ctx context.Context, repo, revision, query string) (Documen
 	result.Commit = strings.TrimSpace(string(head))
 	if revision != "" && revision != result.Commit {
 		if _, err := Git(ctx, repo, "merge-base", "--is-ancestor", revision, result.Commit); err != nil {
-			return result, errors.New("revision unavailable in registered history")
+			return result, ErrDocumentRevision
 		}
 		result.Commit = revision
 	}
@@ -89,9 +93,18 @@ func SearchDocuments(ctx context.Context, repo, revision, query string) (Documen
 			return nil
 		})
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("read document blob %s: %w", hit.Blob, err)
 		}
-		if source.Problem != "" || hit.Excerpt == "" {
+		if source.Problem != "" {
+			continue
+		}
+		if visit != nil {
+			if err := visit(hit); err != nil {
+				return result, err
+			}
+			continue
+		}
+		if hit.Excerpt == "" {
 			continue
 		}
 		if len(result.Items) == 30 {

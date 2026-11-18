@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"forgeos/internal/store"
@@ -43,12 +44,16 @@ func registerHistory(mux *http.ServeMux, data *store.Store, owner string, worker
 }
 
 func registerProjectRead(mux *http.ServeMux, resource, owner string, workers *workerRegistry, read func(http.ResponseWriter, *http.Request, int64)) {
-	mux.HandleFunc("GET /projects/{id}/"+resource, authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+	registerProjectReadFor(mux, resource, owner, workers, 15*time.Second, read)
+}
+
+func registerProjectReadFor(mux *http.ServeMux, resource, owner string, workers *workerRegistry, timeout time.Duration, read func(http.ResponseWriter, *http.Request, int64)) {
+	mux.HandleFunc("GET /projects/{id}/"+resource, authorizedFor(owner, timeout, func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pathID(w, r); ok {
 			read(w, r, id)
 		}
 	}))
-	workers.handle(mux, "GET /internal/projects/{id}/"+resource, workers.authorize(func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
+	workers.handle(mux, "GET /internal/projects/{id}/"+resource, workers.authorizeFor(timeout, func(w http.ResponseWriter, r *http.Request, grant *workerGrant) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return

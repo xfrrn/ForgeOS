@@ -44,7 +44,7 @@ func TestDocumentSearchPinsBlobsAndMatchesAcrossParts(t *testing.T) {
 	git("add", "guide.md")
 	git("commit", "-qm", "new version")
 	write("guide.md", body)
-	result, err := SearchDocuments(ctx, repo, base, "k界测量")
+	result, err := SearchDocuments(ctx, repo, base, "k界测量", nil)
 	if err != nil || len(result.Items) != 1 || result.Commit != base || result.CommittedAt == "" {
 		t.Fatal(result, err)
 	}
@@ -53,11 +53,19 @@ func TestDocumentSearchPinsBlobsAndMatchesAcrossParts(t *testing.T) {
 		!utf8.ValidString(h.Excerpt) || body[h.ExcerptStart:h.ExcerptStart+int64(len(h.Excerpt))] != h.Excerpt {
 		t.Fatal(h)
 	}
-	now, err := SearchDocuments(ctx, repo, "", "k界测量")
+	now, err := SearchDocuments(ctx, repo, "", "k界测量", nil)
 	if err != nil || len(now.Items) != 0 || now.Commit == base {
 		t.Fatal(now, err)
 	}
-	if _, err := SearchDocuments(ctx, repo, blob, "x"); err == nil {
+	if _, err := SearchDocuments(ctx, repo, blob, "x", nil); err == nil {
 		t.Fatal("accepted a blob as a commit")
+	}
+	var visited []DocumentMatch
+	_, err = SearchDocuments(ctx, repo, base, "absent", func(h DocumentMatch) error {
+		visited = append(visited, h)
+		return nil
+	})
+	if err != nil || len(visited) != 1 || visited[0].Path != "guide.md" || visited[0].Blob != blob || visited[0].Excerpt != "" {
+		t.Fatal("only a fully validated document may be ranked", visited, err)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -60,7 +61,8 @@ func watchDocuments(ctx context.Context, data *store.Store, root string) {
 }
 
 func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner string, workers *workerRegistry) {
-	registerProjectRead(mux, "documents", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+	const searchTimeout = 5 * time.Minute
+	registerProjectReadFor(mux, "documents", owner, workers, searchTimeout, func(w http.ResponseWriter, r *http.Request, project int64) {
 		params := r.URL.Query()
 		query, commit := strings.TrimSpace(params.Get("q")), params.Get("commit")
 		if query == "" || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) || (params.Has("commit") && !gitCommit.MatchString(commit)) {
@@ -77,9 +79,14 @@ func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner 
 			problem(w, 409, "registered repository unavailable")
 			return
 		}
-		result, err := localrepo.SearchDocuments(r.Context(), repo, commit, query)
-		if err != nil {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(searchTimeout + 5*time.Second))
+		result, err := data.SearchDocuments(r.Context(), project, repo, commit, query)
+		if errors.Is(err, localrepo.ErrDocumentRevision) {
 			problem(w, 422, "cannot search the requested repository revision")
+			return
+		}
+		if err != nil {
+			respond(w, 0, nil, err)
 			return
 		}
 		writeJSON(w, 200, struct {

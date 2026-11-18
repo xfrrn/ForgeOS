@@ -118,7 +118,7 @@ Owner 用 `GET /projects/{id}/decisions` 查询，项目节点用 `GET /internal
 
 Owner 使用 `GET /projects/{id}/documents?q=<文本>`，节点使用 `GET /internal/projects/{id}/documents?q=<文本>`。缺少该项目授权的节点返回 403。默认在请求开始时固定登记仓库的 HEAD，也可传入 `commit=<完整 SHA>` 查询当前 HEAD 或其祖先，例如工作项记录的基础提交。无效 SHA 返回 400，已无法从当前 HEAD 追溯的版本返回 422。
 
-查询在已提交的 UTF-8 文档中按字面量匹配，忽略大小写，最多 512 字节。范围与文档变化监测一致，涵盖 README 等工程指南及 Markdown、AsciiDoc、reStructuredText 和 docs 目录下的文本。结果按路径排序，每份文档给出首次命中的片段，最多返回 30 份。`more=true` 时可细化查询。
+查询在已提交的 UTF-8 文档中按字面量匹配，忽略大小写，最多 512 字节。范围与文档变化监测一致，涵盖 README 等工程指南及 Markdown、AsciiDoc、reStructuredText 和 docs 目录下的文本。默认按路径排序，每份文档给出首次命中的片段。启用嵌入服务后，系统只为指定提交树中已通过文本检查的 blob 建立分段索引，使用 PostgreSQL 全文匹配、字面量及 pgvector 余弦相似度合并排序。精确匹配保留原词的字节位置，其他命中返回最相关的原文片段。相同项目、blob 和模型修订可跨提交复用索引。最多返回 30 份。`more=true` 时可细化查询。
 
 响应包含项目、`status=committed`、实际提交 SHA 和提交时间。每个命中项给出路径、Git blob、引句片段和从文件开头算起的字节位置 `[start_byte,end_byte)`。`excerpt_start_byte` 标明片段起点。Agent 可用 `git show <commit>:<path>` 读取同一份完整原文。尚未提交的修改和符号链接不参与检索。
 
