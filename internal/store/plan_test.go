@@ -314,6 +314,16 @@ func TestUpgradeIssueToVersionedGoal(t *testing.T) {
 	if err != nil || json.Unmarshal(receipt, &completed) != nil || completed.Goal.Revision != 4 || len(completed.Goal.Children) != 2 {
 		t.Fatal(string(receipt), err)
 	}
+	audit, err := s.EventAudit(ctx, p.ID, task.ID, event)
+	var recorded struct {
+		Payload struct {
+			Goal json.RawMessage `json:"completed_goal"`
+		}
+	}
+	var expected struct{ Goal json.RawMessage }
+	if err != nil || json.Unmarshal(audit, &recorded) != nil || json.Unmarshal(receipt, &expected) != nil || string(expected.Goal) != string(recorded.Payload.Goal) {
+		t.Fatal("audit must identify the same completed children", string(audit), err)
+	}
 	var source string
 	if err := s.db.QueryRowContext(ctx, "SELECT content FROM curation_sources WHERE kind='goal_delivered' AND revision=$1", event).Scan(&source); err != nil ||
 		!strings.Contains(source, "Candidate base matched the confirmed merge of prerequisite a.") || strings.Contains(source, "provisional") {

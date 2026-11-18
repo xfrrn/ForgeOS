@@ -19,31 +19,48 @@ func (s *Store) EventAudit(ctx context.Context, project, task, event int64) (jso
                    WHEN v.type='decision_requested' AND q.id IS NOT NULL THEN
                        CASE WHEN q.checkpoint_sequence IS NULL THEN 'owner' ELSE 'worker' END
                    WHEN v.type IN ('management_reviewed','management_decision_answered','management_question_reviewed') THEN 'management'
-                   WHEN v.type='source_cancel_requested' THEN 'github' END) AS source,
+                   WHEN v.type='source_cancel_requested' THEN 'github'
+                   WHEN v.type IN ('pr_created','pr_merged','delivery_completed','goal_delivered') THEN 'controlplane'
+                   WHEN v.type='delivery_base_refreshed' THEN 'owner' END) AS source,
                CASE WHEN v.type IN ('execution_completed','execution_failed','planner_completed','ci_paused')
                       OR (v.origin='worker' AND v.type IN ('owner_cancelled','source_issue_cancelled'))
                     THEN e.result END AS result,
                CASE WHEN v.type='management_reviewed' THEN pr.review END AS plan_review,
-               ar.decision,ar."commit" AS reviewed_commit,ar.actor AS reviewer
+               ar.decision,ar."commit" AS reviewed_commit,ar.actor AS reviewer,
+               COALESCE(d."commit",f.old_delivery->>'commit') AS delivery_commit,
+               COALESCE(d.pr_number,(f.old_delivery->>'pr_number')::bigint) AS pr_number,
+               COALESCE(d.pr_url,f.old_delivery->>'pr_url') AS pr_url,
+               COALESCE(d.target_branch,f.old_delivery->>'target_branch') AS target_branch,
+               CASE WHEN v.type IN ('pr_merged','delivery_completed') THEN NULLIF(d.merge_sha,'') END AS merge_sha,
+               CASE WHEN v.type='delivery_base_refreshed' THEN f.new_base END AS refreshed_base,
+               CASE WHEN v.type='delivery_base_refreshed' THEN f.candidate END AS refreshed_candidate,
+               c.goal_snapshot->'goal' AS completed_goal
         FROM task_events v JOIN work_items t ON t.id=v.task_id
         LEFT JOIN executions e ON e.id=v.execution_id AND e.task_id=t.id
         LEFT JOIN decision_questions q ON q.id=v.question_id AND q.task_id=t.id
         LEFT JOIN plan_revisions pr ON v.type='management_reviewed' AND pr.task_id=t.id AND pr.revision=v.plan_revision
         LEFT JOIN acceptance_reviews ar ON ar.task_id=t.id AND ar.execution_id=e.id AND
               ((v.type='acceptance_approved' AND ar.decision='approve') OR (v.type='acceptance_rejected' AND ar.decision='reject'))
+        LEFT JOIN deliveries d ON (d.task_id,d.execution_id)=(v.task_id,v.execution_id)
+              AND v.type IN ('pr_created','pr_merged','delivery_completed')
+        LEFT JOIN delivery_refreshes f ON (f.task_id,f.execution_id)=(v.task_id,v.execution_id)
+              AND v.type IN ('pr_created','delivery_base_refreshed')
+        LEFT JOIN material_curations c ON v.type='goal_delivered' AND c.event_id=v.id AND c.project_id=t.project_id
         WHERE t.project_id=$1 AND t.id=$2 AND v.id=$3
     ) SELECT jsonb_build_object(
         'event_id',id,'sequence',id,'project_id',project_id,'task_id',task_id,'execution_id',execution_id,
         'session_id',COALESCE(NULLIF(result->>'session_id',''),plan_review->>'session_id'),'event_type',type,'timestamp',at,
-        'actor',CASE source WHEN 'worker' THEN worker WHEN 'owner' THEN COALESCE(reviewer,'owner') WHEN 'management' THEN 'management' END,
+        'actor',CASE source WHEN 'worker' THEN worker WHEN 'owner' THEN COALESCE(reviewer,'owner') WHEN 'management' THEN 'management' WHEN 'controlplane' THEN 'delivery_manager' END,
         'source',source,'correlation_id',CASE WHEN execution_id IS NULL THEN format('TASK-%s',task_id) ELSE format('EXECUTION-%s',execution_id) END,
         'payload',jsonb_strip_nulls(jsonb_build_object(
             'goal_id',goal_id,'question_id',question_id,'plan_revision',plan_revision,
             'task_kind',CASE WHEN type='task_created' THEN kind END,
-            'commit',COALESCE(reviewed_commit,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
+            'commit',COALESCE(reviewed_commit,delivery_commit,NULLIF(result->>'commit','')),'base_commit',NULLIF(result->>'base_commit',''),
             'exit_code',result->'exit_code','harness',result->>'harness','validation_exit_code',result#>'{validation,exit_code}',
             'validation_profile',result#>>'{validation,profile}','validation_run',result#>>'{validation,run,id}',
-            'decision',COALESCE(decision,plan_review->>'verdict'),'decision_level',plan_review->>'effective_level')))
+            'decision',COALESCE(decision,plan_review->>'verdict'),'decision_level',plan_review->>'effective_level',
+            'pr_number',pr_number,'pr_url',pr_url,'target_branch',target_branch,'merge_sha',merge_sha,
+            'new_base',refreshed_base,'new_candidate',refreshed_candidate,'completed_goal',completed_goal)))
         FROM scoped`, project, task, event).Scan(&receipt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

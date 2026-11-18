@@ -87,6 +87,8 @@ FROM harness_tool_events WHERE instance = :instance ORDER BY seq;
 
 领取回执标明节点，执行结果回执可含退出码、提交、Session 和验证信息。Owner 验收关联原决定与候选 SHA。取消请求与 Worker 最终回报分别归属各自的发起方，计划激活时记录 Owner 或 Management。历史记录按已保存的事实读取。旧取消记录无法区分发起方时保留未知，领取时亦不会附上事后才出现的结果。[操作、重放与下载核对](acceptance.md#task-event-audit)
 
+交付事件在 `payload` 保存当次 PR 编号、链接、目标分支和候选 SHA。只有合并、交付完成事件带有合并 SHA。换基事件另外给出 `new_base` 和 `new_candidate`，原 PR 使用原执行的已归档记录。Goal 完成事件的 `completed_goal` 来自完成时保存的计划修订和子项交付快照。[原 PR、换基和 Goal 的回执](acceptance.md#delivery-event-audit)
+
 ## 3. 审计
 
 审计记录：

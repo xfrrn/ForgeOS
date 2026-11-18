@@ -45,10 +45,35 @@ func TestRefreshKeepsDeliveryAndRequiresNewValidation(t *testing.T) {
 	if err = s.SaveDelivery(ctx, *d); err != nil {
 		t.Fatal(err)
 	}
+	before, err := s.Task(ctx, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prEvent := before.Events[len(before.Events)-1]
+	prAudit, err := s.EventAudit(ctx, p.ID, task.ID, prEvent.ID)
+	if err != nil || prEvent.Type != "pr_created" || !strings.Contains(string(prAudit), old) {
+		t.Fatal(string(prAudit), err)
+	}
 	for range 2 {
 		queued, err := s.QueueRefreshedCandidate(ctx, task.ID, j.ExecutionID, old, target, head)
 		if err != nil || queued.Status != "READY" || len(queued.Refreshes) != 1 || queued.Delivery != nil || queued.Spec.VerifyCommit != head {
 			t.Fatal(queued, err)
+		}
+		prior, err := s.EventAudit(ctx, p.ID, task.ID, prEvent.ID)
+		if err != nil || string(prior) != string(prAudit) {
+			t.Fatal("refresh changed the original PR receipt", string(prior), err)
+		}
+		receipt, err := s.EventAudit(ctx, p.ID, task.ID, queued.Events[len(queued.Events)-1].ID)
+		var audit struct {
+			Payload struct {
+				Commit    string
+				NewBase   string `json:"new_base"`
+				Candidate string `json:"new_candidate"`
+				PR        int    `json:"pr_number"`
+			}
+		}
+		if err != nil || json.Unmarshal(receipt, &audit) != nil || audit.Payload.Commit != old || audit.Payload.PR != 4 || audit.Payload.NewBase != target || audit.Payload.Candidate != head {
+			t.Fatal(string(receipt), err)
 		}
 	}
 	if _, err = s.QueueRefreshedCandidate(ctx, task.ID, j.ExecutionID, old, target, strings.Repeat("f", 40)); !errors.Is(err, ErrConflict) {

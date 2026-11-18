@@ -24,6 +24,20 @@
 | `2891472` 在空 PostgreSQL 18 和真实 Docker 上运行全包回归，运行 `go vet ./...` 和工作台生产构建 | 所有测试通过，工作台构建可用 | 582 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。静态检查、TypeScript 和 Vite 生产构建通过。原始回执 `timeline-regression.jsonl`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 | 从空库和新仓库运行正式控制面、Worker 及 `scripts/smoke.ps1`，重启后重放同一回执 | 基座工作完成一次；普通执行事件保留其原始含义 | 任务 1、执行 1、Worktree HEAD 为 `2c0ad392ef83e0ea58c0de28ccaa511503410b4f`，退出 0、DONE。控制面 PID 14524 → 1560，重放返回 204。三个事件仍为创建、领取、完成，完整任务 JSON 与重放前相同。回执为 `roadmap-regression-2891472/foundation.json`。 | `2891472875e734aac58ed2b63f344b5c11d0e0fe` |
 
+<a id="delivery-event-audit"></a>
+
+### 专题 12、13 · 交付回执绑定原 PR 和 Goal 完成时的子项
+
+在工作台时间线下载事件 JSON，将文件与同一事件的 API 响应、GitHub REST 的 PR head、目标分支和 merge commit 交叉核对。PR 创建回执应保持创建时的信息，完成回执应指向当次执行。
+
+| 操作 | 实际结果 |
+| --- | --- |
+| 复制已归档的 PostgreSQL 18 验收实例，读取 beta #269 的已完成交付，在 390 像素 Chrome 下载三份回执 | 三份均指向 PR #270、候选 `8647c5c75bd180fc4d64c33827c476aec3857053`。创建事件省略合并 SHA，合并和完成事件记录 `7c671c2c9c60628a7d092013fa472a6bb1c3eb76`，与远端一致。[PR #270](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/270) |
+| 复制曾实际交付 beta #252 的 PostgreSQL 17 数据库，重启控制面，从真实子项和父 Goal 的时间线分别下载 | 子项事件 9、10、11 指向 PR #253，候选 `8fa9ba2ec62224ba4f78e2e35d5128b4d34623c0`，合并 `82281762168441c93fd5bcf927dd14c169aea347`。父事件 12 保存修订 1、子任务 2 及其原候选和合并 SHA。四份下载逐字段匹配。[PR #253](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/253) · [Goal #252](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/issues/252) |
+| 将 beta #178 真实交付时留存的任务详情 JSON 中的执行、验收、交付、换基和五条事件记录重放到空 PostgreSQL 18，重启后逐条下载，并向 GitHub 回读旧、新 PR | 事件 11、19 保留原执行 2 和旧 PR #179；只有 19 含新基线和重验候选。事件 25、26、27 指向执行 4、替代 PR #182。新合并 SHA 只出现在 26、27；GitHub 确认旧 PR 已关闭、未合并。本次使用原任务详情归档重放，未重新执行换基。[旧 PR #179](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/179) · [替代 PR #182](https://github.com/xfrrn/forgeos-accept-fb8e915b-beta/pull/182) |
+
+回执为 `delivery-audit-{270,goal,refresh}/latest.json`。换基原始任务 JSON 的 SHA-256 为 `f83fc6431ab4e3ce6924d6595cc3b7d9db17faf4843ba6ac6a13335bcb2ad7f8`。本轮还在 PostgreSQL 验证了双子项 Goal 的冻结快照及同一 PR 在换基前后回执逐字段相同。
+
 <a id="task-event-audit"></a>
 
 ### 专题 04、13 · 从时间线下载执行、决定和验收的审计回执
@@ -37,7 +51,7 @@
 | 恢复执行过的候选，回答两个不同问题、发布并激活两次计划，从父子时间线核对 | 问题和修订分别对应其发起方。原执行结果可查 Session，领取与 Owner 答复只显示各自当时的证据 | 原候选 `d689d8e011d2c9e1e49e93cfa632d31b132c2228` 的 Session、Worker 和退出码与原 Execution 一致。两次 Owner 答复分别关联问题 1、2，两版父计划和子项均正确关联，并经控制面重启复核 |
 | 在工作台退回该候选，并从另一份旧数据库下载已批准候选的事件 | 回执保存原决定及准确 SHA，私有退回说明仍在原验收记录 | 新退回回执为 reject、原 SHA；恢复的 beta #269 为 approve、候选 `8647c5c75bd180fc4d64c33827c476aec3857053`。两次下载均由 Owner 身份完成 |
 
-回执保存在 `event-audit-base/receipts.json`、`event-audit-cancel/foundation.json`、`event-audit-plan/receipts.json`、`event-audit-{approve,reject}/latest.json`。阶段最终复验及其余业务事件的专用载荷仍另行记录。
+实现提交 `2c755f310f3b08d567f11df0f505e3c030143ebc`。PostgreSQL 18 和真实 Docker 全包回归共 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。原始报告为 `event-audit-regression.jsonl`。回执保存在 `event-audit-base/receipts.json`、`event-audit-cancel/foundation.json`、`event-audit-plan/receipts.json`、`event-audit-{approve,reject}/latest.json`。阶段最终复验及其余业务事件的专用载荷仍另行记录。
 
 <a id="roadmap-remote-receipts"></a>
 
