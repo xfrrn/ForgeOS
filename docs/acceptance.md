@@ -4,7 +4,7 @@
 
 ## 当前验收进度
 
-截至 beta #263、#267 的工作台验收，专题 16 的 28 项中，21 项已验收，3 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
+截至 beta #268 的恢复验收，专题 16 的 28 项中，21 项已验收，3 项部分验收，4 项待环境验收。18 份 ADR 中 15 份已验收，3 份待外部条件。两份清单有重叠，四阶段最终端到端复验另计。下表列出这两份清单的缺口；专题 00–15 的其他要求见[专题覆盖与实现提交](#专题覆盖与实现提交)。
 
 | 尚需推进 | 已取得的证据 | 仍缺的验收 |
 | --- | --- | --- |
@@ -27,7 +27,7 @@
 | 在错误摘要的验收副本中将剩余执行时间设为 40 秒，启动替代 Worker 并等候 | 在截止前保留检查点，到期后按失败结算 | 原 PID 24620，先观察到 RUNNING，随后 Chrome 显示 `context deadline exceeded`，任务 FAILED，新增模型进程 0，无候选。 |
 | 在已收到原生完成事件、仍缺少原进程退出码的副本中保留 40 秒预算，启动替代 Worker | 原生完成事件不足以交付，已消耗的时间计入预算 | 原 PID 5652，Turn `01a1ef3c-0e87-71c2-8e26-3ef9dcb81e6d`。先等候退出证明，到期后 FAILED，新增模型进程 0，无候选。 |
 
-修复前，错误启动摘要场景中，同一 Daemon 在收到取消或越过截止时间后连续 90 秒均未结算。修复后，节点在原租约中继续核对历史和执行时限，控制面明确停止时交回结果。Windows 和非 root Ubuntu 均通过启动历史、退出码和截止时间专项。四份回执见 `ambiguous-verified-{cancel,source,deadline}/latest.json` 和 `ambiguous-terminal-expired/latest.json`。缩短预算仅发生在独立验收数据库副本中。
+修复前，错误启动摘要场景中，同一 Daemon 在收到取消或越过截止时间后连续 90 秒均未结算。修复后，节点在原租约中继续核对历史和执行时限，控制面明确停止时交回结果。Windows 和非 root Ubuntu 均通过启动历史、退出码和截止时间专项。四份回执见 `ambiguous-verified-{cancel,source,deadline}/latest.json` 和 `ambiguous-terminal-expired/latest.json`。缩短预算仅发生在独立验收数据库副本中。实现提交 `5d15472d41fad287101a392041d59e786e9fb667` 经 PostgreSQL 18、Docker 全包回归，578 项具名测试及子测试通过，0 项失败、0 项跳过。报告为 `ambiguous-verified-deadline/regression.jsonl`。
 
 <a id="cli-command-output-timing"></a>
 
@@ -40,7 +40,7 @@
 | 0.147.0 | 10.771 秒 | 20.456 秒 | 开始时无正文，中间未返回命令事件。两个标记都随 completed 到达，退出码 0。 |
 | 0.169.0-alpha.11.1 | 7.929 秒 | 17.352 秒 | 开始时无正文，中间未返回命令事件。两个标记都随 completed 到达，退出码 0。 |
 
-回执为 `native-cli-command-events-147.json` 和 `native-cli-command-events.json`。首次尝试执行本地脚本退出 1，改用单条内联命令后才取得上述证据。这两次 CLI 调用可展示的正文从完成事件起算。App Server 的运行中片段另有[真实工作台验收](#app-command-delta)，Claude 工具增量仍待验证。
+回执为 `native-cli-command-events-147.json` 和 `native-cli-command-events.json`。首次尝试执行本地脚本退出 1，改用单条内联命令后才取得上述证据。这两次 CLI 调用可展示的正文从完成事件起算。App Server 的运行中片段另有[真实工作台验收](#app-command-delta)，Claude 工具增量仍待验证。另在相同节点用原生 Claude 的只读工具和临时文件复测，模型服务再次返回账号或额度相关错误，未取得文件回执。探针仅记录事件种类和是否包含临时标记，见 `native-claude-tool-timing.json`。
 
 <a id="web-search-public-output"></a>
 
@@ -138,6 +138,7 @@
 | 专题 07、16 B.4 未知退出码过期处置及恢复后交付 | [原进程退出证据、截止时间和 PR #262 的受保护分支交付](#writer-terminal-receipt) | `a6197b79f4cd2b5001b173f84d3c98725832cf5b` |
 | 专题 07、09、16 A.1 按角色隔离账号 MCP 工具 | [双版本 Worker 新建与恢复 Thread、工作台答复和只读探针](#thread-mcp-isolation) | `2f82f7b8a4f9b1b740818ab91bd6e6aa7b706fe4` |
 | 专题 05、07、16 A.1/B.2/C.5 · Owner 单次命令审批 | [Chrome 三种决定、原生回执和受保护 PR #265](#workbench-native-commands) | `f39bfed36bc240a6f287111bb2ea07e2a9b610b5` |
+| 专题 07、16 B.4 · 启动及退出证据缺失 | [beta #268 的两种取消与两种执行到期](#writer-evidence-deadline) | `5d15472d41fad287101a392041d59e786e9fb667` |
 | 专题 07、16 C.3 · 搜索文本结果 | [原生 CLI 和 App Server 各 15 项文本与归档逐字核对](#web-search-public-output) | `d892eec9c46fa458cc656be9e9df7daedee2f0a7` |
 | 专题 07、16 C.3 · MCP 公开输出 | [原生 CLI 与 App Server 的成功与拒绝、工作台回放及归档](#mcp-public-output) | `cfe87cadc422c399bfee899644520c66c5c6d386` |
 | 专题 05、07、16 A.1/B.2/C.5 · 文件补丁审批 | [双版本、多文件修改、过时基线与受保护 PR #266](#workbench-file-patches) | `d46b0c5` · [原生探针](#native-file-approval-probe) `8490cdd` |
