@@ -31,6 +31,20 @@
 
 原始回执为 `profile-literal/approval-basis-plane.exe.json` 与 `profile-literal/material-literal-plane.exe.json`。回归用例 `TestMaterialLiteralExcerptReferencesOriginalCharacters` 另核对 512 字符查询、仅标题匹配和无关键词浏览。
 
+<a id="cold-material-index"></a>
+
+### 在首次查询中建立环境手册的语义索引
+
+2026-11-19，使用 PostgreSQL 17、pgvector 0.8.6 和真实多语言 MiniLM 推理服务。每次冷启动均使用独立空库。从 Owner 资料入口导入英文恢复手册，查询“停电后如何恢复并验证备份”。每次成功后重启控制面，在 Chrome 从项目资料页再次检索，核对引句与数据库片段数。
+
+| 操作 | 预期 | 实际 |
+| --- | --- | --- |
+| Owner 首次检索 126,490 字节的手册，对照修复前后结果 | 能在一次请求中完成整份修订的编码和相关度排序 | 原版 15.00 秒返回 HTTP 500，控制面记录期限已到，索引为 0。修复后 23.73 秒返回 200，保存 1,650 段 |
+| 只获项目 1 授权的节点首次检索 254,090 字节的手册 | 超过通常的 HTTP 写响应期限仍能收到检索结果 | 78.94 秒返回 200，保存 3,300 段。两次查询返回的原文字符区间均为 `[31867,31957)`，与导入正文切片一致 |
+| 重启后在 390 像素宽的 Chrome 检索两次冷启动涉及的修订 | 重用各自的索引，保留可核对的来源 | 两次页面结果均与首次调用逐字段相同，片段数仍为 1,650 和 3,300 |
+
+原始回执在 `material-cold/` 下的 `material-literal-plane.exe.json`、`material-cold-plane.exe.json` 与 `material-cold-plane.exe-node.json`。
+
 ### 本轮回归与基座复验
 
 2026-11-19 完成下列逐项复验。前四项以及需求修订回执的实现版本分别通过空 PostgreSQL 18 与真实 Docker 全包回归，每轮 583 项具名测试及子测试通过，0 失败、0 跳过，另有 3 个包无测试文件。反馈媒体备份命令在 Linux PostgreSQL 17 上独立实测，中央日志与 CI 恢复使用 PostgreSQL 18。

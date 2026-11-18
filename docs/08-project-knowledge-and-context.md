@@ -171,6 +171,8 @@ Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revisi
 
 非空查询先按项目、最新修订和资料类型限定范围。首次查询将还没有索引的正文按 Unicode 字符分段，向推理服务分批编码，同一修订的向量一次提交。小段之间重叠，保留段首和段尾在原文中的位置。较大的既有资料集首次查询需要等待编码；后续查询复用数据库中的向量。正文或模型更新后，在下一次匹配范围内的查询中生成新索引。配置的推理服务不可用时，搜索返回错误；浏览和按修订读取仍可用。
 
+Owner 和获准节点的资料检索均有 5 分钟处理期限，适用于冷启动编码及排名。单份修订在编码过程中被中断时，重试需重新编码这份修订。[接近大小上限的首次查询与重启回读](acceptance.md#cold-material-index)
+
 数据库用 pgvector 的余弦距离选出每份资料最相关的片段，然后合并语义与关键词名次。命中项含 `project_id`、`key`、`revision`、`status=current`、`source`、`imported_at`、`content_sha256` 和 `excerpt`。正文位置为从零开始、左闭右开的 `[start_char, end_char)`。工作台显示从 1 开始的字符位置，点击结果读取命中修订；若已有更新，可另行打开最新版。工程文档、决策及经审批的经验有各自的来源和读取入口。[pgvector](https://github.com/pgvector/pgvector) · [本地推理服务](https://github.com/huggingface/text-embeddings-inference) · [验收模型](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42)
 
 ## 7. 角色上下文

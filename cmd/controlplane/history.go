@@ -47,6 +47,15 @@ func registerProjectRead(mux *http.ServeMux, resource, owner string, workers *wo
 	registerProjectReadFor(mux, resource, owner, workers, 15*time.Second, read)
 }
 
+// A cold search can encode several batches before returning its first result.
+func registerIndexedSearch(mux *http.ServeMux, resource, owner string, workers *workerRegistry, read func(http.ResponseWriter, *http.Request, int64)) {
+	const timeout = 5 * time.Minute
+	registerProjectReadFor(mux, resource, owner, workers, timeout, func(w http.ResponseWriter, r *http.Request, project int64) {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(timeout + 5*time.Second))
+		read(w, r, project)
+	})
+}
+
 func registerProjectReadFor(mux *http.ServeMux, resource, owner string, workers *workerRegistry, timeout time.Duration, read func(http.ResponseWriter, *http.Request, int64)) {
 	mux.HandleFunc("GET /projects/{id}/"+resource, authorizedFor(owner, timeout, func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := pathID(w, r); ok {

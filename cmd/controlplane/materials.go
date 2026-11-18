@@ -10,7 +10,7 @@ import (
 )
 
 func registerMaterials(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
-	registerProjectRead(mux, "materials", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+	registerIndexedSearch(mux, "materials", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		q := r.URL.Query()
 		kind, query, after := q.Get("kind"), strings.TrimSpace(q.Get("q")), q.Get("after")
 		if (kind != "" && !store.ValidMaterialKind(kind)) || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) ||
