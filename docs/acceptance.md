@@ -32,6 +32,9 @@
 | 阶段一，同项目串行，重启后能够补报原执行 | [同一 HEAD 的两项工作分别只有一次执行](#foundation-before-report) | `3296a47fcbcb614aa81c8cc10d8040abe0523810` |
 | 阶段三，依赖、人工答复、退回后的新验证与父 Issue 关闭 | [beta #275、PR #276、PR #277 和恢复后读回的三个 CI 运行](#dependent-goal-275) | `73339a5f6ec9ce13343b7cb8f52dd2e7e65deffe` |
 | 阶段四，离线后按项目核对已有执行、PR 与合并结果再决定重试 | [两份独立节点日志、工作区及各自仓库的关闭记录](#offline-node-deliveries) | `4e61d3a769d894bbb322f0eeec9d878b5591b5ac` |
+| 专题 11–13，追溯原反馈、候选及独立目标工作项 | [两条反馈派发到同一 Issue，新旧事件和重放](#feedback-dispatch-audit) | `d3e79b0c63e1eedc0c0abb9f9ab9051985071c5d` |
+| 专题 03、11、12，Owner 从反馈派发待澄清的 Issue | [#247 在工作台选择测试类型，#245 沿用已有类型](#feedback-dispatch-work-type) | `19c679760b125af602a2ad5394291ae51ac3d956` |
+| 专题 10、13、14，内置 Go 测试日志可下载、恢复并按期清理 | [alpha #38 的失败和成功候选、PR #39、离线下载及到期](#builtin-go-archive) | `9431507cc85cb798d69702bb8d0251d0f3d10437` |
 
 | 操作 | 预期 | 实际 | ForgeOS 提交 |
 | --- | --- | --- | --- |
