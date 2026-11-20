@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"forgeos/internal/agents"
 	"forgeos/internal/validation"
 
 	"github.com/lib/pq"
@@ -391,6 +392,27 @@ var projectChatSchema string
 //go:embed 131_project_cloning.sql
 var projectCloningSchema string
 
+//go:embed 132_agent_settings.sql
+var agentSettingsSchema string
+
+//go:embed 133_chat_model.sql
+var chatModelSchema string
+
+//go:embed 134_agent_role_leases.sql
+var agentRoleLeaseSchema string
+
+//go:embed 135_agent_skills.sql
+var agentSkillsSchema string
+
+//go:embed 136_skill_packages.sql
+var skillPackagesSchema string
+
+//go:embed 137_worker_process_pool.sql
+var workerPoolSchema string
+
+//go:embed 138_fixed_workers.sql
+var fixedWorkersSchema string
+
 //go:embed 119_document_embeddings.sql
 var documentEmbeddingsSchema string
 
@@ -501,53 +523,54 @@ type Event struct {
 }
 
 type Job struct {
-	IssueImportOrigin     string          `json:"issue_import_origin,omitempty"`
-	ModelPause            bool            `json:"model_pause,omitempty"`
-	RecoverPlannerPause   bool            `json:"recover_planner_pause,omitempty"`
-	PlannerHandoff        bool            `json:"planner_handoff,omitempty"`
-	WriterHandoff         bool            `json:"writer_handoff,omitempty"`
-	CheckpointHandoff     bool            `json:"checkpoint_handoff,omitempty"`
-	QuestionHandoff       bool            `json:"question_handoff,omitempty"`
-	InterruptedHandoff    bool            `json:"interrupted_handoff,omitempty"`
-	RecoverWriterPause    bool            `json:"recover_writer_pause,omitempty"`
-	ProjectID             int64           `json:"project_id,omitempty"`
-	DecisionLookups       bool            `json:"decision_lookups,omitempty"`
-	DecisionProtocol      string          `json:"decision_protocol,omitempty"`
-	InstructionProtocol   string          `json:"instruction_protocol,omitempty"`
-	CheckpointWorktrees   bool            `json:"checkpoint_worktrees,omitempty"`
-	ResumeQuestions       bool            `json:"resume_questions,omitempty"`
-	OwnerClarifications   json.RawMessage `json:"owner_clarifications,omitempty"`
-	GlobalRules           json.RawMessage `json:"global_rules,omitempty"`
-	GoalContext           json.RawMessage `json:"goal_context,omitempty"`
-	RecordToolActivity    bool            `json:"record_tool_activity,omitempty"`
-	RecordModelOutput     bool            `json:"record_model_output,omitempty"`
-	RecordToolOutput      bool            `json:"record_tool_output,omitempty"`
-	RecordToolStream      bool            `json:"record_tool_stream,omitempty"`
-	SupportsTurnInput     bool            `json:"supports_turn_input,omitempty"`
-	RecordAppTurn         bool            `json:"record_app_turn,omitempty"`
-	ReportLiveProcess     bool            `json:"report_live_process,omitempty"`
-	ArchiveStartupLog     bool            `json:"archive_startup_log,omitempty"`
-	ArchiveGoTestLog      bool            `json:"archive_go_test_log,omitempty"`
-	ReportLiveCILog       bool            `json:"report_live_ci_log,omitempty"`
-	ReportCICandidate     bool            `json:"report_ci_candidate,omitempty"`
-	Startup               *StartupSpec    `json:"startup,omitempty"`
-	ManageResources       bool            `json:"manage_resources,omitempty"`
-	RecordProcesses       bool            `json:"record_processes,omitempty"`
-	UploadProcessArchives bool            `json:"upload_process_archives,omitempty"`
-	RecordArchiveDigests  bool            `json:"record_archive_digests,omitempty"`
-	LeaseSeconds          int             `json:"lease_seconds,omitempty"`
-	SupportsCheckpoints   bool            `json:"supports_checkpoints,omitempty"`
-	NativeApprovals       bool            `json:"native_approvals,omitempty"`
-	RuntimeQuestions      bool            `json:"runtime_questions,omitempty"`
-	Kind                  string          `json:"kind"`
-	Spec                  *IssueSpec      `json:"spec,omitempty"`
-	Rework                *Review         `json:"rework,omitempty"`
-	ExecutionID           int64           `json:"execution_id"`
-	TaskID                int64           `json:"task_id"`
-	RepoPath              string          `json:"repo_path"`
-	RepoRelativePath      string          `json:"repo_relative_path,omitempty"`
-	Workspace             string          `json:"workspace"`
-	LeaseToken            string          `json:"lease_token"`
+	Agent                 *agents.Assignment `json:"agent,omitempty"`
+	IssueImportOrigin     string             `json:"issue_import_origin,omitempty"`
+	ModelPause            bool               `json:"model_pause,omitempty"`
+	RecoverPlannerPause   bool               `json:"recover_planner_pause,omitempty"`
+	PlannerHandoff        bool               `json:"planner_handoff,omitempty"`
+	WriterHandoff         bool               `json:"writer_handoff,omitempty"`
+	CheckpointHandoff     bool               `json:"checkpoint_handoff,omitempty"`
+	QuestionHandoff       bool               `json:"question_handoff,omitempty"`
+	InterruptedHandoff    bool               `json:"interrupted_handoff,omitempty"`
+	RecoverWriterPause    bool               `json:"recover_writer_pause,omitempty"`
+	ProjectID             int64              `json:"project_id,omitempty"`
+	DecisionLookups       bool               `json:"decision_lookups,omitempty"`
+	DecisionProtocol      string             `json:"decision_protocol,omitempty"`
+	InstructionProtocol   string             `json:"instruction_protocol,omitempty"`
+	CheckpointWorktrees   bool               `json:"checkpoint_worktrees,omitempty"`
+	ResumeQuestions       bool               `json:"resume_questions,omitempty"`
+	OwnerClarifications   json.RawMessage    `json:"owner_clarifications,omitempty"`
+	GlobalRules           json.RawMessage    `json:"global_rules,omitempty"`
+	GoalContext           json.RawMessage    `json:"goal_context,omitempty"`
+	RecordToolActivity    bool               `json:"record_tool_activity,omitempty"`
+	RecordModelOutput     bool               `json:"record_model_output,omitempty"`
+	RecordToolOutput      bool               `json:"record_tool_output,omitempty"`
+	RecordToolStream      bool               `json:"record_tool_stream,omitempty"`
+	SupportsTurnInput     bool               `json:"supports_turn_input,omitempty"`
+	RecordAppTurn         bool               `json:"record_app_turn,omitempty"`
+	ReportLiveProcess     bool               `json:"report_live_process,omitempty"`
+	ArchiveStartupLog     bool               `json:"archive_startup_log,omitempty"`
+	ArchiveGoTestLog      bool               `json:"archive_go_test_log,omitempty"`
+	ReportLiveCILog       bool               `json:"report_live_ci_log,omitempty"`
+	ReportCICandidate     bool               `json:"report_ci_candidate,omitempty"`
+	Startup               *StartupSpec       `json:"startup,omitempty"`
+	ManageResources       bool               `json:"manage_resources,omitempty"`
+	RecordProcesses       bool               `json:"record_processes,omitempty"`
+	UploadProcessArchives bool               `json:"upload_process_archives,omitempty"`
+	RecordArchiveDigests  bool               `json:"record_archive_digests,omitempty"`
+	LeaseSeconds          int                `json:"lease_seconds,omitempty"`
+	SupportsCheckpoints   bool               `json:"supports_checkpoints,omitempty"`
+	NativeApprovals       bool               `json:"native_approvals,omitempty"`
+	RuntimeQuestions      bool               `json:"runtime_questions,omitempty"`
+	Kind                  string             `json:"kind"`
+	Spec                  *IssueSpec         `json:"spec,omitempty"`
+	Rework                *Review            `json:"rework,omitempty"`
+	ExecutionID           int64              `json:"execution_id"`
+	TaskID                int64              `json:"task_id"`
+	RepoPath              string             `json:"repo_path"`
+	RepoRelativePath      string             `json:"repo_relative_path,omitempty"`
+	Workspace             string             `json:"workspace"`
+	LeaseToken            string             `json:"lease_token"`
 }
 
 type Result struct {
@@ -591,7 +614,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -603,6 +626,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if _, err = tx.ExecContext(ctx, `INSERT INTO forgeos_schema_versions VALUES ($1)`, version); err != nil {
 			return err
 		}
+	}
+	if err = restoreLegacySkillPackages(ctx, tx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -803,7 +829,8 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	var registered []byte
 	err = tx.QueryRowContext(ctx, `SELECT used < COALESCE(node.slots,1), node.capabilities
 		FROM (SELECT count(*) AS used FROM executions WHERE worker=$1 AND result IS NULL AND abandoned_at IS NULL) active
-		LEFT JOIN (SELECT capabilities, CASE WHEN last_seen > now() - interval '45 seconds' THEN slots ELSE 0 END AS slots
+		LEFT JOIN (SELECT capabilities, CASE WHEN last_seen > now() - interval '45 seconds' THEN CASE WHEN pool_running IS NULL THEN slots ELSE
+                 (SELECT hard_limit FROM worker_process_pool WHERE host=worker_nodes.worker) END ELSE 0 END AS slots
 		           FROM worker_nodes WHERE worker=$1 FOR UPDATE) node ON true`, worker).Scan(&available, &registered)
 	if err != nil || !available {
 		return nil, err
@@ -848,11 +875,11 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($8 OR candidate.spec->>'validation' IS DISTINCT FROM 'auto')
 		  AND ($4 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(candidate.goal_id,candidate.id)))
 		  AND ($12 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM rework_question_ids(candidate.id,candidate.requirement_id)))
-		  AND ($3 OR candidate.spec->>'mode' IS DISTINCT FROM 'plan')
+		  AND (candidate.spec->>'mode' IS DISTINCT FROM 'plan' OR CASE WHEN candidate.spec->>'harness'='claude' THEN $13::boolean ELSE $3::boolean END)
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
 		  AND NOT EXISTS (
 		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND (running.status = 'RUNNING' OR running.waiting_execution_id IS NOT NULL))
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers).Scan(&projectID, &j.RepoPath)
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers, caps.ClaudePlanning).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -876,13 +903,13 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($8 OR w.spec->>'validation' IS DISTINCT FROM 'auto')
 		            AND ($5 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM issue_comment_events c WHERE c.task_id=COALESCE(w.goal_id,w.id)))
 		            AND ($12 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM rework_question_ids(w.id,w.requirement_id)))
-		            AND ($4 OR w.spec->>'mode' IS DISTINCT FROM 'plan')
+		            AND (w.spec->>'mode' IS DISTINCT FROM 'plan' OR CASE WHEN w.spec->>'harness'='claude' THEN $13::boolean ELSE $4::boolean END)
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
 		            ORDER BY w.id LIMIT 1)
 		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND (status = 'RUNNING' OR waiting_execution_id IS NOT NULL))
 		RETURNING id, kind, spec, goal_id IS NOT NULL,
 		    COALESCE((SELECT v.origin FROM task_events v WHERE v.task_id=work_items.id AND v.type='issue_imported' ORDER BY v.id LIMIT 1),''),
-		    nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.IssueImportOrigin, &j.ExecutionID)
+		    nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers, caps.ClaudePlanning).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.IssueImportOrigin, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -954,6 +981,19 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		return nil, err
 	}
 	j.LeaseToken = hex.EncodeToString(token[:])
+	if caps.AgentSettings && j.Kind == "codex_issue" && j.Spec != nil && j.Spec.VerifyCommit == "" {
+		key := "implementation"
+		if j.Spec.Mode == "plan" {
+			key = "planner"
+			if j.Spec.Issue.WorkType == "operations" {
+				key = "operations"
+			}
+		}
+		j.Agent, err = freezeAgent(ctx, tx, projectID, key, worker, "", "")
+		if err != nil {
+			return nil, err
+		}
+	}
 	hash := sha256.Sum256([]byte(j.LeaseToken))
 	j.Workspace = workerWorkspace(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	j.LeaseSeconds = executionLeaseSeconds(j.Kind)

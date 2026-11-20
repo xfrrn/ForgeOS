@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"forgeos/internal/skilllib"
 	"forgeos/internal/store"
 )
 
@@ -85,7 +86,7 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 		}
 		args = append(args, "--resume", resume)
 	}
-	cmd := exec.CommandContext(ctx, c.bin, args...)
+	cmd := exec.CommandContext(ctx, c.bin, runtimeAgent(ctx).modelArgs("claude", args)...)
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
 	for _, name := range []string{"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_GIT_BASH_PATH", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"} {
 		if value, ok := os.LookupEnv(name); ok {
@@ -100,13 +101,14 @@ func (c claudeCLI) command(ctx context.Context, workspace, prompt, resume string
 	return cmd, nil
 }
 
-func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error, question *nativeQuestion, control *claudeControl) (session string, completed bool, err error) {
+func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) error, activity func(string, []byte) error, question *nativeQuestion, control *claudeControl, observers ...func(string)) (session string, completed bool, err error) {
 	scanner := bufio.NewScanner(stream)
 	scanner.Buffer(make([]byte, 16<<10), 4<<20)
 	var outcome error
 	for scanner.Scan() {
 		var event struct {
 			Type    string          `json:"type"`
+			Model   string          `json:"model"`
 			Subtype string          `json:"subtype"`
 			IsError bool            `json:"is_error"`
 			Session string          `json:"session_id"`
@@ -126,6 +128,9 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 		case event.Type == "system" && event.Subtype == "init":
 			if session != "" || !nativeSessionID.MatchString(event.Session) || (expected != "" && event.Session != expected) {
 				return session, completed, errors.New("unexpected Claude Code session")
+			}
+			for _, observe := range observers {
+				observe(event.Model)
 			}
 			if control != nil {
 				control.active.Store(true)
@@ -174,7 +179,9 @@ func readClaudeEvents(stream io.Reader, expected string, confirmed func(string) 
 	return session, completed, outcome
 }
 
-func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (string, error) {
+func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, prompt, resume string) (observedSession string, resultErr error) {
+	agent := runtimeAgent(ctx)
+	defer func() { agent.finish(ctx, "claude", observedSession, resultErr) }()
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -184,9 +191,33 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 		child, kill = context.WithCancel(context.WithoutCancel(ctx))
 		defer kill()
 	}
+	// Safe mode disables MCP. Give native Read an isolated copy of just the assigned packages.
+	var skillDir string
+	if agent != nil && len(agent.Packages) > 0 {
+		var err error
+		skillDir, err = os.MkdirTemp("", "forgeos-claude-skills-")
+		if err != nil {
+			return "", err
+		}
+		defer os.RemoveAll(skillDir)
+		for _, ref := range agent.Packages {
+			source, err := skilllib.Dir(ref.Key)
+			if err != nil {
+				return "", err
+			}
+			dest := filepath.Join(skillDir, ref.Key)
+			if err = os.CopyFS(dest, os.DirFS(source)); err != nil {
+				return "", fmt.Errorf("prepare Skill %s: %w", ref.Name, err)
+			}
+			prompt = strings.ReplaceAll(prompt, filepath.Join(source, "SKILL.md"), filepath.Join(dest, "SKILL.md"))
+		}
+	}
 	cmd, err := c.command(child, workspace, prompt, resume)
 	if err != nil {
 		return "", err
+	}
+	if skillDir != "" {
+		cmd.Args = append(cmd.Args, "--add-dir", skillDir)
 	}
 	stream, err := cmd.StdoutPipe()
 	if err != nil {
@@ -220,7 +251,7 @@ func (c claudeCLI) runTurn(ctx context.Context, process processLog, workspace, p
 			return "", errors.Join(errors.New("could not write Claude user turn"), journalErr, ctx.Err())
 		}
 	}
-	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeActivity, process.question, control)
+	session, completed, parseErr := readClaudeEvents(stream, resume, process.session, process.claudeActivity, process.question, control, agent.observeModel)
 	if parseErr != nil && !errors.Is(parseErr, errTurnFailed) && !errors.Is(parseErr, errSessionMissing) {
 		_ = cmd.Cancel()
 		stream.Close()

@@ -34,6 +34,7 @@ type writerCheckpoint struct {
 
 func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job store.Job, prompt, previous, base string, identity []byte, question *nativeQuestion, plannerOutput string, writer *writerCheckpoint) (string, error) {
 	name, version := adapter.identity()
+	prompt = job.Agent.Apply(prompt)
 	run := func(prompt, session, handoffFrom string) (string, error) {
 		process := w.processLog(ctx, job, name, version)
 		process.handoffFrom = handoffFrom
@@ -41,7 +42,7 @@ func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job sto
 		if question != nil {
 			*question = nativeQuestion{}
 		}
-		return adapter.runTurn(ctx, process, job.Workspace, prompt, session)
+		return adapter.runTurn(w.agentContext(ctx, job.Agent), process, job.Workspace, prompt, session)
 	}
 	checkWorkspace := func() error {
 		if err := w.confirmRecovery(ctx, job, base, identity); err != nil {

@@ -73,7 +73,7 @@ Owner 可向 `POST /tasks/{id}/repository-analysis` 发送 `{}` 首次派发，�
 
 「更改目录」可以选择托管根目录内的子目录或绝对路径，用于后续克隆。Windows 默认托管根目录为 `%LOCALAPPDATA%\ForgeOS\repositories`，其他系统默认使用用户配置目录下的 `ForgeOS/repositories`。需要将托管仓库放到另一个盘或路径时，在控制面和 Worker 上设置 `FORGEOS_MANAGED_REPO_ROOT` 为对应的绝对目录。
 
-选择「登记本地仓库」时，填写控制面机器上的现有 Git 工作树根路径，支持允许目录内的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。接入后在「项目资料」的「仓库 HEAD 检查」点「运行 HEAD 检查」进入任务详情。Worker 未上线时任务显示待执行。成功后可核对仓库的完整提交号。如果失败，同一区域的「重新检查」会保留原任务并生成下一次检查。
+选择「登记本地仓库」时，填写控制面机器上的现有 Git 工作树根路径，支持允许目录内的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。接入后可在「项目资料」查看本地提交、读取对应远端分支的最新提交，或将当前分支快进到远端提交。本地工作树有改动或两边历史分叉时，拉取会提示先在本地处理。
 
 Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。
 
@@ -118,11 +118,19 @@ $env:FORGEOS_OWNER_CREDENTIALS_FILE = 'D:\forgeos-private\owner-credentials.json
 
 顶栏的「运行环境」按控制面和各 Worker 显示主机与 CLI 探测结果。Windows 和 Linux 的 CPU、内存与磁盘每 15 秒采样，CLI 版本和 Docker 连接每 5 分钟探测。检测在服务进程的执行环境中进行，页面标注采样时间。Codex 和 Claude Code 的能力标记来自 Worker 启动检查，CLI 版本检测与能力标记均不检查登录状态。较旧的 Worker 仍可上报心跳和容量。
 
+Windows 计划任务部署可以在 `services.json` 顶层设置 `toolDirectories`，值为本机工具安装目录的绝对路径数组。启动器将这些目录追加到控制面和普通 Worker 各自的 `PATH`，任务执行和运行环境面板使用同一份配置。Codex 会从中查找 `codex.exe`。要启用 Claude Code 适配器，可在 Worker 的环境文件中设置 `FORGEOS_CLAUDE_BIN=claude.exe` 并加入该原生程序所在目录。修改目录后重启这两个服务，首次探测结果随控制面响应和 Worker 心跳更新。
+
 任务页支持搜索、按状态筛选以及查看执行队列。审核与验收集中显示待审批、待验收、已发起的代码审查、测试与检查及待答问题。全局规则在「运行环境」页下方。
 
 ### 启用项目聊天
 
-在控制面设置 `FORGEOS_MANAGEMENT_CHAT_NODES_FILE` 为本机授权文件的绝对路径。文件为 JSON 数组，每项包含 `project_id` 和独立随机聊天令牌的十六进制 SHA-256 `token_sha256`。每个已启用项目使用独立令牌。为该项目以普通账号运行 `worker management-chat`，仅配置回环 `FORGEOS_API_URL`、本项目的 `FORGEOS_MANAGEMENT_CHAT_TOKEN` 和已登录的本机 Codex。可设置 `FORGEOS_CODEX_BIN` 指定 Codex，设置 `FORGEOS_WORKER_STATE_DIR` 保存私有的恢复日志。Windows 可在现有启动任务配置的 `services` 里增加 `management-chat`，将工作程序的参数设为 `["management-chat"]`，通过 `Install-ForgeOSTasks.ps1 -Role management-chat` 注册。
+工作台顶栏的「Agent 管理」设置全局默认，项目内同名页可按用途覆盖或恢复继承。每个用途都可独立选择 Codex CLI 或 Claude Code，项目聊天的模型列表跟随聊天用途的 Harness。规划任务在派发时分别确定规划和实现子任务的 Harness。独立角色节点通过服务 PATH 或 FORGEOS_CODEX_BIN、FORGEOS_CLAUDE_BIN 查找对应的原生程序。项目聊天页可直接进入 Management Agent 的聊天配置。「模型」下拉菜单显示控制面账号的 Codex 模型目录和 Claude Code 别名，也可输入自定义模型 ID，或选择跟随 Harness 默认。项目聊天输入框的「本条消息模型」只覆盖当前消息，发送后恢复跟随项目配置。新版本 Worker 领取时固定提示词和模型，运行后回报节点、Harness、实际观测到的模型和配置版本。实现任务的 Harness 在派发时确定，派发时明确指定的选择优先。执行所需的节点授权、CLI 安装和登录仍在部署端配置。
+
+在顶栏「Skill 库」选择直接包含 UTF-8 编码 SKILL.md 的文件夹，文件头需含 name 和 description。ForgeOS 保留脚本、参考资料等文件的相对路径。相同内容重复导入会复用同一版本，任意文件变更后重新导入会生成新版本。「Agent 管理」可按用途多选并保存，全局配置由各项目继承，项目可覆盖或清空选择。任务领取时固定所选版本，并将入口路径交给 Harness。Codex 和结构化 Claude 通过限定到所选目录的只读工具访问文件，Claude 实现任务通过原生文件工具读取本次运行的独立副本。
+
+控制面和 Worker 默认使用当前服务账号配置目录中的 ForgeOS/skills。跨账号或跨主机部署时，用环境变量 FORGEOS_SKILLS_DIR 分别指定同一共享存储的绝对挂载路径。备份时一并保留技能目录和数据库。
+
+在控制面设置 `FORGEOS_MANAGEMENT_CHAT_NODES_FILE` 为本机授权文件的绝对路径。文件为 JSON 数组，每项包含 `project_id` 和独立随机聊天令牌的十六进制 SHA-256 `token_sha256`。每个已启用项目使用独立令牌。为该项目以普通账号运行 `worker management-chat`，仅配置回环 `FORGEOS_API_URL`、本项目的 `FORGEOS_MANAGEMENT_CHAT_TOKEN` 和已登录的所选本机 Harness。可设置 `FORGEOS_CODEX_BIN` 指定 Codex，设置 `FORGEOS_WORKER_STATE_DIR` 保存私有的恢复日志。Windows 可在现有启动任务配置的 `services` 里增加 `management-chat`，将工作程序的参数设为 `["management-chat"]`，通过 `Install-ForgeOSTasks.ps1 -Role management-chat` 注册。
 
 每个项目保留一条聊天历史。Management 回答项目进度、执行队列和已有资料问题。派发本项目已有 Issue 或检查 HEAD 时，聊天先展示待确认卡。Issue 确认时重新核对来源版本，成功卡可回到具体任务。关联任务有真实角色回执时，聊天内可打开处理记录。关闭聊天节点配置后，Owner 仍可回读历史。
 
@@ -153,11 +161,11 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 | `go-test` | 在候选提交的全新只读检出上运行 `go test -buildvcs=false -count=1 ./...`。需本机 Docker Linux 引擎和预备好的 Go 镜像，默认 `golang:1.25-alpine`，可用 `FORGEOS_GO_IMAGE` 指向本地镜像。容器以普通用户离线运行，项目需自包含或已 vendor 依赖。测试日志位于执行目录同级的 `execution-<id>.go-test.log`。 |
 | `V1`、`V2`、`V3`、`V4` | 按所选等级运行基础提交中 `validation.yaml` 声明的检查。Worker 使用 `FORGEOS_CI_IMAGE` 指定的本机镜像。任务详情的“逐项检查”提供执行编号、运行目录、日志及报告引用。操作与配置见[验证与本地 CI](10-validation-and-local-ci.md)。 |
 
-按标签自动接入时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，`FORGEOS_POLL_VALIDATION` 为上述一种验证方式。Owner 在 GitHub 仓库中为 Agent 任务模板配置 `forgeos-agent` 标签，Poller 只派发带该标签的开放 Issue，逐页读取并与手动导入共用去重逻辑。普通讨论可由 Owner 通过编号显式转为任务。默认采用按编号派单。
+启用 Issue 同步时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，并为现有轮询配置填写 `FORGEOS_POLL_VALIDATION`。轮询逐页读取开放的 GitHub Issue，将尚未派发的 Issue 放进讨论收件箱。Owner 可展开内容、在 GitHub 继续讨论，或明确派发。使用 GitHub CLI 时通常间隔一分钟。本机缺少 CLI 时，控制面每五分钟直接读取 GitHub API，可使用服务账号在 Git Credential Manager 中已有的 GitHub 凭据，公开仓库也可匿名读取。
 
 从项目首页打开对应项目，在「任务」进入「讨论收件箱」，可查看 Poller 已同步的讨论和 GitHub 原文。开发类型可转为实现任务，其他类型先转为只读规划任务。派发后会打开项目内的任务详情。同一讨论按同一类型重复转换会打开同一任务。[桌面、窄屏与重启实测](acceptance.md#discussion-inbox-ui)
 
-在 GitHub 为 Issue 添加一个类型标签，如 `forgeos:type:investigation`，或使用标题前缀，如 `[Investigation]`、`[调查]`。五种类型如下。类型标签可由项目的 GitHub Issue 模板设置。`forgeos-agent` 仍是自动派发信号；单独添加类型标签的普通讨论留在收件箱。
+在 GitHub 为 Issue 添加一个类型标签，如 `forgeos:type:investigation`，或使用标题前缀，如 `[Investigation]`、`[调查]`。五种类型如下。类型标签可由项目的 GitHub Issue 模板设置；`forgeos-agent` 可标识有待澄清类型的 Agent Issue，派发由 Owner 确认。
 
 | 类型 | 标题前缀 | 首次派发 |
 | --- | --- | --- |
@@ -167,7 +175,7 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 | `investigation` | `[Investigation]` 或 `[调查]` | Codex 只读规划 |
 | `operations` | `[Operations]` 或 `[运维]` | Codex 只读规划 |
 
-带派发信号且没有显式声明的 Issue，会先按标题开头的英文动作词判定。例如 `Add` 对应开发、`Review` 对应审查、`Verify` 对应测试、`Investigate` 对应调查、`Deploy` 对应运维。显式声明相互冲突、出现未知类型标签或规则未能判定时，Owner 可在收件箱选择类型，再派单。来源发生变化时刷新列表并重新核对。任务详情显示分类结果及其来源。已派发任务采用新的 GitHub 类型时，按需求修订流程处理；新修订仍有冲突时，先在来源 Issue 澄清再采用。
+带 `forgeos-agent` 标签且没有显式声明的 Issue，会先按标题开头的英文动作词判定。例如 `Add` 对应开发、`Review` 对应审查、`Verify` 对应测试、`Investigate` 对应调查、`Deploy` 对应运维。显式声明相互冲突、出现未知类型标签或规则未能判定时，Owner 可在收件箱选择类型，再派单。来源发生变化时刷新列表并重新核对。任务详情显示分类结果及其来源。已派发任务采用新的 GitHub 类型时，按需求修订流程处理；新修订仍有冲突时，先在来源 Issue 澄清再采用。
 
 运行已配置项目身份的 `worker management` 后，分类规则未能判定的 Agent Issue 会收到一份只读建议。Owner 在讨论收件箱刷新后可查看建议类型、理由、GitHub 原文引文和原生会话，再选择类型。展开“查看分类进程”可自动跟踪等待、运行以及退出，查看节点、PID、原生会话和最近的公开输出。普通讨论无需启动模型。Owner 派单后，可在任务详情的对应需求修订查看当时的建议和对应进程。后续来源版本各自核对。
 

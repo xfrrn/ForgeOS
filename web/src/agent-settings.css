@@ -1,0 +1,30 @@
+.agent-layout { display:grid; grid-template-columns:minmax(190px,245px) minmax(0,1fr); gap:var(--space-4); align-items:start }
+.agent-roles { padding:var(--space-2); display:grid; gap:var(--space-1) }
+.agent-roles button { display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;background:transparent;color:var(--ink);border:1px solid transparent;border-radius:var(--radius-control);padding:12px;cursor:pointer }
+.agent-roles button[aria-pressed=true] { background:var(--accent);border-color:var(--accent-line);color:var(--accent-ink) }
+.agent-roles span,.agent-panel p { color:var(--muted);font-size:13px }
+.agent-content,.agent-panel form { display:grid; gap:var(--space-4);min-width:0 }
+.agent-panel {padding:var(--space-5);display:grid;gap:var(--space-4)}
+.agent-panel h2,.agent-panel p,.agent-facts {margin:0}
+.agent-panel label {display:grid;gap:6px;font-weight:600}
+.agent-panel input,.agent-panel select,.agent-panel textarea {font:inherit;font-weight:400;width:100%;min-width:0;padding:9px;border:1px solid var(--control-line);border-radius:var(--radius-control);background:var(--surface);color:var(--ink)}
+.agent-panel textarea {resize:vertical;line-height:1.55}
+.agent-fields,.agent-facts {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}
+.agent-actions {display:flex;flex-wrap:wrap;gap:8px}
+.agent-panel pre {white-space:pre-wrap;overflow-wrap:anywhere}
+.agent-panel dd {overflow-wrap:anywhere}
+@media(max-width:700px){.agent-layout,.agent-fields {grid-template-columns:minmax(0,1fr)}.agent-roles{grid-template-columns:repeat(2,minmax(0,1fr))}.agent-roles button{flex-wrap:wrap;padding:8px}.agent-panel{padding:var(--space-4)}}
+
+.agent-fields .model-select {display:grid;align-content:start;gap:var(--space-2);min-width:0}
+.agent-fields .model-select-field {display:grid;gap:6px}
+
+.agent-skills { margin:0; min-width:0; display:grid; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--line); border-radius:var(--radius-control) }
+.agent-skills legend { padding-inline:4px; font-weight:600 }
+.agent-skill-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr)); gap:var(--space-2) }
+.agent-skill-options label { display:flex; align-items:flex-start; gap:var(--space-2); padding:var(--space-2); border-radius:var(--radius-control); cursor:pointer }
+.agent-skill-options label:has(:checked) { background:var(--surface-muted) }
+.agent-skill-options input { width:1rem; height:1rem; margin:2px 0 0; flex:none; accent-color:var(--ink) }
+.agent-skill-options span { min-width:0; overflow-wrap:anywhere }
+.agent-skill-options small { display:block; font-weight:400; color:var(--muted) }
+.skill-packages {list-style:none;padding:0;display:grid;gap:var(--space-3)}
+.skill-packages code {overflow-wrap:anywhere;color:var(--muted)}

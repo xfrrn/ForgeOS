@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"forgeos/internal/agents"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
 	"github.com/google/uuid"
@@ -136,12 +136,18 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 		}
 		slices.Reverse(turns)
 		_, enabled := nodes[project]
+		harness, err := data.AgentHarness(ctx, project, "management-chat")
+		if err != nil {
+			respond(w, 0, nil, err)
+			return
+		}
 		err = data.ChatActivities(ctx, project, turns)
 		respond(w, http.StatusOK, struct {
+			Harness    string           `json:"harness"`
 			Enabled    bool             `json:"enabled"`
 			Messages   []store.ChatTurn `json:"messages"`
 			NextBefore int64            `json:"next_before,omitempty"`
-		}{enabled, turns, next}, err)
+		}{harness, enabled, turns, next}, err)
 	}))
 	mux.HandleFunc("POST /projects/{id}/chat", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
@@ -153,6 +159,8 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			return
 		}
 		var in struct {
+			Model    string `json:"model"`
+			Harness  string `json:"harness,omitempty"`
 			ClientID string `json:"client_id"`
 			Text     string `json:"text"`
 		}
@@ -165,7 +173,11 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			problem(w, http.StatusBadRequest, "请输入 1 至 4000 个字符。")
 			return
 		}
-		turn, err := data.SendChat(r.Context(), project, id.String(), in.Text)
+		if !agents.ValidModel(in.Model) {
+			problem(w, 400, "模型标识无效。")
+			return
+		}
+		turn, err := data.SendChat(r.Context(), project, id.String(), in.Text, in.Model, in.Harness)
 		respond(w, http.StatusCreated, turn, err)
 	}))
 	mux.HandleFunc("POST /projects/{id}/chat/actions/{action}/confirm", authorized(owner, chat.confirm))
@@ -180,7 +192,7 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 				return
 			}
 			ctx := r.Context()
-			job, err := data.ClaimChat(ctx, project)
+			job, err := data.ClaimChat(ctx, project, r.URL.Query().Get("agent_settings") == "1" && r.URL.Query().Get("supports_role_resume") == "1")
 			if err != nil {
 				respond(w, 0, nil, err)
 				return
@@ -288,16 +300,7 @@ func (c projectChat) readIssue(ctx context.Context, project, number int64) (gith
 	if err != nil {
 		return githubProject{}, store.Issue{}, err
 	}
-	repo, err := githubSource(ctx, c.root, p, c.get)
-	if err != nil {
-		return repo, store.Issue{}, err
-	}
-	var raw githubIssue
-	if err := c.get(ctx, fmt.Sprintf("repositories/%d/issues/%d", repo.ID, number), &raw); err != nil {
-		return repo, store.Issue{}, err
-	}
-	issue, err := repo.issue(raw, number)
-	return repo, issue, err
+	return readGitHubIssue(ctx, c.root, p, c.get, number)
 }
 
 func (c projectChat) confirm(w http.ResponseWriter, r *http.Request) {

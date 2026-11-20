@@ -153,3 +153,33 @@ func TestImportSelectedGitHubIssue(t *testing.T) {
 		})
 	}
 }
+
+func TestViewGitHubIssueIsReadOnly(t *testing.T) {
+	root, project, _ := issueTestRepo(t)
+	data := &importFixture{path: project}
+	get := func(_ context.Context, path string, dest any) error {
+		switch path {
+		case "repos/my-org/project":
+			return json.Unmarshal([]byte(`{"id":88,"full_name":"my-org/project"}`), dest)
+		case "repositories/88/issues/7":
+			return json.Unmarshal([]byte(`{"id":367,"number":7,"title":"Add a test","body":"Discuss expected behavior first","state":"open","updated_at":"2026-01-05T16:00:00Z","html_url":"https://github.com/my-org/project/issues/7","repository_url":"https://api.github.com/repos/my-org/project"}`), dest)
+		default:
+			t.Fatalf("unexpected GitHub request %s", path)
+			return nil
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /projects/{id}/issues/{number}", authorized("owner-token", viewGitHubIssue(data, root, get)))
+	req := httptest.NewRequest("GET", "/projects/3/issues/7", nil)
+	req.Header.Set("Authorization", "Bearer owner-token")
+	res := httptest.NewRecorder()
+	mux.ServeHTTP(res, req)
+	var issue struct {
+		store.Issue
+		SourceDigest string `json:"source_digest"`
+	}
+	if res.Code != http.StatusOK || json.Unmarshal(res.Body.Bytes(), &issue) != nil ||
+		issue.Body != "Discuss expected behavior first" || issue.SourceDigest != issueSourceDigest(issue.Issue) || data.spec != nil {
+		t.Fatalf("preview failed or dispatched a task: %d %s", res.Code, res.Body)
+	}
+}

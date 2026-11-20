@@ -24,13 +24,18 @@ import (
 	"syscall"
 	"time"
 
+	"forgeos/internal/agents"
 	"forgeos/internal/localrepo"
 	"forgeos/internal/nodetls"
 	"forgeos/internal/runtimeinfo"
+	"forgeos/internal/skilllib"
 	"forgeos/internal/store"
 )
 
 type worker struct {
+	fixed                                   *residentPool
+	pool                                    *processPool
+	roleAgent                               *agents.Assignment
 	api, token, id, repoRoot, workspaceRoot string
 	tokenFile                               string
 	codex, codexVersion                     string
@@ -105,6 +110,10 @@ func fromEnv(role string) (*worker, error) {
 		if strings.TrimSpace(w.token) == "" || !filepath.IsAbs(w.repoRoot) || err != nil || !info.IsDir() {
 			return nil, errors.New("set FORGEOS_REVIEWER_TOKEN and an existing absolute FORGEOS_REPO_ROOT")
 		}
+		w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"), false)
+		if err != nil {
+			return nil, err
+		}
 		return w, nil
 	}
 	tokenEnv := map[string]string{
@@ -122,8 +131,8 @@ func fromEnv(role string) (*worker, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !w.planner {
-			return nil, fmt.Errorf("%s requires local Codex with structured output", role)
+		if _, claudeErr := claudeExecutable(); !w.planner && claudeErr != nil {
+			return nil, fmt.Errorf("%s requires a structured-output harness", role)
 		}
 		return w, nil
 	}
@@ -327,10 +336,17 @@ func (w *worker) run(ctx context.Context) error {
 	}
 	w.journal = journal
 	defer journal.Close()
+	if w.pool != nil || w.fixed != nil {
+		release, err := w.lockJournal(".pool.lock")
+		if err != nil {
+			return fmt.Errorf("lock worker pool: %w", err)
+		}
+		defer release()
+	}
 	writer := w.codex != "" || w.claude.bin != ""
 	caps := store.WorkerCapabilities{CommandApprovalProject: w.commandPolicy.Project,
 		SupportsGlobalRules: true, SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
-		SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
+		ClaudePlanning: w.claude.bin != "", SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
 	caps.SupportsStartup = os.Getenv("FORGEOS_STARTUP_IMAGE") != ""
 	if caps.SupportsStartup && os.Getenv("FORGEOS_STARTUP_NETWORK") != "" && os.Getenv("FORGEOS_STARTUP_PROJECT_ID") != "" {
 		caps.StartupIntegratedProject, err = strconv.ParseInt(os.Getenv("FORGEOS_STARTUP_PROJECT_ID"), 10, 64)
@@ -376,8 +392,27 @@ func (w *worker) run(ctx context.Context) error {
 					path += "&diagnostics=" + url.QueryEscape(string(raw))
 				}
 			}
-			status, err := w.post(ctx, path, h, nil)
-			if err == nil && status == http.StatusNoContent {
+			var fixedPolicy store.FixedLimits
+			var policy store.PoolLimits
+			var response any
+			if w.pool != nil {
+				path += "&pool_running=" + strconv.Itoa(int(w.pool.running.Load()))
+				response = &policy
+			}
+			if w.fixed != nil {
+				path += "&resident_online=" + strconv.Itoa(int(w.fixed.online.Load())) + "&resident_target=" + strconv.Itoa(w.fixed.initial)
+				response = &fixedPolicy
+			}
+			status, err := w.post(ctx, path, h, response)
+			if w.fixed != nil && err == nil && status == 200 && fixedPolicy.Valid() {
+				w.fixed.policy.Store(&fixedPolicy)
+				return nil
+			}
+			if w.pool != nil && status == 200 && err == nil && policy.Valid() {
+				w.pool.limits.Store(&policy)
+				return nil
+			}
+			if w.pool == nil && w.fixed == nil && err == nil && status == http.StatusNoContent {
 				return nil
 			}
 			if !temporary(status) {
@@ -391,7 +426,17 @@ func (w *worker) run(ctx context.Context) error {
 		return err
 	}
 	child, stop := context.WithCancel(ctx)
+	defer stop()
 	var maintenance sync.WaitGroup
+	if w.fixed != nil {
+		var seq int
+		var name, path string
+		if err := journal.QueryRowContext(ctx, "PRAGMA database_list").Scan(&seq, &name, &path); err != nil {
+			return err
+		}
+		maintenance.Add(1)
+		go func() { defer maintenance.Done(); w.fixed.supervise(child, path) }()
+	}
 	for _, run := range []func(context.Context){w.publishCIFiles, w.publishProcessArchives, w.publishTurnInputReceipts, w.reconcileNativeInputs, w.sweepLocalCI, w.sweepProcessLogs} {
 		maintenance.Add(1)
 		go func() { defer maintenance.Done(); run(child) }()
@@ -422,14 +467,16 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-const workerCapabilityQuery = "supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1&supports_go_test_archive=1"
+const workerCapabilityQuery = "claude_planning=1&agent_settings=1&supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1&supports_go_test_archive=1"
 
 func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
 	ctx, stop := context.WithCancelCause(parent)
 	var jobs sync.WaitGroup
 	defer jobs.Wait()
 	defer stop(nil)
-	occupied := make(chan struct{}, w.slots)
+	occupied := 0
+	finished := make(chan struct{})
+	var saturated time.Time
 	claim := struct {
 		Worker        string `json:"worker"`
 		WorkspaceRoot string `json:"workspace_root"`
@@ -450,10 +497,30 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 	}
 	parked = slices.DeleteFunc(parked, func(id int64) bool { return slices.Contains(supervised, id) })
 	for ctx.Err() == nil {
-		select {
-		case occupied <- struct{}{}:
-		case <-ctx.Done():
+		limit := w.slots
+		if w.pool != nil {
+			limit = poolCapacity(*w.pool.limits.Load(), occupied, time.Now(), &saturated)
+		}
+		if w.fixed != nil {
+			limit = w.fixed.policy.Load().Tasks
+			if w.fixed.online.Load() == 0 {
+				limit = 0
+			}
+		}
+		if occupied >= limit {
+			select {
+			case <-finished:
+				occupied--
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+			}
 			continue
+		}
+		select {
+		case <-finished:
+			occupied--
+			continue
+		default:
 		}
 		var job store.Job
 		requested := time.Now()
@@ -472,7 +539,6 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 				return err
 			}
 			if saved == nil {
-				<-occupied
 				continue
 			}
 			job = saved.Job
@@ -480,7 +546,6 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 		} else {
 			status, err := w.post(ctx, "/internal/claim?"+workerCapabilityQuery, claim, &job)
 			if status == http.StatusNoContent || temporary(status) {
-				<-occupied
 				if status != http.StatusNoContent && ctx.Err() == nil {
 					log.Printf("claim unavailable (HTTP %d), retrying", status)
 				}
@@ -491,21 +556,30 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 				return fmt.Errorf("invalid claim response (HTTP %d)", status)
 			}
 		}
+		occupied++
+		work := poolWork{Job: job, Requested: requested, Saved: saved, Follow: assigned}
 		jobs.Add(1)
 		go func() {
 			defer jobs.Done()
-			defer func() { <-occupied }()
-			var err error
-			if assigned == 0 {
-				err = w.runAttempt(ctx, job, requested, saved)
-				if errors.Is(err, errWriterDelegated) {
-					assigned = job.ExecutionID
+			defer func() {
+				select {
+				case finished <- struct{}{}:
+				case <-ctx.Done():
 				}
+			}()
+			if w.fixed != nil {
+				if err := w.fixed.execute(ctx, work); err != nil && ctx.Err() == nil {
+					log.Printf("resident execution %d failed: %v", max(work.Follow, work.Job.ExecutionID), err)
+				}
+				return
 			}
-			if assigned != 0 {
-				err = w.followWriter(ctx, assigned)
+			if w.pool != nil {
+				if err := w.runPoolProcess(ctx, work); err != nil && ctx.Err() == nil {
+					log.Printf("execution worker for %d/%d exited: %v", work.Job.ExecutionID, work.Follow, err)
+				}
+				return
 			}
-			if err != nil {
+			if err := work.run(ctx, w); err != nil {
 				stop(err)
 			}
 		}()
@@ -517,6 +591,12 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 }
 
 func main() {
+	if len(os.Args) >= 4 && os.Args[1] == "skill-files" {
+		if err := skilllib.Serve(os.Stdin, os.Stdout, os.Args[2], os.Args[3:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "prune-role-recovery" {
 		if err := pruneRoleRecoveryCommand(os.Args[2:], os.Stdout); err != nil {
 			log.Fatal(err)
@@ -583,15 +663,29 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) == 2 && os.Args[1] == "pool-work" {
+		if err := acceptPoolWork(ctx, os.Stdin); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if len(os.Args) == 3 && os.Args[1] == "resident-work" {
+		if err := serveResident(ctx, os.Args[2]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	fixedMode := len(os.Args) == 2 && os.Args[1] == "fixed-pool"
+	poolMode := len(os.Args) == 2 && os.Args[1] == "pool"
 	var role string
 	roleProcess := len(os.Args) == 3 && os.Args[1] == "run-role-process"
 	if roleProcess {
 		role = os.Args[2]
-	} else if len(os.Args) == 2 {
+	} else if len(os.Args) == 2 && !poolMode && !fixedMode {
 		role = os.Args[1]
 	}
-	if len(os.Args) > 1 && role != "management" && role != managementChatRole && role != "reviewer" && role != "test-agent" && role != "curator" {
-		log.Fatal("usage: worker [curator|management|management-chat|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs|prune-role-recovery]")
+	if !poolMode && !fixedMode && len(os.Args) > 1 && role != "management" && role != managementChatRole && role != "reviewer" && role != "test-agent" && role != "curator" {
+		log.Fatal("usage: worker [fixed-pool|pool|curator|management|management-chat|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs|prune-role-recovery]")
 	}
 	if role != "" && !roleProcess {
 		switch os.Getenv("FORGEOS_SUPERVISE_ROLE_TURNS") {
@@ -608,6 +702,16 @@ func main() {
 	w, err := fromEnv(role)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if fixedMode {
+		count, err := workerSlots("FORGEOS_FIXED_WORKERS", 1)
+		if err != nil {
+			log.Fatal(err)
+		}
+		w.fixed = &residentPool{initial: count, members: make(map[int]*residentMember)}
+	}
+	if poolMode {
+		w.pool = &processPool{}
 	}
 	if roleProcess {
 		w.roleDaemonGone = roleDaemonLifetime(os.Stdin)

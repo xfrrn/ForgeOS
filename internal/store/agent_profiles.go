@@ -3,6 +3,7 @@ package store
 import (
 	"reflect"
 
+	"forgeos/internal/review"
 	"forgeos/schemas"
 )
 
@@ -18,18 +19,14 @@ func ClaudeImplementationProfile() AgentProfile {
 	return AgentProfile{Version: 1, Permission: "acceptEdits", Tools: &[]string{"Read", "Glob", "Grep", "Edit", "Write"}}
 }
 
-func CodexDisabledFeatures() []string {
-	return []string{"apps", "plugins", "hooks"}
-}
-
-func StructuredCodexProfile() AgentProfile {
-	return AgentProfile{Version: 1, Sandbox: CodexPlannerSandbox, Permission: CodexApproval,
-		DisabledFeatures: append(CodexDisabledFeatures(), "shell_tool", "unified_exec", "multi_agent", "multi_agent_v2",
-			"code_mode", "code_mode_host", "computer_use", "browser_use", "view_image", "image_generation")}
+func CodexDisabledFeatures() []string      { return schemas.CodexDisabledFeatures() }
+func StructuredCodexProfile() AgentProfile { return schemas.StructuredCodexProfile() }
+func ClaudePlannerProfile() AgentProfile {
+	return AgentProfile{Version: 1, Permission: "dontAsk", Tools: &[]string{"Read", "Glob", "Grep"}}
 }
 
 func validStructuredProfile(p *AgentProfile) bool {
-	return p == nil || reflect.DeepEqual(*p, StructuredCodexProfile())
+	return p == nil || reflect.DeepEqual(*p, StructuredCodexProfile()) || reflect.DeepEqual(*p, review.ClaudeProfile())
 }
 
 // Profiles reports only roles enabled on an ordinary Worker.
@@ -46,6 +43,9 @@ func (c WorkerCapabilities) Profiles(harness string) map[string]AgentProfile {
 		}
 	case harness == "claude" && c.SupportsClaude:
 		profiles["implementation"] = ClaudeImplementationProfile()
+		if c.ClaudePlanning {
+			profiles["planner"] = ClaudePlannerProfile()
+		}
 	}
 	return profiles
 }

@@ -72,9 +72,10 @@ func (s *codexServer) disableMCP(workspace string) (map[string]map[string]bool, 
 	return disabled, nil
 }
 
-func (s *codexServer) verifyMCPDisabled(thread string, disabled map[string]map[string]bool) error {
+func (s *codexServer) verifyMCPDisabled(thread string, disabled map[string]map[string]bool, skillsEnabled bool) error {
 	params := map[string]any{"threadId": thread}
 	seen := make(map[string]bool)
+	readerFound := false
 	for {
 		var page struct {
 			NextCursor *string
@@ -91,6 +92,13 @@ func (s *codexServer) verifyMCPDisabled(thread string, disabled map[string]map[s
 			return errors.New("App Server did not report its thread MCP inventory")
 		}
 		for _, entry := range page.Data {
+			if skillsEnabled && entry.Name == skillServer {
+				readerFound = true
+				if _, ok := entry.Tools["read"]; !ok || len(entry.Tools) != 1 || len(entry.Resources)+len(entry.ResourceTemplates) != 0 {
+					return errors.New("unexpected ForgeOS Skill reader inventory")
+				}
+				continue
+			}
 			_, configured := disabled[entry.Name]
 			if !configured || (entry.RuntimeStatus != "" && entry.RuntimeStatus != "disabled") ||
 				entry.Tools == nil || entry.Resources == nil || entry.ResourceTemplates == nil ||
@@ -99,6 +107,9 @@ func (s *codexServer) verifyMCPDisabled(thread string, disabled map[string]map[s
 			}
 		}
 		if page.NextCursor == nil {
+			if skillsEnabled && !readerFound {
+				return errors.New("assigned ForgeOS Skill reader missing from thread")
+			}
 			return nil
 		}
 		cursor := *page.NextCursor
@@ -233,7 +244,11 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	}
 	processCtx, kill := context.WithCancel(context.WithoutCancel(ctx))
 	defer kill()
-	cmd := exec.CommandContext(processCtx, c.bin, c.appServerArgs(workspace)...)
+	reader, err := selectedSkillServer(ctx)
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(processCtx, c.bin, reader.codexArgs(c.appServerArgs(workspace))...)
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
 	input, err := cmd.StdinPipe()
 	if err != nil {
@@ -322,7 +337,19 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	params := map[string]any{"cwd": workspace, "sandbox": c.sandbox, "approvalPolicy": policy,
 		"config":           map[string]any{"mcp_servers": disabledMCP},
 		"baseInstructions": "You are a coding agent executing a ForgeOS work item. Follow its supplied scope, requirements and permissions.", "developerInstructions": ""}
+	if reader != nil {
+		mcp := map[string]any{}
+		for name, config := range disabledMCP {
+			mcp[name] = config
+		}
+		mcp[skillServer] = map[string]any{"enabled": true, "command": reader.Command, "args": reader.Args, "required": true}
+		params["config"] = map[string]any{"mcp_servers": mcp}
+	}
 	model := os.Getenv("FORGEOS_CODEX_APP_SERVER_MODEL")
+	agent := runtimeAgent(ctx)
+	if configured := agent.requestedModel("codex"); configured != "" {
+		model = configured
+	}
 	if model != "" {
 		params["model"] = model
 	}
@@ -351,6 +378,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 	if err != nil {
 		return "", err
 	}
+	agent.observeModel(thread.Model)
 	if model != "" && thread.Model != model {
 		return "", errors.New("App Server returned a different model than the Worker requested")
 	}
@@ -373,7 +401,7 @@ func (c codexCLI) runAppServer(ctx context.Context, process processLog, workspac
 		return "", errors.New("App Server returned an unexpected sandbox")
 	}
 	session = thread.Thread.ID
-	if err = s.verifyMCPDisabled(session, disabledMCP); err != nil {
+	if err = s.verifyMCPDisabled(session, disabledMCP, reader != nil); err != nil {
 		return "", err
 	}
 	if err = process.session(session); err != nil {

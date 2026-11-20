@@ -51,3 +51,7 @@
 @media (max-width: 639px) {
   .runtime-summary-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.pool-settings form {display:flex;flex-wrap:wrap;align-items:end;gap:var(--space-3);margin-block:var(--space-3)}
+.pool-settings label {display:grid;gap:var(--space-1);font-weight:600}
+.pool-settings input {width:7rem;max-width:100%;padding:8px;border:1px solid var(--control-line);border-radius:var(--radius-control);background:var(--surface);color:var(--ink);font:inherit}

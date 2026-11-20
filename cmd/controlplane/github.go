@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -23,7 +26,7 @@ var (
 	githubOrigin     = regexp.MustCompile(`(?i)^(?:https://github\.com/|ssh://git@github\.com(?::22)?/|git@github\.com:)([a-z0-9][a-z0-9_-]*)/([a-z0-9_.-]+)/?$`)
 	gitCommit        = regexp.MustCompile(`^(?:[a-f0-9]{40}|[a-f0-9]{64})$`)
 	errMissing       = errors.New("repository or issue not found on GitHub, or unavailable to this account")
-	errGHRead        = errors.New("GitHub read failed; check gh availability, authentication and repository access")
+	errGHRead        = errors.New("无法读取 GitHub，请检查网络和仓库访问权限。")
 	errGHLimit       = errors.New("GitHub rate limit reached")
 	errIdentity      = errors.New("GitHub response does not match the registered origin and requested issue")
 	errNotOpen       = errors.New("select an open issue; closed issues and pull requests cannot be dispatched")
@@ -97,6 +100,7 @@ func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner strin
 		respond(w, http.StatusOK, items, err)
 	}))
 	mux.HandleFunc("POST /projects/{id}/issues/{number}", authorized(owner, importIssue(data, root, ghRead)))
+	mux.HandleFunc("GET /projects/{id}/issues/{number}", authorized(owner, viewGitHubIssue(data, root, ghRead)))
 	mux.HandleFunc("GET /projects/{id}/classifications/{classification}/processes", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
@@ -110,6 +114,63 @@ func registerIssueRoute(mux *http.ServeMux, data *store.Store, root, owner strin
 		history, err := data.IssueClassificationProcesses(r.Context(), project, id)
 		respond(w, http.StatusOK, history, err)
 	}))
+}
+
+func viewGitHubIssue(data issueStore, root string, get githubGET) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		number, err := strconv.ParseInt(r.PathValue("number"), 10, 64)
+		if err != nil || number <= 0 {
+			problem(w, http.StatusBadRequest, "请输入有效的 Issue 编号。")
+			return
+		}
+		ctx := r.Context()
+		project, err := data.Project(ctx, id)
+		if err != nil {
+			respond(w, 0, nil, err)
+			return
+		}
+		_, issue, err := readGitHubIssue(ctx, root, project, get, number)
+		if err != nil {
+			githubIssueProblem(w, err)
+			return
+		}
+		respond(w, http.StatusOK, struct {
+			store.Issue
+			SourceDigest string `json:"source_digest"`
+		}{issue, issueSourceDigest(issue)}, nil)
+	}
+}
+
+func readGitHubIssue(ctx context.Context, root string, project store.Project, get githubGET, number int64) (githubProject, store.Issue, error) {
+	repo, err := githubSource(ctx, root, project, get)
+	if err != nil {
+		return repo, store.Issue{}, err
+	}
+	var raw githubIssue
+	if err := get(ctx, fmt.Sprintf("repositories/%d/issues/%d", repo.ID, number), &raw); err != nil {
+		return repo, store.Issue{}, err
+	}
+	issue, err := repo.issue(raw, number)
+	return repo, issue, err
+}
+
+func githubIssueProblem(w http.ResponseWriter, err error) {
+	status := http.StatusBadGateway
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		status = http.StatusGatewayTimeout
+	case errors.Is(err, errMissing):
+		status = http.StatusNotFound
+	case errors.Is(err, errGHLimit):
+		status = http.StatusTooManyRequests
+	case errors.Is(err, errIdentity), errors.Is(err, errNotOpen), errors.Is(err, errIssueText), errors.Is(err, errOrigin), errors.Is(err, errBase), errors.Is(err, errProjectConfig):
+		status = http.StatusConflict
+	}
+	problem(w, status, err.Error())
 }
 
 func importIssue(data issueImporter, root string, get githubGET) http.HandlerFunc {
@@ -169,28 +230,9 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 			respond(w, 0, nil, err)
 			return
 		}
-		source, err := githubSource(ctx, root, project, get)
-		var issue store.Issue
-		if err == nil {
-			var remote githubIssue
-			err = get(ctx, fmt.Sprintf("repositories/%d/issues/%d", source.ID, number), &remote)
-			if err == nil {
-				issue, err = source.issue(remote, number)
-			}
-		}
+		source, issue, err := readGitHubIssue(ctx, root, project, get, number)
 		if err != nil {
-			status := http.StatusBadGateway
-			switch {
-			case errors.Is(err, context.DeadlineExceeded):
-				status = http.StatusGatewayTimeout
-			case errors.Is(err, errMissing):
-				status = http.StatusNotFound
-			case errors.Is(err, errGHLimit):
-				status = http.StatusTooManyRequests
-			case errors.Is(err, errIdentity), errors.Is(err, errNotOpen), errors.Is(err, errIssueText), errors.Is(err, errOrigin), errors.Is(err, errBase), errors.Is(err, errProjectConfig):
-				status = http.StatusConflict
-			}
-			problem(w, status, err.Error())
+			githubIssueProblem(w, err)
 			return
 		}
 		if input.SourceDigest != "" && input.SourceDigest != issueSourceDigest(issue) {
@@ -214,6 +256,7 @@ func importIssue(data issueImporter, root string, get githubGET) http.HandlerFun
 		}
 		spec := source.spec(issue, input.Validation, input.Mode, policy)
 		spec.ImportOrigin = "owner"
+		spec.ExplicitHarness = input.Harness != ""
 		if input.Harness != "" && spec.Mode == "plan" && input.Mode != "plan" {
 			spec.ChildHarness = input.Harness
 		} else if input.Harness != "" {
@@ -243,6 +286,9 @@ func repositoryName(origin string) string {
 func ghRead(ctx context.Context, path string, dest any) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if _, err := exec.LookPath("gh"); err != nil {
+		return publicGitHubRead(ctx, path, dest)
+	}
 	out, err := exec.CommandContext(ctx, "gh", "api", "--hostname", "github.com", "--method", "GET", path).Output()
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -263,6 +309,77 @@ func ghRead(ctx context.Context, path string, dest any) error {
 		return errGHRead
 	}
 	return nil
+}
+
+func publicGitHubRead(ctx context.Context, path string, dest any) error {
+	target, err := url.Parse("https://api.github.com/" + strings.TrimPrefix(path, "/"))
+	if err != nil || target.Host != "api.github.com" || target.Scheme != "https" {
+		return errGHRead
+	}
+	proxy, err := cloneProxy(ctx, os.TempDir(), "https://github.com/")
+	if err != nil {
+		return errGHRead
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	defer transport.CloseIdleConnections()
+	if proxy != "" {
+		parsed, err := url.Parse(proxy)
+		if err != nil {
+			return errGHRead
+		}
+		transport.Proxy = http.ProxyURL(parsed)
+	}
+	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	if err != nil {
+		return errGHRead
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "ForgeOS")
+	// Use the service account's existing GitHub credential only for this host.
+	if token := githubGitCredential(ctx); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errGHRead
+	}
+	defer res.Body.Close()
+	switch {
+	case res.StatusCode == http.StatusNotFound:
+		return errMissing
+	case res.StatusCode == http.StatusTooManyRequests || (res.StatusCode == http.StatusForbidden && res.Header.Get("X-RateLimit-Remaining") == "0"):
+		return errGHLimit
+	case res.StatusCode != http.StatusOK:
+		return errGHRead
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 12<<20)).Decode(dest); err != nil {
+		return errGHRead
+	}
+	return nil
+}
+
+func githubGitCredential(ctx context.Context) string {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	cmd := localrepo.GitCommand(ctx, os.TempDir(), "-c", "credential.helper=", "-c", "credential.helper=manager", "credential", "fill")
+	cmd.Env = append(cmd.Env, "GCM_INTERACTIVE=Never")
+	cmd.Stdin = strings.NewReader("protocol=https\nhost=github.com\n\n")
+	data, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if token, ok := strings.CutPrefix(strings.TrimSuffix(line, "\r"), "password="); ok {
+			return token
+		}
+	}
+	return ""
 }
 
 type githubProject struct {

@@ -84,7 +84,7 @@ func (s *Store) recordRoleProcess(ctx context.Context, project int64, report Man
 	if report.ReviewerExecution != 0 {
 		harness = "claude"
 	}
-	if !p.Valid() || (p.Archive != nil && p.Archive.Central) || p.Harness != harness || report.ResumedFrom < 0 || len(p.Tools) != 0 || p.ToolOutput != nil ||
+	if !p.Valid() || (p.Archive != nil && p.Archive.Central) || report.ResumedFrom < 0 || len(p.Tools) != 0 || p.ToolOutput != nil ||
 		!p.outputExcludes(report.Lease) || len(report.Lease) != 36 || report.Node == "" || len(report.Node) > 128 ||
 		strings.Trim(report.Node, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" {
 		return ErrConflict
@@ -102,6 +102,13 @@ func (s *Store) recordRoleProcess(ctx context.Context, project int64, report Man
 		return err
 	}
 	defer tx.Rollback()
+	hash := sha256.Sum256([]byte(report.Lease))
+	if err = tx.QueryRowContext(ctx, "SELECT COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE project_id=$1 AND role_lease_hash=$2),$3::text)", project, hash[:], harness).Scan(&harness); err != nil {
+		return err
+	}
+	if p.Harness != harness {
+		return ErrConflict
+	}
 	var valid bool
 	if report.ReviewerExecution != 0 {
 		err = tx.QueryRowContext(ctx, `SELECT r.report IS NULL AND r.failed_at IS NULL AND r.lease_until>clock_timestamp()
@@ -140,7 +147,6 @@ func (s *Store) recordRoleProcess(ctx context.Context, project int64, report Man
 		err = tx.QueryRowContext(ctx, `SELECT review IS NULL AND review_until>clock_timestamp() FROM knowledge_shares WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 FOR UPDATE`, project, report.ShareID, report.Lease).Scan(&valid)
 	}
 
-	hash := sha256.Sum256([]byte(report.Lease))
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !valid) {
 		if upload == nil {
 			return ErrConflict

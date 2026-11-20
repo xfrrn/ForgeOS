@@ -90,6 +90,21 @@ if ($service.Contains('environmentFile')) {
     }
     Add-RoleEnvironment (Read-PrivateJson $service.environmentFile)
 }
+if ($Role -in @('controlplane', 'worker') -and $config.Contains('toolDirectories')) {
+    if ($config.toolDirectories -isnot [array]) {
+        throw 'toolDirectories must be an array of absolute directory paths.'
+    }
+    $pathEntries = if ($roleEnvironment.ContainsKey('PATH')) { $roleEnvironment['PATH'] } else { $startInfo.Environment['PATH'] }
+    foreach ($dir in $config.toolDirectories) {
+        if ($dir -isnot [string] -or ![IO.Path]::IsPathFullyQualified($dir) -or $dir.IndexOfAny([char[]]@(';', [char]0, '"')) -ge 0) {
+            throw 'Each tool directory must be an absolute path without a PATH separator or quote.'
+        }
+        if ($dir -notin ($pathEntries -split ';')) {
+            $pathEntries = (@($pathEntries, $dir) | Where-Object { $_ }) -join ';'
+        }
+    }
+    $roleEnvironment['PATH'] = $pathEntries
+}
 if ($ValidateOnly) { return }
 
 $commandLine = [Environment]::GetCommandLineArgs()

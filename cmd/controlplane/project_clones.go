@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -259,19 +260,9 @@ func (c projectCloneService) clone(ctx context.Context, job store.RepositoryClon
 			}
 		}
 	}()
-	opts := []string{"-c", "protocol.https.allow=always", "-c", "http.followRedirects=false",
-		"-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=60", "-c", "credential.helper=", "-c", "credential.interactive=false"}
-	if remote.Host == "github.com" {
-		opts = append(opts, "-c", "credential.https://github.com.helper=!gh auth git-credential")
-	}
-	args := append(opts, "clone", "--origin", "origin", "--template=", "--no-recurse-submodules", "--", remote.URL, ".")
-	cmd := localrepo.GitCommand(ctx, path, args...)
-	proxy, err := cloneProxy(ctx, path, remote.URL)
+	cmd, err := projectHTTPSGit(ctx, path, remote, "clone", "--origin", "origin", "--template=", "--no-recurse-submodules", "--", remote.URL, ".")
 	if err != nil {
 		return "", err
-	}
-	if proxy != "" {
-		cmd.Env = append(cmd.Env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.proxy", "GIT_CONFIG_VALUE_0="+proxy)
 	}
 	if err := cmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -289,6 +280,23 @@ func (c projectCloneService) clone(ctx context.Context, job store.RepositoryClon
 	}
 	ready = true
 	return repo, nil
+}
+
+func projectHTTPSGit(ctx context.Context, dir string, remote cloneRemote, args ...string) (*exec.Cmd, error) {
+	opts := []string{"-c", "protocol.https.allow=always", "-c", "http.followRedirects=false",
+		"-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=60", "-c", "credential.helper=", "-c", "credential.interactive=false"}
+	if remote.Host == "github.com" {
+		opts = append(opts, "-c", "credential.https://github.com.helper=!gh auth git-credential")
+	}
+	cmd := localrepo.GitCommand(ctx, dir, append(opts, args...)...)
+	proxy, err := cloneProxy(ctx, dir, remote.URL)
+	if err != nil {
+		return nil, err
+	}
+	if proxy != "" {
+		cmd.Env = append(cmd.Env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.proxy", "GIT_CONFIG_VALUE_0="+proxy)
+	}
+	return cmd, nil
 }
 
 func cloneProxy(ctx context.Context, dir, target string) (string, error) {

@@ -1,7 +1,7 @@
 import { PatchPreview, type PatchFile } from './Approvals'
 import { ArchiveDownload, ArchiveFacts, downloadFile, type ProcessArchive } from './ProcessArchive'
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
-import { workTypeName } from './workTypes'
+import { taskCategory, workTypeName, type TaskCategory } from './workTypes'
 import { ClassificationAdvice, type IssueSuggestion } from './ClassificationAdvice'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 import type { GlobalRulesRevision } from './GlobalRules'
@@ -81,7 +81,7 @@ type Task = {
   children?: GoalChild[]
   questions?: Question[]
 }
-type Props = { projectId: number; id: number; planRevision?: number; questionID?: number; executionID?: number; request: ApiRequest; onChanged: () => void }
+type Props = { projectId: number; id: number; planRevision?: number; questionID?: number; executionID?: number; category?: TaskCategory; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
@@ -620,7 +620,7 @@ function RefreshDelivery({ id, delivery, request, reload }: { id: number; delive
     <button className="button" disabled={busy} onClick={() => void submit()}>在最新目标版本上重新验证</button></div>
 }
 
-function Detail({ projectId, id, planRevision, questionID, executionID, request, onChanged }: Props) {
+function Detail({ projectId, id, planRevision, questionID, executionID, category, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -699,8 +699,11 @@ function Detail({ projectId, id, planRevision, questionID, executionID, request,
       setSendingCommand(false)
     }
   }
+  const listCategory = category ?? (task?.kind === 'git_head' ? 'git-head' :
+    task?.kind === 'environment_check' ? 'environment-check' : taskCategory(task?.spec?.issue?.work_type ?? null))
+  const taskList = projectHref(projectId, '/tasks?category=' + listCategory)
   if (!task) return <>
-    <BackLink href={projectHref(projectId, '/tasks')}>返回任务列表</BackLink>
+    <BackLink href={taskList}>返回任务列表</BackLink>
     <PageHeading title={`任务 T-${id}`}/>
     <div className="panel detail-placeholder" role={error ? 'alert' : 'status'}>{error || '正在读取任务详情…'}
       {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
@@ -723,7 +726,7 @@ function Detail({ projectId, id, planRevision, questionID, executionID, request,
     result?.exit_code === 0 && result.commit && fullSHA.test(result.commit) && result.validation?.commit === result.commit &&
     result.validation.exit_code === 0 && !reviews.some(review => review.execution_id === last.id)
   return <article className="task-detail">
-    <BackLink href={projectHref(projectId, '/tasks')}>返回任务列表</BackLink>
+    <BackLink href={taskList}>返回任务列表</BackLink>
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
       <h1>{issue?.title || (task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>

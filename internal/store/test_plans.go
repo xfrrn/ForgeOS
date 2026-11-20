@@ -147,7 +147,7 @@ func (s *Store) ClaimTestPlan(ctx context.Context, project int64, role string, s
 		return nil, err
 	}
 	defer tx.Rollback()
-	pool, available, err := modelSlot(ctx, tx.Tx, "codex", "", role, project)
+	pool, available, err := roleModelSlot(ctx, tx.Tx, role, project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		return nil, err
 	}

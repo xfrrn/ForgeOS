@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Icon, Status, type ApiRequest } from './shared'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
+import { ProjectGit } from './ProjectGit'
 import './project-workspace.css'
 
 export type WorkspaceProject = {
@@ -16,6 +17,7 @@ export type WorkspaceProject = {
 const workspaceTabs = [
   { key: 'overview', href: '', label: '概览' },
   { key: 'chat', href: '/chat', label: '聊天' },
+  { key: 'agents', href: '/agents', label: 'Agent 管理' },
   { key: 'tasks', href: '/tasks', label: '任务' },
   { key: 'reviews', href: '/reviews', label: '审核与验收' },
   { key: 'materials', href: '/materials', label: '项目资料' },
@@ -33,31 +35,22 @@ export function projectDisplayName(project: WorkspaceProject) {
   return (project.repository || project.path).split(/[\\/]/).filter(Boolean).at(-1) || '项目 #' + project.id
 }
 
-export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQueue, request, children }: {
+export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQueue, taskList, request, children }: {
   projectId: number
   currentTab: ProjectWorkspaceTab
   taskId?: number
   section?: string
   taskQueue?: boolean
+  taskList?: string
   request: ApiRequest
   children: ReactNode
 }) {
   const [loaded, setLoaded] = useState<{ id: number; project?: WorkspaceProject; error?: string }>()
   const [revision, setRevision] = useState(0)
-  const [checking, setChecking] = useState(false)
-  const [checkError, setCheckError] = useState('')
-  const lifetime = useRef<AbortController | null>(null)
   const project = loaded?.id === projectId ? loaded.project : undefined
   const loadError = loaded?.id === projectId ? loaded.error : undefined
   const base = `#/projects/${projectId}`
   const materials = currentTab === 'materials' && (!section || section === 'materials')
-
-  useEffect(() => {
-    const controller = new AbortController()
-    lifetime.current = controller
-    setChecking(false); setCheckError('')
-    return () => controller.abort()
-  }, [projectId, request, materials])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -73,31 +66,14 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
     return () => controller.abort()
   }, [projectId, currentTab, request, revision])
 
-  async function check(value: WorkspaceProject) {
-    const signal = lifetime.current?.signal
-    if (checking || !signal) return
-    setChecking(true); setCheckError('')
-    try {
-      const result = await request<{ id: number }>(`/projects/${value.id}/check`, {
-        method: 'POST', body: JSON.stringify(value.check_id ? { retry_task_id: value.check_id } : {}), signal,
-      })
-      if (!signal.aborted) location.hash = `/projects/${value.id}/tasks/${result.id}`
-    } catch (err) {
-      if (!signal.aborted) setCheckError(err instanceof Error ? err.message : '无法派发检查。')
-    } finally {
-      if (!signal.aborted) setChecking(false)
-    }
-  }
-
   const title = project ? projectDisplayName(project) : '项目 #' + projectId
   const overview = currentTab === 'overview' && (!section || section === 'overview')
-  const canCheck = project && (!project.check_id || project.check_status === 'DONE' || project.check_status === 'FAILED')
   return <div className="project-workspace">
     <nav className="project-breadcrumb" aria-label="项目路径">
       <ol>
         <li><a href="#/projects">项目</a></li>
         <li>{overview ? <span aria-current="page">{title}</span> : <a href={base}>{title}</a>}</li>
-        {taskId && <><li><a href={base + '/tasks'}>任务</a></li><li><span aria-current="page">#{taskId}</span></li></>}
+        {taskId && <><li><a href={base + (taskList || '/tasks')}>任务</a></li><li><span aria-current="page">#{taskId}</span></li></>}
       </ol>
     </nav>
     {!project ? <>
@@ -130,19 +106,7 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
       </p>}
       {children}
       {materials && <div className="project-setup">
-        <section className="panel detail-card" aria-labelledby="project-head-check-heading">
-          <h2 id="project-head-check-heading">仓库 HEAD 检查</h2>
-          <p>记录本地仓库当前所在的提交，完成后可在检查详情读取仓库清单。</p>
-          {project.repository_id && <p>GitHub 仓库 ID · {project.repository_id}</p>}
-          {project.check_status && <p>最近的 HEAD 检查 <Status value={project.check_status}/></p>}
-          <div className="detail-actions">
-            {project.check_id && <a className="button" href={base + '/tasks/' + project.check_id}>查看检查 #{project.check_id}</a>}
-            {canCheck && <button className="button" type="button" disabled={checking} onClick={() => void check(project)}>
-              {project.check_status === 'DONE' ? '检查当前 HEAD' : project.check_id ? '重新检查' : '运行 HEAD 检查'}
-            </button>}
-          </div>
-          {checkError && <p className="detail-problem" role="alert">{checkError}</p>}
-        </section>
+        <ProjectGit projectId={projectId} request={request}/>
       </div>}
     </>}
   </div>

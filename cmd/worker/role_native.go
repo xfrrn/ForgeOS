@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"forgeos/internal/agents"
 	"forgeos/internal/store"
 )
 
@@ -24,9 +25,11 @@ type roleNativeTurn struct {
 
 func (w *worker) readRoleRecoveryCapability(raw []byte) {
 	var capability struct {
-		Recover bool `json:"recover_native"`
+		Agent   *agents.Assignment `json:"agent"`
+		Recover bool               `json:"recover_native"`
 	}
 	w.roleNativeResume = json.Unmarshal(raw, &capability) == nil && capability.Recover
+	w.roleAgent = capability.Agent
 }
 
 func (w *worker) validateRoleNativeRecovery(db *sql.DB, key []byte) error {
@@ -226,9 +229,9 @@ func (w *worker) roleHarnessVersion(harness string) (string, error) {
 	if harness == "codex" {
 		return readCodexVersion(w.codex)
 	}
-	name := os.Getenv("FORGEOS_CLAUDE_BIN")
-	if name == "" {
-		name = "claude"
+	name, err := claudeExecutable()
+	if err != nil {
+		return "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

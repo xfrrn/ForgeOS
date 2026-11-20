@@ -125,10 +125,9 @@ func probeTools(ctx context.Context, harnesses map[string]Harness) *Tools {
 			if cli.Name == "docker" {
 				tools.Docker = "unreachable"
 			}
-			// Windows wrappers are discoverable, but only native executables can be probed directly.
-			if runtime.GOOS != "windows" || strings.EqualFold(filepath.Ext(path), ".exe") &&
-				!(cli.Name == "python" && strings.Contains(strings.ToLower(path), `\microsoft\windowsapps\`)) {
-				out, err := probe(ctx, path, command.argument)
+			dir, executable, args := versionCommand(command, path)
+			if executable != "" {
+				out, err := probe(ctx, dir, executable, args...)
 				cli.Status = "probe_failed"
 				if err == nil {
 					cli.Status = "responds"
@@ -138,7 +137,7 @@ func probeTools(ctx context.Context, harnesses map[string]Harness) *Tools {
 					}
 				}
 				if cli.Name == "docker" && cli.Status == "responds" {
-					if out, err := probe(ctx, path, "version", "--format", "{{.Server.Version}}"); err == nil && readVersion(out) != "" {
+					if out, err := probe(ctx, dir, path, "version", "--format", "{{.Server.Version}}"); err == nil && readVersion(out) != "" {
 						tools.Docker = "reachable"
 					}
 				}
@@ -148,6 +147,22 @@ func probeTools(ctx context.Context, harnesses map[string]Harness) *Tools {
 	}
 	tools.CheckedAt = time.Now().UTC()
 	return tools
+}
+
+func versionCommand(command toolCommand, path string) (string, string, []string) {
+	if runtime.GOOS == "windows" {
+		if command.name == "npm" && strings.EqualFold(filepath.Base(path), "npm.cmd") {
+			// Run this exact shim, including its npm prefix selection. Keep directory
+			// names out of the shell command, even when the install path contains "&".
+			return filepath.Dir(path), filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"),
+				[]string{"/d", "/c", `.\npm.cmd`, "--version"}
+		}
+		if !strings.EqualFold(filepath.Ext(path), ".exe") ||
+			command.name == "python" && strings.Contains(strings.ToLower(path), `\microsoft\windowsapps\`) {
+			return "", "", nil
+		}
+	}
+	return os.TempDir(), path, []string{command.argument}
 }
 
 func toolPath(name string) string {
@@ -172,11 +187,11 @@ func readVersion(out string) string {
 	return version
 }
 
-func probe(ctx context.Context, path string, args ...string) (string, error) {
+func probe(ctx context.Context, dir, path string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Dir = os.TempDir()
+	cmd.Dir = dir
 	cmd.Env = probeEnv()
 	cmd.WaitDelay = 250 * time.Millisecond
 	var capture probeOutput

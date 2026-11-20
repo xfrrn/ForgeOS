@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"forgeos/internal/agents"
 	"github.com/lib/pq"
 )
 
@@ -44,19 +45,19 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 		}
 		names[b.Name] = true
 		for _, member := range b.TestPlanRoles {
-			if b.Harness != "codex" || member.Project < 1 || (member.Role != "test" && member.Role != "management") || roles[member] {
+			if member.Project < 1 || (member.Role != "test" && member.Role != "management") || roles[member] {
 				return ErrConflict
 			}
 			roles[member] = true
 		}
 		for _, member := range b.AgentRoles {
-			if b.Harness != "codex" || member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review", "repository_analysis", "feedback_classification", "issue_classification", "question_advice"}, member.Role) || roles[member] {
+			if member.Project < 1 || !slices.Contains([]string{"curator", "curation_review", "plan_review", "share_review", "repository_analysis", "feedback_classification", "issue_classification", "question_advice"}, member.Role) || roles[member] {
 				return ErrConflict
 			}
 			roles[member] = true
 		}
 		for _, project := range b.ReviewerProjects {
-			if project < 1 || b.Harness != "claude" || reviewers[project] {
+			if project < 1 || reviewers[project] {
 				return ErrConflict
 			}
 			reviewers[project] = true
@@ -99,6 +100,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE code_reviews r SET model_budget=b.name FROM work_items t,model_budgets b
 		WHERE t.id=r.task_id AND t.project_id=ANY(b.reviewer_projects) AND r.model_budget IS NULL AND r.report IS NULL
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(r.lease::text,'UTF8'))),'claude')
 		AND r.failed_at IS NULL AND r.lease_until>clock_timestamp()`)
 	if err != nil {
 		return err
@@ -106,6 +108,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	_, err = tx.ExecContext(ctx, `UPDATE candidate_test_plan_jobs j SET model_budget=b.name
 		FROM candidate_test_plans p JOIN work_items t ON t.id=p.task_id,model_budgets b
 		WHERE j.plan_id=p.id AND j.model_budget IS NULL AND j.completed_at IS NULL AND j.lease_until>clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(j.lease::text,'UTF8'))),'codex')
 		AND b.test_plan_roles @> jsonb_build_array(jsonb_build_object('role',j.role,'project_id',t.project_id))`)
 	if err != nil {
 		return err
@@ -113,6 +116,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	_, err = tx.ExecContext(ctx, `UPDATE material_curations c SET model_budget=b.name FROM model_budgets b
 		WHERE c.model_budget IS NULL AND c.review IS NULL AND
 		CASE WHEN c.extraction IS NULL THEN c.extraction_until ELSE c.review_until END >clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to((CASE WHEN c.extraction IS NULL THEN c.extraction_lease ELSE c.review_lease END)::text,'UTF8'))),'codex')
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',c.project_id,
 			'role',CASE WHEN c.extraction IS NULL THEN 'curator' ELSE 'curation_review' END))`)
 	if err != nil {
@@ -120,30 +124,35 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE plan_revisions r SET model_budget=b.name FROM work_items t,model_budgets b
 		WHERE r.task_id=t.id AND r.model_budget IS NULL AND r.review IS NULL AND r.review_until>clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(r.review_lease::text,'UTF8'))),'codex')
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',t.project_id,'role','plan_review'))`)
 	if err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE knowledge_shares s SET model_budget=b.name FROM model_budgets b
 		WHERE s.model_budget IS NULL AND s.review IS NULL AND s.review_until>clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(s.review_lease::text,'UTF8'))),'codex')
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',s.project_id,'role','share_review'))`)
 	if err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE repository_analyses a SET model_budget=b.name FROM repository_inventories i,model_budgets b
 		WHERE a.task_id=i.task_id AND a.model_budget IS NULL AND a.finished_at IS NULL AND a.lease_until>clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(a.lease::text,'UTF8'))),'codex')
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',i.project_id,'role','repository_analysis'))`)
 	if err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE issue_classifications c SET model_budget=b.name FROM model_budgets b
   WHERE c.model_budget IS NULL AND c.suggestion IS NULL AND c.lease_until>clock_timestamp()
-  AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',c.project_id,'role','issue_classification'))`)
+  AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(c.lease::text,'UTF8'))),'codex')
+		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',c.project_id,'role','issue_classification'))`)
 	if err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE preview_feedback f SET model_budget=b.name FROM static_preview_receipts p,model_budgets b
 		WHERE f.preview_id=p.id AND f.model_budget IS NULL AND f.classified_at IS NULL AND f.review_until>clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(f.review_lease::text,'UTF8'))),'codex')
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',p.project_id,'role','feedback_classification'))`)
 	if err != nil {
 		return err
@@ -151,6 +160,7 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 	_, err = tx.ExecContext(ctx, `UPDATE question_advice_claims c SET model_budget=b.name
 		FROM decision_questions q JOIN work_items t ON t.id=q.task_id,model_budgets b
 		WHERE c.question_id=q.id AND c.model_budget IS NULL AND q.management_advice IS NULL AND c.lease_until>clock_timestamp()
+		AND b.harness=COALESCE((SELECT config->>'harness' FROM agent_assignments WHERE role_lease_hash=sha256(convert_to(c.lease::text,'UTF8'))),'codex')
 		AND b.agent_roles @> jsonb_build_array(jsonb_build_object('project_id',t.project_id,'role','question_advice'))`)
 	if err != nil {
 		return err
@@ -164,12 +174,40 @@ func (s *Store) beginManagementClaim(ctx context.Context, project int64, role st
 	if err != nil {
 		return nil, sql.NullString{}, err
 	}
-	pool, available, err := modelSlot(ctx, tx.Tx, "codex", "", role, project)
+	pool, available, err := roleModelSlot(ctx, tx.Tx, role, project)
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		tx.Rollback()
 		return nil, pool, err
 	}
 	return tx, pool, nil
+}
+
+type roleHarnessesKey struct{}
+
+func WithRoleHarnesses(ctx context.Context, available []string) context.Context {
+	return context.WithValue(ctx, roleHarnessesKey{}, available)
+}
+
+var budgetPurposes = map[string]string{"reviewer": "reviewer", "test": "test-agent", "management": "coverage", "curator": "curator", "curation_review": "knowledge-review", "plan_review": "plan-review", "share_review": "share", "repository_analysis": "analysis", "feedback_classification": "feedback", "issue_classification": "classification", "question_advice": "question"}
+
+func roleModelSlot(ctx context.Context, tx *sql.Tx, role string, project int64) (sql.NullString, bool, error) {
+	purpose := budgetPurposes[role]
+	d, ok := agents.Lookup(purpose)
+	if !ok {
+		return sql.NullString{}, false, ErrConflict
+	}
+	// Keep budget selection and the eventual frozen assignment on the same configuration.
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock_shared(132,hashtext($1))", purpose); err != nil {
+		return sql.NullString{}, false, err
+	}
+	e, err := agentConfig(ctx, tx, project, d)
+	if err != nil {
+		return sql.NullString{}, false, err
+	}
+	if supported, ok := ctx.Value(roleHarnessesKey{}).([]string); ok && !slices.Contains(supported, e.Effective.Harness) {
+		return sql.NullString{}, false, nil
+	}
+	return modelSlot(ctx, tx, e.Effective.Harness, "", role, project)
 }
 
 // Execution workers match by node ID. Independent roles match by project and task.

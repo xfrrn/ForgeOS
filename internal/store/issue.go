@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"forgeos/internal/agents"
 	"regexp"
 	"strings"
 
@@ -36,6 +37,7 @@ func ValidWorkType(value string) bool {
 }
 
 type IssueSpec struct {
+	ExplicitHarness   bool               `json:"-"`
 	ImportOrigin      string             `json:"-"`
 	ProjectConfigBlob string             `json:"project_config_blob,omitempty"`
 	ChildHarness      string             `json:"child_harness,omitempty"`
@@ -113,6 +115,16 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 	return s.Task(ctx, id)
 }
 
+func planningHarness(ctx context.Context, tx *sql.Tx, project int64, workType string) (string, error) {
+	key := "planner"
+	if workType == "operations" {
+		key = "operations"
+	}
+	d, _ := agents.Lookup(key)
+	e, err := agentConfig(ctx, tx, project, d)
+	return e.Effective.Harness, err
+}
+
 func importIssueTask(ctx context.Context, tx *sql.Tx, projectID int64, spec IssueSpec, sources ...FeedbackSource) (int64, error) {
 	issue := spec.Issue
 	if spec.ImportOrigin != "" && spec.ImportOrigin != "owner" && spec.ImportOrigin != "github" ||
@@ -122,6 +134,32 @@ func importIssueTask(ctx context.Context, tx *sql.Tx, projectID int64, spec Issu
 		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
 		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") || !spec.ValidHarness() {
 		return 0, ErrConflict
+	}
+	if !spec.ExplicitHarness {
+		d, _ := agents.Lookup("implementation")
+		entry, err := agentConfig(ctx, tx, projectID, d)
+		if err != nil {
+			return 0, err
+		}
+		if h := entry.Effective.Harness; h != "task" {
+			if spec.Mode == "plan" {
+				spec.ChildHarness = h
+			} else {
+				spec.Harness = h
+			}
+		}
+	}
+	if spec.Mode == "plan" {
+		harness, err := planningHarness(ctx, tx, projectID, issue.WorkType)
+		if err != nil {
+			return 0, err
+		}
+		if spec.ChildHarness == "" && harness == "claude" {
+			spec.ChildHarness = "codex"
+		}
+		if spec.Harness != "" || harness != "codex" {
+			spec.Harness = harness
+		}
 	}
 	snapshot, err := json.Marshal(spec)
 	if err != nil {
@@ -253,7 +291,7 @@ func (spec IssueSpec) ValidHarness() bool {
 	if spec.ChildHarness != "" && (spec.Mode != "plan" || (spec.ChildHarness != "codex" && spec.ChildHarness != "claude")) {
 		return false
 	}
-	return spec.Harness == "" || spec.Harness == "codex" || (spec.Harness == "claude" && spec.Mode != "plan")
+	return spec.Harness == "" || spec.Harness == "codex" || spec.Harness == "claude"
 }
 
 var harnessVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)

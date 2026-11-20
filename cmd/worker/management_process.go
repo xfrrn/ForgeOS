@@ -8,6 +8,7 @@ import (
 	"log"
 	"time"
 
+	"forgeos/internal/review"
 	"forgeos/internal/store"
 )
 
@@ -19,20 +20,40 @@ func (w *worker) managementReviewTurn(ctx context.Context, job store.ManagementJ
 	return w.roleJSONTurn(ctx, job.CaptureProcess, target, reviewSchema, prompt, 12<<10, review)
 }
 
+func (w *worker) roleHarness(fallback string) string {
+	if w.roleAgent != nil {
+		return w.roleAgent.Harness
+	}
+	return fallback
+}
+func (w *worker) roleProfile() store.AgentProfile {
+	if w.roleHarness("codex") == "claude" {
+		return review.ClaudeProfile()
+	}
+	return store.StructuredCodexProfile()
+}
+
 func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.ManagementProcessReport, contract, prompt string, limit int64, dest any) (string, error) {
 	if session, found, err := w.completedRoleTurn(target, dest); found || err != nil {
 		return session, err
 	}
-	if !capture {
-		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, processLog{beforeStart: w.roleStartHook(w.roleForProcess(target), target.Lease, target.Turn)})
+	prompt = w.roleAgent.Apply(prompt)
+	ctx = w.agentContext(ctx, w.roleAgent)
+	harness := w.roleHarness("codex")
+	run := func(ctx context.Context, p processLog) (string, error) {
+		if harness == "claude" {
+			return claudeRoleJSON(ctx, contract, prompt, limit, dest, p)
+		}
+		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, p)
 	}
-	version, err := readCodexVersion(w.codex)
+	if !capture {
+		return run(ctx, processLog{beforeStart: w.roleStartHook(w.roleForProcess(target), target.Lease, target.Turn)})
+	}
+	version, err := w.roleHarnessVersion(harness)
 	if err != nil {
 		return "", err
 	}
-	return w.roleProcessTurn(ctx, target, "codex", version, dest, func(ctx context.Context, process processLog) (string, error) {
-		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, process)
-	})
+	return w.roleProcessTurn(ctx, target, harness, version, dest, run)
 }
 
 func (w *worker) roleForProcess(target store.ManagementProcessReport) string {

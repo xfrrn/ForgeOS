@@ -13,6 +13,96 @@ import (
 	"forgeos/internal/testdb"
 )
 
+func TestProjectTaskCategories(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.Open(t)
+	data := store.New(db)
+	if err := data.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	project, err := data.CreateProject(ctx, "categorized")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := data.CreateProject(ctx, "separate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO work_items(project_id,kind,status) VALUES
+			($1,'git_head','DONE'),($1,'environment_check','DONE'),($2,'git_head','DONE');
+	`, project.ID, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	var goal, child int64
+	if err := db.QueryRowContext(ctx, `
+		WITH goal AS (
+			INSERT INTO work_items(project_id,kind,status,github_issue_id,spec)
+			VALUES ($1,'codex_issue','ACTIVE',1,'{"issue":{"title":"Review goal","work_type":"code-review"}}')
+			RETURNING id
+		), plan AS (
+			INSERT INTO plan_revisions(task_id,revision,plan) SELECT id,1,'{}' FROM goal RETURNING task_id
+		), child AS (
+			INSERT INTO work_items(project_id,kind,status,spec,goal_id,plan_revision,plan_key)
+			SELECT $1,'codex_issue','READY','{"issue":{"title":"Review child"}}',task_id,1,'first' FROM plan
+			RETURNING id,goal_id
+		)
+		SELECT goal_id,id FROM child
+	`, project.ID).Scan(&goal, &child); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO work_items(project_id,kind,status,github_issue_id,spec) VALUES
+			($1,'codex_issue','READY',2,'{"issue":{"title":"Legacy development"}}'),
+			($1,'codex_issue','READY',3,'{"issue":{"title":"Test fixtures","work_type":"testing"}}'),
+			($1,'codex_issue','READY',4,'{"issue":{"title":"Investigate startup","work_type":"investigation"}}'),
+			($1,'codex_issue','READY',5,'{"issue":{"title":"Prepare release","work_type":"operations"}}')
+	`, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	handler := routes(data, t.TempDir(), "owner", legacyWorker("worker"), nil)
+	read := func(query string, status int) store.TaskPage {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/tasks?project_id=%d&%s", project.ID, query), nil)
+		req.Header.Set("Authorization", "Bearer owner")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		if response.Code != status {
+			t.Fatalf("GET %s: %d != %d: %s", query, response.Code, status, response.Body)
+		}
+		var page store.TaskPage
+		if status == 200 {
+			if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return page
+	}
+	for category, title := range map[string]string{
+		"development": "Legacy development", "testing": "Test fixtures", "investigation": "Investigate startup",
+		"operations": "Prepare release", "git-head": "Git HEAD 检查", "environment-check": "本地环境启动检查",
+	} {
+		page := read("category="+category, 200)
+		if len(page.Items) != 1 || page.Items[0].Title != title || page.CategoryCounts[category] != 1 || page.Counts["ALL"] != 8 {
+			t.Fatalf("%s: wrong category page %+v", category, page)
+		}
+	}
+	page := read("category=code-review&limit=1", 200)
+	if len(page.Items) != 1 || page.Items[0].ID != child || page.Items[0].GoalID != goal ||
+		page.NextBefore != child || page.CategoryCounts["code-review"] != 2 {
+		t.Fatalf("wrong first review page %+v", page)
+	}
+	page = read(fmt.Sprintf("category=code-review&limit=1&before=%d", child), 200)
+	if len(page.Items) != 1 || page.Items[0].ID != goal || page.NextBefore != 0 {
+		t.Fatalf("wrong next review page %+v", page)
+	}
+	page = read("category=code-review&status=READY&q=child", 200)
+	if len(page.Items) != 1 || page.Items[0].ID != child || page.CategoryCounts["code-review"] != 1 {
+		t.Fatalf("review filters returned %+v", page)
+	}
+	read("category=unknown", 400)
+}
+
 func TestProjectWorkbenchReadsStayScoped(t *testing.T) {
 	ctx := context.Background()
 	db := testdb.Open(t)

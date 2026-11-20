@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"forgeos/internal/agents"
 	"github.com/google/uuid"
 )
 
@@ -45,29 +46,33 @@ type ChatAction struct {
 }
 
 type ChatTurn struct {
-	ID         int64          `json:"id"`
-	ClientID   string         `json:"client_id"`
-	Text       string         `json:"text"`
-	CreatedAt  time.Time      `json:"created_at"`
-	Status     string         `json:"status"`
-	Answer     string         `json:"answer,omitempty"`
-	Error      string         `json:"error,omitempty"`
-	Sources    []ChatSource   `json:"sources,omitempty"`
-	Action     *ChatAction    `json:"action,omitempty"`
-	Activities []ChatActivity `json:"activities,omitempty"`
+	RequestedHarness string         `json:"requested_harness,omitempty"`
+	RequestedModel   string         `json:"requested_model,omitempty"`
+	ID               int64          `json:"id"`
+	ClientID         string         `json:"client_id"`
+	Text             string         `json:"text"`
+	CreatedAt        time.Time      `json:"created_at"`
+	Status           string         `json:"status"`
+	Answer           string         `json:"answer,omitempty"`
+	Error            string         `json:"error,omitempty"`
+	Sources          []ChatSource   `json:"sources,omitempty"`
+	Action           *ChatAction    `json:"action,omitempty"`
+	Activities       []ChatActivity `json:"activities,omitempty"`
 }
 
 type ChatJob struct {
-	ID        int64     `json:"id"`
-	ProjectID int64     `json:"project_id"`
-	Lease     string    `json:"lease"`
-	Until     time.Time `json:"lease_until"`
-	Prompt    string    `json:"prompt"`
-	Recover   bool      `json:"recover_native"`
-	Text      string    `json:"-"`
+	RequestedHarness string    `json:"requested_harness,omitempty"`
+	RequestedModel   string    `json:"requested_model,omitempty"`
+	ID               int64     `json:"id"`
+	ProjectID        int64     `json:"project_id"`
+	Lease            string    `json:"lease"`
+	Until            time.Time `json:"lease_until"`
+	Prompt           string    `json:"prompt"`
+	Recover          bool      `json:"recover_native"`
+	Text             string    `json:"-"`
 }
 
-const chatTurnFields = `t.id,t.client_id,t.text,t.created_at,
+const chatTurnFields = `t.id,t.client_id,t.text,t.requested_model,t.requested_harness,t.created_at,
 	CASE WHEN t.status='running' AND t.lease_until<=now()
 			THEN CASE WHEN t.attempts>=3 OR t.created_at<=now()-interval '30 minutes' THEN 'failed' ELSE 'queued' END
 		WHEN t.status='queued' AND t.created_at<=now()-interval '30 minutes' THEN 'failed'
@@ -80,7 +85,7 @@ const chatTurnFields = `t.id,t.client_id,t.text,t.created_at,
 func scanChatTurn(row interface{ Scan(...any) error }) (ChatTurn, error) {
 	var turn ChatTurn
 	var citations, action []byte
-	err := row.Scan(&turn.ID, &turn.ClientID, &turn.Text, &turn.CreatedAt, &turn.Status, &turn.Answer, &turn.Error, &citations, &action)
+	err := row.Scan(&turn.ID, &turn.ClientID, &turn.Text, &turn.RequestedModel, &turn.RequestedHarness, &turn.CreatedAt, &turn.Status, &turn.Answer, &turn.Error, &citations, &action)
 	if errors.Is(err, sql.ErrNoRows) {
 		return turn, ErrNotFound
 	}
@@ -121,18 +126,24 @@ func (s *Store) ChatHistory(ctx context.Context, project, before int64, limit in
 	return turns, rows.Err()
 }
 
-func (s *Store) SendChat(ctx context.Context, project int64, clientID, text string) (ChatTurn, error) {
+func (s *Store) SendChat(ctx context.Context, project int64, clientID, text, model, harness string) (ChatTurn, error) {
+	if model != "" && harness == "" {
+		harness = "codex"
+	} // Older clients only offered Codex model overrides.
+	if (model == "") != (harness == "") || harness != "" && harness != "claude" && harness != "codex" {
+		return ChatTurn{}, ErrConflict
+	}
 	var id int64
-	err := s.db.QueryRowContext(ctx, `INSERT INTO project_chat_turns(project_id,client_id,text)
-		SELECT id,$2,$3 FROM projects WHERE id=$1 ON CONFLICT (project_id,client_id) DO NOTHING RETURNING id`,
-		project, clientID, text).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `INSERT INTO project_chat_turns(project_id,client_id,text,requested_model,requested_harness)
+		SELECT id,$2,$3,$4,$5 FROM projects WHERE id=$1 ON CONFLICT (project_id,client_id) DO NOTHING RETURNING id`,
+		project, clientID, text, model, harness).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		var existing string
-		err = s.db.QueryRowContext(ctx, `SELECT id,text FROM project_chat_turns WHERE project_id=$1 AND client_id=$2`, project, clientID).Scan(&id, &existing)
+		var existing, existingModel, existingHarness string
+		err = s.db.QueryRowContext(ctx, `SELECT id,text,requested_model,requested_harness FROM project_chat_turns WHERE project_id=$1 AND client_id=$2`, project, clientID).Scan(&id, &existing, &existingModel, &existingHarness)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ChatTurn{}, ErrNotFound
 		}
-		if err == nil && existing != text {
+		if err == nil && (existing != text || existingModel != model || existingHarness != harness) {
 			return ChatTurn{}, ErrConflict
 		}
 	}
@@ -142,7 +153,7 @@ func (s *Store) SendChat(ctx context.Context, project int64, clientID, text stri
 	return s.ChatTurn(ctx, project, id)
 }
 
-func (s *Store) ClaimChat(ctx context.Context, project int64) (*ChatJob, error) {
+func (s *Store) ClaimChat(ctx context.Context, project int64, supportsModel bool) (*ChatJob, error) {
 	tx, err := s.beginRoleClaim(ctx)
 	if err != nil {
 		return nil, err
@@ -154,15 +165,22 @@ func (s *Store) ClaimChat(ctx context.Context, project int64) (*ChatJob, error) 
 	if err != nil {
 		return nil, err
 	}
+	if !supportsModel {
+		d, _ := agents.Lookup("management-chat")
+		entry, err := agentConfig(ctx, tx.Tx, project, d)
+		if err != nil || entry.Effective.Harness != "codex" {
+			return nil, err
+		}
+	}
 	job := ChatJob{ProjectID: project, Lease: uuid.NewString(), Recover: true}
 	err = tx.QueryRowContext(ctx, `UPDATE project_chat_turns SET status='running', attempts=attempts+1,
 		lease=$2,lease_until=now()+interval '6 minutes',evidence='[]'
 		WHERE id=(SELECT id FROM project_chat_turns
-			WHERE project_id=$1 AND status IN ('queued','running') AND attempts<3
+			WHERE project_id=$1 AND ($3 OR requested_model='') AND status IN ('queued','running') AND attempts<3
 			AND created_at>now()-interval '30 minutes' AND (lease_until IS NULL OR lease_until<=now())
 			AND NOT EXISTS (SELECT 1 FROM project_chat_turns WHERE project_id=$1 AND status='running' AND lease_until>now())
 			ORDER BY id LIMIT 1)
-		RETURNING id,text,lease_until`, project, job.Lease).Scan(&job.ID, &job.Text, &job.Until)
+		RETURNING id,text,lease_until,requested_model,requested_harness`, project, job.Lease, supportsModel).Scan(&job.ID, &job.Text, &job.Until, &job.RequestedModel, &job.RequestedHarness)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

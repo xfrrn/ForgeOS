@@ -197,7 +197,34 @@
   background: var(--accent);
 }
 
+.task-categories { margin-bottom: var(--space-4); }
+.task-categories .project-secondary-links { margin-bottom: var(--space-1); }
+.task-categories .muted { padding-inline: var(--space-3); }
+.task-category-count {
+  margin-inline-start: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-git-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-3) 0;
+}
+.project-git-grid > div {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.project-git-commit {
+  display: grid;
+  gap: var(--space-1);
+  margin-block: var(--space-2) var(--space-4);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 560px) {
+  .project-git-grid { grid-template-columns: minmax(0, 1fr); }
   .project-directory-card {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-3);

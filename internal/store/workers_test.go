@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -216,4 +217,118 @@ func TestConcurrentNodeReservations(t *testing.T) {
 	if j, err := s.Claim(ctx, h.Worker, root); err != nil || j == nil {
 		t.Fatal("reconnected node could not reserve", err)
 	}
+}
+
+func TestProcessPoolCapacityAcrossHeartbeats(t *testing.T) {
+	ctx := t.Context()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h := WorkerHeartbeat{Worker: "pool", OS: "windows", Arch: "amd64", CPUs: 4, Slots: 1}
+	policy := PoolLimits{Normal: 1, Maximum: 2}
+	if err := s.SetPoolLimits(ctx, policy); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []int{0, 1, 2} {
+		if got, err := s.PoolHeartbeat(ctx, h, n); err != nil || got != policy {
+			t.Fatalf("policy: %+v %v", got, err)
+		}
+	}
+	rival := h
+	rival.Worker = "unexpected"
+	if _, err := s.PoolHeartbeat(ctx, rival, 0); !errors.Is(err, ErrConflict) {
+		t.Fatalf("second pool host: %v", err)
+	}
+	var nodes []struct {
+		Slots   int
+		Pool    PoolLimits
+		Running int `json:"pool_running"`
+	}
+	raw, err := s.WorkerNodes(ctx)
+	if err != nil || json.Unmarshal(raw, &nodes) != nil || len(nodes) != 1 || nodes[0].Slots != 2 || nodes[0].Running != 2 || nodes[0].Pool != policy {
+		t.Fatalf("inventory: %s %v", raw, err)
+	}
+	for range 3 {
+		p, err := s.CreateProject(ctx, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.CreateTask(ctx, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := t.TempDir()
+	for _, want := range []bool{true, true, false} {
+		job, err := s.Claim(ctx, h.Worker, root)
+		if err != nil || (job != nil) != want {
+			t.Fatalf("pool admission want %t: %v", want, err)
+		}
+	}
+	if err = s.SetPoolLimits(ctx, PoolLimits{Normal: 1, Maximum: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if j, err := s.Claim(ctx, h.Worker, root); err != nil || j != nil {
+		t.Fatalf("claim during drain: %v", err)
+	}
+	if err = s.SetPoolLimits(ctx, PoolLimits{Normal: 2, Maximum: 1}); !errors.Is(err, ErrConflict) {
+		t.Fatal("accepted inverted limits")
+	}
+}
+
+func TestFixedWorkersShareNodeQuotas(t *testing.T) {
+	ctx := t.Context()
+	s := New(isolatedDatabase(t))
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	caps := WorkerCapabilities{SupportsCodex: true, SupportsResources: true}
+	h := WorkerHeartbeat{Worker: "fixed", OS: "windows", Arch: "amd64", CPUs: 12, Slots: 1, ModelSlots: 1, CISlots: 1, Capabilities: caps}
+	initial := FixedLimits{Workers: 1, Tasks: 1, Model: 1, CI: 1}
+	policy := FixedLimits{Workers: 3, Tasks: 5, Model: 3, CI: 2}
+	if _, err := s.FixedHeartbeat(ctx, h, initial, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFixedLimits(ctx, h.Worker, policy); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.FixedHeartbeat(ctx, h, initial, 3); err != nil || got != policy {
+		t.Fatal("saved limits lost", got, err)
+	}
+	root := t.TempDir()
+	var jobs []*Job
+	for i := 0; i < 6; i++ {
+		p, err := s.CreateProject(ctx, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		spec := IssueSpec{Issue: Issue{ID: p.ID, Number: 1, RepositoryID: p.ID}, BaseCommit: strings.Repeat("1", 40), Validation: "docs"}
+		if _, err = s.ImportIssue(ctx, p.ID, spec); err != nil {
+			t.Fatal(err)
+		}
+		j, err := s.ClaimForProjects(ctx, h.Worker, root, nil, caps)
+		if err != nil || (j != nil) != (i < 5) {
+			t.Fatalf("claim %d: %v", i, err)
+		}
+		if j != nil {
+			jobs = append(jobs, j)
+		}
+	}
+	resource := func(i int, step int64, kind string, release, want bool) {
+		t.Helper()
+		j := jobs[i]
+		ok, err := s.ReserveExecutionResource(ctx, j.ExecutionID, ResourceRequest{Lease: j.LeaseToken, Step: step, Kind: kind, Release: release})
+		if err != nil || ok != want {
+			t.Fatalf("job %d, %s: granted %v error %v", i, kind, ok, err)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		resource(i, 1, "model", false, true)
+	}
+	resource(3, 1, "model", false, false)
+	resource(3, 1, "ci", false, true)
+	resource(4, 1, "ci", false, true)
+	resource(0, 1, "model", true, true)
+	resource(0, 2, "ci", false, false)
+	resource(0, 2, "model", false, true)
 }

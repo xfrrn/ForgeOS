@@ -16,7 +16,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 			return err
 		}
 		var job store.ReviewJob
-		status, err := w.claimRole(ctx, "reviewer", "/internal/reviewer/claim?supports_role_resume=1&supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
+		status, err := w.claimRole(ctx, "reviewer", "/internal/reviewer/claim?agent_settings=1&supports_role_resume=1&supports_process=1&supports_budget_deadline=1", map[string]bool{"supports_candidate_context": true}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue
@@ -32,7 +32,7 @@ func (w *worker) runReviewer(ctx context.Context) error {
 		if job.LeaseUntil != nil {
 			turn, stop = context.WithDeadline(ctx, *job.LeaseUntil)
 		}
-		report, err := w.reviewJob(turn, job)
+		report, err := w.reviewJob(w.agentContext(turn, w.roleAgent), job)
 		if stop != nil {
 			stop()
 		}
@@ -66,11 +66,12 @@ func (w *worker) reviewJob(ctx context.Context, job store.ReviewJob) (review.Rep
 	if !job.CaptureProcess {
 		return reviewCandidate(ctx, input, processLog{beforeStart: w.roleStartHook("reviewer", job.Lease, 0)})
 	}
-	version, err := w.roleHarnessVersion("claude")
+	harness := w.roleHarness("claude")
+	version, err := w.roleHarnessVersion(harness)
 	if err != nil {
 		return review.Report{}, err
 	}
-	_, err = w.roleProcessTurn(ctx, target, "claude", version, &report, func(ctx context.Context, p processLog) (string, error) {
+	_, err = w.roleProcessTurn(ctx, target, harness, version, &report, func(ctx context.Context, p processLog) (string, error) {
 		var e error
 		report, e = reviewCandidate(ctx, input, p)
 		return report.Session, e

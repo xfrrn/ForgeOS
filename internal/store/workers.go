@@ -76,6 +76,8 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
+	ClaudePlanning           bool  `json:"supports_claude_planning,omitempty"`
+	AgentSettings            bool  `json:"-"`
 	CommandApprovalProject   int64 `json:"command_approval_project,omitempty"`
 	SupportsModelPause       bool  `json:"supports_model_pause,omitempty"`
 	SupportsPlannerPause     bool  `json:"supports_planner_pause,omitempty"`
@@ -104,6 +106,7 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 		approvals = 0
 	}
 	return WorkerCapabilities{
+		AgentSettings: c.AgentSettings, ClaudePlanning: c.ClaudePlanning && node.ClaudePlanning,
 		CommandApprovalProject: approvals,
 		SupportsModelPause:     c.SupportsModelPause && node.SupportsModelPause,
 		SupportsPlannerPause:   c.SupportsPlannerPause && node.SupportsPlannerPause,
@@ -180,8 +183,68 @@ func (h WorkerHeartbeat) Valid() bool {
 }
 
 func (s *Store) RecordHeartbeat(ctx context.Context, h WorkerHeartbeat) error {
-	if !h.Valid() {
+	_, err := s.recordHeartbeat(ctx, h, nil, nil, nil)
+	return err
+}
+
+type PoolLimits struct {
+	Normal  int `json:"normal"`
+	Maximum int `json:"maximum"`
+}
+
+func (p PoolLimits) Valid() bool {
+	return p.Normal > 0 && p.Maximum >= p.Normal && int64(p.Maximum) <= 2147483647
+}
+func (s *Store) SetPoolLimits(ctx context.Context, p PoolLimits) error {
+	if !p.Valid() {
 		return ErrConflict
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE worker_process_pool SET normal_limit=$1,hard_limit=$2 WHERE singleton", p.Normal, p.Maximum)
+	return err
+}
+func (s *Store) PoolHeartbeat(ctx context.Context, h WorkerHeartbeat, running int) (PoolLimits, error) {
+	return s.recordHeartbeat(ctx, h, &running, nil, nil)
+}
+
+type FixedLimits struct {
+	Workers int `json:"workers"`
+	Tasks   int `json:"tasks"`
+	Model   int `json:"model"`
+	CI      int `json:"ci"`
+}
+
+func (p FixedLimits) Valid() bool {
+	return p.Workers >= 1 && p.Tasks >= 1 && p.Model >= 1 && p.CI >= 1 && int64(max(p.Workers, p.Tasks, p.Model, p.CI)) <= 2147483647
+}
+func (s *Store) SetFixedLimits(ctx context.Context, node string, p FixedLimits) error {
+	if !p.Valid() || node == "" {
+		return ErrConflict
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	r, err := s.db.ExecContext(ctx, "UPDATE worker_nodes SET fixed_limits=$2, slots=$3, model_slots=$4,ci_slots=$5 WHERE worker=$1 AND resident_online IS NOT NULL", node, string(raw), p.Tasks, p.Model, p.CI)
+	if err != nil {
+		return err
+	}
+	n, err := r.RowsAffected()
+	if err == nil && n == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+func (s *Store) FixedHeartbeat(ctx context.Context, h WorkerHeartbeat, p FixedLimits, online int) (FixedLimits, error) {
+	if !p.Valid() || online < 0 || int64(online) > 2147483647 {
+		return p, ErrConflict
+	}
+	_, err := s.recordHeartbeat(ctx, h, nil, &p, &online)
+	return p, err
+}
+func (s *Store) recordHeartbeat(ctx context.Context, h WorkerHeartbeat, running *int, fixed *FixedLimits, online *int) (PoolLimits, error) {
+	var limits PoolLimits
+	if !h.Valid() || running != nil && (*running < 0 || int64(*running) > 2147483647) {
+		return limits, ErrConflict
 	}
 	caps, err := json.Marshal(struct {
 		WorkerCapabilities
@@ -189,20 +252,54 @@ func (s *Store) RecordHeartbeat(ctx context.Context, h WorkerHeartbeat) error {
 		Diagnostics *runtimeinfo.Snapshot   `json:"diagnostics,omitempty"`
 	}{h.Capabilities, h.Adapters, h.Diagnostics})
 	if err != nil {
-		return err
+		return limits, err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO worker_nodes(worker,os,arch,cpus,slots,capabilities,model_slots,ci_slots)
-		VALUES($1,$2,$3,$4,$5,$6,NULLIF($7::integer,0),NULLIF($8::integer,0)) ON CONFLICT(worker) DO UPDATE SET
-		os=excluded.os,arch=excluded.arch,cpus=excluded.cpus,slots=excluded.slots,
-		model_slots=excluded.model_slots,ci_slots=excluded.ci_slots,
-		capabilities=excluded.capabilities,last_seen=clock_timestamp()`, h.Worker, h.OS, h.Arch, h.CPUs, h.Slots, caps, h.ModelSlots, h.CISlots)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return limits, err
+	}
+	defer tx.Rollback()
+	var initial any
+	if fixed != nil {
+		raw, e := json.Marshal(fixed)
+		if e != nil {
+			return limits, e
+		}
+		initial = string(raw)
+	}
+	var effective []byte
+	err = tx.QueryRowContext(ctx, `INSERT INTO worker_nodes(worker,os,arch,cpus,slots,capabilities,model_slots,ci_slots,pool_running,fixed_limits,resident_online)
+        VALUES($1,$2,$3,$4,$5,$6,NULLIF($7::integer,0),NULLIF($8::integer,0),$9,$10,$11)
+        ON CONFLICT(worker) DO UPDATE SET os=excluded.os,arch=excluded.arch,cpus=excluded.cpus,
+        slots=CASE WHEN excluded.resident_online IS NULL THEN excluded.slots ELSE COALESCE((worker_nodes.fixed_limits->>'tasks')::int,excluded.slots) END,
+        model_slots=CASE WHEN excluded.resident_online IS NULL THEN excluded.model_slots ELSE COALESCE((worker_nodes.fixed_limits->>'model')::int,excluded.model_slots) END,
+        ci_slots=CASE WHEN excluded.resident_online IS NULL THEN excluded.ci_slots ELSE COALESCE((worker_nodes.fixed_limits->>'ci')::int,excluded.ci_slots) END,
+        fixed_limits=COALESCE(worker_nodes.fixed_limits,excluded.fixed_limits),resident_online=excluded.resident_online,
+        pool_running=excluded.pool_running,capabilities=excluded.capabilities,last_seen=clock_timestamp()
+        RETURNING fixed_limits`, h.Worker, h.OS, h.Arch, h.CPUs, h.Slots, caps, h.ModelSlots, h.CISlots, running, initial, online).Scan(&effective)
+	if err == nil && fixed != nil {
+		err = json.Unmarshal(effective, fixed)
+	}
+	if err != nil {
+		return limits, err
+	}
+	if running != nil {
+		err = tx.QueryRowContext(ctx, "UPDATE worker_process_pool SET host=$1 WHERE singleton AND (host=$1 OR host IS NULL) RETURNING normal_limit,hard_limit", h.Worker).Scan(&limits.Normal, &limits.Maximum)
+		if errors.Is(err, sql.ErrNoRows) {
+			return limits, ErrConflict
+		}
+		if err != nil {
+			return limits, err
+		}
+	}
+	return limits, tx.Commit()
 }
 
 func (s *Store) WorkerNodes(ctx context.Context) (json.RawMessage, error) {
 	var result json.RawMessage
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(n) || to_jsonb(usage) || jsonb_build_object(
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(n) || to_jsonb(usage) ||
+        CASE WHEN n.pool_running IS NOT NULL AND p.host IS NOT NULL THEN jsonb_build_object('pool',jsonb_build_object('normal',p.normal_limit,'maximum',p.hard_limit),'slots',p.hard_limit) ELSE '{}'::jsonb END || jsonb_build_object(
 		'online',n.last_seen > now() - interval '45 seconds') ORDER BY n.worker),'[]'::jsonb)
-		FROM worker_nodes n CROSS JOIN LATERAL (`+workerUsage+`) usage`).Scan(&result)
+		FROM worker_nodes n LEFT JOIN worker_process_pool p ON p.host=n.worker CROSS JOIN LATERAL (`+workerUsage+`) usage`).Scan(&result)
 	return result, err
 }

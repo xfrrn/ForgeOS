@@ -1,4 +1,6 @@
-export type ProjectTab = 'overview' | 'chat' | 'tasks' | 'reviews' | 'materials'
+import { taskCategory, type TaskCategory } from './workTypes'
+
+export type ProjectTab = 'overview' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials'
 
 type TaskRoute = {
   id: number
@@ -6,12 +8,13 @@ type TaskRoute = {
   planRevision?: number
   questionId?: number
   executionId?: number
+  category?: TaskCategory
 }
 
 type ProjectPage =
-  | { view: 'overview' | 'chat' | 'inbox' | 'questions' | 'notifications' }
+  | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' }
   | { view: 'materials'; key?: string; revision?: number }
-  | { view: 'tasks'; status?: string; queue: boolean }
+  | { view: 'tasks'; status?: string; queue: boolean; category: TaskCategory }
   | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' | 'checks' }
   | { view: 'decisions' | 'shares'; record?: number }
   | { view: 'task'; task: TaskRoute }
@@ -24,7 +27,7 @@ export type ProjectRoute = ProjectPage & {
 }
 
 export type WorkbenchRoute =
-  | { kind: 'projects' | 'system' | 'notifications' | 'missing' }
+  | { kind: 'projects' | 'skills' | 'agents' | 'system' | 'notifications' | 'missing' }
   | { kind: 'legacy-task'; task: TaskRoute; path: string; captureQuery?: string }
   | ProjectRoute
 
@@ -51,6 +54,8 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   if (['/', '/projects', '/overview', '/tasks', '/review', '/approvals', '/questions'].includes(path)) {
     return { kind: 'projects' }
   }
+  if (path === '/skills') return { kind: 'skills' }
+  if (path === '/agents') return { kind: 'agents' }
   if (path === '/workers') return { kind: 'system' }
   if (path === '/notifications') return { kind: 'notifications' }
   const legacy = readTaskRoute(path)
@@ -63,8 +68,10 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   const subpath = scope[2] ?? '/'
   switch (subpath) {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
+    case '/agents': return { ...root, view: 'agents', projectTab: 'agents' }
     case '/chat': return { ...root, view: 'chat', projectTab: 'chat' }
-    case '/tasks': return { ...root, view: 'tasks', projectTab: 'tasks', status: params.get('status') ?? undefined, queue: params.get('tab') === 'queue' }
+    case '/tasks': return { ...root, view: 'tasks', projectTab: 'tasks', status: params.get('status') ?? undefined,
+      queue: params.get('tab') === 'queue', category: taskCategory(params.get('category')) }
     case '/inbox': return { ...root, view: 'inbox', projectTab: 'tasks' }
     case '/reviews': {
       const tab = params.get('tab')
@@ -80,7 +87,8 @@ export function workbenchRoute(location: string): WorkbenchRoute {
     }
   }
   const task = readTaskRoute(subpath)
-  if (task) return { ...root, view: 'task', task: { ...task, executionId: positiveId(params.get('execution') ?? undefined) },
+  if (task) return { ...root, view: 'task', task: { ...task, executionId: positiveId(params.get('execution') ?? undefined),
+    category: params.has('category') ? taskCategory(params.get('category')) : undefined },
     projectTab: 'tasks', captureQuery: query }
   const material = /^\/(decisions|shares)(?:\/([1-9]\d*))?$/.exec(subpath)
   if (material) {
@@ -92,6 +100,8 @@ export function workbenchRoute(location: string): WorkbenchRoute {
 
 export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.kind === 'projects') return '项目'
+  if (route.kind === 'skills') return 'Skill 库'
+  if (route.kind === 'agents') return 'Agent 管理'
   if (route.kind === 'system') return '运行环境'
   if (route.kind === 'notifications') return '通知'
   if (route.kind === 'legacy-task') return route.task.preview ? '预览反馈' : '任务详情'
@@ -100,7 +110,7 @@ export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.view === 'reviews') return { approvals: '待审批', acceptance: '待验收', 'code-reviews': '代码审查', checks: '测试与检查' }[route.tab]
   if (route.view === 'tasks' && route.queue) return '执行队列'
   return {
-    overview: '项目概览', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
+    overview: '项目概览', agents: 'Agent 管理', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
     decisions: '项目决策', shares: '共享经验', questions: '待答问题', notifications: '项目通知',
   }[route.view]
 }

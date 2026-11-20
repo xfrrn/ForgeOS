@@ -10,7 +10,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
+
+	"forgeos/internal/store"
 )
 
 func (w *worker) claimRole(ctx context.Context, role, path string, body, out any) (status int, resultErr error) {
@@ -47,6 +50,19 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 		return 0, err
 	}
 	key := hex.EncodeToString(nonce[:])
+	if w.role != "" && strings.Contains(path, "agent_settings=1") {
+		var harnesses []string
+		if w.planner && w.codex != "" {
+			harnesses = append(harnesses, "codex")
+		}
+		if _, err := claudeExecutable(); err == nil {
+			harnesses = append(harnesses, "claude")
+		}
+		if len(harnesses) == 0 {
+			harnesses = append(harnesses, "none")
+		}
+		path += "&role_harnesses=" + strings.Join(harnesses, ",")
+	}
 	if _, err = db.Exec("INSERT INTO role_claim_request(id,request_key,path,body) VALUES(1,?,?,?) ON CONFLICT(id) DO NOTHING", key, path, raw); err != nil {
 		return 0, err
 	}
@@ -95,7 +111,7 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 	}
 	if status == 200 {
 		w.readRoleRecoveryCapability(response)
-		lease, err := roleAssignmentLease(response)
+		lease, err := store.RoleAssignmentLease(response)
 		if err != nil {
 			return 0, err
 		}

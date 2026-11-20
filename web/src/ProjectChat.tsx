@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { formatTime, Icon, projectHref, type ApiRequest } from './shared'
 import { ThemedSelect } from './ThemedSelect'
+import { ModelSelect } from './ModelSelect'
 import { EmptyState, PageHeading } from './ui'
 import { workTypeName, workTypes } from './workTypes'
 import './project-chat.css'
@@ -12,11 +13,11 @@ type ChatAction = {
   issue_number?: number; work_type?: string; task_id?: number; status: 'pending' | 'confirmed' | 'stale'
 }
 type ChatTurn = {
-  id: number; client_id: string; text: string; created_at: string
+  id: number; client_id: string; text: string; created_at: string; requested_model?: string; requested_harness?: string
   status: 'queued' | 'running' | 'completed' | 'failed'; answer?: string; error?: string
   sources?: ChatSource[]; action?: ChatAction; activities?: ChatActivity[]
 }
-type ChatPage = { enabled: boolean; messages: ChatTurn[]; next_before?: number }
+type ChatPage = { harness?: 'codex' | 'claude'; enabled: boolean; messages: ChatTurn[]; next_before?: number }
 type ChatDraft = { text: string; clientID: string }
 
 const blankDraft: ChatDraft = {text: '', clientID: ''}
@@ -110,7 +111,7 @@ function ChatActionCard({ action, enabled, projectId, onConfirm }: {
 
 function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
   turn: ChatTurn; projectId: number; enabled: boolean; onConfirm: (id: number, workType: string) => Promise<void>
-  onRetry?: (text: string) => void
+  onRetry?: (text: string, model?: string, harness?:string) => void
 }) {
   return <li id={'chat-turn-' + turn.id} className="chat-exchange">
     <div className="chat-message chat-owner">
@@ -118,13 +119,13 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
       <p className="chat-message-text">{turn.text}</p>
     </div>
     <div className="chat-message chat-agent">
-      <div className="chat-message-meta"><span className="chat-agent-icon"><Icon name="MessageSquare" size={15}/></span><strong>Management Agent</strong></div>
+      <div className="chat-message-meta"><span className="chat-agent-icon"><Icon name="MessageSquare" size={15}/></span><strong>Management Agent</strong>{turn.requested_model && <span>所选模型 · {turn.requested_model}</span>}</div>
       <div className="chat-message-body">
         {turn.status === 'queued' && <span className="status status-pending"><i/>等待 Agent 领取</span>}
         {turn.status === 'running' && <span className="status status-running"><i/>正在处理</span>}
         {turn.status === 'failed' && <div className="chat-failed">
           <p>{turn.error || 'Agent 未能完成这次回复。'}</p>
-          {onRetry && <button className="button" type="button" onClick={() => onRetry(turn.text)}>重新提问</button>}
+          {onRetry && <button className="button" type="button" onClick={() => onRetry(turn.text,turn.requested_model ?? '',turn.requested_harness)}>重新提问</button>}
         </div>}
         {turn.answer && <p className="chat-message-text">{turn.answer}</p>}
         {!!turn.sources?.length && <section className="chat-evidence" aria-label="回答依据">
@@ -164,6 +165,9 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
   const [readError, setReadError] = useState('')
   const [reload, setReload] = useState(0)
   const [draft, setDraft] = useState(blankDraft)
+  const [harness, setHarness] = useState<'codex' | 'claude'>('codex')
+  const [model, setModel] = useState('')
+  useEffect(() => { setModel('') }, [harness])
   const [sendBusy, setSendBusy] = useState(false)
   const [sendError, setSendError] = useState('')
 
@@ -181,6 +185,7 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
         const page = await request<ChatPage>(path, {signal: controller.signal})
         if (controller.signal.aborted) return
         setEnabled(page.enabled)
+        setHarness(page.harness ?? 'codex')
         if (!cursorInitialized.current && page.messages?.length) {
           cursorInitialized.current = true
           setBefore(page.next_before)
@@ -200,6 +205,7 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
   useEffect(() => {
     if (!sendBusy && draft.clientID && messages.some(turn => turn.client_id === draft.clientID)) {
       setDraft(blankDraft)
+      setModel('')
       setSendError('')
     }
   }, [messages, draft.clientID, sendBusy])
@@ -244,7 +250,8 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
     setSendError('')
   }
 
-  function focusComposer(text: string) {
+  function focusComposer(text: string, previousModel?: string, previousHarness?:string) {
+    if(previousModel!==undefined)setModel(previousHarness && previousHarness!==harness ? '' : previousModel)
     editDraft(text)
     input.current?.focus()
   }
@@ -253,14 +260,16 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
     const signal = lifetime.current?.signal
     const text = draft.text.trim()
     if (!signal || !enabled || !text || sendBusy) return
+    if(input.current?.form && !input.current.form.reportValidity())return
     const clientID = draft.clientID || crypto.randomUUID()
     setDraft({text: draft.text, clientID})
     setSendBusy(true)
     setSendError('')
     try {
-      const turn = await request<ChatTurn>(path, {method: 'POST', body: JSON.stringify({client_id: clientID, text}), signal})
+      const turn = await request<ChatTurn>(path, {method: 'POST', body: JSON.stringify({client_id: clientID, text, model, harness:model ? harness : undefined}), signal})
       if (signal.aborted) return
       setMessages(old => mergeTurns(old, [turn]))
+      setModel('')
       setDraft(blankDraft)
       window.requestAnimationFrame(() => {
         input.current?.focus({preventScroll: true})
@@ -288,13 +297,13 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
   const ready = enabled !== undefined
   return <div className="project-chat">
     <PageHeading title="聊天" description="向 Management Agent 查询当前项目，或发起需要确认的操作。"
-      actions={messages.length > 0 && <button className="button" type="button" onClick={() => {
+      actions={<><a className="button" href={projectHref(projectId, '/agents')}>查看 Agent 配置</a>{messages.length > 0 && <button className="button" type="button" onClick={() => {
         const focusTarget = input.current ?? navigation.current
         focusTarget?.focus({preventScroll: true})
         navigation.current?.scrollIntoView({block: 'end'})
       }}>
         <Icon name="ChevronDown" size={15}/>最新消息
-      </button>}/>
+      </button>}</>}/>
     <div className="panel project-chat-panel">
       <div className="project-chat-content">
         {!ready && !readError && <p role="status">正在读取聊天…</p>}
@@ -320,6 +329,10 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
       </div>
       <section ref={navigation} className="chat-latest" tabIndex={-1} aria-label="最新消息及输入">
         {enabled && <form className="chat-composer" onSubmit={e => { e.preventDefault(); void send() }}>
+          <ModelSelect key={harness} request={request} harness={harness} label="本条消息模型" defaultLabel="跟随项目聊天配置"
+            value={model} disabled={sendBusy} allowCustom={false} onChange={id=>{
+              setModel(id);setDraft(old=>({...old,clientID:''}));setSendError('')
+            }}/>
           <label htmlFor={field}>发给 Management Agent</label>
           <div className="chat-composer-fields">
             <textarea id={field} ref={input} rows={2} maxLength={4000} aria-describedby={sendError ? `${field}-error` : undefined}

@@ -116,9 +116,11 @@ func run(ctx context.Context) error {
 	ownerAuth.register(mux)
 	registerProjectWorkViews(mux, data, owner)
 	registerProjectOverviewContext(mux, data, root, owner, pollers)
+	registerAgentSettings(mux, data, owner, workers)
 	registerProjectChat(mux, data, root, owner, chatNodes, ghRead)
 	clones := projectCloneService{data: data, localRoot: root, extraHosts: os.Getenv("FORGEOS_GIT_CLONE_HOSTS")}
 	clones.register(mux, owner)
+	registerProjectGit(mux, data, root, owner)
 	registerGitHubWebhooks(mux, data, owner, pollers)
 	stopPreviews, err := startPreviews(mux, data, root, owner, os.Getenv("FORGEOS_PREVIEW_ADDR"))
 	if err != nil {

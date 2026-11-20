@@ -154,8 +154,8 @@ func TestConfiguredPollers(t *testing.T) {
 	}
 }
 
-func TestPollSelectedIssuesAcrossPages(t *testing.T) {
-	root, path, base := issueTestRepo(t)
+func TestPollPublishesIssuesWithoutDispatching(t *testing.T) {
+	root, path, _ := issueTestRepo(t)
 	data := &pollFixture{importFixture: importFixture{path: path}, received: make(map[int64]int)}
 	p, err := pollConfig("3", "docs")
 	if err != nil {
@@ -204,12 +204,12 @@ func TestPollSelectedIssuesAcrossPages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if data.observed[6] != 2 || data.received[6] != 0 {
-		t.Fatal("ordinary discussion was dispatched or omitted", data.observed[6], data.received[6])
+	if data.observed[5] != 2 || data.observed[6] != 2 || data.observed[int64(pageSize)] != 2 ||
+		data.observed[int64(pageSize+1)] != 2 || len(data.received) != 0 {
+		t.Fatalf("issues were dispatched, duplicated, or omitted: observed=%v dispatched=%v", data.observed, data.received)
 	}
-	if reads != 8 || len(data.inbox) != pageSize-6 || data.inbox[0].Number != 6 || len(data.received) != 3 || data.received[5] != 2 || data.received[int64(pageSize+1)] != 2 ||
-		data.spec.BaseCommit != base || data.spec.Validation != "docs" || data.spec.Issue.RepositoryID != 88 || data.spec.ImportOrigin != "github" {
-		t.Fatalf("reads=%d received=%v spec=%+v", reads, data.received, data.spec)
+	if reads != 8 || len(data.inbox) != pageSize-3 || data.inbox[0].Number != 5 || data.inbox[0].SourceDigest == "" {
+		t.Fatalf("reads=%d inbox=%+v", reads, data.inbox)
 	}
 }
 
@@ -233,5 +233,28 @@ func TestPollingStopsDuringRequest(t *testing.T) {
 	stop()
 	if err := p.scan(context.Background(), data, root, func(context.Context, string, any) error { return errGHLimit }); !errors.Is(err, errGHLimit) {
 		t.Fatalf("expected GitHub rate limit, got %v", err)
+	}
+}
+
+func TestPublicGitHubIssueSync(t *testing.T) {
+	if os.Getenv("FORGEOS_TEST_GIT_CLONE") != "1" {
+		t.Skip("set FORGEOS_TEST_GIT_CLONE=1 to check GitHub public API access")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &issuePoller{projectID: 1}
+	data := &pollFixture{importFixture: importFixture{path: root}}
+	if err := p.scan(ctx, data, root, func(ctx context.Context, path string, dest any) error {
+		err := publicGitHubRead(ctx, path, dest)
+		if err != nil {
+			t.Logf("public GitHub API %s: %v", path, err)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

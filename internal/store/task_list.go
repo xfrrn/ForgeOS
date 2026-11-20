@@ -14,12 +14,17 @@ func ValidTaskStatus(status string) bool {
 	return slices.Contains(taskStatuses, status)
 }
 
+func ValidTaskCategory(category string) bool {
+	return category == "" || category == "git-head" || category == "environment-check" || ValidWorkType(category)
+}
+
 type TaskListFilter struct {
 	ProjectID int64
 	Limit     int
 	Before    int64
 	Status    string
 	Query     string
+	Category  string
 }
 
 type TaskSummary struct {
@@ -33,12 +38,14 @@ type TaskSummary struct {
 	Worker      string     `json:"worker,omitempty"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 	PRNumber    int64      `json:"pr_number,omitempty"`
+	GoalID      int64      `json:"goal_id,omitempty"`
 }
 
 type TaskPage struct {
-	Items      []TaskSummary    `json:"items"`
-	NextBefore int64            `json:"next_before,omitempty"`
-	Counts     map[string]int64 `json:"counts"`
+	Items          []TaskSummary    `json:"items"`
+	NextBefore     int64            `json:"next_before,omitempty"`
+	Counts         map[string]int64 `json:"counts"`
+	CategoryCounts map[string]int64 `json:"category_counts,omitempty"`
 }
 
 const taskSummaryTitle = `COALESCE(NULLIF(t.spec->'issue'->>'title',''), CASE WHEN t.kind='environment_check' THEN '本地环境启动检查' ELSE 'Git HEAD 检查' END)`
@@ -51,15 +58,18 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 		return TaskPage{}, errors.New("limit must be between 1 and 100")
 	}
 	var page TaskPage
-	var items, counts []byte
+	var items, counts, categoryCounts []byte
 	// Page and totals share a snapshot even when a Worker changes state during a refresh.
 	err := s.db.QueryRowContext(ctx, `
-		WITH tasks AS (
-		    SELECT t.id, t.project_id, t.kind, t.status,
+		WITH tasks AS NOT MATERIALIZED (
+		    SELECT t.id, t.project_id, t.kind, t.status, t.goal_id,
 		           `+taskSummaryTitle+` AS title,
 		           COALESCE(t.spec->'issue'->>'repository', '') AS repository,
-		           t.spec->'issue'->'number' AS issue_number
-		    FROM work_items t
+		           t.spec->'issue'->'number' AS issue_number,
+		           CASE t.kind WHEN 'git_head' THEN 'git-head' WHEN 'environment_check' THEN 'environment-check'
+		               ELSE COALESCE(NULLIF(g.spec->'issue'->>'work_type',''), NULLIF(t.spec->'issue'->>'work_type',''), 'development')
+		           END AS category
+		    FROM work_items t LEFT JOIN work_items g ON g.id=t.goal_id AND g.project_id=t.project_id
 		    WHERE $5::bigint=0 OR t.project_id=$5
 		), page AS (
 		    SELECT t.*, d.pr_number,
@@ -67,15 +77,20 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 		           (SELECT v.at FROM task_events v WHERE v.task_id=t.id ORDER BY v.id DESC LIMIT 1) AS updated_at
 		    FROM tasks t LEFT JOIN deliveries d ON d.task_id=t.id
 		    WHERE ($1::bigint=0 OR t.id<$1) AND ($2::text='' OR t.status=$2)
+		      AND ($6::text='' OR t.category=$6)
 		      AND ($3::text='' OR lower($3) IN (t.id::text, '#' || t.id::text, 't-' || t.id::text)
 		           OR strpos(lower(t.title),lower($3))>0 OR strpos(lower(t.repository),lower($3))>0)
 		    ORDER BY t.id DESC LIMIT $4
 		), totals AS (
 		    SELECT status, count(*) AS n FROM work_items WHERE $5::bigint=0 OR project_id=$5 GROUP BY status
+		), categories AS (
+		    SELECT category, count(*) AS n FROM tasks
+		    WHERE $6::text<>'' AND ($2::text='' OR status=$2) GROUP BY category
 		)
 		SELECT COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id DESC) FROM page p), '[]'),
-		       COALESCE((SELECT jsonb_object_agg(status,n) FROM totals), '{}')`,
-		f.Before, f.Status, f.Query, f.Limit+1, f.ProjectID).Scan(&items, &counts)
+		       COALESCE((SELECT jsonb_object_agg(status,n) FROM totals), '{}'),
+		       COALESCE((SELECT jsonb_object_agg(category,n) FROM categories), '{}')`,
+		f.Before, f.Status, f.Query, f.Limit+1, f.ProjectID, f.Category).Scan(&items, &counts, &categoryCounts)
 	if err != nil {
 		return TaskPage{}, err
 	}
@@ -87,6 +102,9 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 		page.Counts[status] = 0
 	}
 	if err := json.Unmarshal(counts, &page.Counts); err != nil {
+		return TaskPage{}, err
+	}
+	if err := json.Unmarshal(categoryCounts, &page.CategoryCounts); err != nil {
 		return TaskPage{}, err
 	}
 	var total int64

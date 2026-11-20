@@ -16,6 +16,8 @@ import { ProjectDecisions } from './ProjectDecisions'
 import { ProjectCodeReviews } from './ProjectCodeReviews'
 import { ProjectMaterials } from './ProjectMaterials'
 import { ProjectWorkspace } from './ProjectWorkspace'
+import { SkillLibrary } from './SkillLibrary'
+import { AgentSettings } from './AgentSettings'
 import { ProjectChat } from './ProjectChat'
 import { ProjectExecutionQueue } from './ProjectExecutionQueue'
 import { ProjectTestChecks } from './ProjectTestChecks'
@@ -106,9 +108,11 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
   const { projectId } = page
   switch (page.view) {
     case 'overview': return <Overview projectId={projectId} request={request}/>
+    case 'agents': return <AgentSettings projectId={projectId} request={request}/>
     case 'chat': return <ProjectChat projectId={projectId} request={request}/>
     case 'tasks': return page.queue ? <ProjectExecutionQueue projectId={projectId} request={request}/> :
-      <TaskList key={page.status ?? 'all'} projectId={projectId} initialStatus={page.status} request={request}/>
+      <TaskList key={page.category + '/' + (page.status ?? '')} projectId={projectId}
+        category={page.category} initialStatus={page.status} request={request}/>
     case 'reviews': return <>
       <ReviewNav projectId={projectId} selected={page.tab}/>
       {page.tab === 'acceptance' ? <TaskList projectId={projectId} queue request={request}/> :
@@ -128,7 +132,7 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
     case 'task': return page.task.preview ?
       <PreviewFeedback key={page.task.preview + page.captureQuery} projectId={projectId} task={page.task.id} preview={page.task.preview} captureQuery={page.captureQuery} request={request}/> :
       <TaskDetail key={page.task.id} projectId={projectId} id={page.task.id} planRevision={page.task.planRevision} questionID={page.task.questionId}
-        executionID={page.task.executionId} request={request} onChanged={onChanged}/>
+        executionID={page.task.executionId} category={page.task.category} request={request} onChanged={onChanged}/>
   }
 }
 
@@ -234,6 +238,8 @@ function App() {
       <a className="brand-link" aria-label="ForgeOS 项目首页" href="#/projects"><Brand/></a>
       <nav className="workbench-nav" aria-label="工作台导航">
         <a href="#/projects" aria-current={page.kind === 'projects' ? 'page' : page.kind === 'project' || page.kind === 'legacy-task' ? 'location' : undefined}>项目</a>
+        <a href="#/skills" aria-current={page.kind === 'skills' ? 'page' : undefined}>Skill 库</a>
+        <a href="#/agents" aria-current={page.kind === 'agents' ? 'page' : undefined}>Agent 管理</a>
         <a href="#/workers" aria-current={page.kind === 'system' ? 'page' : undefined}>运行环境</a>
       </nav>
       <div className="header-actions">
@@ -260,12 +266,15 @@ function App() {
     <main id="content" tabIndex={-1} className="content frame">
       {logoutError && <p className="auth-error logout-error" role="alert">{logoutError}</p>}
       {page.kind === 'project' ? <ProjectWorkspace key={page.projectId} projectId={page.projectId} currentTab={page.projectTab} section={page.view}
+        taskList={page.view === 'task' && page.task.category ? '/tasks?category=' + page.task.category : undefined}
         taskId={page.view === 'task' ? page.task.id : undefined} taskQueue={page.view === 'tasks' && page.queue} request={request}>
         <ProjectContent page={page} request={request} onChanged={onChanged}/>
       </ProjectWorkspace> :
         page.kind === 'projects' ? <Projects request={request}/> :
         page.kind === 'legacy-task' ? <LegacyTaskLink key={route} page={page} request={request}/> :
         page.kind === 'notifications' ? <Notifications request={request} onRead={onChanged}/> :
+        page.kind === 'skills' ? <SkillLibrary request={request}/> :
+        page.kind === 'agents' ? <AgentSettings request={request}/> :
         page.kind === 'system' ? <><WorkerNodes request={request}/><GlobalRules request={request}/></> :
         <MissingPage/>}
     </main>

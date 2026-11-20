@@ -156,6 +156,9 @@ func (w *worker) consumeWriterStart(ctx context.Context, q, pending *parkedCheck
 }
 
 func (w *worker) lockAttempt(id int64) (func(), error) {
+	return w.lockJournal(fmt.Sprintf(".execution-%d.lock", id))
+}
+func (w *worker) lockJournal(suffix string) (func(), error) {
 	var seq int
 	var name, path string
 	if err := w.journal.QueryRow("PRAGMA database_list").Scan(&seq, &name, &path); err != nil {
@@ -164,7 +167,7 @@ func (w *worker) lockAttempt(id int64) (func(), error) {
 	if path == "" {
 		return nil, errors.New("execution recovery requires a file journal")
 	}
-	path += fmt.Sprintf(".execution-%d.lock", id)
+	path += suffix
 	if st, err := os.Lstat(path); err == nil && !st.Mode().IsRegular() {
 		return nil, errors.New("execution lock must be a regular file")
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {

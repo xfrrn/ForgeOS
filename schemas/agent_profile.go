@@ -8,3 +8,13 @@ type AgentProfile struct {
 	Tools            *[]string `json:"tools,omitempty"`
 	DisabledFeatures []string  `json:"disabled_features,omitempty"`
 }
+
+func CodexDisabledFeatures() []string {
+	return []string{"apps", "plugins", "hooks"}
+}
+
+func StructuredCodexProfile() AgentProfile {
+	return AgentProfile{Version: 1, Sandbox: "read-only", Permission: "never",
+		DisabledFeatures: append(CodexDisabledFeatures(), "shell_tool", "unified_exec", "multi_agent", "multi_agent_v2",
+			"code_mode", "code_mode_host", "computer_use", "browser_use", "view_image", "image_generation")}
+}

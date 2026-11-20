@@ -201,10 +201,10 @@ func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task,
 	}
 	defer tx.Rollback()
 	var status string
-	var bound int64
-	var planned bool
-	err = tx.QueryRowContext(ctx, `SELECT status,requirement_id,EXISTS(SELECT 1 FROM plan_revisions WHERE task_id=t.id)
-		FROM work_items t WHERE id=$1 AND github_issue_id IS NOT NULL FOR UPDATE`, id).Scan(&status, &bound, &planned)
+	var bound, project int64
+	var planMode, planned bool
+	err = tx.QueryRowContext(ctx, `SELECT status,requirement_id,project_id,COALESCE(spec->>'mode','')='plan',EXISTS(SELECT 1 FROM plan_revisions WHERE task_id=t.id)
+		FROM work_items t WHERE id=$1 AND github_issue_id IS NOT NULL FOR UPDATE`, id).Scan(&status, &bound, &project, &planMode, &planned)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -231,10 +231,19 @@ func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task,
 		if next.WorkType != "" && !ValidWorkType(next.WorkType) {
 			return Task{}, ErrConflict
 		}
+		needsPlan := planMode || next.WorkType != "" && next.WorkType != "development"
+		var harness string
+		if needsPlan {
+			harness, err = planningHarness(ctx, tx, project, next.WorkType)
+			if err != nil {
+				return Task{}, err
+			}
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE work_items SET requirement_id=$2,
 			spec=jsonb_set(spec-'verify_commit','{issue}',$3::jsonb) || CASE
-			WHEN $4 AND COALESCE(spec->>'mode','')<>'plan' THEN jsonb_strip_nulls(jsonb_build_object('mode','plan','child_harness',spec->'harness','harness','codex'))
-			ELSE '{}'::jsonb END,status='READY' WHERE id=$1`, id, rid, string(issue), next.WorkType != "" && next.WorkType != "development"); err != nil {
+			WHEN $4 THEN jsonb_build_object('mode','plan','child_harness',CASE WHEN spec->>'mode'='plan'
+				THEN COALESCE(NULLIF(spec->>'child_harness',''),'codex') ELSE COALESCE(NULLIF(spec->>'harness',''),'codex') END,'harness',$5::text)
+			ELSE '{}'::jsonb END,status='READY' WHERE id=$1`, id, rid, string(issue), needsPlan, harness); err != nil {
 			return Task{}, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,requirement_version_id) VALUES ($1,'requirement_adopted',$2)`, id, rid); err != nil {

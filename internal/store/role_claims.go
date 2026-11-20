@@ -97,3 +97,28 @@ func (s *Store) RoleClaim(ctx context.Context, project int64, role, node, key st
 	}
 	return status, body, tx.Commit()
 }
+
+func RoleAssignmentLease(raw []byte) ([]byte, error) {
+	var job ManagementJob
+	if err := json.Unmarshal(raw, &job); err != nil {
+		return nil, err
+	}
+	lease := job.Lease
+	if job.Curation != nil {
+		lease = job.Curation.Lease
+	}
+	if job.TestPlan != nil {
+		lease = job.TestPlan.Lease
+	}
+	if job.Feedback != nil {
+		lease = job.Feedback.Lease
+	}
+	if job.RepositoryAnalysis != nil {
+		lease = job.RepositoryAnalysis.Lease
+	}
+	if len(lease) != 36 {
+		return nil, errors.New("invalid role assignment lease")
+	}
+	key := sha256.Sum256([]byte(lease))
+	return key[:], nil
+}

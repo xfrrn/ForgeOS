@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +21,7 @@ import (
 )
 
 func TestProjectChatWorkflow(t *testing.T) {
+	t.Setenv("FORGEOS_SKILLS_DIR", t.TempDir())
 	ctx := context.Background()
 	db := testdb.Open(t)
 	data := store.New(db)
@@ -88,6 +91,7 @@ func TestProjectChatWorkflow(t *testing.T) {
 	newHandler := func(nodes chatNodes) *http.ServeMux {
 		mux := http.NewServeMux()
 		registerProjectChat(mux, data, root, "owner", nodes, get)
+		registerAgentSettings(mux, data, "owner", legacyWorker("worker"))
 		return mux
 	}
 	handler := newHandler(nodes)
@@ -127,12 +131,27 @@ func TestProjectChatWorkflow(t *testing.T) {
 		}
 		return turn
 	}
+	var skill store.SkillOption
 	claim := func(token string, want store.ChatTurn) store.ChatJob {
 		t.Helper()
 		var job store.ChatJob
 		key := strings.ReplaceAll(uuid.NewString(), "-", "")
 		path := "/internal/management-chat/claim?supports_role_resume=1"
+		if want.RequestedModel != "" {
+			path += "&agent_settings=1&role_harnesses=codex,claude"
+		}
 		first := request("POST", path, token, key, struct{}{}, 200, &job)
+		if want.RequestedModel != "" {
+			var frozen struct {
+				Agent struct{ Model, Harness, Prompt string }
+			}
+			if json.Unmarshal(first, &frozen) != nil || frozen.Agent.Model != want.RequestedModel || frozen.Agent.Harness != want.RequestedHarness {
+				t.Fatal("selected model did not reach the frozen assignment")
+			}
+			if !strings.Contains(frozen.Agent.Prompt, skill.Entry) || strings.Contains(frozen.Agent.Prompt, "Quote the verified handoff.") {
+				t.Fatal("selected skill missing from chat harness input")
+			}
+		}
 		second := request("POST", path, token, key, struct{}{}, 200, nil)
 		if !bytes.Equal(first, second) || job.ID != want.ID || !job.Recover {
 			t.Fatal("claim was not scoped, frozen and replayable")
@@ -144,9 +163,55 @@ func TestProjectChatWorkflow(t *testing.T) {
 		request("POST", "/internal/management-chat/result", token, "", map[string]any{"id": job.ID, "lease": job.Lease,
 			"answer": "根据本项目记录。", "citations": cites, "action": proposal}, expected, nil)
 	}
-	query := send(alpha.ID, "搜索登录相关的项目资料")
+	var library []store.SkillOption
+	request("GET", "/projects/agent-skills", "owner", "", nil, 200, &library)
+	if len(library) != 0 {
+		t.Fatal("unexpected preinstalled Skill")
+	}
+	var upload bytes.Buffer
+	form := multipart.NewWriter(&upload)
+	for path, contents := range map[string]string{"SKILL.md": "---\nname: chat-handoff\ndescription: Handoff notes\n---\nQuote the verified handoff.", "references/notes.txt": "example reference"} {
+		part, err := form.CreateFormFile(path, filepath.Base(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = part.Write([]byte(contents)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/projects/agent-skills", &upload)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &skill) != nil || skill.FileCount != 2 {
+		t.Fatalf("directory upload failed: %d %s", response.Code, response.Body)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(skill.Entry), "references", "notes.txt"))
+	if err != nil || string(raw) != "example reference" {
+		t.Fatal("missing imported reference")
+	}
+
+	request("PUT", fmt.Sprintf("/projects/%d/agents", alpha.ID), "owner", "", map[string]any{
+		"key": "management-chat", "previous": 0, "effective": 0, "settings": map[string]any{
+			"prompt": "Chat with the project owner.", "harness": "codex", "model": "", "skills": []int64{skill.ID},
+		},
+	}, 204, nil)
+	var query store.ChatTurn
+	body := map[string]string{"client_id": uuid.NewString(), "text": "搜索登录相关的项目资料", "model": "alternate-model", "harness": "claude"}
+	request("POST", chat(alpha.ID), "owner", "", body, 201, &query)
+	if query.RequestedModel != "alternate-model" {
+		t.Fatal("message lost selected model")
+	}
+	body["model"] = "other-model"
+	request("POST", chat(alpha.ID), "owner", "", body, 409, nil)
+	request("POST", "/internal/management-chat/claim?supports_role_resume=1", "alpha-worker", strings.Repeat("b", 32), struct{}{}, 204, nil)
 	request("POST", "/internal/management-chat/claim", "owner", strings.Repeat("a", 32), struct{}{}, 401, nil)
 	request("POST", "/internal/management-chat/claim", "beta-worker", strings.Repeat("a", 32), struct{}{}, 204, nil)
+	request("POST", "/internal/management-chat/claim?supports_role_resume=1&agent_settings=1&role_harnesses=codex", "alpha-worker", strings.Repeat("c", 32), struct{}{}, 204, nil)
 	job := claim("alpha-worker", query)
 	if !strings.Contains(job.Prompt, "AlphaLoginEvidence") || strings.Contains(job.Prompt, "PrivateBetaLoginEvidence") {
 		t.Fatal("chat context did not stay in the selected project")

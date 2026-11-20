@@ -35,6 +35,31 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		nodes, err := data.WorkerNodes(r.Context())
 		respond(w, http.StatusOK, nodes, err)
 	}))
+	mux.HandleFunc("PUT /workers/fixed-pool", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Node string `json:"node"`
+			store.FixedLimits
+		}
+		if !decodeLimited(w, r, &input, 1024) {
+			return
+		}
+		if input.Node == "" || !input.Valid() {
+			problem(w, 400, "节点和各项正整数上限均为必填项。")
+			return
+		}
+		respond(w, 204, nil, data.SetFixedLimits(r.Context(), input.Node, input.FixedLimits))
+	}))
+	mux.HandleFunc("PUT /workers/process-pool", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		var p store.PoolLimits
+		if !decodeLimited(w, r, &p, 1024) {
+			return
+		}
+		if !p.Valid() {
+			problem(w, 400, "常规上限须为正整数，硬上限须大于或等于常规上限。")
+			return
+		}
+		respond(w, 204, nil, data.SetPoolLimits(r.Context(), p))
+	}))
 	mux.HandleFunc("GET /workers/model-budgets", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		rows, err := data.ModelBudgets(r.Context())
 		respond(w, http.StatusOK, rows, err)
@@ -51,6 +76,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		input.Capabilities.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"
+		input.Capabilities.ClaudePlanning = input.Capabilities.SupportsClaude && r.URL.Query().Get("claude_planning") == "1"
 		input.Capabilities.SupportsPlannerPause = r.URL.Query().Get("supports_planner_pause") == "1"
 		input.Capabilities.SupportsReworkAnswers = input.Capabilities.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"
 		if raw := r.URL.Query().Get("adapter_probe"); raw != "" {
@@ -85,6 +111,28 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			problem(w, 403, "heartbeat does not match the authenticated Worker")
 			return
 		}
+		if r.URL.Query().Has("resident_online") {
+			online, err := strconv.Atoi(r.URL.Query().Get("resident_online"))
+			workers, e := strconv.Atoi(r.URL.Query().Get("resident_target"))
+			initial := store.FixedLimits{Workers: workers, Tasks: input.Slots, Model: input.ModelSlots, CI: input.CISlots}
+			if err != nil || e != nil || online < 0 || !initial.Valid() || r.URL.Query().Has("pool_running") {
+				problem(w, 400, "invalid fixed pool heartbeat")
+				return
+			}
+			limits, err := data.FixedHeartbeat(r.Context(), input, initial, online)
+			respond(w, 200, limits, err)
+			return
+		}
+		if r.URL.Query().Has("pool_running") {
+			n, err := strconv.Atoi(r.URL.Query().Get("pool_running"))
+			if err != nil || n < 0 {
+				problem(w, 400, "invalid pool process count")
+				return
+			}
+			limits, err := data.PoolHeartbeat(r.Context(), input, n)
+			respond(w, 200, limits, err)
+			return
+		}
 		respond(w, http.StatusNoContent, nil, data.RecordHeartbeat(r.Context(), input))
 	}))
 	registerCheckpoints(mux, data, owner, workers)
@@ -117,6 +165,11 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		filter := store.TaskListFilter{ProjectID: project, Status: q.Get("status"), Query: strings.TrimSpace(q.Get("q"))}
+		filter.Category = q.Get("category")
+		if !store.ValidTaskCategory(filter.Category) {
+			problem(w, http.StatusBadRequest, "invalid task category")
+			return
+		}
 		if filter.Status == "ALL" {
 			filter.Status = ""
 		}
@@ -315,6 +368,8 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			problem(w, http.StatusForbidden, "claim does not match the authenticated Worker")
 			return
 		}
+		input.ClaudePlanning = r.URL.Query().Get("claude_planning") == "1"
+		input.AgentSettings = r.URL.Query().Get("agent_settings") == "1"
 		input.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"
 		input.SupportsPlannerPause = r.URL.Query().Get("supports_planner_pause") == "1"
 		input.SupportsReworkAnswers = input.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"

@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"forgeos/internal/store"
-	"forgeos/internal/validation"
 )
 
 const (
@@ -37,7 +37,7 @@ type githubPollStatus struct {
 }
 
 type pollStore interface {
-	issueStore
+	Project(context.Context, int64) (store.Project, error)
 	ObserveIssue(context.Context, int64, store.Issue) (int64, error)
 	RecordComments(context.Context, int64, store.Issue, []json.RawMessage) error
 	ReplaceInbox(context.Context, int64, int64, []store.Discussion) error
@@ -113,6 +113,9 @@ func (p *issuePoller) start(ctx context.Context, data pollStore, root string, ge
 				p.recordStatus(err)
 			}
 			pause := time.Minute
+			if _, err := exec.LookPath("gh"); err != nil {
+				pause = 5 * time.Minute
+			}
 			if errors.Is(err, errGHLimit) {
 				pause = time.Hour
 			}
@@ -195,24 +198,23 @@ func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get
 			}
 			issue, err := repo.issue(raw, raw.Number)
 			if err == nil {
+				if open[raw.ID] {
+					continue
+				}
 				open[raw.ID] = true
 			}
 			var taskID int64
-			if err == nil && (!raw.hasAgentLabel() || issue.WorkType == "clarification") {
+			if err == nil {
 				if taskID, err = data.ObserveIssue(ctx, p.projectID, issue); err != nil {
 					return err
 				}
-				item := store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL, WorkType: issue.WorkType, SourceDigest: issueSourceDigest(issue)}
-				if taskID == 0 && raw.hasAgentLabel() && issue.WorkType == "clarification" {
-					item.ClassificationSource = &issue
+				if taskID == 0 {
+					item := store.Discussion{ID: issue.ID, Number: issue.Number, Title: issue.Title, URL: issue.URL, WorkType: issue.WorkType, SourceDigest: issueSourceDigest(issue)}
+					if raw.hasAgentLabel() && issue.WorkType == "clarification" {
+						item.ClassificationSource = &issue
+					}
+					discussions = append(discussions, item)
 				}
-				discussions = append(discussions, item)
-			} else if err == nil {
-				var task store.Task
-				spec := repo.spec(issue, p.validation, "", validation.Policy{})
-				spec.ImportOrigin = "github"
-				task, err = data.ImportIssue(ctx, p.projectID, spec)
-				taskID = task.ID
 			}
 			if err == nil && taskID > 0 && raw.Comments > 0 {
 				if err = pollComments(ctx, data, get, taskID, issue); errors.Is(err, errGHLimit) {
