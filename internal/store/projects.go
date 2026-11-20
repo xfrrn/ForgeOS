@@ -42,14 +42,18 @@ func (s *Store) ProjectWorkspace(ctx context.Context, project int64) (ProjectWor
 func (s *Store) projectWorkspacePage(ctx context.Context, project, before int64, query string) ([]ProjectWorkspace, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		WITH page_projects AS (
-			SELECT p.id,p.path,p.github_repository_id,COALESCE(repo.name,'') AS repository
+			SELECT p.id,p.path,p.github_repository_id,COALESCE(repo.name,clone.repository,'') AS repository
 			FROM projects p LEFT JOIN LATERAL (
 				SELECT t.spec->'issue'->>'repository' AS name FROM work_items t
 				WHERE t.project_id=p.id AND NULLIF(t.spec->'issue'->>'repository','') IS NOT NULL
 				ORDER BY t.id DESC LIMIT 1
-			) repo ON true
+			) repo ON true LEFT JOIN LATERAL (
+				SELECT j.repository FROM repository_clone_jobs j
+				WHERE j.project_id=p.id AND j.status='done'
+				ORDER BY j.updated_at DESC,j.id DESC LIMIT 1
+			) clone ON true
 			WHERE ($1::bigint=0 OR p.id=$1) AND ($2::bigint=0 OR p.id<$2)
-			  AND ($3::text='' OR strpos(lower(p.path),lower($3))>0 OR strpos(lower(repo.name),lower($3))>0)
+			  AND ($3::text='' OR strpos(lower(p.path),lower($3))>0 OR strpos(lower(COALESCE(repo.name,clone.repository,'')),lower($3))>0)
 			ORDER BY p.id DESC LIMIT 31
 		), work_metrics AS (
 			SELECT t.project_id,count(*) FILTER (WHERE t.status='RUNNING') AS running,
@@ -108,35 +112,44 @@ func (s *Store) ProjectCheck(ctx context.Context, project, retry int64) (Task, e
 		return Task{}, err
 	}
 	defer tx.Rollback()
-	if err = tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE id=$1 FOR UPDATE`, project).Scan(&project); errors.Is(err, sql.ErrNoRows) {
-		return Task{}, ErrNotFound
-	}
+	id, err := projectCheck(ctx, tx, project, retry)
 	if err != nil {
 		return Task{}, err
-	}
-	var id int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM work_items WHERE project_id=$1 AND kind='git_head' ORDER BY id DESC LIMIT 1`, project).Scan(&id)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return Task{}, err
-	}
-	if retry != 0 {
-		var belongs bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM work_items WHERE id=$1 AND project_id=$2 AND kind='git_head' AND status IN ('FAILED','DONE'))`, retry, project).Scan(&belongs); err != nil {
-			return Task{}, err
-		}
-		if !belongs {
-			return Task{}, ErrConflict
-		}
-	}
-	if id == 0 || retry == id {
-		task, err := createHeadTask(ctx, tx, project)
-		if err != nil {
-			return Task{}, err
-		}
-		id = task.ID
 	}
 	if err := tx.Commit(); err != nil {
 		return Task{}, err
 	}
 	return s.Task(ctx, id)
+}
+
+func projectCheck(ctx context.Context, tx *sql.Tx, project, retry int64) (int64, error) {
+	var err error
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM projects WHERE id=$1 FOR UPDATE`, project).Scan(&project); errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	var id int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM work_items WHERE project_id=$1 AND kind='git_head' ORDER BY id DESC LIMIT 1`, project).Scan(&id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	if retry != 0 {
+		var belongs bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM work_items WHERE id=$1 AND project_id=$2 AND kind='git_head' AND status IN ('FAILED','DONE'))`, retry, project).Scan(&belongs); err != nil {
+			return 0, err
+		}
+		if !belongs {
+			return 0, ErrConflict
+		}
+	}
+	if id == 0 || retry == id {
+		task, err := createHeadTask(ctx, tx, project)
+		if err != nil {
+			return 0, err
+		}
+		id = task.ID
+	}
+	return id, nil
 }

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError, Icon, type ApiRequest } from './shared'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
 import { projectDisplayName, type WorkspaceProject } from './ProjectWorkspace'
+import { pendingProjectClone, ProjectRegistration, type ProjectRegistrationMethod } from './ProjectRegistration'
 
 type Page = { items: WorkspaceProject[]; next_before?: number }
 type Directory = Page & { query: string }
@@ -16,16 +17,12 @@ export function Projects({ request }: { request: ApiRequest }) {
   const [directory, setDirectory] = useState<Directory>()
   const [input, setInput] = useState('')
   const [query, setQuery] = useState('')
-  const [showRegistration, setShowRegistration] = useState(false)
-  const [path, setPath] = useState('')
+  const [showRegistration, setShowRegistration] = useState(() => Boolean(pendingProjectClone()))
   const [loading, setLoading] = useState(true)
-  const [registering, setRegistering] = useState(false)
+  const [listRevision, setListRevision] = useState(0)
   const [error, setError] = useState('')
-  const [registrationError, setRegistrationError] = useState('')
-  const [registered, setRegistered] = useState<WorkspaceProject>()
-  const lifetime = useRef<AbortController | null>(null)
+  const [registered, setRegistered] = useState<{project: WorkspaceProject; method: ProjectRegistrationMethod}>()
   const listing = useRef<AbortController | null>(null)
-  const pathField = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async (signal: AbortSignal, before?: number) => {
     setLoading(true); setError('')
@@ -54,37 +51,17 @@ export function Projects({ request }: { request: ApiRequest }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    lifetime.current = controller
-    return () => controller.abort()
-  }, [request])
-
-  useEffect(() => {
-    const controller = new AbortController()
     listing.current = controller
     void load(controller.signal)
     return () => controller.abort()
-  }, [load])
+  }, [load, listRevision])
 
-  useEffect(() => { if (showRegistration) pathField.current?.focus() }, [showRegistration])
-
-  async function register(e: FormEvent) {
-    e.preventDefault()
-    const signal = lifetime.current?.signal
-    if (registering || !path.trim() || !signal) return
-    setRegistering(true); setRegistrationError(''); setRegistered(undefined)
-    try {
-      const project = await request<WorkspaceProject>('/projects', { method: 'POST', body: JSON.stringify({ path: path.trim() }), signal })
-      if (signal.aborted) return
-      setPath(''); setRegistered(project); setShowRegistration(false)
-      setInput(''); setQuery('')
-      if (!query && listing.current) void load(listing.current.signal)
-    } catch (e) {
-      if (!signal.aborted) setRegistrationError(e instanceof ApiError && e.status === 400 ? '请填写控制面允许目录中的 Git 仓库根路径。' :
-        e instanceof Error ? e.message : '登记失败。')
-    } finally {
-      if (!signal.aborted) setRegistering(false)
-    }
-  }
+  const onRegistered = useCallback((project: WorkspaceProject, method: ProjectRegistrationMethod) => {
+    setRegistered({project, method})
+    setShowRegistration(false)
+    setInput(''); setQuery('')
+    setListRevision(n => n + 1)
+  }, [])
 
   const page = directory?.query === query ? directory : undefined
   const refresh = (before?: number) => { if (listing.current) void load(listing.current.signal, before) }
@@ -93,8 +70,11 @@ export function Projects({ request }: { request: ApiRequest }) {
   return <div className="project-home">
     <PageHeading title="项目"/>
     <div className="project-home-toolbar">
-      <button className="button primary" type="button" disabled={registering} aria-expanded={showRegistration}
-        aria-controls={showRegistration ? 'project-registration' : undefined} onClick={() => setShowRegistration(open => !open)}>
+      <button className="button primary" type="button" aria-expanded={showRegistration}
+        aria-controls={showRegistration ? 'project-registration' : undefined} onClick={() => {
+          if (!showRegistration) setRegistered(undefined)
+          setShowRegistration(open => !open)
+        }}>
         <span className="project-add-mark" aria-hidden="true">+</span>接入项目
       </button>
       <label className="search project-search"><Icon name="Search" size={17}/>
@@ -102,18 +82,11 @@ export function Projects({ request }: { request: ApiRequest }) {
           maxLength={120} value={input} onChange={e => setInput(e.target.value)}/>
       </label>
     </div>
-    {showRegistration && <form id="project-registration" className="panel detail-card project-registration" onSubmit={register}>
-      <h2>登记本地仓库</h2>
-      <label htmlFor="repo-path">本地仓库路径</label>
-      <p id="repo-hint" className="muted">填写控制面机器上的仓库根目录。可以使用相对于 FORGEOS_REPO_ROOT 的路径。</p>
-      <div className="project-input">
-        <input ref={pathField} id="repo-path" aria-describedby="repo-hint" autoComplete="off" required
-          value={path} onChange={e => setPath(e.target.value)}/>
-        <button className="button primary" disabled={registering || !path.trim()}>登记仓库</button>
-      </div>
-      {registrationError && <p className="detail-problem" role="alert">{registrationError}</p>}
-    </form>}
-    {registered && <p className="detail-notice" role="status">仓库已登记。 <a href={`#/projects/${registered.id}`}>打开 {projectDisplayName(registered)}</a></p>}
+    <ProjectRegistration open={showRegistration} request={request} onRegistered={onRegistered}/>
+    {registered && <p className="detail-notice" role="status">{registered.method === 'clone' ? '仓库已克隆并登记。' : '仓库已登记。'}{' '}
+      <a href={`#/projects/${registered.project.id}`}>打开 {projectDisplayName(registered.project)}</a>
+      {registered.method === 'clone' && <span className="project-registration-path">克隆位置 <code>{registered.project.path}</code></span>}
+    </p>}
     <section className="project-directory-list" aria-label="已登记项目" aria-busy={loading}>
       {error && <div className="panel" role="alert">
         <EmptyState icon="AlertCircle" title="读取项目失败" description={error}>

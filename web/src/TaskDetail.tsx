@@ -81,7 +81,7 @@ type Task = {
   children?: GoalChild[]
   questions?: Question[]
 }
-type Props = { projectId: number; id: number; planRevision?: number; questionID?: number; request: ApiRequest; onChanged: () => void }
+type Props = { projectId: number; id: number; planRevision?: number; questionID?: number; executionID?: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
@@ -387,13 +387,17 @@ function ToolOutput({ output }: { output?: HarnessProcess['tool_output'] }) {
   </details> : null
 }
 
-function Execution({ attempt, task, latest, request, refresh }: { attempt: Attempt; task: Task; latest: boolean; request: ApiRequest; refresh: (message: string) => void }) {
+function Execution({ attempt, task, latest, selected, request, refresh }: { attempt: Attempt; task: Task; latest: boolean; selected: boolean; request: ApiRequest; refresh: (message: string) => void }) {
+  const heading = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (selected) heading.current?.focus()
+  }, [selected])
   const observed = attempt.observed_process
   const result = attempt.result
   const validation = result?.validation
   const start = task.events.find(event => event.execution_id === attempt.id && event.type === 'execution_claimed')
-  return <details className="detail-attempt" open={latest}>
-    <summary><Icon name="ChevronRight" size={15} /><strong>执行 #{attempt.id}</strong><span className="detail-worker mono">{attempt.worker}</span><Status value={attempt.status} /></summary>
+  return <details className="detail-attempt" open={latest || selected}>
+    <summary ref={heading}><Icon name="ChevronRight" size={15} /><strong>执行 #{attempt.id}</strong><span className="detail-worker mono">{attempt.worker}</span><Status value={attempt.status} /></summary>
     <div className="detail-attempt-body"><dl className="detail-facts">
       {start && <Fact label="领取时间">{formatTime(start.at)}</Fact>}
       <Fact label={task.startup ? "执行目录" : "Worktree"} code>{attempt.workspace}</Fact>
@@ -616,7 +620,7 @@ function RefreshDelivery({ id, delivery, request, reload }: { id: number; delive
     <button className="button" disabled={busy} onClick={() => void submit()}>在最新目标版本上重新验证</button></div>
 }
 
-function Detail({ projectId, id, planRevision, questionID, request, onChanged }: Props) {
+function Detail({ projectId, id, planRevision, questionID, executionID, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -790,8 +794,9 @@ function Detail({ projectId, id, planRevision, questionID, request, onChanged }:
             canApply={!task.plan && !task.goal_id && task.latest_requirement !== task.requirement_revision && ['READY','FAILED','WAITING_ACCEPTANCE'].includes(task.status)}
             onApply={message => { refresh(message); onChanged() }}/>}</section>}
         <section className="panel detail-card"><h2><Icon name="Terminal" size={18} />Worker 执行记录<span className="detail-count">{task.attempts.length}</span></h2>
+          {executionID && !task.attempts.some(attempt => attempt.id === executionID) && <p role="status">本任务没有执行 #{executionID} 的记录。</p>}
           {task.attempts.length ? <div className="detail-attempts">{[...task.attempts].reverse().map(attempt =>
-            <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} request={request} refresh={refresh} />)}</div>
+            <Execution key={attempt.id} attempt={attempt} task={task} latest={last?.id === attempt.id} selected={executionID === attempt.id} request={request} refresh={refresh} />)}</div>
             : <p className="detail-empty-text">{task.plan || task.status === 'CANCELLED' ? '尚无执行记录。' : '等待 Worker 领取任务。'}</p>}</section>
       </div>
       <aside className="detail-column">

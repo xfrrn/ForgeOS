@@ -82,7 +82,13 @@ func (w *worker) resumeRoleAssignment(db *sql.DB, out any) (bool, error) {
 		return false, tx.Commit()
 	}
 	w.readRoleRecoveryCapability(raw)
-	if started {
+	if err = json.Unmarshal(raw, out); err != nil {
+		return false, err
+	}
+	// An expired chat lease can be rejected by the control plane without resuming its model.
+	chat, isChat := out.(*managementChatJob)
+	expiredChat := isChat && !chat.LeaseUntil.IsZero() && !time.Now().Before(chat.LeaseUntil)
+	if started && !expiredChat {
 		var completed bool
 		if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM role_turn_results WHERE lease_hash=?) AND NOT EXISTS(SELECT 1 FROM role_turn_results WHERE lease_hash=? AND result IS NULL)", key, key).Scan(&completed); err != nil {
 			return false, err
@@ -95,9 +101,6 @@ func (w *worker) resumeRoleAssignment(db *sql.DB, out any) (bool, error) {
 				return false, err
 			}
 		}
-	}
-	if err = json.Unmarshal(raw, out); err != nil {
-		return false, err
 	}
 	result, err := db.Exec("UPDATE role_assignment SET run_id=? WHERE id=1 AND run_id=?", w.roleRunID, owner)
 	if err != nil {

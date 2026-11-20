@@ -1,16 +1,18 @@
-export type ProjectTab = 'overview' | 'tasks' | 'reviews' | 'materials'
+export type ProjectTab = 'overview' | 'chat' | 'tasks' | 'reviews' | 'materials'
 
 type TaskRoute = {
   id: number
   preview?: string
   planRevision?: number
   questionId?: number
+  executionId?: number
 }
 
 type ProjectPage =
-  | { view: 'overview' | 'inbox' | 'materials' | 'questions' | 'notifications' }
-  | { view: 'tasks'; status?: string }
-  | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' }
+  | { view: 'overview' | 'chat' | 'inbox' | 'questions' | 'notifications' }
+  | { view: 'materials'; key?: string; revision?: number }
+  | { view: 'tasks'; status?: string; queue: boolean }
+  | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' | 'checks' }
   | { view: 'decisions' | 'shares'; record?: number }
   | { view: 'task'; task: TaskRoute }
 
@@ -61,18 +63,25 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   const subpath = scope[2] ?? '/'
   switch (subpath) {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
-    case '/tasks': return { ...root, view: 'tasks', projectTab: 'tasks', status: params.get('status') ?? undefined }
+    case '/chat': return { ...root, view: 'chat', projectTab: 'chat' }
+    case '/tasks': return { ...root, view: 'tasks', projectTab: 'tasks', status: params.get('status') ?? undefined, queue: params.get('tab') === 'queue' }
     case '/inbox': return { ...root, view: 'inbox', projectTab: 'tasks' }
     case '/reviews': {
       const tab = params.get('tab')
-      return { ...root, view: 'reviews', projectTab: 'reviews', tab: tab === 'acceptance' || tab === 'code-reviews' ? tab : 'approvals' }
+      return { ...root, view: 'reviews', projectTab: 'reviews', tab: tab === 'acceptance' || tab === 'code-reviews' || tab === 'checks' ? tab : 'approvals' }
     }
     case '/questions': return { ...root, view: 'questions', projectTab: 'reviews' }
     case '/notifications': return { ...root, view: 'notifications', projectTab: 'overview' }
-    case '/materials': return { ...root, view: 'materials', projectTab: 'materials' }
+    case '/materials': {
+      const key = params.get('key') ?? ''
+      return { ...root, view: 'materials', projectTab: 'materials',
+        key: /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,95}$/u.test(key) ? key : undefined,
+        revision: positiveId(params.get('revision') ?? undefined) }
+    }
   }
   const task = readTaskRoute(subpath)
-  if (task) return { ...root, view: 'task', task, projectTab: 'tasks', captureQuery: query }
+  if (task) return { ...root, view: 'task', task: { ...task, executionId: positiveId(params.get('execution') ?? undefined) },
+    projectTab: 'tasks', captureQuery: query }
   const material = /^\/(decisions|shares)(?:\/([1-9]\d*))?$/.exec(subpath)
   if (material) {
     const record = positiveId(material[2])
@@ -88,9 +97,10 @@ export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.kind === 'legacy-task') return route.task.preview ? '预览反馈' : '任务详情'
   if (route.kind !== 'project') return '页面不存在'
   if (route.view === 'task') return route.task.preview ? '预览反馈' : '任务详情'
-  if (route.view === 'reviews') return { approvals: '待审批', acceptance: '待验收', 'code-reviews': '代码审查' }[route.tab]
+  if (route.view === 'reviews') return { approvals: '待审批', acceptance: '待验收', 'code-reviews': '代码审查', checks: '测试与检查' }[route.tab]
+  if (route.view === 'tasks' && route.queue) return '执行队列'
   return {
-    overview: '项目概览', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
+    overview: '项目概览', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
     decisions: '项目决策', shares: '共享经验', questions: '待答问题', notifications: '项目通知',
   }[route.view]
 }

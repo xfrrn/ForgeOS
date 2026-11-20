@@ -14,7 +14,7 @@ func (w *worker) completedRoleTurn(target store.ManagementProcessReport, dest an
 	if w.roleRunID == "" {
 		return "", false, nil
 	}
-	db, _, err := w.openRoleJournal(context.Background(), roleForProcess(target))
+	db, _, err := w.openRoleJournal(context.Background(), w.roleForProcess(target))
 	if err != nil {
 		return "", false, err
 	}

@@ -15,7 +15,7 @@ type Receipt = {
   plan?: { session_id: string; cases: Case[]; clarifications: { criterion_id: string; question: string }[] }
   coverage?: { session_id: string; plan_sha256: string; items: { criterion_id: string; case_ids: string[]; state: string; rationale: string }[] }
 }
-const labels: Record<string, string> = { awaiting_plan: '等待 Test Agent 生成用例', awaiting_review: '等待 Management 审查覆盖', covered: '覆盖审查通过', gap: '需要补充用例', changes_requested: '需要修订计划', needs_clarification: '需要澄清', plan_failed: '生成计划失败', review_failed: '覆盖审查失败' }
+export const testPlanLabels: Record<string, string> = { awaiting_plan: '等待 Test Agent 生成用例', awaiting_review: '等待 Management 审查覆盖', covered: '覆盖审查通过', gap: '需要补充用例', changes_requested: '需要修订计划', needs_clarification: '需要澄清', plan_failed: '生成计划失败', review_failed: '覆盖审查失败' }
 
 export function CandidateTestPlans({ task, execution, commit, latest, state, attempts, required, current, request, refresh }: {
   attempts: number; required: boolean
@@ -64,7 +64,7 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
   return <section className="detail-validation">
     <h3>候选测试计划</h3>
     {required && !state && <p>项目验收规则要求通过测试计划核对人工验收。</p>}
-    {displayedState && <p>{labels[displayedState] ?? displayedState} · 修订 {displayedRevision}</p>}
+    {displayedState && <p>{testPlanLabels[displayedState] ?? displayedState} · 修订 {displayedRevision}</p>}
     <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '收起测试计划' : '查看测试计划'}</button>
     {open && <>
       {latest > 1 && <div className="detail-actions"><button className="button" disabled={selected <= 1} onClick={() => setRevision(selected - 1)}>上一版测试计划</button>
@@ -88,7 +88,7 @@ export function CandidateTestPlans({ task, execution, commit, latest, state, att
         {receipt.coverage && <><h4>Management 覆盖审查</h4><p><code>{receipt.coverage.session_id}</code></p>
           {receipt.management_profile && <RolePermissions role="Management" profile={receipt.management_profile}/>}
           <p>计划 SHA-256　<code>{receipt.coverage.plan_sha256}</code></p>
-          <ul>{receipt.coverage.items.map(i => <li key={i.criterion_id}>{i.criterion_id} · {labels[i.state] ?? i.state} · {i.case_ids.join(', ')}<p>{i.rationale}</p></li>)}</ul></>}
+          <ul>{receipt.coverage.items.map(i => <li key={i.criterion_id}>{i.criterion_id} · {testPlanLabels[i.state] ?? i.state} · {i.case_ids.join(', ')}<p>{i.rationale}</p></li>)}</ul></>}
       </>}
       {current && selected === latest && <><label>补充验收标准（每行一项）<textarea value={criteria} onChange={e => setCriteria(e.target.value)} /></label>
         <button className="button" disabled={busy} onClick={() => void submit()}>{latest ? '生成修订版测试计划' : '生成测试计划'}</button></>}

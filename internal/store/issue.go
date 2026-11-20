@@ -98,6 +98,22 @@ func (s *Store) FeedbackDispatch(ctx context.Context, project, number int64, src
 }
 
 func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec, sources ...FeedbackSource) (Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+	id, err := importIssueTask(ctx, tx, projectID, spec, sources...)
+	if err != nil {
+		return Task{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Task{}, err
+	}
+	return s.Task(ctx, id)
+}
+
+func importIssueTask(ctx context.Context, tx *sql.Tx, projectID int64, spec IssueSpec, sources ...FeedbackSource) (int64, error) {
 	issue := spec.Issue
 	if spec.ImportOrigin != "" && spec.ImportOrigin != "owner" && spec.ImportOrigin != "github" ||
 		issue.WorkType != "" && !ValidWorkType(issue.WorkType) || issue.OwnerClassified && issue.WorkType == "" ||
@@ -105,19 +121,14 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
 		!ValidValidation(spec.Validation) || (spec.Validation == "auto") != (spec.Policy != nil) ||
 		(spec.Policy != nil && !spec.Policy.Valid()) || (spec.Mode != "" && spec.Mode != "plan") || !spec.ValidHarness() {
-		return Task{}, ErrConflict
+		return 0, ErrConflict
 	}
 	snapshot, err := json.Marshal(spec)
 	if err != nil {
-		return Task{}, err
+		return 0, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Task{}, err
-	}
-	defer tx.Rollback()
 	if err := bindRepository(ctx, tx, projectID, issue.RepositoryID); err != nil {
-		return Task{}, err
+		return 0, err
 	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `
@@ -133,14 +144,14 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 		err = tx.QueryRowContext(ctx, `SELECT id,COALESCE(spec->'issue'->>'work_type','') FROM work_items WHERE project_id = $1 AND github_issue_id = $2 FOR UPDATE`,
 			projectID, issue.ID).Scan(&id, &frozenWorkType)
 		if err == nil && issue.OwnerClassified && frozenWorkType != "" && frozenWorkType != issue.WorkType {
-			return Task{}, ErrConflict
+			return 0, ErrConflict
 		}
 	}
 	if err != nil {
-		return Task{}, err
+		return 0, err
 	}
 	if err = recordRequirement(ctx, tx, id, issue, spec.ImportOrigin); err != nil {
-		return Task{}, err
+		return 0, err
 	}
 	if len(sources) == 1 {
 		src := sources[0]
@@ -153,16 +164,13 @@ func (s *Store) ImportIssue(ctx context.Context, projectID int64, spec IssueSpec
 			SELECT EXISTS(SELECT 1 FROM created) OR EXISTS(SELECT 1 FROM source JOIN feedback_work_items USING(feedback_id) WHERE task_id=$8)`,
 			projectID, issue.Number, src.FeedbackID, src.TaskID, src.Preview, src.Execution, src.Commit, id).Scan(&linked)
 		if err != nil {
-			return Task{}, err
+			return 0, err
 		}
 		if !linked {
-			return Task{}, ErrConflict
+			return 0, ErrConflict
 		}
 	}
-	if err = tx.Commit(); err != nil {
-		return Task{}, err
-	}
-	return s.Task(ctx, id)
+	return id, nil
 }
 
 func bindRepository(ctx context.Context, tx *sql.Tx, projectID, repositoryID int64) error {

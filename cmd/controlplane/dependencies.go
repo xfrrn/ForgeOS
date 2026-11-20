@@ -79,12 +79,9 @@ func fetchBase(ctx context.Context, repo, root, slug, sha string) error {
 	if err != nil {
 		return err
 	}
-	allowed, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return err
-	}
+	allowed := localrepo.ContainingRoot(root, repo)
 	rel, err := filepath.Rel(allowed, objects)
-	if err != nil || !filepath.IsLocal(rel) {
+	if allowed == "" || err != nil || !filepath.IsLocal(rel) {
 		return errors.New("project object store is outside the authorized root")
 	}
 	tmp, err := os.MkdirTemp("", "forgeos-fetch-*")

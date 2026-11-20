@@ -25,15 +25,17 @@ func (w *worker) syncResultWorktree(ctx context.Context, workspace string) error
 		return errors.New("invalid Git metadata paths")
 	}
 	dirs := []string{dir}
+	var metadataRoot string
 	for _, path := range metadata {
 		real, err := filepath.EvalSymlinks(path)
 		if err != nil || !filepath.IsAbs(real) {
 			return errors.New("Git metadata is unavailable")
 		}
-		rel, err := filepath.Rel(w.repoRoot, real)
-		if err != nil || !filepath.IsLocal(rel) {
+		root := localrepo.ContainingRoot(w.repoRoot, real)
+		if root == "" || (metadataRoot != "" && root != metadataRoot) {
 			return errors.New("Git metadata outside repository root")
 		}
+		metadataRoot = root
 		dirs = append(dirs, real)
 	}
 	devices := make(map[uint64]bool)

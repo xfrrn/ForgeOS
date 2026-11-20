@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import { ExperienceSearch } from './ExperienceSearch'
 import { RepositoryDocumentChanges } from './RepositoryDocumentChanges'
@@ -24,7 +24,9 @@ function DocumentText({ doc }: { doc: Document }) {
   </>
 }
 
-export function ProjectMaterials({ project, request }: { project: number; request: ApiRequest }) {
+export function ProjectMaterials({ project, initialKey, initialRevision, request }: {
+  project: number; initialKey?: string; initialRevision?: number; request: ApiRequest
+}) {
   const base = `/projects/${project}/materials`
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState('')
@@ -64,19 +66,22 @@ export function ProjectMaterials({ project, request }: { project: number; reques
     return () => c.abort()
   }, [request, base, filter])
 
-  async function read(key: string, revision?: number, fromList = false) {
+  const read = useCallback(async function (key: string, revision?: number, loadLatest = false) {
     const signal = lifetime.current?.signal
     setBusy(true); setError('')
     try {
       const path = base + '/' + encodeURIComponent(key)
-      const head = fromList ? await request<Document>(path, { signal }) : undefined
+      const head = loadLatest && revision ? await request<Document>(path, { signal }) : undefined
       const value = head && head.revision === revision ? head : await request<Document>(path + (revision ? '?revision=' + revision : ''), { signal })
       if (signal?.aborted) return
       setDoc(value); setDraft(undefined); setConflict(undefined)
       if (head || !revision) setLatest(head?.revision ?? value.revision)
     } catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : '无法读取资料。') }
     finally { if (!signal?.aborted) setBusy(false) }
-  }
+  }, [base, request])
+  useEffect(() => {
+    if (initialKey) void read(initialKey, initialRevision, true)
+  }, [initialKey, initialRevision, read])
   function edit(value: Draft, revision = 0) {
     setDraft(value); setPrevious(revision); setConflict(undefined); setError('')
   }
@@ -115,9 +120,8 @@ export function ProjectMaterials({ project, request }: { project: number; reques
   return <div className="project-setup">
     <BackLink href={projectHref(project)}>返回项目概览</BackLink>
     <PageHeading title={`项目 #${project} · 项目资料`}/>
-    <RepositoryDocumentChanges key={project} project={project} request={request}/>
-    <ExperienceSearch key={'experience-' + project} project={project} request={request}/>
-    <section className="panel detail-card">
+    <section className="panel detail-card" aria-labelledby="material-list-heading">
+      <h2 id="material-list-heading">浏览项目资料</h2>
       <form className="project-input" onSubmit={e => { e.preventDefault(); setFilter({ q: query.trim(), kind, after: '' }) }}>
         <input aria-label="检索资料" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或正文"/>
         <select aria-label="筛选资料类型" value={kind} onChange={e => setKind(e.target.value)}><option value="">全部类型</option>{options}</select>
@@ -125,16 +129,17 @@ export function ProjectMaterials({ project, request }: { project: number; reques
         <button type="button" className="button" disabled={formLocked} onClick={() => edit(empty)}>导入资料</button>
         <button type="button" className="button" disabled={formLocked} onClick={remember}>记住一条项目经验</button>
       </form>
-      {listError && <p role="alert">{listError}</p>}
+      {listError && <p role="alert">{listError} <button className="button" onClick={() => setFilter({ ...filter })}>重试</button></p>}
       {listing && <p role="status">正在读取资料…</p>}
       {!listing && !listError && !rows.length && <p>没有匹配的资料。</p>}
       {rows.map(row => <article className="registered-project" key={row.key}><div>
         <h3>{row.title}</h3><p><code>{row.key}</code> · {kinds[row.kind]} · 修订 {row.revision}</p>
-        {row.start_char !== undefined && row.end_char !== undefined && <p>{row.source} · 正文第 {row.start_char + 1}–{row.end_char} 字符</p>}
+        <p>{row.source}{row.start_char !== undefined && row.end_char !== undefined && ` · 正文第 ${row.start_char + 1}–${row.end_char} 字符`}</p>
         <p>{row.excerpt}</p></div><button className="button" disabled={formLocked} onClick={() => void read(row.key, row.revision, true)}>查看 · {row.key}</button></article>)}
       {more && <button className="button" disabled={listing} onClick={() => setFilter({ ...filter, after: rows[rows.length-1].key })}>更多资料</button>}
     </section>
     {error && <p role="alert" className="detail-problem">{error}</p>}
+    {busy && !draft && <p role="status">正在读取资料修订…</p>}
     {draft ? <form className="panel detail-card material-form" onSubmit={save}>
       <h2 ref={contentHeading} tabIndex={-1}>{previous ? '编辑资料' : draft.kind === 'memory' ? '记住一条项目经验' : '导入项目资料'}</h2>
       <fieldset disabled={busy}>
@@ -152,10 +157,13 @@ export function ProjectMaterials({ project, request }: { project: number; reques
       </fieldset>
     </form> : doc && <section key={doc.key + '/' + doc.revision} className="panel detail-card"><h2 ref={contentHeading} tabIndex={-1}><code>{doc.key}</code></h2><DocumentText doc={doc}/><div className="detail-actions">
       {doc.revision > 1 && <button className="button" disabled={busy} onClick={() => void read(doc.key, doc.revision-1)}>上一修订</button>}
-      {doc.revision < latest
-        ? <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
-        : <button className="button" disabled={busy} onClick={() => edit(doc, doc.revision)}>编辑此修订</button>}
+      {doc.revision < latest ? <>
+        <button className="button" disabled={busy} onClick={() => void read(doc.key, doc.revision+1)}>下一修订</button>
+        <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
+      </> : <button className="button" disabled={busy} onClick={() => edit(doc, doc.revision)}>编辑此修订</button>}
     </div><KnowledgeCuration project={project} path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
       <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
+    <ExperienceSearch project={project} request={request}/>
+    <RepositoryDocumentChanges project={project} request={request}/>
   </div>
 }

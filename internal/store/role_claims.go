@@ -58,7 +58,7 @@ func (s *Store) RoleClaim(ctx context.Context, project int64, role, node, key st
 	nonce, err := hex.DecodeString(key)
 	if err != nil || len(nonce) != 16 || strings.ToLower(key) != key || project < 1 || node == "" || len(node) > 128 ||
 		strings.Trim(node, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" ||
-		(role != "curator" && role != "management" && role != "test-agent" && role != "reviewer") {
+		(role != "curator" && role != "management" && role != "management-chat" && role != "test-agent" && role != "reviewer") {
 		return 0, nil, ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

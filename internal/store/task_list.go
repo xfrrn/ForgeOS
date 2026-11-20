@@ -41,6 +41,8 @@ type TaskPage struct {
 	Counts     map[string]int64 `json:"counts"`
 }
 
+const taskSummaryTitle = `COALESCE(NULLIF(t.spec->'issue'->>'title',''), CASE WHEN t.kind='environment_check' THEN '本地环境启动检查' ELSE 'Git HEAD 检查' END)`
+
 func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, error) {
 	if f.Limit == 0 {
 		f.Limit = 30
@@ -54,7 +56,7 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 	err := s.db.QueryRowContext(ctx, `
 		WITH tasks AS (
 		    SELECT t.id, t.project_id, t.kind, t.status,
-		           COALESCE(NULLIF(t.spec->'issue'->>'title',''), CASE WHEN t.kind='environment_check' THEN '本地环境启动检查' ELSE 'Git HEAD 检查' END) AS title,
+		           `+taskSummaryTitle+` AS title,
 		           COALESCE(t.spec->'issue'->>'repository', '') AS repository,
 		           t.spec->'issue'->'number' AS issue_number
 		    FROM work_items t

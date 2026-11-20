@@ -15,6 +15,8 @@ func roleForReceipt(path string) string {
 	switch path {
 	case "/internal/management/result", "/internal/management/questions/result", "/internal/management/feedback/result", "/internal/management/issue-classifications/result", "/internal/management/repository-analysis/result", "/internal/management/test-plans/result", "/internal/management/curation/result":
 		return "management"
+	case managementChatResultPath:
+		return managementChatRole
 	case "/internal/curator/result":
 		return "curator"
 	case "/internal/test-agent/result":
@@ -26,7 +28,7 @@ func roleForReceipt(path string) string {
 }
 
 func (w *worker) openRoleJournal(ctx context.Context, role string) (*sql.DB, string, error) {
-	if role != "management" && role != "curator" && role != "test-agent" && role != "reviewer" {
+	if role != "management" && role != managementChatRole && role != "curator" && role != "test-agent" && role != "reviewer" {
 		return nil, "", errors.New("invalid role journal")
 	}
 	node := w.id

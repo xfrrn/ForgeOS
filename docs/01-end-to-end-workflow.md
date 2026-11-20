@@ -32,9 +32,9 @@ flowchart TD
 
 交付物：Project Profile、Repository Mapping、Environment Inventory、Secret Requirement Inventory、初始化报告。
 
-Owner 在工作台选择“项目接入”，登记控制面机器上的 Git 仓库，随后运行 HEAD 检查。任务详情展示实际执行的 Worker、Worktree、提交号、退出码和事件。已有项目会列出最近一次 HEAD 检查。仓库尚无提交时可先检查失败回执，补上初始提交后在项目页重新检查。项目环境的启动验证和初始化报告分别验收。
+Owner 在工作台选择“项目接入”，登记控制面机器上的 Git 仓库，随后在“项目资料 → 仓库 HEAD 检查”运行检查。任务详情展示实际执行的 Worker、Worktree、提交号、退出码和事件。“仓库 HEAD 检查”会列出最近一次检查。仓库尚无提交时可先检查失败回执，补上初始提交后在同一区域重新检查。项目环境的启动验证和初始化报告分别验收。
 
-成功的 HEAD 检查可在任务详情“读取仓库清单”。控制面按回执中的提交遍历已跟踪的普通文件，为入口文档、包清单、锁文件、构建与启动配置、ForgeOS 配置保存路径和 Git blob。Go 模块列出声明的依赖模块名。Node.js 包和 PHP Composer 清单分别列出包依赖及项目定义的脚本名。其他已识别的依赖清单先提供文件引用。打开历史清单可核对扫描时的 GitHub origin 和控制面绑定的仓库数字 ID。仓库更新后在项目接入页选择“检查当前 HEAD”，从新任务生成新版本的清单。
+成功的 HEAD 检查可在任务详情“读取仓库清单”。控制面按回执中的提交遍历已跟踪的普通文件，为入口文档、包清单、锁文件、构建与启动配置、ForgeOS 配置保存路径和 Git blob。Go 模块列出声明的依赖模块名。Node.js 包和 PHP Composer 清单分别列出包依赖及项目定义的脚本名。其他已识别的依赖清单先提供文件引用。打开历史清单可核对扫描时的 GitHub origin 和控制面绑定的仓库数字 ID。仓库更新后在“项目资料”选择“检查当前 HEAD”，从新任务生成新版本的清单。
 
 对于 `composer.json`，清单列出 `require` 和 `require-dev` 中的包及平台依赖。展开文件可查看 `composer run-script` 入口。扫描只归档名称和来源 blob，脚本内容及仓库地址配置不进入回执。[Composer 项目配置](https://getcomposer.org/doc/04-schema.md) · [Composer 脚本](https://getcomposer.org/doc/articles/scripts.md)
 

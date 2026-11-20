@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { approvalLabels, approvalPath, type ApprovalItem } from './Approvals'
 import { noticeLabels, noticePath, type Notice } from './Notifications'
+import { QueueReason, queueTaskHref, RoleQueueList, type ExecutionQueuePage } from './ProjectExecutionQueue'
 import { formatTime, Icon, projectHref, type ApiRequest } from './shared'
 import { EmptyState, MetricCard, PageHeading } from './ui'
 
@@ -22,7 +23,7 @@ const breakdown = [
 const noticeIcons = { question: 'MessageSquare', plan: 'ListChecks', acceptance: 'ClipboardCheck', failure: 'AlertCircle' } as const
 const approvalIcons = { plan: 'ListChecks', decision: 'ClipboardCheck', share: 'GitBranch', question: 'MessageSquare', command: 'Terminal', patch: 'FileCode2' } as const
 
-type Snapshot = { counts: Record<string, number>; notices: Notice[]; approvals: ApprovalItem[]; at: string }
+type Snapshot = { counts: Record<string, number>; notices: Notice[]; approvals: ApprovalItem[]; queue?: ExecutionQueuePage; at: string }
 
 function QueueRow({ href, icon, title, children }: {
   href: string; icon: ComponentProps<typeof Icon>['name']; title: string; children: ReactNode
@@ -40,6 +41,7 @@ function QueueRow({ href, icon, title, children }: {
 export function Overview({projectId, request}: {projectId: number; request: ApiRequest}) {
   const [data, setData] = useState<Snapshot>()
   const [error, setError] = useState('')
+  const [queueError, setQueueError] = useState('')
   const [revision, setRevision] = useState(0)
   const [refreshing, setRefreshing] = useState(true)
   useEffect(() => {
@@ -48,13 +50,20 @@ export function Overview({projectId, request}: {projectId: number; request: ApiR
     const options = {signal: stop.signal}
     async function load() {
       try {
-        const [tasks, notices, approvals] = await Promise.all([
+        const [tasks, notices, approvals, queue] = await Promise.all([
           request<{counts: Record<string, number>}>(`/tasks?limit=1&project_id=${projectId}`, options),
           request<{items: Notice[]}>(`/tasks/notifications?scope=pending&project_id=${projectId}`, options),
           request<{items: ApprovalItem[]}>(`/tasks/approvals?include_questions=1&include_commands=1&include_patches=1&project_id=${projectId}`, options),
+          request<ExecutionQueuePage>(`/projects/${projectId}/execution-queue`, options).then(result => {
+            if (!stop.signal.aborted) setQueueError('')
+            return result
+          }).catch(cause => {
+            if (!stop.signal.aborted) setQueueError(cause instanceof Error ? cause.message : '无法读取执行队列。')
+            return undefined
+          }),
         ])
         if (stop.signal.aborted) return
-        setData({ counts: tasks.counts, notices: notices.items.slice(0, 5), approvals: approvals.items.slice(0, 5), at: new Date().toISOString() })
+        setData({ counts: tasks.counts, notices: notices.items.slice(0, 5), approvals: approvals.items.slice(0, 5), queue, at: new Date().toISOString() })
         setError('')
       } catch (e) {
         if (!stop.signal.aborted) setError(e instanceof Error ? e.message : '读取项目概览失败。')
@@ -73,6 +82,7 @@ export function Overview({projectId, request}: {projectId: number; request: ApiR
   }
 
   const total = data?.counts.ALL ?? 0
+  const blockers = data?.queue?.items.filter(item => ['BLOCKED', 'WAITING_INPUT', 'PAUSED'].includes(item.status) || item.lease_expired).slice(0, 4) ?? []
   return <>
     <PageHeading title="项目概览"
       description={data ? <>最近同步 <time dateTime={data.at}>{formatTime(data.at)}</time></> : undefined}
@@ -103,6 +113,18 @@ export function Overview({projectId, request}: {projectId: number; request: ApiR
             })}
           </ul>
         </section>
+        <section className="panel overview-card" aria-labelledby="blockers-heading">
+          <div className="overview-heading">
+            <h2 id="blockers-heading">主要阻塞</h2>
+            <a className="overview-link" href={projectHref(projectId, '/tasks?tab=queue')}>执行队列<Icon name="ChevronRight" size={14}/></a>
+          </div>
+          {queueError ? <p className="detail-problem" role="alert">{queueError}</p> : blockers.length === 0 ?
+            <EmptyState icon="Activity" title="暂无等待依赖、人工回答或暂停的任务"/> : <ul className="overview-list">{blockers.map(item =>
+              <li key={item.task_id} className="registered-project"><div>
+                <a className="task-title" href={queueTaskHref(projectId, item)}>{item.title}</a>
+                <p className="muted">T-{item.task_id} · <QueueReason projectId={projectId} item={item}/></p>
+              </div></li>)}</ul>}
+        </section>
         <section className="panel overview-card" aria-labelledby="notices-heading">
           <div className="overview-heading">
             <h2 id="notices-heading">待处理通知</h2>
@@ -114,9 +136,9 @@ export function Overview({projectId, request}: {projectId: number; request: ApiR
             </QueueRow>)}</ul>}
         </section>
       </div>
-      <section className="panel overview-card" aria-labelledby="approvals-heading">
+      <div className="overview-stack"><section className="panel overview-card" aria-labelledby="approvals-heading">
         <div className="overview-heading">
-          <h2 id="approvals-heading">待审批记录</h2>
+          <h2 id="approvals-heading">待你审批</h2>
           <a className="overview-link" href={projectHref(projectId, '/reviews')}>全部审批<Icon name="ChevronRight" size={14}/></a>
         </div>
         {data.approvals.length === 0 ? <EmptyState icon="ListChecks" title="当前没有待审批记录"/> :
@@ -124,6 +146,12 @@ export function Overview({projectId, request}: {projectId: number; request: ApiR
             {approvalLabels[a.kind]}{a.revision ? ' · 修订 ' + a.revision : ''}
           </QueueRow>)}</ul>}
       </section>
+      {data.queue && <section className="panel overview-card" aria-labelledby="roles-heading">
+        <div className="overview-heading"><h2 id="roles-heading">Agent 分工进度</h2>
+          <a className="overview-link" href={projectHref(projectId, '/tasks?tab=queue')}>查看队列<Icon name="ChevronRight" size={14}/></a>
+        </div>
+        <RoleQueueList projectId={projectId} roles={data.queue.roles}/>
+      </section>}</div>
     </div>}
   </>
 }

@@ -44,11 +44,22 @@ func within(root, path string) bool {
 
 // RelativePath translates the registered control-plane path for a node with another mount.
 func RelativePath(root, repo string) string {
+	if suffix, ok := strings.CutPrefix(repo, managedPrefix); ok {
+		if _, err := managedRelativePath(suffix); err == nil {
+			return repo
+		}
+		return ""
+	}
 	if !filepath.IsAbs(repo) {
 		return ""
 	}
-	root, err := filepath.EvalSymlinks(root)
-	if err != nil {
+	root, rootErr := realDirectory(root)
+	if real, err := filepath.EvalSymlinks(repo); err == nil {
+		if selected := preferredRepoRoot(root, real); selected != "" && selected != root {
+			return managedWirePath(selected, real)
+		}
+	}
+	if rootErr != nil {
 		return ""
 	}
 	rel, err := filepath.Rel(root, repo)
@@ -59,6 +70,15 @@ func RelativePath(root, repo string) string {
 }
 
 func ResolveAssigned(ctx context.Context, root, registered, relative string) (string, error) {
+	if strings.HasPrefix(registered, managedPrefix) {
+		if relative != "" && relative != registered {
+			return "", errors.New("assigned managed repository paths do not match")
+		}
+		return ResolveRepo(ctx, root, registered)
+	}
+	if strings.HasPrefix(relative, managedPrefix) {
+		return ResolveRepo(ctx, root, relative)
+	}
 	if relative == "" {
 		return ResolveRepo(ctx, root, registered)
 	}
@@ -79,18 +99,34 @@ func ResolveRepo(ctx context.Context, allowedRoot, path string) (string, error) 
 	if !filepath.IsAbs(allowedRoot) || path == "" {
 		return "", errors.New("expected an absolute repository root and a project path")
 	}
-	root, err := filepath.EvalSymlinks(allowedRoot)
-	if err != nil {
+	suffix, managed := strings.CutPrefix(path, managedPrefix)
+	base := allowedRoot
+	if managed {
+		local, err := managedRelativePath(suffix)
+		if err != nil {
+			return "", err
+		}
+		base, path = ManagedRoot(), local
+	}
+	root, err := realDirectory(base)
+	if err != nil && (managed || !filepath.IsAbs(path)) {
 		return "", errors.New("repository root unavailable")
 	}
-	if !filepath.IsAbs(path) {
+	relative := !filepath.IsAbs(path)
+	if relative {
 		if !filepath.IsLocal(path) {
 			return "", errors.New("invalid relative repository path")
 		}
 		path = filepath.Join(root, path)
 	}
 	repo, err := filepath.EvalSymlinks(path)
-	if err != nil || !within(root, repo) {
+	if err != nil || (relative && !within(root, repo)) {
+		return "", errors.New("repository path is unavailable or outside the permitted root")
+	}
+	if !managed {
+		root = preferredRepoRoot(root, repo)
+	}
+	if root == "" || !within(root, repo) {
 		return "", errors.New("repository path is unavailable or outside the permitted root")
 	}
 	out, err := Git(ctx, repo, "rev-parse", "--path-format=absolute", "--show-toplevel", "--absolute-git-dir", "--git-common-dir")

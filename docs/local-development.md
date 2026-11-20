@@ -67,11 +67,17 @@ Owner 可向 `POST /tasks/{id}/repository-analysis` 发送 `{}` 首次派发，�
 | `GET /tasks/{id}/initialization-reports` | 按版本倒序列出归档时间。 |
 | `GET /tasks/{id}/initialization-reports/{revision}` | 读取该版本的完整报告，与工作台“下载 JSON”内容一致。 |
 
-启动服务后，Owner 可在项目首页点「接入项目」登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后打开项目，在「概览」点「运行 HEAD 检查」进入任务详情。Worker 未上线时任务显示待执行。成功后可核对仓库的完整提交号。如果失败，项目概览的「重新检查」会保留原任务并生成下一次检查。
+启动服务后，Owner 可在项目首页点「接入项目」。选择「从链接克隆」，填入 GitHub、GitLab 或 Bitbucket 仓库链接并查看克隆进度。ForgeOS 在后台克隆，完成后登记项目并显示实际路径。相同仓库链接复用已接入项目。Git 的 `git@host:owner/repo` 和 `ssh://git@host/owner/repo` 地址会转换为 HTTPS。私有 GitHub 仓库可使用控制面账号已登录的 `gh` 访问权限。部署自托管 Git 服务时，将可信域名写入控制面的 `FORGEOS_GIT_CLONE_HOSTS`，用逗号分隔。
+
+克隆可以使用控制面环境的 `FORGEOS_GIT_CLONE_PROXY`。未设置时，ForgeOS 读取服务账号 `~/.gitconfig` 中适用于此仓库的 `http.proxy`，并继续使用隔离的 Git 配置执行克隆。
+
+「更改目录」可以选择托管根目录内的子目录或绝对路径，用于后续克隆。Windows 默认托管根目录为 `%LOCALAPPDATA%\ForgeOS\repositories`，其他系统默认使用用户配置目录下的 `ForgeOS/repositories`。需要将托管仓库放到另一个盘或路径时，在控制面和 Worker 上设置 `FORGEOS_MANAGED_REPO_ROOT` 为对应的绝对目录。
+
+选择「登记本地仓库」时，填写控制面机器上的现有 Git 工作树根路径，支持允许目录内的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。接入后在「项目资料」的「仓库 HEAD 检查」点「运行 HEAD 检查」进入任务详情。Worker 未上线时任务显示待执行。成功后可核对仓库的完整提交号。如果失败，同一区域的「重新检查」会保留原任务并生成下一次检查。
 
 Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。
 
-项目更新后，可在成功检查的项目行选择“检查当前 HEAD”，也可以使用同一 API 提交已完成的检查编号。每次检查都可以按独立任务编号查看当时的仓库清单。
+项目更新后，可在「项目资料」选择「检查当前 HEAD」，也可以使用同一 API 提交已完成的检查编号。每次检查都可以按独立任务编号查看当时的仓库清单。
 
 在同一个 PowerShell 中执行以下命令，两个子进程会继承各自需要的配置。默认控制面地址为 `http://127.0.0.1:8080`。若端口已占用，可在启动前同时设置 `FORGEOS_LISTEN_ADDR`（例如 `127.0.0.1:8081`）和 `FORGEOS_API_URL`（例如 `http://127.0.0.1:8081`）。
 
@@ -108,7 +114,13 @@ $env:FORGEOS_OWNER_CREDENTIALS_FILE = 'D:\forgeos-private\owner-credentials.json
 
 在浏览器打开控制面地址（默认 `http://127.0.0.1:8080/`），用配置的邮箱和密码登录。浏览器会话有效期为 12 小时，退出登录或控制面重启后需重新登录。
 
-登录后默认打开「项目」。项目卡片显示仓库和执行中、待审批、待验收的数量，点数字可进入该项目对应的列表。打开项目后，通过「概览」「任务」「审核与验收」「项目资料」切换内容。任务页支持搜索和按状态筛选。审核与验收集中显示待审批、待验收、已发起的代码审查及待答问题。执行节点与全局规则可从右上角的账号菜单进入。
+登录后默认打开「项目」。项目卡片显示仓库和执行中、待审批、待验收的数量，点数字可进入该项目对应的列表。打开项目后，通过「概览」「聊天」「任务」「审核与验收」「项目资料」切换内容。任务页支持搜索、按状态筛选以及查看执行队列。审核与验收集中显示待审批、待验收、已发起的代码审查、测试与检查及待答问题。执行节点与全局规则可从右上角的账号菜单进入。
+
+### 启用项目聊天
+
+在控制面设置 `FORGEOS_MANAGEMENT_CHAT_NODES_FILE` 为本机授权文件的绝对路径。文件为 JSON 数组，每项包含 `project_id` 和独立随机聊天令牌的十六进制 SHA-256 `token_sha256`。每个已启用项目使用独立令牌。为该项目以普通账号运行 `worker management-chat`，仅配置回环 `FORGEOS_API_URL`、本项目的 `FORGEOS_MANAGEMENT_CHAT_TOKEN` 和已登录的本机 Codex。可设置 `FORGEOS_CODEX_BIN` 指定 Codex，设置 `FORGEOS_WORKER_STATE_DIR` 保存私有的恢复日志。Windows 可在现有启动任务配置的 `services` 里增加 `management-chat`，将工作程序的参数设为 `["management-chat"]`，通过 `Install-ForgeOSTasks.ps1 -Role management-chat` 注册。
+
+每个项目保留一条聊天历史。Management 回答项目进度、执行队列和已有资料问题。派发本项目已有 Issue 或检查 HEAD 时，聊天先展示待确认卡。Issue 确认时重新核对来源版本，成功卡可回到具体任务。关联任务有真实角色回执时，聊天内可打开处理记录。关闭聊天节点配置后，Owner 仍可回读历史。
 
 点开任务可查看 Issue、历次 Worker、Worktree、原生 Session、验证输出及交付记录。在执行记录内展开「查看代码差异」核对候选。验收面板会显示本次执行 ID 和完整 SHA。「通过验收」按项目现有配置决定是否触发 GitHub 交付。「退回修改」需要填写原因，并在同一任务下重新排队。已合并的任务提供 PR 链接和最终合并 SHA。任务详情链接包含所属项目，例如 `/#/projects/1/tasks/11`。旧任务链接也可定位到所属项目。
 

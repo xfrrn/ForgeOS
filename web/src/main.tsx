@@ -16,6 +16,9 @@ import { ProjectDecisions } from './ProjectDecisions'
 import { ProjectCodeReviews } from './ProjectCodeReviews'
 import { ProjectMaterials } from './ProjectMaterials'
 import { ProjectWorkspace } from './ProjectWorkspace'
+import { ProjectChat } from './ProjectChat'
+import { ProjectExecutionQueue } from './ProjectExecutionQueue'
+import { ProjectTestChecks } from './ProjectTestChecks'
 import { ApiError, Icon, projectHref, requestWith, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
 import { workbenchRoute, workbenchTitle, type ProjectRoute, type WorkbenchRoute } from './workbenchRoutes'
@@ -89,11 +92,12 @@ function Login({ checking, onLogin, initialError }: { checking: boolean; onLogin
   </div>
 }
 
-function ReviewNav({projectId, selected}: {projectId: number; selected: 'approvals' | 'acceptance' | 'questions' | 'code-reviews'}) {
+function ReviewNav({projectId, selected}: {projectId: number; selected: 'approvals' | 'acceptance' | 'questions' | 'code-reviews' | 'checks'}) {
   return <nav className="project-review-nav" aria-label="审核与验收">
     <a className="button" aria-current={selected === 'approvals' ? 'page' : undefined} href={projectHref(projectId, '/reviews?tab=approvals')}>待审批</a>
     <a className="button" aria-current={selected === 'acceptance' ? 'page' : undefined} href={projectHref(projectId, '/reviews?tab=acceptance')}>待验收</a>
     <a className="button" aria-current={selected === 'code-reviews' ? 'page' : undefined} href={projectHref(projectId, '/reviews?tab=code-reviews')}>代码审查</a>
+    <a className="button" aria-current={selected === 'checks' ? 'page' : undefined} href={projectHref(projectId, '/reviews?tab=checks')}>测试与检查</a>
     <a className="button" aria-current={selected === 'questions' ? 'page' : undefined} href={projectHref(projectId, '/questions')}>待答问题</a>
   </nav>
 }
@@ -102,11 +106,14 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
   const { projectId } = page
   switch (page.view) {
     case 'overview': return <Overview projectId={projectId} request={request}/>
-    case 'tasks': return <TaskList key={page.status ?? 'all'} projectId={projectId} initialStatus={page.status} request={request}/>
+    case 'chat': return <ProjectChat projectId={projectId} request={request}/>
+    case 'tasks': return page.queue ? <ProjectExecutionQueue projectId={projectId} request={request}/> :
+      <TaskList key={page.status ?? 'all'} projectId={projectId} initialStatus={page.status} request={request}/>
     case 'reviews': return <>
       <ReviewNav projectId={projectId} selected={page.tab}/>
       {page.tab === 'acceptance' ? <TaskList projectId={projectId} queue request={request}/> :
-        page.tab === 'code-reviews' ? <ProjectCodeReviews projectId={projectId} request={request}/> : <Approvals projectId={projectId} request={request}/>}
+        page.tab === 'code-reviews' ? <ProjectCodeReviews projectId={projectId} request={request}/> :
+        page.tab === 'checks' ? <ProjectTestChecks projectId={projectId} request={request}/> : <Approvals projectId={projectId} request={request}/>}
     </>
     case 'questions': return <>
       <ReviewNav projectId={projectId} selected="questions"/>
@@ -114,12 +121,14 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
     </>
     case 'notifications': return <Notifications projectId={projectId} request={request} onRead={onChanged}/>
     case 'inbox': return <ProjectInbox project={projectId} request={request}/>
-    case 'materials': return <ProjectMaterials project={projectId} request={request}/>
+    case 'materials': return <ProjectMaterials key={JSON.stringify([page.key, page.revision])} project={projectId}
+      initialKey={page.key} initialRevision={page.revision} request={request}/>
     case 'decisions': return <ProjectDecisions key={page.record} project={projectId} decision={page.record} request={request}/>
     case 'shares': return <ProjectShares key={page.record} project={projectId} receipt={page.record} request={request}/>
     case 'task': return page.task.preview ?
       <PreviewFeedback key={page.task.preview + page.captureQuery} projectId={projectId} task={page.task.id} preview={page.task.preview} captureQuery={page.captureQuery} request={request}/> :
-      <TaskDetail key={page.task.id} projectId={projectId} id={page.task.id} planRevision={page.task.planRevision} questionID={page.task.questionId} request={request} onChanged={onChanged}/>
+      <TaskDetail key={page.task.id} projectId={projectId} id={page.task.id} planRevision={page.task.planRevision} questionID={page.task.questionId}
+        executionID={page.task.executionId} request={request} onChanged={onChanged}/>
   }
 }
 
@@ -250,7 +259,7 @@ function App() {
     <main id="content" tabIndex={-1} className="content frame">
       {logoutError && <p className="auth-error logout-error" role="alert">{logoutError}</p>}
       {page.kind === 'project' ? <ProjectWorkspace key={page.projectId} projectId={page.projectId} currentTab={page.projectTab} section={page.view}
-        taskId={page.view === 'task' ? page.task.id : undefined} request={request}>
+        taskId={page.view === 'task' ? page.task.id : undefined} taskQueue={page.view === 'tasks' && page.queue} request={request}>
         <ProjectContent page={page} request={request} onChanged={onChanged}/>
       </ProjectWorkspace> :
         page.kind === 'projects' ? <Projects request={request}/> :

@@ -15,6 +15,7 @@ export type WorkspaceProject = {
 
 const workspaceTabs = [
   { key: 'overview', href: '', label: '概览' },
+  { key: 'chat', href: '/chat', label: '聊天' },
   { key: 'tasks', href: '/tasks', label: '任务' },
   { key: 'reviews', href: '/reviews', label: '审核与验收' },
   { key: 'materials', href: '/materials', label: '项目资料' },
@@ -32,11 +33,12 @@ export function projectDisplayName(project: WorkspaceProject) {
   return (project.repository || project.path).split(/[\\/]/).filter(Boolean).at(-1) || '项目 #' + project.id
 }
 
-export function ProjectWorkspace({ projectId, currentTab, taskId, section, request, children }: {
+export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQueue, request, children }: {
   projectId: number
   currentTab: ProjectWorkspaceTab
   taskId?: number
   section?: string
+  taskQueue?: boolean
   request: ApiRequest
   children: ReactNode
 }) {
@@ -48,13 +50,14 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, reque
   const project = loaded?.id === projectId ? loaded.project : undefined
   const loadError = loaded?.id === projectId ? loaded.error : undefined
   const base = `#/projects/${projectId}`
+  const materials = currentTab === 'materials' && (!section || section === 'materials')
 
   useEffect(() => {
     const controller = new AbortController()
     lifetime.current = controller
     setChecking(false); setCheckError('')
     return () => controller.abort()
-  }, [projectId, request])
+  }, [projectId, request, materials])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -117,26 +120,30 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, reque
         {materialSections.map(item => <a key={item.href} href={base + item.href}
           aria-current={(section || 'materials') === item.href.slice(1) ? 'page' : undefined}>{item.label}</a>)}
       </nav>}
-      {currentTab === 'tasks' && !taskId && section !== 'inbox' && <div className="project-secondary-links">
-        <a className="button" href={base + '/inbox'}><Icon name="Inbox" size={16}/>讨论收件箱</a>
-      </div>}
+      {currentTab === 'tasks' && !taskId && <nav className="project-secondary-links" aria-label="任务导航">
+        <a href={base + '/tasks'} aria-current={!taskQueue && section !== 'inbox' ? 'page' : undefined}>任务列表</a>
+        <a href={base + '/tasks?tab=queue'} aria-current={taskQueue ? 'page' : undefined}>执行队列</a>
+        <a href={base + '/inbox'} aria-current={section === 'inbox' ? 'page' : undefined}>讨论收件箱</a>
+      </nav>}
       {loadError && <p className="detail-problem" role="alert">刷新项目信息失败。 {loadError}
         <button className="button" type="button" onClick={() => setRevision(n => n + 1)}>重试</button>
       </p>}
       {children}
-      {overview && <section className="panel detail-card project-operations">
-        <h2>仓库操作</h2>
-        {project.repository_id && <p>GitHub 仓库 ID · {project.repository_id}</p>}
-        {project.check_status && <p>最近的 HEAD 检查 <Status value={project.check_status}/></p>}
-        <div className="detail-actions">
-          <a className="button" href={base + '/inbox'}><Icon name="Inbox" size={16}/>讨论收件箱</a>
-          {project.check_id && <a className="button" href={base + '/tasks/' + project.check_id}>查看检查 #{project.check_id}</a>}
-          {canCheck && <button className="button" type="button" disabled={checking} onClick={() => void check(project)}>
-            {project.check_status === 'DONE' ? '检查当前 HEAD' : project.check_id ? '重新检查' : '运行 HEAD 检查'}
-          </button>}
-        </div>
-        {checkError && <p className="detail-problem" role="alert">{checkError}</p>}
-      </section>}
+      {materials && <div className="project-setup">
+        <section className="panel detail-card" aria-labelledby="project-head-check-heading">
+          <h2 id="project-head-check-heading">仓库 HEAD 检查</h2>
+          <p>记录本地仓库当前所在的提交，完成后可在检查详情读取仓库清单。</p>
+          {project.repository_id && <p>GitHub 仓库 ID · {project.repository_id}</p>}
+          {project.check_status && <p>最近的 HEAD 检查 <Status value={project.check_status}/></p>}
+          <div className="detail-actions">
+            {project.check_id && <a className="button" href={base + '/tasks/' + project.check_id}>查看检查 #{project.check_id}</a>}
+            {canCheck && <button className="button" type="button" disabled={checking} onClick={() => void check(project)}>
+              {project.check_status === 'DONE' ? '检查当前 HEAD' : project.check_id ? '重新检查' : '运行 HEAD 检查'}
+            </button>}
+          </div>
+          {checkError && <p className="detail-problem" role="alert">{checkError}</p>}
+        </section>
+      </div>}
     </>}
   </div>
 }

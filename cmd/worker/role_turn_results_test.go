@@ -16,7 +16,7 @@ import (
 )
 
 func TestCompletedRoleTurnRecoversBeforeFinalReceipt(t *testing.T) {
-	for _, role := range []string{"management", "curator", "test-agent", "reviewer"} {
+	for _, role := range []string{"management", managementChatRole, "curator", "test-agent", "reviewer"} {
 		t.Run(role, func(t *testing.T) {
 			t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 			target := store.ManagementProcessReport{Lease: "12345678-1234-1234-1234-123456789abc", TaskID: 5, Revision: 2}
@@ -58,7 +58,7 @@ func TestCompletedRoleTurnRecoversBeforeFinalReceipt(t *testing.T) {
 				rw.WriteHeader(204)
 			}))
 			defer server.Close()
-			w := worker{api: server.URL, client: server.Client(), codex: os.Args[0], id: "completed-node"}
+			w := worker{api: server.URL, client: server.Client(), codex: os.Args[0], id: "completed-node", role: role}
 			var job json.RawMessage
 			if status, err := w.claimRole(context.Background(), role, "/internal/"+role+"/claim", struct{}{}, &job); err != nil || status != 200 {
 				t.Fatal(status, err)
@@ -82,7 +82,7 @@ func TestCompletedRoleTurnRecoversBeforeFinalReceipt(t *testing.T) {
 			mu.Lock()
 			recovering = true
 			mu.Unlock()
-			resumed := worker{api: w.api, client: w.client, id: w.id, codex: filepath.Join(t.TempDir(), "must-not-run")}
+			resumed := worker{api: w.api, client: w.client, id: w.id, codex: filepath.Join(t.TempDir(), "must-not-run"), role: role}
 			if err = resumed.replayRoleReceipts(context.Background(), role); err != nil {
 				t.Fatal(err)
 			}
@@ -112,6 +112,12 @@ func TestCompletedRoleTurnRecoversBeforeFinalReceipt(t *testing.T) {
 			}
 			mu.Lock()
 			defer mu.Unlock()
+			if role == managementChatRole {
+				if claims != 2 || len(requests) != 2 || requests[0] != managementChatResultPath || !strings.HasSuffix(requests[1], "/claim") {
+					t.Fatal("chat recovery should only deliver the answer", claims, requests)
+				}
+				return
+			}
 			if claims != 2 || len(requests) != 3 || !strings.HasSuffix(requests[0], "/process") || !strings.HasSuffix(requests[1], "/result") || !strings.HasSuffix(requests[2], "/claim") {
 				t.Fatal("wrong recovery order", claims, requests)
 			}

@@ -1,0 +1,38 @@
+.project-registration-method {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-block: var(--space-3) var(--space-5);
+}
+
+.project-registration-method button[aria-pressed='true'] {
+  color: var(--accent-ink);
+  border-color: var(--accent-line);
+  background: var(--accent);
+}
+
+.project-registration :is(p, code) {
+  overflow-wrap: anywhere;
+}
+
+.project-clone-directory {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.project-clone-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.project-clone-location p {
+  margin: 0;
+}
+
+.project-registration-path {
+  display: block;
+  overflow-wrap: anywhere;
+}

@@ -99,7 +99,7 @@ func (w *worker) prepareRoleNative(db *sql.DB, target store.ManagementProcessRep
 		return nil, e
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		native.Workspace, err = os.MkdirTemp(dir, "role-"+roleForProcess(target)+"-")
+		native.Workspace, err = os.MkdirTemp(dir, "role-"+w.roleForProcess(target)+"-")
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +152,7 @@ func (w *worker) prepareRoleNative(db *sql.DB, target store.ManagementProcessRep
 		if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM role_process_receipts WHERE instance=?)", instance.Int64).Scan(&buffered); err != nil {
 			return nil, err
 		}
-		if !buffered {
+		if w.roleForProcess(target) != managementChatRole && !buffered {
 			if err = db.QueryRow("SELECT resumed_from FROM role_native_attempts WHERE instance=?", instance.Int64).Scan(&target.ResumedFrom); err != nil {
 				return nil, err
 			}

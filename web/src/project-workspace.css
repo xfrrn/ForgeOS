@@ -197,10 +197,6 @@
   background: var(--accent);
 }
 
-.project-operations {
-  margin-top: var(--space-4);
-}
-
 @media (max-width: 560px) {
   .project-directory-card {
     grid-template-columns: minmax(0, 1fr);

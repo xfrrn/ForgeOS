@@ -65,6 +65,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	chatNodes, err := loadChatNodes(os.Getenv("FORGEOS_MANAGEMENT_CHAT_NODES_FILE"), owner, manager, workers)
+	if err != nil {
+		return err
+	}
 	root := os.Getenv("FORGEOS_REPO_ROOT")
 	info, err := os.Stat(root)
 	if err != nil || !info.IsDir() || !filepath.IsAbs(root) {
@@ -110,6 +114,10 @@ func run(ctx context.Context) error {
 
 	mux := routes(data, root, owner, workers, delivery)
 	ownerAuth.register(mux)
+	registerProjectWorkViews(mux, data, owner)
+	registerProjectChat(mux, data, root, owner, chatNodes, ghRead)
+	clones := projectCloneService{data: data, localRoot: root, extraHosts: os.Getenv("FORGEOS_GIT_CLONE_HOSTS")}
+	clones.register(mux, owner)
 	registerGitHubWebhooks(mux, data, owner, pollers)
 	stopPreviews, err := startPreviews(mux, data, root, owner, os.Getenv("FORGEOS_PREVIEW_ADDR"))
 	if err != nil {
@@ -186,6 +194,16 @@ func run(ctx context.Context) error {
 		log.Printf("ForgeOS Worker mTLS listening on %s", nodeListener.Addr())
 	}
 	start(listener, ownerAuth.middleware(mux))
+	cloneCtx, stopClones := context.WithCancel(ctx)
+	cloneDone := make(chan struct{})
+	go func() {
+		defer close(cloneDone)
+		clones.run(cloneCtx)
+	}()
+	defer func() {
+		stopClones()
+		<-cloneDone
+	}()
 	defer func() {
 		for _, s := range servers {
 			s.Close()

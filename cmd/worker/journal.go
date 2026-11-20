@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 	_ "modernc.org/sqlite"
 )
@@ -40,10 +41,11 @@ func (w *worker) openJournal(ctx context.Context) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, root := range []string{w.repoRoot, w.workspaceRoot} {
-		if rel, err := filepath.Rel(root, dir); err == nil && (rel == "." || filepath.IsLocal(rel)) {
-			return nil, errors.New("worker state must be outside repositories and workspaces")
-		}
+	if localrepo.ContainingRoot(w.repoRoot, dir) != "" {
+		return nil, errors.New("worker state must be outside repositories and workspaces")
+	}
+	if rel, err := filepath.Rel(w.workspaceRoot, dir); err == nil && (rel == "." || filepath.IsLocal(rel)) {
+		return nil, errors.New("worker state must be outside repositories and workspaces")
 	}
 	info, err := os.Stat(dir)
 	if err != nil {

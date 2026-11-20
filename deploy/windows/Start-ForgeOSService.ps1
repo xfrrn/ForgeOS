@@ -2,7 +2,7 @@
 
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [Parameter(Mandatory)][ValidateSet('postgres', 'controlplane', 'worker', 'preview-manager', 'caddy')][string]$Role,
+    [Parameter(Mandatory)][ValidateSet('postgres', 'controlplane', 'worker', 'management-chat', 'preview-manager', 'caddy')][string]$Role,
     [switch]$ValidateOnly
 )
 

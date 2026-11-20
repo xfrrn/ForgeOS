@@ -41,6 +41,7 @@ type worker struct {
 	modelSlots, ciSlots                     int
 	client                                  *http.Client
 	journal                                 *sql.DB
+	role                                    string
 	roleRunID                               string
 	roleDaemonGone                          <-chan struct{}
 	nextRoleCleanup                         time.Time
@@ -58,6 +59,7 @@ func fromEnv(role string) (*worker, error) {
 		id:            os.Getenv("FORGEOS_WORKER_ID"),
 		repoRoot:      os.Getenv("FORGEOS_REPO_ROOT"),
 		workspaceRoot: os.Getenv("FORGEOS_WORKSPACE_ROOT"),
+		role:          role,
 		client:        &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 	if w.api == "" {
@@ -103,14 +105,14 @@ func fromEnv(role string) (*worker, error) {
 		}
 		return w, nil
 	}
-	if role == "management" || role == "test-agent" || role == "curator" {
-		w.token = os.Getenv("FORGEOS_MANAGEMENT_TOKEN")
-		if role == "curator" {
-			w.token = os.Getenv("FORGEOS_CURATOR_TOKEN")
-		}
-		if role == "test-agent" {
-			w.token = os.Getenv("FORGEOS_TEST_AGENT_TOKEN")
-		}
+	tokenEnv := map[string]string{
+		"management":       "FORGEOS_MANAGEMENT_TOKEN",
+		managementChatRole: "FORGEOS_MANAGEMENT_CHAT_TOKEN",
+		"curator":          "FORGEOS_CURATOR_TOKEN",
+		"test-agent":       "FORGEOS_TEST_AGENT_TOKEN",
+	}
+	if name, ok := tokenEnv[role]; ok {
+		w.token = os.Getenv(name)
 		if strings.TrimSpace(w.token) == "" {
 			return nil, fmt.Errorf("set the dedicated %s token", role)
 		}
@@ -571,8 +573,8 @@ func main() {
 	} else if len(os.Args) == 2 {
 		role = os.Args[1]
 	}
-	if len(os.Args) > 1 && role != "management" && role != "reviewer" && role != "test-agent" && role != "curator" {
-		log.Fatal("usage: worker [curator|management|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs|prune-role-recovery]")
+	if len(os.Args) > 1 && role != "management" && role != managementChatRole && role != "reviewer" && role != "test-agent" && role != "curator" {
+		log.Fatal("usage: worker [curator|management|management-chat|reviewer|test-agent|review-candidate|validate-candidate|verify-ci-run|plan-tests|review-test-plan|verify-environment|preview-manager|process-logs|prune-role-recovery]")
 	}
 	if role != "" && !roleProcess {
 		switch os.Getenv("FORGEOS_SUPERVISE_ROLE_TURNS") {
@@ -601,6 +603,8 @@ func main() {
 		err = w.runIndependentRole(ctx, role, w.runReviewer)
 	} else if role == "management" {
 		err = w.runIndependentRole(ctx, role, w.runManagement)
+	} else if role == managementChatRole {
+		err = w.runIndependentRole(ctx, role, w.runManagementChat)
 	} else {
 		err = w.run(ctx)
 	}

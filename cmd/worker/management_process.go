@@ -24,7 +24,7 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 		return session, err
 	}
 	if !capture {
-		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, processLog{beforeStart: w.roleStartHook(roleForProcess(target), target.Lease, target.Turn)})
+		return recordedJSONTurn(ctx, w.codex, contract, prompt, limit, dest, processLog{beforeStart: w.roleStartHook(w.roleForProcess(target), target.Lease, target.Turn)})
 	}
 	version, err := readCodexVersion(w.codex)
 	if err != nil {
@@ -35,7 +35,10 @@ func (w *worker) roleJSONTurn(ctx context.Context, capture bool, target store.Ma
 	})
 }
 
-func roleForProcess(target store.ManagementProcessReport) string {
+func (w *worker) roleForProcess(target store.ManagementProcessReport) string {
+	if w.role == managementChatRole {
+		return managementChatRole
+	}
 	role := "management"
 	if target.CurationRole == "curator" {
 		role = "curator"
@@ -51,7 +54,8 @@ func roleForProcess(target store.ManagementProcessReport) string {
 
 func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementProcessReport, harness, version string, dest any, run func(context.Context, processLog) (string, error)) (session string, resultErr error) {
 	target.ResumedFrom, target.MissingSession = 0, false
-	role := roleForProcess(target)
+	role := w.roleForProcess(target)
+	publishProcess := role != managementChatRole
 	db, node, err := w.openRoleJournal(ctx, role)
 	if err != nil {
 		return "", err
@@ -95,23 +99,27 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		return nil
 	}
 	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		timer := time.NewTicker(15 * time.Second)
-		defer timer.Stop()
-		for {
-			select {
-			case <-reporting.Done():
-				return
-			case <-updates:
-			case <-timer.C:
+	if publishProcess {
+		go func() {
+			defer close(done)
+			timer := time.NewTicker(15 * time.Second)
+			defer timer.Stop()
+			for {
+				select {
+				case <-reporting.Done():
+					return
+				case <-updates:
+				case <-timer.C:
+				}
+				call, cancel := context.WithTimeout(reporting, 5*time.Second)
+				_ = report(call)
+				cancel()
 			}
-			call, cancel := context.WithTimeout(reporting, 5*time.Second)
-			_ = report(call)
-			cancel()
-		}
-	}()
-	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: true}, harness, version)
+		}()
+	} else {
+		close(done)
+	}
+	process := recorder.processLog(reporting, store.Job{LeaseToken: target.Lease, RecordModelOutput: publishProcess}, harness, version)
 	if native != nil {
 		process.handoffFrom = native.HandoffFrom
 	}
@@ -141,8 +149,10 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 			return session, err
 		}
 	}
-	if err = bufferRoleProcess(tx, target); err != nil {
-		return session, errors.Join(turnErr, err)
+	if publishProcess {
+		if err = bufferRoleProcess(tx, target); err != nil {
+			return session, errors.Join(turnErr, err)
+		}
 	}
 	if turnErr == nil {
 		if err = w.bufferCompletedRoleTurn(tx, target, session, dest); err != nil {
@@ -153,10 +163,12 @@ func (w *worker) roleProcessTurn(ctx context.Context, target store.ManagementPro
 		return session, errors.Join(turnErr, err)
 	}
 	// Delivery failure must not discard a completed model result; its receipt waits for this exit.
-	call, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err = w.replayRoleProcesses(call, db, role); err != nil {
-		log.Printf("%s process exit remains buffered: %v", role, err)
+	if publishProcess {
+		call, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err = w.replayRoleProcesses(call, db, role); err != nil {
+			log.Printf("%s process exit remains buffered: %v", role, err)
+		}
 	}
 	if native != nil && ctx.Err() == nil && ((native.Resume == "" && errors.Is(turnErr, errTurnInterrupted)) || (native.Resume != "" && errors.Is(turnErr, errSessionMissing))) {
 		return w.roleProcessTurn(ctx, target, harness, version, dest, run)

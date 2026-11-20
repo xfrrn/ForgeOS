@@ -1,0 +1,20 @@
+.task-table.project-work-table {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-table.project-work-table th:last-child {
+  width: 50%;
+}
+
+.task-table.project-work-table td:last-child {
+  padding-inline: var(--space-3);
+}
+
+.project-work-table td {
+  vertical-align: top;
+}
+
+.project-experience :is(blockquote, li) {
+  overflow-wrap: anywhere;
+}

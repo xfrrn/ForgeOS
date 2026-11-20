@@ -103,6 +103,57 @@ func TestRoleAssignmentSettledResultDoesNotRunAgain(t *testing.T) {
 	}
 }
 
+func TestExpiredManagementChatAssignmentCanSettleAfterRestart(t *testing.T) {
+	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	ctx := context.Background()
+	job := managementChatJob{
+		ID: 7, ProjectID: 8, Lease: "12345678-1234-1234-1234-123456789abc",
+		LeaseUntil: time.Now().Add(-time.Minute), Prompt: "Private project context.",
+	}
+	const claimPath = "/internal/management-chat/claim"
+	firstClaim := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case claimPath:
+			if firstClaim {
+				firstClaim = false
+				json.NewEncoder(w).Encode(job)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case managementChatResultPath:
+			var result managementChatResult
+			err := json.NewDecoder(r.Body).Decode(&result)
+			if err != nil || result.ID != job.ID || result.Lease != job.Lease || result.Error == "" || result.Answer != "" || result.Action != nil {
+				t.Error("invalid terminal receipt", err)
+			}
+			w.WriteHeader(http.StatusConflict)
+		default:
+			t.Error("unexpected request", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	first := worker{api: server.URL, client: server.Client(), id: "chat-node", role: managementChatRole}
+	var saved managementChatJob
+	if status, err := first.claimRole(ctx, managementChatRole, claimPath, struct{}{}, &saved); err != nil || status != http.StatusOK {
+		t.Fatal(status, err)
+	}
+	if err := first.roleStartHook(managementChatRole, job.Lease, 0)(); err != nil {
+		t.Fatal(err)
+	}
+	resumed := worker{api: first.api, client: first.client, id: first.id, role: first.role}
+	if status, err := resumed.claimRole(ctx, managementChatRole, claimPath, struct{}{}, &saved); err != nil || status != http.StatusOK {
+		t.Fatal("reload expired assignment", status, err)
+	}
+	if err := resumed.answerManagementChat(ctx, saved); err != nil {
+		t.Fatal(err)
+	}
+	if status, err := resumed.claimRole(ctx, managementChatRole, claimPath, struct{}{}, &saved); err != nil || status != http.StatusNoContent {
+		t.Fatal("claim after stale receipt", status, err)
+	}
+}
+
 func TestRoleDaemonLock(t *testing.T) {
 	t.Setenv("FORGEOS_WORKER_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	first := worker{api: "http://127.0.0.1:1", id: "locked-node"}

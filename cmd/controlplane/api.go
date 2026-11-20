@@ -201,13 +201,14 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		if !decode(w, r, &input) {
 			return
 		}
-		if strings.TrimSpace(input.Path) == "" {
+		input.Path = strings.TrimSpace(input.Path)
+		if input.Path == "" || strings.HasPrefix(input.Path, "managed://") {
 			problem(w, http.StatusBadRequest, "path is required")
 			return
 		}
 		path, err := localrepo.ResolveRepo(r.Context(), root, input.Path)
 		if err != nil {
-			problem(w, http.StatusBadRequest, "path must identify a Git repository inside FORGEOS_REPO_ROOT")
+			problem(w, http.StatusBadRequest, "请填写允许目录内已有 Git 工作树的根路径。")
 			return
 		}
 		project, err := data.CreateProject(r.Context(), path)

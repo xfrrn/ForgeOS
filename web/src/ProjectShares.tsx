@@ -55,14 +55,15 @@ export function ShareDraft({ project, material, revision, request }: {
 }
 
 export function ProjectShares({ project, receipt, request }: { project: number; receipt?: number; request: ApiRequest }) {
-  const [direction, setDirection] = useState('shares')
+  const [direction, setDirection] = useState('shared-experience')
+  const selected = receipt ? 'shares' : direction
   return <div className="project-setup">
     <BackLink href={projectHref(project)}>返回项目概览</BackLink>
-    <PageHeading title={`项目 #${project} · 共享经验`} actions={receipt ? <a className="button" href={`#/projects/${project}/shares`}>查看全部共享记录</a> :
+    <PageHeading title={`项目 #${project} · 共享经验`} actions={receipt ? <a className="button" href={`#/projects/${project}/shares`}>浏览共享经验</a> :
       <select aria-label="共享方向" value={direction} onChange={e => setDirection(e.target.value)}>
-        <option value="shares">发出的副本</option><option value="shared-experience">接收的经验</option>
+        <option value="shared-experience">接收的经验</option><option value="shares">发出的副本</option>
       </select>}/>
-    <ShareList key={direction} project={project} receipt={receipt} direction={direction} request={request}/>
+    <ShareList key={selected} project={project} receipt={receipt} direction={selected} request={request}/>
   </div>
 }
 

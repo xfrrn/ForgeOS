@@ -2,7 +2,7 @@
 
 param(
     [Parameter(Mandatory)][string]$ConfigPath,
-    [ValidateSet('postgres', 'controlplane', 'worker', 'preview-manager', 'caddy')][string[]]$Role,
+    [ValidateSet('postgres', 'controlplane', 'worker', 'management-chat', 'preview-manager', 'caddy')][string[]]$Role,
     [PSCredential]$Credential,
     [string]$PowerShellPath = (Get-Process -Id $PID).Path,
     [switch]$ValidateOnly,
@@ -24,7 +24,7 @@ try {
 } catch {
     throw "Invalid JSON in the configuration file: $ConfigPath"
 }
-$knownRoles = @('postgres', 'controlplane', 'worker', 'preview-manager', 'caddy')
+$knownRoles = @('postgres', 'controlplane', 'worker', 'management-chat', 'preview-manager', 'caddy')
 if ($config.services -isnot [System.Collections.IDictionary] -or $config.services.Count -eq 0) {
     throw 'Configure at least one role under services.'
 }

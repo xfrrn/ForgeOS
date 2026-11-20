@@ -47,6 +47,8 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 
 使用不同挂载点时，控制面、执行节点和审查节点分别设置本机的 `FORGEOS_REPO_ROOT`。例如控制面的 `/mnt/projects/team/beta` 和节点的 `D:\projects\team\beta` 对应同一相对路径 `team/beta`。可以把同一个 Git 对象库挂载到不同位置。部署独立镜像时，需要提前同步固定版本，以便执行节点读取基础 SHA，控制面在确认结果时、审查节点在领取审查时读取候选 SHA。仅配置路径不会同步 Git 对象。
 
+工作台从 Git 链接克隆的仓库使用独立的 `FORGEOS_MANAGED_REPO_ROOT`。共同使用这些仓库的控制面、执行节点、审查节点和预览管理器需部署支持托管路径的版本，并将各自的托管根配置指向共享仓库或同步镜像。跨机器沿用托管根下相同的相对路径和 Git 对象。以不同服务账号访问共享克隆时，继续使用文件权限与 `FORGEOS_SHARED_REPOS` 授权具体仓库。将每个节点的工作区和状态放在仓库根目录之外。
+
 分别创建 root 持有、权限为 `0600` 的环境文件。每行写入一项 `名称=值`，systemd 在切换到服务账号前读取文件。
 
 | 文件 | 必填设置 |
