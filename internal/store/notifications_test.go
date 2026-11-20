@@ -105,11 +105,11 @@ func TestOwnerNotificationsPageAndReadReceipts(t *testing.T) {
 			}
 		}
 	}
-	first, err := s.Notifications(ctx, 0, false)
+	first, err := s.Notifications(ctx, 0, 0, false)
 	if err != nil || len(first.Items) != 30 || first.NextBefore != first.Items[29].ID {
 		t.Fatal(first, err)
 	}
-	last, err := s.Notifications(ctx, first.NextBefore, true)
+	last, err := s.Notifications(ctx, 0, first.NextBefore, true)
 	if err != nil || len(last.Items) != 1 || last.Items[0].ID >= first.NextBefore || last.NextBefore != 0 {
 		t.Fatal(last, err)
 	}
@@ -126,11 +126,11 @@ func TestOwnerNotificationsPageAndReadReceipts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := s.Notifications(ctx, 0, false)
+	page, err := s.Notifications(ctx, 0, 0, false)
 	if err != nil || page.Items[0].ReadAt == nil || !page.Items[0].Pending {
 		t.Fatal(page, err)
 	}
-	n, err := s.UnreadNotifications(ctx)
+	n, err := s.UnreadNotifications(ctx, 0)
 	if err != nil || n != 30 {
 		t.Fatal(n, err)
 	}

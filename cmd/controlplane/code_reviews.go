@@ -13,6 +13,23 @@ import (
 )
 
 func registerCodeReviews(mux *http.ServeMux, data *store.Store, root, owner, manager string, workers *workerRegistry) error {
+	mux.HandleFunc("GET /projects/{id}/code-reviews", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var before int64
+		if q := r.URL.Query(); q.Has("before") {
+			var err error
+			before, err = strconv.ParseInt(q.Get("before"), 10, 64)
+			if err != nil || before < 1 {
+				problem(w, 400, "before must be a positive execution ID")
+				return
+			}
+		}
+		page, err := data.ProjectCodeReviews(r.Context(), id, before)
+		respond(w, 200, page, err)
+	}))
 	mux.HandleFunc("PUT /projects/{id}/review-policy", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		var input struct {

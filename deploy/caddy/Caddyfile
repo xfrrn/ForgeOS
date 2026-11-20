@@ -14,9 +14,27 @@ https://*.{$FORGEOS_GATEWAY_DOMAIN}:{$FORGEOS_GATEWAY_PORT:443} {
 
 	@workbench {
 		host forgeos.{$FORGEOS_GATEWAY_DOMAIN}
-		path / /ui/ /ui/assets/* /tasks /tasks/* /projects /projects/* /executions/* /workers /workers/model-budgets /global-rules
+		path / /ui/ /ui/assets/* /auth/session /auth/login /auth/logout /tasks /tasks/* /projects /projects/* /executions/* /workers /workers/model-budgets /global-rules
 	}
 	handle @workbench {
+		reverse_proxy {$FORGEOS_CONTROL_UPSTREAM:127.0.0.1:8080}
+	}
+
+	@native_approval {
+		host forgeos.{$FORGEOS_GATEWAY_DOMAIN}
+		method POST
+		path_regexp approval ^/native-approvals/[1-9][0-9]*$
+	}
+	handle @native_approval {
+		reverse_proxy {$FORGEOS_CONTROL_UPSTREAM:127.0.0.1:8080}
+	}
+
+	@role_archive {
+		host forgeos.{$FORGEOS_GATEWAY_DOMAIN}
+		method GET HEAD
+		path_regexp archive ^/role-processes/[1-9][0-9]*/instances/[1-9][0-9]*/archive$
+	}
+	handle @role_archive {
 		reverse_proxy {$FORGEOS_CONTROL_UPSTREAM:127.0.0.1:8080}
 	}
 

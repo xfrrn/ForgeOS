@@ -23,8 +23,12 @@ func registerQuestionRoutes(mux *http.ServeMux, data *store.Store, owner string)
 		respond(w, http.StatusOK, messages, err)
 	}))
 	mux.HandleFunc("GET /tasks/decision-questions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		q, project, ok := ownerProjectQuery(w, r)
+		if !ok {
+			return
+		}
 		var before int64
-		if value := r.URL.Query().Get("before"); value != "" {
+		if value := q.Get("before"); value != "" {
 			var err error
 			before, err = strconv.ParseInt(value, 10, 64)
 			if err != nil || before <= 0 {
@@ -32,7 +36,7 @@ func registerQuestionRoutes(mux *http.ServeMux, data *store.Store, owner string)
 				return
 			}
 		}
-		page, err := data.PendingQuestions(r.Context(), before)
+		page, err := data.PendingQuestions(r.Context(), project, before)
 		respond(w, 200, page, err)
 	}))
 	mux.HandleFunc("POST /tasks/{id}/questions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {

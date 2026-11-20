@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Fact, Status, formatTime, type ApiRequest } from './shared'
+import { Fact, Status, formatTime, projectHref, type ApiRequest } from './shared'
 
 type Revision = { revision: number; generated_at: string }
 type File = { path: string; blob: string; problem?: string
@@ -12,7 +12,7 @@ type Report = Revision & {task_id: number; repository_mapping: {project_id: numb
   materials: {key: string; revision: number; kind: string; title: string; content_sha256: string}[]
   startup_checks: {task_id: number; environment: string; status: string; execution_id?: number; worker?: string; error?: string; receipt?: {http_status?: number; probes: number}}[] }
 
-export function InitializationReports({task,request}:{task:number;request:ApiRequest}){
+export function InitializationReports({projectId,task,request}:{projectId:number;task:number;request:ApiRequest}){
   const [revisions,setRevisions]=useState<Revision[]>([])
   const [report,setReport]=useState<Report>()
   const [busy,setBusy]=useState(true)
@@ -74,7 +74,7 @@ export function InitializationReports({task,request}:{task:number;request:ApiReq
         const declared=cfg?.local_environments?.[env]
         const checks=report.startup_checks.filter(c=>c.environment===env)
         return <div key={env}><strong>{env}</strong><p>{declared ? <><code>{declared.start_script}</code> · <code>127.0.0.1:{declared.port}{declared.health_path}</code></> : '清单中未记录此环境的声明'}</p>
-          {checks.length ? checks.map(c=><p key={c.task_id}><a href={`#/tasks/${c.task_id}`}>T-{c.task_id}</a> · <Status value={c.status}/> {c.worker} {c.receipt?.http_status && '· HTTP '+c.receipt.http_status} {c.error}</p>) : <p>归档时尚无启动检查。</p>}</div>
+          {checks.length ? checks.map(c=><p key={c.task_id}><a href={projectHref(projectId, `/tasks/${c.task_id}`)}>T-{c.task_id}</a> · <Status value={c.status}/> {c.worker} {c.receipt?.http_status && '· HTTP '+c.receipt.http_status} {c.error}</p>) : <p>归档时尚无启动检查。</p>}</div>
       })}
       <h4>密钥需求</h4>{cfg?.secret_requirements ? cfg.secret_requirements.length ? <ul>{cfg.secret_requirements.map(s=><li key={s.environment+'/'+s.name}>{s.environment} · {s.name} · {s.risk}</li>)}</ul> : <p>此版本声明的需求为空。</p> : <p>清单中没有可核对的需求声明。</p>}
       {cfg?.problem && <p>项目配置读取异常 · {cfg.problem}</p>}

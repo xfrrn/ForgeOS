@@ -5,6 +5,7 @@ import os
 from uuid import uuid4
 
 from playwright.sync_api import expect, sync_playwright
+from probe_workbench_login import login_to_workbench
 
 
 def main():
@@ -21,8 +22,7 @@ def main():
         def editor():
             page = browser.new_context().new_page()
             page.goto(f"{args.url.rstrip('/')}/#/projects/{args.project}/materials")
-            page.locator("#owner").fill(token)
-            page.locator("#owner").press("Enter")
+            login_to_workbench(page)
             return page
 
         first = editor()

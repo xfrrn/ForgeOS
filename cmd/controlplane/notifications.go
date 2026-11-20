@@ -9,7 +9,10 @@ import (
 
 func registerNotifications(mux *http.ServeMux, data *store.Store, owner string) {
 	mux.HandleFunc("GET /tasks/notifications", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q, project, ok := ownerProjectQuery(w, r)
+		if !ok {
+			return
+		}
 		var before int64
 		if q.Has("before") {
 			var err error
@@ -24,12 +27,14 @@ func registerNotifications(mux *http.ServeMux, data *store.Store, owner string) 
 			problem(w, 400, "invalid notification scope")
 			return
 		}
-		page, err := data.Notifications(r.Context(), before, scope == "history")
+		page, err := data.Notifications(r.Context(), project, before, scope == "history")
 		respond(w, 200, page, err)
 	}))
 	mux.HandleFunc("GET /tasks/notifications/unread", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		n, err := data.UnreadNotifications(r.Context())
-		respond(w, 200, map[string]int64{"unread": n}, err)
+		if _, project, ok := ownerProjectQuery(w, r); ok {
+			n, err := data.UnreadNotifications(r.Context(), project)
+			respond(w, 200, map[string]int64{"unread": n}, err)
+		}
 	}))
 	mux.HandleFunc("POST /tasks/notifications/{id}/read", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

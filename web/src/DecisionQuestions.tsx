@@ -1,6 +1,6 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, Icon, type ApiRequest } from './shared'
+import { ApiError, Icon, projectHref, type ApiRequest } from './shared'
 import { QuestionAdvice, type Advice } from './QuestionAdvice'
 import { EmptyState, PageHeading } from './ui'
 
@@ -12,7 +12,7 @@ type Question = {
 type Row = Question & { draft: string; error: string; recorded?: string }
 type Page = { items: Question[]; next_before: number | null }
 
-export function DecisionQuestions({ request, onChanged }: { request: ApiRequest; onChanged: () => void }) {
+export function DecisionQuestions({ projectId, request, onChanged }: { projectId: number; request: ApiRequest; onChanged: () => void }) {
   const [rows, setRows] = useState<Row[]>([])
   const [before, setBefore] = useState<number | null>(null)
   const [busy, setBusy] = useState(true)
@@ -24,7 +24,9 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
     const signal = lifetime.current?.signal
     setBusy(true); setProblem('')
     try {
-      const page = await request<Page>('/tasks/decision-questions' + (cursor ? '?before=' + cursor : ''), { signal })
+      const params = new URLSearchParams({ project_id: String(projectId) })
+      if (cursor) params.set('before', String(cursor))
+      const page = await request<Page>('/tasks/decision-questions?' + params, { signal })
       if (signal?.aborted) return
       setRows(previous => {
         const prior = new Map(previous.map(q => [q.id, q]))
@@ -38,7 +40,7 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
     } catch (e) {
       if (!signal?.aborted) setProblem(e instanceof Error ? e.message : '读取问题失败。')
     } finally { if (!signal?.aborted) setBusy(false) }
-  }, [request, onChanged])
+  }, [projectId, request, onChanged])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -67,7 +69,8 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
         let recorded: string | undefined
         if (e instanceof ApiError && e.status === 409) {
           try {
-            const task = await request<{ questions: { id: number; answer?: string }[] }>('/tasks/' + q.task_id, { signal })
+            const task = await request<{ questions: { id: number; answer?: string }[] }>(
+              `/tasks/${q.task_id}?project_id=${projectId}`, { signal })
             recorded = task.questions.find(item => item.id === q.id)?.answer
           } catch { /* The original conflict and draft remain visible if the read fails. */ }
         }
@@ -89,7 +92,7 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
     {notice && <p className="detail-notice" role="status">{notice}</p>}
     <form className="decision-queue" aria-busy={busy} onSubmit={e => { e.preventDefault(); if (!busy && selected.length) void submit() }}>
       {rows.map(q => <section className="panel detail-card detail-accept" key={q.id} aria-labelledby={`question-${q.id}`}>
-        <a className="detail-link" href={'#/tasks/' + q.task_id}>T-{q.task_id} · {q.repository || '项目 ' + q.project_id}{q.title && ' · ' + q.title}</a>
+        <a className="detail-link" href={projectHref(q.project_id, `/tasks/${q.task_id}/questions/${q.id}`)}>T-{q.task_id} · {q.repository || '项目 ' + q.project_id}{q.title && ' · ' + q.title}</a>
         <h2 id={`question-${q.id}`}>#{q.id} {q.question}</h2>
         <p>依据 · {q.evidence}</p>
         {q.management_advice && <QuestionAdvice advice={q.management_advice}/>}

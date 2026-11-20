@@ -1,8 +1,8 @@
 """Check an execution whose newest test plan is pending and previous revision is covered."""
 import argparse
-import os
 
 from playwright.sync_api import expect, sync_playwright
+from probe_workbench_login import login_to_workbench
 
 
 def main():
@@ -15,9 +15,7 @@ def main():
         browser = pw.chromium.launch(channel="chrome")
         page = browser.new_page(viewport={"width": 390, "height": 830})
         page.goto(f"{args.url.rstrip('/')}/#/tasks/{args.task}")
-        login = page.get_by_label("Owner 令牌")
-        login.fill(os.environ["FORGEOS_OWNER_TOKEN"])
-        login.press("Enter")
+        login_to_workbench(page)
         summary = page.locator("summary").filter(has=page.get_by_text(f"执行 #{args.execution}", exact=True))
         attempt = page.locator("details.detail-attempt").filter(has=summary)
         if attempt.get_attribute("open") is None:

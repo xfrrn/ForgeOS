@@ -1,6 +1,6 @@
 # 本地运行基座
 
-控制面和 Worker 在同一台机器上独立运行。控制面持有数据库连接，Worker 通过回环 HTTP 领取任务和提交结果。当前使用单一 Owner 管理全部已登记项目，Owner 和 Worker 使用不同的 Bearer Token。`git_head` 用于检查基座是否连通。`codex_issue` 在独立 Worktree 中完成需求修改，生成候选 Commit 并验证。
+控制面和 Worker 在同一台机器上独立运行。控制面持有数据库连接，Worker 通过回环 HTTP 领取任务和提交结果。单一 Owner 用邮箱和密码登录工作台。Owner API 脚本和 Worker 各自使用独立的 Bearer Token。`git_head` 用于检查基座是否连通。`codex_issue` 在独立 Worktree 中完成需求修改，生成候选 Commit 并验证。
 
 ## 准备环境
 
@@ -67,7 +67,7 @@ Owner 可向 `POST /tasks/{id}/repository-analysis` 发送 `{}` 首次派发，�
 | `GET /tasks/{id}/initialization-reports` | 按版本倒序列出归档时间。 |
 | `GET /tasks/{id}/initialization-reports/{revision}` | 读取该版本的完整报告，与工作台“下载 JSON”内容一致。 |
 
-启动服务后，Owner 可从工作台的“项目接入”登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后选择“运行 HEAD 检查”进入任务详情。原 Worker 未上线时任务显示待执行；成功后可核对仓库的完整提交号。如果失败，保留原任务，在项目页选择“重新检查”生成下一次检查。
+启动服务后，Owner 可在项目首页点「接入项目」登记仓库。路径支持控制面机器的绝对路径和相对于 `FORGEOS_REPO_ROOT` 的路径。登记后打开项目，在「概览」点「运行 HEAD 检查」进入任务详情。Worker 未上线时任务显示待执行。成功后可核对仓库的完整提交号。如果失败，项目概览的「重新检查」会保留原任务并生成下一次检查。
 
 Owner API 的 `GET /projects` 每页返回最多 30 个项目，下一页使用 `?before=<next_before>`。原有脚本登记的仓库和通过 `POST /tasks` 创建的 HEAD 检查也会显示。向 `POST /projects/{id}/check` 提交 `{}` 获取或创建检查；重试失败任务时提交 `{"retry_task_id":1}`，将编号替换为本项目的失败检查。并发重试复用已排队的新检查。
 
@@ -97,9 +97,20 @@ npm --prefix web run build
 $env:FORGEOS_WEB_ROOT = (Resolve-Path .\web\dist).Path
 ```
 
-在浏览器打开控制面地址（默认 `http://127.0.0.1:8080/`），输入启动时配置的 `FORGEOS_OWNER_TOKEN`。令牌保存在此标签页的会话存储中，选择顶栏账户区域的「断开连接」可清除令牌。登录后默认打开「工作台总览」。四张指标卡可进入全部任务、运行中任务、待答问题和待验收队列。下方的通知和审批可打开对应的任务、计划修订或项目记录。每组最多展示五条，完整队列从各组右上角进入。顶栏的「任务列表」支持按标题、仓库、任务编号和状态查找。「验收队列」只列等待人工决定的任务。窄屏通过顶栏菜单访问各个工作区入口。
+启用网页登录前，在控制面能读取的私有目录里创建 Owner 凭据文件。以下示例假定已创建并限制 `D:\forgeos-private` 的访问权限，`$binDir` 指向前文构建的控制面。命令在当前终端提示输入两遍密码，输入时不回显。密码至少 12 个字符，最多 1024 个 UTF-8 字节。文件包含邮箱和 Argon2id 密码摘要。
 
-点开任务可查看 Issue、历次 Worker、Worktree、原生 Session、验证输出及交付记录。在执行记录内展开「查看代码差异」核对候选。验收面板会显示本次执行 ID 和完整 SHA。「通过验收」按项目现有配置决定是否触发 GitHub 交付。「退回修改」需要填写原因，并在同一任务下重新排队。已合并的任务提供 PR 链接和最终合并 SHA。任务详情可直接以 `/#/tasks/11` 一类的地址打开。
+```powershell
+$env:FORGEOS_OWNER_CREDENTIALS_FILE = 'D:\forgeos-private\owner-credentials.json'
+& "$binDir/controlplane.exe" configure-owner -file $env:FORGEOS_OWNER_CREDENTIALS_FILE -email 'owner@example.com'
+```
+
+启动或重启控制面时，将凭据文件的绝对路径设置为 `FORGEOS_OWNER_CREDENTIALS_FILE`。更换邮箱或密码时，生成一个新文件，将控制面指向该文件后重启。已有的脚本使用 `FORGEOS_OWNER_TOKEN` 调用 Owner API。
+
+在浏览器打开控制面地址（默认 `http://127.0.0.1:8080/`），用配置的邮箱和密码登录。浏览器会话有效期为 12 小时，退出登录或控制面重启后需重新登录。
+
+登录后默认打开「项目」。项目卡片显示仓库和执行中、待审批、待验收的数量，点数字可进入该项目对应的列表。打开项目后，通过「概览」「任务」「审核与验收」「项目资料」切换内容。任务页支持搜索和按状态筛选。审核与验收集中显示待审批、待验收、已发起的代码审查及待答问题。执行节点与全局规则可从右上角的账号菜单进入。
+
+点开任务可查看 Issue、历次 Worker、Worktree、原生 Session、验证输出及交付记录。在执行记录内展开「查看代码差异」核对候选。验收面板会显示本次执行 ID 和完整 SHA。「通过验收」按项目现有配置决定是否触发 GitHub 交付。「退回修改」需要填写原因，并在同一任务下重新排队。已合并的任务提供 PR 链接和最终合并 SHA。任务详情链接包含所属项目，例如 `/#/projects/1/tasks/11`。旧任务链接也可定位到所属项目。
 
 修改前端时可运行 `npm --prefix web run dev`，并打开该命令输出的本机地址。`FORGEOS_API_URL` 可指定开发代理所连接的本机控制面，默认是 `http://127.0.0.1:8080`。布局、共享组件和界面验收见[工作台界面规范](workbench-ui.md)。
 
@@ -128,7 +139,7 @@ Worker 仅在已授权仓库的独立 Worktree 中启动 `codex exec --json`，�
 
 按标签自动接入时，在控制面启动前设置 `FORGEOS_POLL_PROJECT_ID` 为已登记项目 ID，`FORGEOS_POLL_VALIDATION` 为上述一种验证方式。Owner 在 GitHub 仓库中为 Agent 任务模板配置 `forgeos-agent` 标签，Poller 只派发带该标签的开放 Issue，逐页读取并与手动导入共用去重逻辑。普通讨论可由 Owner 通过编号显式转为任务。默认采用按编号派单。
 
-在工作台的“项目接入”中打开对应项目的“讨论收件箱”，可查看 Poller 已同步的讨论和 GitHub 原文。开发类型可转为实现任务，其他类型先转为只读规划任务。派发后会打开任务详情。同一讨论按同一类型重复转换会打开同一任务。[桌面、窄屏与重启实测](acceptance.md#discussion-inbox-ui)
+从项目首页打开对应项目，在「任务」进入「讨论收件箱」，可查看 Poller 已同步的讨论和 GitHub 原文。开发类型可转为实现任务，其他类型先转为只读规划任务。派发后会打开项目内的任务详情。同一讨论按同一类型重复转换会打开同一任务。[桌面、窄屏与重启实测](acceptance.md#discussion-inbox-ui)
 
 在 GitHub 为 Issue 添加一个类型标签，如 `forgeos:type:investigation`，或使用标题前缀，如 `[Investigation]`、`[调查]`。五种类型如下。类型标签可由项目的 GitHub Issue 模板设置。`forgeos-agent` 仍是自动派发信号；单独添加类型标签的普通讨论留在收件箱。
 
@@ -218,7 +229,7 @@ Owner 向 `POST /tasks/{id}/plans` 提交以下结构。首次提交传 `previou
 
 Owner 可显式批准当前计划并调用 `POST /tasks/{id}/plans/{revision}/activate`。同一修订重复激活复用已有工作项。目标进入 ACTIVE，无前置依赖的子项进入 READY，其他子项进入 BLOCKED。任务树提供实际工作项链接，子项详情可回到父 Goal。每个子项使用计划中的范围、上下文引用和验收条件，沿用原项目的验证方式。每个子 PR 回写候选和合并 SHA，父 Issue 保持开放。
 
-在隔离测试库准备一个已有未激活草案的 Goal，并设置 `FORGEOS_OWNER_TOKEN`。运行 `python scripts/probe_plan_activation.py http://127.0.0.1:8080 <目标任务号>`。探针会发布内容相同的下一版草案，验证旧版批准被拒绝，再从 Chrome 批准新版，模拟批准响应丢失并核对子项。
+在隔离测试库准备一个已有未激活草案的 Goal。为探针设置该环境的 `FORGEOS_OWNER_TOKEN`，并用 `FORGEOS_TEST_OWNER_EMAIL` 和 `FORGEOS_TEST_OWNER_PASSWORD` 提供专用测试账户的登录信息。运行 `python scripts/probe_plan_activation.py http://127.0.0.1:8080 <目标任务号>`。探针会发布内容相同的下一版草案，验证旧版批准被拒绝，再从 Chrome 批准新版，模拟批准响应丢失并核对子项。
 
 交付器在前置子项全部完成 GitHub 回写后检查目标分支。它获取分支提交到项目对象库，核对原始基础及每个前置 Merge SHA 都在该提交的历史中，再把后续子项的基础版本固定并转为 READY。可以从子项的 `spec.base_commit` 和 `dependencies_delivered` 事件复核派发依据。
 

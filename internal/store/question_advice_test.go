@@ -161,11 +161,11 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if len(records) != 2 || records[0].Exited != nil || records[1].Output.Text != "Reviewing question.\n" {
 		t.Fatal("lost question process history", records)
 	}
-	page, e := s.PendingQuestions(ctx, 0)
+	page, e := s.PendingQuestions(ctx, 0, 0)
 	if e != nil || !strings.Contains(string(page), "management-session") || !strings.Contains(string(page), "expired-advice") {
 		t.Fatal("pending page process history", e)
 	}
-	approvals, err := s.PendingApprovals(ctx, "question", "", 0, true, false, false)
+	approvals, err := s.PendingApprovals(ctx, 0, "question", "", 0, true, false, false)
 	var pending struct {
 		Items []struct {
 			ID    int64
@@ -183,7 +183,7 @@ func TestManagementQuestionAdviceIsScopedAndLeavesOwnerDecisionPending(t *testin
 	if _, err = s.AnswerQuestion(ctx, task, id, "Harbor"); err != nil {
 		t.Fatal(err)
 	}
-	approvals, err = s.PendingApprovals(ctx, "question", "", 0, true, false, false)
+	approvals, err = s.PendingApprovals(ctx, 0, "question", "", 0, true, false, false)
 	if err != nil || json.Unmarshal(approvals, &pending) != nil || len(pending.Items) != 0 {
 		t.Fatal("answered decision still pending", string(approvals), err)
 	}

@@ -64,10 +64,11 @@ type NotificationPage struct {
 	NextBefore int64          `json:"next_before,omitempty"`
 }
 
-func (s *Store) Notifications(ctx context.Context, before int64, history bool) (NotificationPage, error) {
+func (s *Store) Notifications(ctx context.Context, project, before int64, history bool) (NotificationPage, error) {
 	page := NotificationPage{Items: []Notification{}}
 	rows, err := s.db.QueryContext(ctx, `SELECT id,task_id,project_id,execution_id,plan_revision,title,kind,status,at,read_at,pending
-		FROM owner_notifications WHERE ($1::bigint=0 OR id<$1) AND ($2 OR pending) ORDER BY id DESC LIMIT 31`, before, history)
+		FROM owner_notifications WHERE ($1::bigint=0 OR id<$1) AND ($2 OR pending) AND ($3::bigint=0 OR project_id=$3)
+		ORDER BY id DESC LIMIT 31`, before, history, project)
 	if err != nil {
 		return page, err
 	}
@@ -86,9 +87,9 @@ func (s *Store) Notifications(ctx context.Context, before int64, history bool) (
 	return page, rows.Err()
 }
 
-func (s *Store) UnreadNotifications(ctx context.Context) (int64, error) {
+func (s *Store) UnreadNotifications(ctx context.Context, project int64) (int64, error) {
 	var n int64
-	err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM owner_notifications WHERE pending AND read_at IS NULL").Scan(&n)
+	err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM owner_notifications WHERE pending AND read_at IS NULL AND ($1::bigint=0 OR project_id=$1)", project).Scan(&n)
 	return n, err
 }
 

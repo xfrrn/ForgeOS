@@ -4,6 +4,7 @@ import os
 import time
 
 from playwright.sync_api import expect, sync_playwright
+from probe_workbench_login import login_to_workbench
 
 
 def main():
@@ -33,8 +34,7 @@ def main():
         def login(route):
             page = browser.new_context().new_page()
             page.goto(origin + "/#" + route)
-            page.get_by_label("Owner 令牌").fill(token)
-            page.get_by_label("Owner 令牌").press("Enter")
+            login_to_workbench(page)
             return page
 
         def reviewed(revision):

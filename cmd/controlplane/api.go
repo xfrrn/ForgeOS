@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -103,8 +105,11 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	mux.HandleFunc("POST /tasks/{id}/acceptance", authorized(owner, delivery.review(data)))
 	mux.HandleFunc("POST /tasks/{id}/validation-status", authorized(owner, delivery.validationStatus(data, root)))
 	mux.HandleFunc("GET /tasks", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		filter := store.TaskListFilter{Status: q.Get("status"), Query: strings.TrimSpace(q.Get("q"))}
+		q, project, ok := ownerProjectQuery(w, r)
+		if !ok {
+			return
+		}
+		filter := store.TaskListFilter{ProjectID: project, Status: q.Get("status"), Query: strings.TrimSpace(q.Get("q"))}
 		if filter.Status == "ALL" {
 			filter.Status = ""
 		}
@@ -133,24 +138,36 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 	}))
 
 	mux.HandleFunc("GET /projects", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		query := strings.TrimSpace(q.Get("q"))
+		if strings.ContainsRune(query, 0) || !utf8.ValidString(query) {
+			problem(w, 400, "invalid project search text")
+			return
+		}
 		var before int64
-		if q := r.URL.Query(); q.Has("before") {
+		if q.Has("before") {
 			var err error
 			if before, err = strconv.ParseInt(q.Get("before"), 10, 64); err != nil || before <= 0 {
 				problem(w, 400, "before must be a positive project ID")
 				return
 			}
 		}
-		rows, err := data.RegisteredProjects(r.Context(), before)
+		rows, err := data.ProjectWorkspaces(r.Context(), before, query)
 		var next int64
 		if len(rows) > 30 {
 			rows = rows[:30]
 			next = rows[len(rows)-1].ID
 		}
 		respond(w, 200, struct {
-			Items []store.RegisteredProject `json:"items"`
-			Next  int64                     `json:"next_before,omitempty"`
+			Items []store.ProjectWorkspace `json:"items"`
+			Next  int64                    `json:"next_before,omitempty"`
 		}{rows, next}, err)
+	}))
+	mux.HandleFunc("GET /projects/{id}", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		if id, ok := pathID(w, r); ok {
+			project, err := data.ProjectWorkspace(r.Context(), id)
+			respond(w, 200, project, err)
+		}
 	}))
 	mux.HandleFunc("POST /projects/{id}/check", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
@@ -218,7 +235,14 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		if !valid {
 			return
 		}
+		_, project, ok := ownerProjectQuery(w, r)
+		if !ok {
+			return
+		}
 		task, err := data.Task(r.Context(), id)
+		if err == nil && project != 0 && task.ProjectID != project {
+			err = store.ErrNotFound
+		}
 		respond(w, http.StatusOK, task, err)
 	}))
 
@@ -428,9 +452,13 @@ func authorized(token string, next http.HandlerFunc) http.HandlerFunc {
 func authorizedFor(token string, timeout time.Duration, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			problem(w, http.StatusUnauthorized, "invalid credentials")
-			return
+			session, ok := r.Context().Value(ownerSessionContextKey{}).([sha256.Size]byte)
+			digest := sha256.Sum256([]byte(token))
+			if !ok || subtle.ConstantTimeCompare(session[:], digest[:]) != 1 {
+				w.Header().Set("WWW-Authenticate", "Bearer")
+				problem(w, http.StatusUnauthorized, "invalid credentials")
+				return
+			}
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
@@ -445,6 +473,25 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+func ownerProjectQuery(w http.ResponseWriter, r *http.Request) (url.Values, int64, bool) {
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		problem(w, http.StatusBadRequest, "invalid query parameters")
+		return nil, 0, false
+	}
+	values, present := q["project_id"]
+	if !present {
+		return q, 0, true
+	}
+	if len(values) == 1 {
+		if id, err := strconv.ParseInt(values[0], 10, 64); err == nil && id > 0 {
+			return q, id, true
+		}
+	}
+	problem(w, http.StatusBadRequest, "project_id must be a positive project ID")
+	return nil, 0, false
 }
 
 func decode(w http.ResponseWriter, r *http.Request, dest any) bool {

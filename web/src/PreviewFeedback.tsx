@@ -1,6 +1,6 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState, type FormEvent } from 'react'
-import { formatTime, type ApiRequest } from './shared'
+import { formatTime, projectHref, type ApiRequest } from './shared'
 import { workTypes } from './workTypes'
 import { FeedbackRecordings } from './FeedbackRecordings'
 import { FeedbackScreenshots, type FeedbackArtifactReceipt } from './FeedbackScreenshots'
@@ -35,7 +35,7 @@ function FramePath({ frames }: { frames?: string[] }) {
 }
 type Page = { repository: string; latest_requirement: number | null; at_acceptance: boolean; preview: { project_id: number; execution_id: number; commit: string; directory: string; environment: string; state: string }; feedback: Note[]; plan: { revision: number; cases: { id: string; objective: string }[] } | null }
 
-export function PreviewFeedback({ task, preview, captureQuery, request }: { task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
+export function PreviewFeedback({ projectId, task, preview, captureQuery, request }: { projectId: number; task: number; preview: string; captureQuery?: string; request: ApiRequest }) {
   const capture = new URLSearchParams(captureQuery)
   const [page, setPage] = useState<Page | null>(null)
   const [path, setPath] = useState(() => capture.get('path') || '/')
@@ -63,10 +63,17 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
   const mismatch = Boolean(captureQuery && page && (capture.get('commit') !== page.preview.commit || capture.get('execution') !== String(page.preview.execution_id)))
   useEffect(() => {
     const controller = new AbortController()
-    request<Page>(api, { signal: controller.signal }).then(result => { if (!controller.signal.aborted) setPage(result) })
+    request<Page>(api, { signal: controller.signal }).then(result => {
+      if (controller.signal.aborted) return
+      if (result.preview.project_id !== projectId) {
+        setPage(null); setError('在此项目中找不到这条预览。')
+        return
+      }
+      setPage(result)
+    })
       .catch(e => { if (!controller.signal.aborted) setError(e.message) })
     return () => controller.abort()
-  }, [api, request, version])
+  }, [api, projectId, request, version])
   const candidate = page?.preview.commit
   useEffect(() => {
     if (!candidate || !nonce || mismatch || media) return
@@ -148,7 +155,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     finally { setBusy(false) }
   }
   return <div className="project-setup">
-    <BackLink href={`#/tasks/${task}`}>返回任务 T-{task}</BackLink>
+    <BackLink href={projectHref(projectId, `/tasks/${task}`)}>返回任务 T-{task}</BackLink>
     <PageHeading title="预览反馈" description={page && <>执行 {page.preview.execution_id} · {page.preview.environment === 'local-mock' ? '应用预览（local-mock）' : page.preview.directory} · <code>{page.preview.commit}</code></>}/>
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {message && <p className="detail-notice" role="status">{message}</p>}
@@ -180,14 +187,14 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
           saved={() => { setMessage(`已保存反馈 #${f.id} 的录屏。`); setVersion(n => n + 1) }}/>
         {f.review ? <p>Owner 已{f.review.decision === 'approve' ? '通过验收' : '退回修改'}　{f.review.note}</p> :
           page.at_acceptance && ['acceptance', 'bug', 'ui_change'].includes(f.classification?.category ?? '') &&
-          <a href={`#/tasks/${task}`}>在候选验收中引用</a>}
+          <a href={projectHref(projectId, `/tasks/${task}`)}>在候选验收中引用</a>}
         {f.body.browser && <p>{f.body.browser} · {f.body.width} × {f.body.height}</p>}
         <ManagementProcesses request={request} processes={f.management_processes} title="Management 分类进程"/>
         {f.classification && <details><summary>分类依据</summary><p>{f.classification.rationale}</p><blockquote>{f.classification.evidence}</blockquote>
           <p>Management 会话　<code>{f.classification.session_id}</code></p>
           {f.classification.context && <ClassificationContext context={f.classification.context}/>}
           {f.classification.profile && <RolePermissions role="Management" profile={f.classification.profile}/>}</details>}
-        {f.work_item ? <a href={`#/tasks/${f.work_item.id}`}>查看独立工作项 T-{f.work_item.id} · Issue #{f.work_item.number}</a> :
+        {f.work_item ? <a href={projectHref(projectId, `/tasks/${f.work_item.id}`)}>查看独立工作项 T-{f.work_item.id} · Issue #{f.work_item.number}</a> :
           f.classification?.category === 'new_work_item' && (dispatching === f.id ?
             <form onSubmit={dispatch}><fieldset disabled={busy}><legend>按独立 Issue 派发</legend>
               <a href={`https://github.com/${page.repository}/issues/new`} target="_blank" rel="noreferrer">在 {page.repository} 新建 Issue</a>
@@ -203,7 +210,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
               <button className="button" disabled={!issueNumber}>确认派发</button>
               <button type="button" className="detail-text-button" onClick={() => setDispatching(0)}>取消</button></fieldset></form> :
             <button className="button" disabled={busy} onClick={() => { setDispatching(f.id); setIssueNumber(''); setValidation('auto'); setHarness('') }}>派发独立工作项</button>)}
-        {f.requirement ? <a href={`#/tasks/${f.requirement.task_id}`}>到任务查看需求修订 {f.requirement.revision}</a> :
+        {f.requirement ? <a href={projectHref(projectId, `/tasks/${f.requirement.task_id}`)}>到任务查看需求修订 {f.requirement.revision}</a> :
           f.classification?.category === 'requirement_change' && Boolean(page.latest_requirement) && (draft?.feedback === f.id ?
             <fieldset><legend>基于需求修订 {draft.revision} 建立新版本</legend>
               <label>修订后的完整正文<textarea value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} /></label>
@@ -212,7 +219,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
               <button className="detail-text-button" disabled={busy} onClick={() => setDraft(null)}>取消</button></fieldset> :
             <button className="button" disabled={busy} onClick={() => void editRequirement(f)}>从反馈修订需求</button>)}
         {f.question ? <div><p>澄清问题 #{f.question.id} · {f.question.question}</p>
-          {f.question.answer ? <p>Owner 答复　{f.question.answer}</p> : <a href={`#/tasks/${task}`}>到任务中回答</a>}</div> :
+          {f.question.answer ? <p>Owner 答复　{f.question.answer}</p> : <a href={projectHref(projectId, `/tasks/${task}`)}>到任务中回答</a>}</div> :
           page.at_acceptance && f.classification?.category === 'blocked' && (asking === f.id ?
             <fieldset><legend>提交澄清问题</legend><label>需要 Owner 决定的问题<textarea value={question} onChange={e => setQuestion(e.target.value)} /></label>
               <button className="button" disabled={busy || !question.trim()} onClick={() => void ask(f)}>提交澄清问题</button>

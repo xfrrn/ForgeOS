@@ -14,7 +14,10 @@ func approvalKind(kind string) bool {
 
 func registerApprovals(mux *http.ServeMux, data *store.Store, owner string) {
 	mux.HandleFunc("GET /tasks/approvals", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
+		q, project, ok := ownerProjectQuery(w, r)
+		if !ok {
+			return
+		}
 		kind := q.Get("kind")
 		if kind != "" && !approvalKind(kind) {
 			problem(w, 400, "unknown approval operation")
@@ -32,7 +35,7 @@ func registerApprovals(mux *http.ServeMux, data *store.Store, owner string) {
 			beforeKind, beforeID = k, id
 		}
 		questions := q.Get("include_questions") == "1" || kind == "question" || beforeKind == "question"
-		page, err := data.PendingApprovals(r.Context(), kind, beforeKind, beforeID, questions, q.Get("include_commands") == "1" || kind == "command" || beforeKind == "command", q.Get("include_patches") == "1" || kind == "patch" || beforeKind == "patch")
+		page, err := data.PendingApprovals(r.Context(), project, kind, beforeKind, beforeID, questions, q.Get("include_commands") == "1" || kind == "command" || beforeKind == "command", q.Get("include_patches") == "1" || kind == "patch" || beforeKind == "patch")
 		respond(w, 200, page, err)
 	}))
 }

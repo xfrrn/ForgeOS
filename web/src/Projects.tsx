@@ -1,90 +1,155 @@
-import { GlobalRules } from './GlobalRules'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError, Status, type ApiRequest } from './shared'
+import { ApiError, Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
+import { projectDisplayName, type WorkspaceProject } from './ProjectWorkspace'
 
-type Project = { id: number; path: string; repository_id?: number; check_id?: number; check_status?: string }
-type Page = { items: Project[]; next_before?: number }
+type Page = { items: WorkspaceProject[]; next_before?: number }
+type Directory = Page & { query: string }
+
+const projectMetrics = [
+  { key: 'running', label: '执行中', destination: '/tasks?status=RUNNING' },
+  { key: 'pending_approvals', label: '待审批', destination: '/reviews?tab=approvals' },
+  { key: 'awaiting_acceptance', label: '待验收', destination: '/reviews?tab=acceptance' },
+] as const
 
 export function Projects({ request }: { request: ApiRequest }) {
-  const [items, setItems] = useState<Project[]>([])
-  const [cursor, setCursor] = useState<number>()
+  const [directory, setDirectory] = useState<Directory>()
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+  const [showRegistration, setShowRegistration] = useState(false)
   const [path, setPath] = useState('')
-  const [busy, setBusy] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [registering, setRegistering] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [registrationError, setRegistrationError] = useState('')
+  const [registered, setRegistered] = useState<WorkspaceProject>()
   const lifetime = useRef<AbortController | null>(null)
+  const listing = useRef<AbortController | null>(null)
+  const pathField = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async (signal: AbortSignal, before?: number) => {
-    setBusy(true); setError('')
+    setLoading(true); setError('')
+    const params = new URLSearchParams()
+    if (query) params.set('q', query)
+    if (before) params.set('before', String(before))
     try {
-      const page = await request<Page>('/projects' + (before ? '?before=' + before : ''), { signal })
+      const page = await request<Page>('/projects' + (params.size ? '?' + params : ''), { signal })
       if (signal.aborted) return
-      setItems(old => before ? old.concat(page.items.filter(p => !old.some(row => row.id === p.id))) : page.items)
-      setCursor(page.next_before)
-    } catch (e) { if (!signal.aborted) setError(e instanceof Error ? e.message : '无法读取项目。') }
-    finally { if (!signal.aborted) setBusy(false) }
-  }, [request])
+      setDirectory(old => ({
+        ...page,
+        query,
+        items: before && old?.query === query ? [...old.items, ...page.items.filter(item => !old.items.some(row => row.id === item.id))] : page.items,
+      }))
+    } catch (e) {
+      if (!signal.aborted) setError(e instanceof Error ? e.message : '无法读取项目。')
+    } finally {
+      if (!signal.aborted) setLoading(false)
+    }
+  }, [request, query])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQuery(input.trim()), 230)
+    return () => window.clearTimeout(timer)
+  }, [input])
 
   useEffect(() => {
     const controller = new AbortController()
     lifetime.current = controller
+    return () => controller.abort()
+  }, [request])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    listing.current = controller
     void load(controller.signal)
     return () => controller.abort()
   }, [load])
 
+  useEffect(() => { if (showRegistration) pathField.current?.focus() }, [showRegistration])
+
   async function register(e: FormEvent) {
     e.preventDefault()
     const signal = lifetime.current?.signal
-    if (busy || !path.trim() || !signal) return
-    setBusy(true); setError(''); setNotice('')
+    if (registering || !path.trim() || !signal) return
+    setRegistering(true); setRegistrationError(''); setRegistered(undefined)
     try {
-      const p = await request<Project>('/projects', { method: 'POST', body: JSON.stringify({ path: path.trim() }), signal })
+      const project = await request<WorkspaceProject>('/projects', { method: 'POST', body: JSON.stringify({ path: path.trim() }), signal })
       if (signal.aborted) return
-      setItems(old => [{ ...old.find(row => row.id === p.id), ...p }, ...old.filter(row => row.id !== p.id)])
-      setPath(''); setNotice('仓库已登记为项目 #' + p.id + '。')
+      setPath(''); setRegistered(project); setShowRegistration(false)
+      setInput(''); setQuery('')
+      if (!query && listing.current) void load(listing.current.signal)
     } catch (e) {
-      if (!signal.aborted) setError(e instanceof ApiError && e.status === 400 ? '请填写控制面允许目录中的 Git 仓库根路径。' : e instanceof Error ? e.message : '登记失败。')
-    } finally { if (!signal.aborted) setBusy(false) }
+      if (!signal.aborted) setRegistrationError(e instanceof ApiError && e.status === 400 ? '请填写控制面允许目录中的 Git 仓库根路径。' :
+        e instanceof Error ? e.message : '登记失败。')
+    } finally {
+      if (!signal.aborted) setRegistering(false)
+    }
   }
-  async function check(project: Project) {
-    const signal = lifetime.current?.signal
-    if (busy || !signal) return
-    setBusy(true); setError(''); setNotice('')
-    try {
-      const task = await request<{ id: number }>(`/projects/${project.id}/check`, {
-        method: 'POST', body: JSON.stringify(project.check_id ? { retry_task_id: project.check_id } : {}), signal,
-      })
-      if (!signal.aborted) location.hash = '/tasks/' + task.id
-    } catch (e) { if (!signal.aborted) setError(e instanceof Error ? e.message : '无法派发检查。') }
-    finally { if (!signal.aborted) setBusy(false) }
-  }
-  return <div className="project-setup project-directory">
-    <PageHeading title="项目接入" description="登记本地 Git 仓库，进入项目的讨论、资料与决策。"/>
-    {error && <p className="detail-problem" role="alert">{error} <button className="button" disabled={busy} onClick={() => lifetime.current && void load(lifetime.current.signal)}>刷新项目</button></p>}
-    {notice && <p className="detail-notice" role="status">{notice}</p>}
-    <div className="project-entry-grid">
-      <div className="project-primary">
-        <form className="panel detail-card" onSubmit={register}>
-          <h2>登记本地仓库</h2>
-          <label htmlFor="repo-path">本地仓库路径</label>
-          <p id="repo-hint" className="muted">填写控制面机器上的仓库根目录。可以使用相对于 FORGEOS_REPO_ROOT 的路径。</p>
-          <div className="project-input"><input id="repo-path" aria-describedby="repo-hint" autoComplete="off" required value={path} onChange={e => setPath(e.target.value)}/>
-            <button className="button primary" disabled={busy || !path.trim()}>登记仓库</button></div>
-        </form>
-        <section className="panel detail-card"><h2>已登记项目</h2>
-          {!items.length && !error && (busy ? <p role="status" className="table-message">正在读取项目…</p> :
-            <EmptyState icon="GitBranch" title="尚未登记仓库"/>)}
-          {items.map(p => <article key={p.id} className="registered-project"><div>
-            <h3>项目 #{p.id}</h3><code>{p.path}</code>{p.repository_id && <p>GitHub 仓库 ID · {p.repository_id}</p>}
-            {p.check_status && <p>最近的 HEAD 检查 <Status value={p.check_status}/></p>}</div>
-            <div className="detail-actions"><a href={`#/projects/${p.id}/inbox`}>讨论收件箱</a><a href={`#/projects/${p.id}/materials`}>项目资料</a><a href={`#/projects/${p.id}/decisions`}>项目决策</a><a href={`#/projects/${p.id}/shares`}>共享经验</a>{p.check_id && <a href={'#/tasks/' + p.check_id}>查看检查 #{p.check_id}</a>}
-              {(!p.check_id || p.check_status === 'FAILED' || p.check_status === 'DONE') && <button className="button" disabled={busy} onClick={() => void check(p)}>{p.check_status === 'DONE' ? '检查当前 HEAD' : p.check_id ? '重新检查' : '运行 HEAD 检查'}</button>}</div>
-          </article>)}
-          {cursor && <button className="button" disabled={busy} onClick={() => lifetime.current && void load(lifetime.current.signal, cursor)}>更多项目</button>}
-        </section>
-      </div>
-      <GlobalRules request={request}/>
+
+  const page = directory?.query === query ? directory : undefined
+  const refresh = (before?: number) => { if (listing.current) void load(listing.current.signal, before) }
+  const clearSearch = () => { setInput(''); setQuery('') }
+
+  return <div className="project-home">
+    <PageHeading title="项目"/>
+    <div className="project-home-toolbar">
+      <button className="button primary" type="button" disabled={registering} aria-expanded={showRegistration}
+        aria-controls={showRegistration ? 'project-registration' : undefined} onClick={() => setShowRegistration(open => !open)}>
+        <span className="project-add-mark" aria-hidden="true">+</span>接入项目
+      </button>
+      <label className="search project-search"><Icon name="Search" size={17}/>
+        <input type="search" aria-label="搜索项目或仓库" placeholder="搜索项目或仓库"
+          maxLength={120} value={input} onChange={e => setInput(e.target.value)}/>
+      </label>
     </div>
+    {showRegistration && <form id="project-registration" className="panel detail-card project-registration" onSubmit={register}>
+      <h2>登记本地仓库</h2>
+      <label htmlFor="repo-path">本地仓库路径</label>
+      <p id="repo-hint" className="muted">填写控制面机器上的仓库根目录。可以使用相对于 FORGEOS_REPO_ROOT 的路径。</p>
+      <div className="project-input">
+        <input ref={pathField} id="repo-path" aria-describedby="repo-hint" autoComplete="off" required
+          value={path} onChange={e => setPath(e.target.value)}/>
+        <button className="button primary" disabled={registering || !path.trim()}>登记仓库</button>
+      </div>
+      {registrationError && <p className="detail-problem" role="alert">{registrationError}</p>}
+    </form>}
+    {registered && <p className="detail-notice" role="status">仓库已登记。 <a href={`#/projects/${registered.id}`}>打开 {projectDisplayName(registered)}</a></p>}
+    <section className="project-directory-list" aria-label="已登记项目" aria-busy={loading}>
+      {error && <div className="panel" role="alert">
+        <EmptyState icon="AlertCircle" title="读取项目失败" description={error}>
+          <button className="button" disabled={loading} onClick={() => refresh()}>重试</button>
+        </EmptyState>
+      </div>}
+      {page?.items.map(project => {
+        const base = `#/projects/${project.id}`
+        const name = projectDisplayName(project)
+        return <article key={project.id} className="panel project-directory-card">
+          <div className="project-card-content">
+            <div className="project-card-identity">
+              <Icon name="Layers3" size={23}/>
+              <div>
+                <h2><a href={base}>{name}</a></h2>
+                <p className="project-repository"><Icon name="GitBranch" size={15}/><span>{project.repository || project.path}</span></p>
+              </div>
+            </div>
+            <div className="project-card-metrics" aria-label={name + '的工作进度'}>
+              {projectMetrics.map(metric => <a key={metric.key} href={base + metric.destination}>
+                {metric.label} <strong>{project.metrics?.[metric.key] ?? '—'}</strong>
+              </a>)}
+            </div>
+          </div>
+          <a className="project-card-open" href={base} aria-label={'打开项目 ' + name}>打开项目 <Icon name="ArrowRight"/></a>
+        </article>
+      })}
+      {!page && loading && !error && <div className="panel" role="status">
+        <EmptyState icon="Layers3" title="正在读取项目…"/>
+      </div>}
+      {page && !page.items.length && !loading && !error && <div className="panel">
+        <EmptyState icon={query ? 'Search' : 'GitBranch'} title={query ? '没有匹配的项目' : '尚未登记仓库'}>
+          {query && <button className="button" type="button" onClick={clearSearch}>清除搜索</button>}
+        </EmptyState>
+      </div>}
+      {page?.next_before && <button className="button project-more" disabled={loading} onClick={() => refresh(page.next_before)}>更多项目</button>}
+    </section>
   </div>
 }

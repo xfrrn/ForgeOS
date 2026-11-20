@@ -1,6 +1,6 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError, formatTime, type ApiRequest } from './shared'
+import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 import { BackLink, PageHeading } from './ui'
 
@@ -57,7 +57,7 @@ export function ShareDraft({ project, material, revision, request }: {
 export function ProjectShares({ project, receipt, request }: { project: number; receipt?: number; request: ApiRequest }) {
   const [direction, setDirection] = useState('shares')
   return <div className="project-setup">
-    <BackLink href="#/projects">返回项目接入</BackLink>
+    <BackLink href={projectHref(project)}>返回项目概览</BackLink>
     <PageHeading title={`项目 #${project} · 共享经验`} actions={receipt ? <a className="button" href={`#/projects/${project}/shares`}>查看全部共享记录</a> :
       <select aria-label="共享方向" value={direction} onChange={e => setDirection(e.target.value)}>
         <option value="shares">发出的副本</option><option value="shared-experience">接收的经验</option>

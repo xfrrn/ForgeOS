@@ -15,10 +15,11 @@ func ValidTaskStatus(status string) bool {
 }
 
 type TaskListFilter struct {
-	Limit  int
-	Before int64
-	Status string
-	Query  string
+	ProjectID int64
+	Limit     int
+	Before    int64
+	Status    string
+	Query     string
 }
 
 type TaskSummary struct {
@@ -57,6 +58,7 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 		           COALESCE(t.spec->'issue'->>'repository', '') AS repository,
 		           t.spec->'issue'->'number' AS issue_number
 		    FROM work_items t
+		    WHERE $5::bigint=0 OR t.project_id=$5
 		), page AS (
 		    SELECT t.*, d.pr_number,
 		           (SELECT e.worker FROM executions e WHERE e.task_id=t.id ORDER BY e.id DESC LIMIT 1) AS worker,
@@ -67,11 +69,11 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 		           OR strpos(lower(t.title),lower($3))>0 OR strpos(lower(t.repository),lower($3))>0)
 		    ORDER BY t.id DESC LIMIT $4
 		), totals AS (
-		    SELECT status, count(*) AS n FROM work_items GROUP BY status
+		    SELECT status, count(*) AS n FROM work_items WHERE $5::bigint=0 OR project_id=$5 GROUP BY status
 		)
 		SELECT COALESCE((SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id DESC) FROM page p), '[]'),
 		       COALESCE((SELECT jsonb_object_agg(status,n) FROM totals), '{}')`,
-		f.Before, f.Status, f.Query, f.Limit+1).Scan(&items, &counts)
+		f.Before, f.Status, f.Query, f.Limit+1, f.ProjectID).Scan(&items, &counts)
 	if err != nil {
 		return TaskPage{}, err
 	}

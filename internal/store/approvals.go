@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 )
 
-// Each operation retains its own immutable record or plan revision and approval endpoint.
-func (s *Store) PendingApprovals(ctx context.Context, kind, beforeKind string, beforeID int64, questions, commands, patches bool) (json.RawMessage, error) {
-	var page json.RawMessage
-	err := s.db.QueryRowContext(ctx, `WITH approvals AS (
+// The workbench queue and the project badge count the same pending operations.
+const pendingApprovalCandidates = `
 		SELECT 'plan'::text AS kind,t.id,t.project_id,r.plan->>'objective' AS title,r.revision,
 		       r.review->>'verdict' AS verdict,COALESCE(r.review->>'effective_level',r.minimum_level,'D2') AS level,
 		       NULL::bigint AS recipient,NULL::text AS digest,NULL::timestamptz AS valid_until,NULL::bigint AS task_id
@@ -25,14 +23,20 @@ func (s *Store) PendingApprovals(ctx context.Context, kind, beforeKind string, b
 		UNION ALL
 		SELECT 'question',q.id,t.project_id,q.question,NULL,NULL,q.management_advice->>'level',NULL,NULL,NULL,t.id
 		FROM decision_questions q JOIN work_items t ON t.id=q.task_id JOIN executions e ON e.id=q.execution_id
-		WHERE $4 AND q.management_advice->>'level' IN ('D2','D3') AND `+liveAdviceQuestion+`
+		WHERE q.management_advice->>'level' IN ('D2','D3') AND ` + liveAdviceQuestion + `
 		UNION ALL
 		SELECT CASE WHEN a.patch IS NULL THEN 'command' ELSE 'patch' END,a.id,t.project_id,coalesce(a.patch->0->>'path',a.command),NULL,NULL,NULL,NULL,
                encode(sha256(convert_to(a.patch::text,'UTF8')),'hex'),a.valid_until,t.id
 		FROM live_command_approvals a JOIN executions e ON e.id=a.execution_id JOIN work_items t ON t.id=e.task_id
-		WHERE (($5 AND a.patch IS NULL) OR ($6 AND a.patch IS NOT NULL)) AND a.decision IS NULL
-	), pending AS (
+		WHERE a.decision IS NULL`
+
+// Each operation retains its own immutable record or plan revision and approval endpoint.
+func (s *Store) PendingApprovals(ctx context.Context, project int64, kind, beforeKind string, beforeID int64, questions, commands, patches bool) (json.RawMessage, error) {
+	var page json.RawMessage
+	err := s.db.QueryRowContext(ctx, `WITH approvals AS (`+pendingApprovalCandidates+`), pending AS (
 		SELECT * FROM approvals WHERE ($1='' OR kind=$1) AND ($2='' OR (kind COLLATE "C",id)<($2,$3))
+		  AND ($4 OR kind<>'question') AND ($5 OR kind<>'command') AND ($6 OR kind<>'patch')
+		  AND ($7::bigint=0 OR project_id=$7)
 		ORDER BY kind COLLATE "C" DESC,id DESC LIMIT 31
 	), page AS (SELECT * FROM pending ORDER BY kind COLLATE "C" DESC,id DESC LIMIT 30)
 	SELECT jsonb_build_object('items',COALESCE(jsonb_agg(jsonb_strip_nulls(to_jsonb(page) || CASE WHEN kind IN ('command','patch') THEN
@@ -40,6 +44,6 @@ func (s *Store) PendingApprovals(ctx context.Context, kind, beforeKind string, b
 		ELSE '{}'::jsonb END) ORDER BY kind COLLATE "C" DESC,id DESC),'[]'),
 		'next_before',CASE WHEN (SELECT count(*) FROM pending)>30 THEN
 		    (SELECT kind||'.'||id FROM page ORDER BY kind COLLATE "C",id LIMIT 1) END) FROM page`,
-		kind, beforeKind, beforeID, questions, commands, patches).Scan(&page)
+		kind, beforeKind, beforeID, questions, commands, patches, project).Scan(&page)
 	return page, err
 }

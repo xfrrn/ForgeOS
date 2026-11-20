@@ -27,6 +27,45 @@ type ReviewJob struct {
 	LeaseUntil       *time.Time      `json:"lease_until,omitempty"`
 }
 
+type ProjectCodeReview struct {
+	TaskID      int64     `json:"task_id"`
+	ExecutionID int64     `json:"execution_id"`
+	Title       string    `json:"title"`
+	Commit      string    `json:"commit_sha"`
+	State       string    `json:"state"`
+	RequestedAt time.Time `json:"requested_at"`
+}
+
+type ProjectCodeReviewPage struct {
+	Items      []ProjectCodeReview `json:"items"`
+	NextBefore int64               `json:"next_before,omitempty"`
+}
+
+func (s *Store) ProjectCodeReviews(ctx context.Context, project, before int64) (ProjectCodeReviewPage, error) {
+	page := ProjectCodeReviewPage{Items: []ProjectCodeReview{}}
+	rows, err := s.db.QueryContext(ctx, `SELECT r.task_id,r.execution_id,COALESCE(t.spec->'issue'->>'title',''),
+		r.commit_sha,`+codeReviewState+`,r.requested_at
+		FROM code_reviews r JOIN work_items t ON t.id=r.task_id
+		WHERE t.project_id=$1 AND ($2::bigint=0 OR r.execution_id<$2)
+		ORDER BY r.execution_id DESC LIMIT 31`, project, before)
+	if err != nil {
+		return page, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var row ProjectCodeReview
+		if err = rows.Scan(&row.TaskID, &row.ExecutionID, &row.Title, &row.Commit, &row.State, &row.RequestedAt); err != nil {
+			return page, err
+		}
+		page.Items = append(page.Items, row)
+	}
+	if len(page.Items) > 30 {
+		page.Items = page.Items[:30]
+		page.NextBefore = page.Items[29].ExecutionID
+	}
+	return page, rows.Err()
+}
+
 func (s *Store) SetCodeReviewPolicy(ctx context.Context, id int64, required bool) error {
 	var found int64
 	err := s.db.QueryRowContext(ctx, `UPDATE projects SET requires_code_review=$2 WHERE id=$1 RETURNING id`, id, required).Scan(&found)

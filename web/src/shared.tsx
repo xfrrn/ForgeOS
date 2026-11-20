@@ -22,6 +22,7 @@ export const statusLabels: Record<string, string> = {
   PAUSED: '已暂停', CANCELLED: '已取消', SUPERSEDED: '已从计划移除', PLANNING: '规划中', ACTIVE: '目标执行中', BLOCKED: '等待依赖', READY: '待执行', RUNNING: '执行中', WAITING_ACCEPTANCE: '待验收',
   ACCEPTED: '已验收', DONE: '已完成', FAILED: '失败', COMPLETED: '执行成功',
   PENDING: '待交付', WAITING: '等待合并', MERGED: '已合并',
+  REVIEW_PENDING: '等待审查', REVIEW_FAILED: '审查失败', REVIEW_NEEDS_CHECK: '待复核', REVIEW_CLEAR: '审查通过',
 }
 
 export function Status({ value }: { value: string }) {
@@ -43,12 +44,16 @@ export function safeGitHubURL(value?: string): string | undefined {
   } catch { /* Ignore malformed evidence links. */ }
 }
 
+export function projectHref(projectId: number, suffix = '') {
+  return `#/projects/${projectId}${suffix}`
+}
+
 export type ApiRequest = <T>(path: string, init?: RequestInit, format?: 'blob') => Promise<T>
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
-export function requestWith(token: string, onUnauthorized: () => void): ApiRequest {
+export function requestWith(onUnauthorized: () => void): ApiRequest {
   return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
     const globalRulesPath = /^\/global-rules(?:\?revision=[1-9]\d*)?$/.test(path)
     const materialPath = /^\/projects\/[1-9]\d*\/(?:experience\?q=[^&#]+|materials(?:\?[^#]*|\/[^/?#\\]+(?:\?revision=[1-9]\d*|\/revisions\/[1-9]\d*\/curation)?)?)$/.test(path)
@@ -59,12 +64,13 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
     const roleArchivePath = /^\/role-processes\/[1-9]\d*\/instances\/[1-9]\d*\/archive$/.test(path)
     const shareSearchPath = /^\/projects\/[1-9]\d*\/shared-experience\/search\?q=[^&#]+$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
-    if (!nativeApprovalPath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && path !== '/workers' && path !== '/workers/model-budgets' && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path) && !/^\/projects(?:\?before=[1-9]\d*|\/[1-9]\d*\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?$/.test(path)) throw new Error('无效的工作台接口')
+    const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
+    const projectPath = /^\/projects(?:\?[^#]*|\/[1-9]\d*(?:\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?)?$/.test(path)
+    if (!nativeApprovalPath && !codeReviewPath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && !projectPath && path !== '/workers' && path !== '/workers/model-budgets' && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
-    headers.set('Authorization', 'Bearer ' + token)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
     let response: Response
-    try { response = await fetch(path, { ...init, headers, redirect: 'error', credentials: 'omit', cache: 'no-store' }) }
+    try { response = await fetch(path, { ...init, headers, redirect: 'error', credentials: 'same-origin', cache: 'no-store' }) }
     catch (err) {
       if (init.signal?.aborted) throw err
       throw new Error('无法连接控制面，请检查服务后重试。')
@@ -72,7 +78,7 @@ export function requestWith(token: string, onUnauthorized: () => void): ApiReque
     if (!response.ok) {
       const info = await response.json().catch(() => null)
       if (response.status === 401) onUnauthorized()
-      throw new ApiError(response.status, response.status === 401 ? 'Owner 令牌无效，请重新连接。' :
+      throw new ApiError(response.status, response.status === 401 ? '登录已失效，请重新登录。' :
         response.status === 409 && info?.error === 'select an Issue work type before dispatch' ? '请先为这条 Issue 选择工作类型。' :
         response.status === 409 && info?.error === 'work type differs from the current GitHub Issue' ? '所选工作类型与 GitHub Issue 声明的类型不一致。' :
         response.status === 409 ? '任务状态或候选版本已变化，请刷新记录。' :

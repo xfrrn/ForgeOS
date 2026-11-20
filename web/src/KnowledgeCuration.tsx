@@ -1,6 +1,6 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, formatTime, type ApiRequest } from './shared'
+import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 
 type Receipt = {
@@ -77,7 +77,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
         <p>正文 SHA-256 · <code>{receipt.content_sha256}</code></p>
         <details><summary>查看固定版本原文</summary><pre className="material-content">{receipt.content}</pre></details></>}
       {receipt?.goal && <><p>Goal 完成事件 #{receipt.event_id} · 计划修订 {receipt.goal.plan_revision}</p>
-        <ul>{receipt.goal.children.map(c => <li key={c.task_id}><a href={`#/tasks/${c.task_id}`}>{c.key}</a> · {c.pr_url}
+        <ul>{receipt.goal.children.map(c => <li key={c.task_id}><a href={projectHref(project, `/tasks/${c.task_id}`)}>{c.key}</a> · {c.pr_url}
           <p>候选 <code>{c.candidate}</code> · 合并 <code>{c.merge_sha}</code></p></li>)}</ul></>}
       {receipt?.delivery && <><p>合并事件 #{receipt.event_id} · PR #{receipt.delivery.pr_number} · {receipt.delivery.target_branch}</p>
         <p>候选 <code>{receipt.delivery.candidate}</code> · 合并 <code>{receipt.delivery.merge_sha}</code></p></>}

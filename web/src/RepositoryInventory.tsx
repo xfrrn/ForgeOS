@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Fact, Status, formatTime, type ApiRequest } from './shared'
+import { Fact, Status, formatTime, projectHref, type ApiRequest } from './shared'
 import { RepositoryAnalysis } from './RepositoryAnalysis'
 import { InitializationReports } from './InitializationReports'
 
@@ -16,7 +16,7 @@ type StartupCheck = { id: number; environment: string; status: string }
 const kinds: Record<string,string> = { guide: '入口文档', go: 'Go 模块', node: 'Node.js 包', composer: 'PHP Composer', python: 'Python 包', cargo: 'Rust Cargo', maven: 'Maven POM', gradle: 'Gradle 构建脚本', 'gradle-catalog': 'Gradle 版本目录', ruby: 'Ruby Bundler', 'ruby-lock': 'Bundler 锁定文件', manifest: '依赖清单', lock: '依赖锁定文件', runtime: '构建与启动', forgeos: 'ForgeOS 配置' }
 const problems: Record<string,string> = { dynamic_gradle: '构建脚本含无法静态识别的语法，依赖未解析', dynamic_ruby: '包含需要 Bundler 求值的 Ruby 代码，声明依赖未解析', size_limit: '清单超过读取上限', analysis_budget: '清单继承或依赖展开达到本次扫描上限', read_budget: '已达到本次清单内容读取上限', invalid_manifest: '清单格式无效', invalid_project: '项目配置无效，请核对 project.yaml 声明。' }
 
-export function RepositoryInventory({ task, request }: { task: number; request: ApiRequest }) {
+export function RepositoryInventory({ projectId, task, request }: { projectId: number; task: number; request: ApiRequest }) {
   const [report, setReport] = useState<Report>()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -76,7 +76,7 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
       {report.repository_id && <Fact label="已绑定仓库 ID">{report.repository_id}</Fact>}
     </dl>
     <RepositoryAnalysis task={task} request={request}/>
-    <InitializationReports task={task} request={request}/>
+    <InitializationReports projectId={projectId} task={task} request={request}/>
     {report.files.length ? report.files.map(f => <details className="inventory-file" key={f.path}>
       <summary><code>{f.path}</code> · {kinds[f.kind]}</summary>
       <p>Git blob · <code>{f.blob}</code></p>
@@ -104,7 +104,7 @@ export function RepositoryInventory({ task, request }: { task: number; request: 
         return <div key={env}><p>{env} · <code>{config.start_script}</code> · <code>127.0.0.1:{config.port}{config.health_path}</code> · {config.timeout_seconds} 秒</p>
           <button className="button" disabled={pending || (latest && !['DONE','FAILED'].includes(latest.status))}
             onClick={() => void start(env, latest?.id)}>{latest ? '重新检查' : '启动检查'} · {env}</button>
-          {history.map(check => <p key={check.id}><a href={`#/tasks/${check.id}`}>启动检查 #{check.id}</a> · <Status value={check.status}/></p>)}
+          {history.map(check => <p key={check.id}><a href={projectHref(projectId, `/tasks/${check.id}`)}>启动检查 #{check.id}</a> · <Status value={check.status}/></p>)}
         </div>})}</>}
       {f.secret_requirements && <><h3>声明的密钥需求</h3>{f.secret_requirements.length ? <ul>{f.secret_requirements.map(r =>
         <li key={r.environment + '/' + r.name}>{r.environment} · <code>{r.name}</code> · {r.risk}</li>)}</ul> : <p>此版本未声明密钥需求。</p>}</>}

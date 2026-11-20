@@ -24,6 +24,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "configure-owner" {
+		if err := configureOwner(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {
@@ -41,6 +47,15 @@ func run(ctx context.Context) error {
 		return errors.New("FORGEOS_LISTEN_ADDR must use a loopback IP and port")
 	}
 	owner := os.Getenv("FORGEOS_OWNER_TOKEN")
+	ownerCredentials, err := loadOwnerCredentials(os.Getenv("FORGEOS_OWNER_CREDENTIALS_FILE"))
+	if err != nil {
+		return err
+	}
+	gateway, err := previewGateway(os.Getenv("FORGEOS_GATEWAY_DOMAIN"), os.Getenv("FORGEOS_GATEWAY_PORT"))
+	if err != nil {
+		return err
+	}
+	ownerAuth := newOwnerWebAuth(ownerCredentials, owner, gateway)
 	channels, err := loadNoticeChannels(os.Getenv("FORGEOS_NOTIFICATION_CHANNELS_FILE"))
 	if err != nil {
 		return err
@@ -94,6 +109,7 @@ func run(ctx context.Context) error {
 	}
 
 	mux := routes(data, root, owner, workers, delivery)
+	ownerAuth.register(mux)
 	registerGitHubWebhooks(mux, data, owner, pollers)
 	stopPreviews, err := startPreviews(mux, data, root, owner, os.Getenv("FORGEOS_PREVIEW_ADDR"))
 	if err != nil {
@@ -169,7 +185,7 @@ func run(ctx context.Context) error {
 		start(nodeListener, workers.nodeRoutes)
 		log.Printf("ForgeOS Worker mTLS listening on %s", nodeListener.Addr())
 	}
-	start(listener, mux)
+	start(listener, ownerAuth.middleware(mux))
 	defer func() {
 		for _, s := range servers {
 			s.Close()

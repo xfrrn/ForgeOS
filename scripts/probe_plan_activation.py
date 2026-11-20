@@ -3,6 +3,7 @@ import argparse
 import os
 
 from playwright.sync_api import expect, sync_playwright
+from probe_workbench_login import login_to_workbench
 
 
 def main():
@@ -23,8 +24,7 @@ def main():
         draft = goal["plan"]
         first = draft["revision"]
         page.goto(f"{origin}/#{path}/plans/{first}")
-        page.get_by_label("Owner 令牌").fill(token)
-        page.get_by_label("Owner 令牌").press("Enter")
+        login_to_workbench(page)
         approve = page.get_by_role("button", name=f"批准并激活修订 {first}", exact=True)
         expect(approve).to_be_enabled()
 

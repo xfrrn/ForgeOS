@@ -37,7 +37,7 @@ func TestPendingQuestionsCursor(t *testing.T) {
 	}
 	read := func(before int64) page {
 		t.Helper()
-		raw, err := s.PendingQuestions(ctx, before)
+		raw, err := s.PendingQuestions(ctx, 0, before)
 		if err != nil {
 			t.Fatal(err)
 		}

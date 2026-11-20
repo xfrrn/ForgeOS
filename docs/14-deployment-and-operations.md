@@ -54,6 +54,8 @@ install -m 0644 deploy/systemd/forgeos-*.service /etc/systemd/system/
 | `/etc/forgeos/controlplane.env` | `FORGEOS_LISTEN_ADDR=127.0.0.1:8080`、`FORGEOS_DATABASE_URL`、`FORGEOS_OWNER_TOKEN`、`FORGEOS_WORKERS_FILE`、`FORGEOS_REPO_ROOT` |
 | `/etc/forgeos/worker.env` | `FORGEOS_API_URL=http://127.0.0.1:8080`、节点的 `FORGEOS_WORKER_ID` 和 `FORGEOS_WORKER_TOKEN` 或 `FORGEOS_WORKER_TOKEN_FILE`（[在线轮换步骤](local-development.md#为多个-worker-分配项目)）、`FORGEOS_REPO_ROOT`、`FORGEOS_SHARED_REPOS`、`FORGEOS_WORKSPACE_ROOT=/var/lib/forgeos-worker/work` |
 
+部署工作台时，用 `controlplane configure-owner` 在私有目录生成 [Owner 凭据文件](local-development.md#打开任务工作台)。将其绝对路径写入控制面的 `FORGEOS_OWNER_CREDENTIALS_FILE`，将文件访问权限限制在控制面运行账号和管理员。
+
 多节点部署可在私网绑定独立的 TLS 1.3 节点端口，客户端证书与具名节点逐一绑定。服务身份文件、私有 CA 与在线轮换步骤见[具名节点证书](local-development.md#为具名节点签发和轮换客户端证书)。
 
 节点授权文件采用[本地运行说明](local-development.md)中的 JSON 格式，由控制面用户独占读取。需要外网代理时，在使用代理的服务环境文件中显式配置 `HTTP_PROXY`、`HTTPS_PROXY`。两个 unit 均设置 `NO_PROXY=localhost,127.0.0.1,::1`。服务首次启动时由 systemd 创建权限为 `0700` 的独立 HOME。模型登录须在 Worker 自己的 HOME 下完成。
@@ -68,6 +70,36 @@ sudo -H -u forgeos-worker env PATH=/var/lib/forgeos-worker/.local/bin:/usr/local
 ```
 
 执行节点页面显示的是 CLI 版本和已探测到的操作。验证账号可用性还要在同一身份下完成登录，并通过 Worker 提交一次真实模型请求。
+
+### Windows 开机自启
+
+在 Windows 上用 PowerShell 7.4 或更新版本的普通独立安装包，选一个能在目标运行账号下访问的固定 `pwsh.exe` 路径。准备编译好的控制面、Worker 和 `web/dist`，以及开机可用的 PostgreSQL。需要动态预览时也要配置无需桌面登录即可使用的 Docker 引擎和 Preview Manager。按角色准备[本地运行配置](local-development.md#准备环境)和服务账号自己的 Codex 登录。远程入口使用下文的私网配置，并在 Windows 主机上为 Tailscale 启用 [Run unattended](https://tailscale.com/docs/how-to/run-unattended)。
+
+把 `services.json` 和各角色的环境文件保存到仓库之外。Windows ACL 只向对应运行账号、系统管理员及 SYSTEM 授权。日志目录也应位于受保护的位置。每个角色填写绝对可执行文件、工作目录、日志目录及所需参数。环境可以用 `environmentFile` 引用一个只包含字符串键值的 JSON 文件，也可以用 `environment` 提供独立的键值，两处的键不能重复。控制面角色的环境中通过 `FORGEOS_OWNER_CREDENTIALS_FILE` 设置 [Owner 凭据文件](local-development.md#打开任务工作台) 的绝对路径。以下示例只包含 `controlplane`，常规运行另配 `worker`，按需加入 `postgres`、`preview-manager` 或 `caddy`。
+
+```json
+{
+  "services": {
+    "controlplane": {
+      "executable": "C:\\ForgeOS\\bin\\controlplane.exe",
+      "workingDirectory": "C:\\ForgeOS",
+      "logDirectory": "C:\\ForgeOS\\private\\logs",
+      "environmentFile": "C:\\ForgeOS\\private\\controlplane.json"
+    }
+  }
+}
+```
+
+PostgreSQL 可以使用已有 Windows 服务。若由计划任务管理，在 `postgres` 角色中以 `pwsh.exe` 执行 [Start-ForgeOSPostgres.ps1](../deploy/windows/Start-ForgeOSPostgres.ps1)，传入 `-PgCtlPath`、`-DataDirectory` 和 `-LogFile` 的绝对路径。该脚本用 `pg_ctl` 启动仅监听回环的数据库，并等待服务器退出。日常停止数据库时先用 `pg_ctl stop` 完成正常关闭。
+
+在仓库根目录的 PowerShell 中先校验配置，再用**管理员权限启动的 PowerShell**注册开机任务。注册时输入实际运行任务的 Windows 账号及密码。使用 `-Role` 可按账号分别注册。脚本拒绝覆盖同名任务。
+
+```powershell
+.\deploy\windows\Install-ForgeOSTasks.ps1 -ConfigPath 'C:\ForgeOS\private\services.json' -ValidateOnly
+.\deploy\windows\Install-ForgeOSTasks.ps1 -ConfigPath 'C:\ForgeOS\private\services.json' -Start -PowerShellPath 'C:\Program Files\PowerShell\7\pwsh.exe'
+```
+
+任务在系统启动时以所选账号的普通权限运行，失败后由任务计划程序重试。使用 `Get-ScheduledTask -TaskName 'ForgeOS-*'` 检查任务，并在配置的日志目录查看各角色的标准输出和错误。验收时重启 Windows，保持未登录状态，从另一台已加入私网的设备打开工作台，检查 Worker 在线、远程预览和审批提交。
 
 ## 3. 私有网络
 
@@ -103,7 +135,7 @@ Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动
 
 ### 私网 HTTPS 入口
 
-使用仓库的 [Caddyfile](../deploy/caddy/Caddyfile)。为工作台与预览分配一个专用私有 DNS 区，例如 `qa.internal.example`。在私有解析器将 `*.qa.internal.example` 指向验收主机的 tailnet 地址，在 tailnet 中为该区配置分流 DNS。工作台域名为 `forgeos.qa.internal.example`。工作台域名上的 `/global-rules` 允许持客户端证书及 Owner 令牌的用户读取历史、发布及撤下全局规则。每次启动预览后，工作台会给出该候选独有的 HTTPS 链接。预览停止或到期后原链接失效。
+使用仓库的 [Caddyfile](../deploy/caddy/Caddyfile)。为工作台与预览分配一个专用私有 DNS 区，例如 `qa.internal.example`。在私有解析器将 `*.qa.internal.example` 指向验收主机的 tailnet 地址，在 tailnet 中为该区配置分流 DNS。工作台域名为 `forgeos.qa.internal.example`。Owner 可在工作台的「全局规则」读取历史、发布及撤下规则。每次启动预览后，工作台会给出该候选独有的 HTTPS 链接。预览停止或到期后原链接失效。
 
 | 设置 | 配置位置和用途 |
 | --- | --- |
@@ -112,9 +144,9 @@ Caddy 可统一代理中台和预览域名。预览域名由 Preview Manager 动
 | `FORGEOS_TLS_CERT`、`FORGEOS_TLS_KEY`、`FORGEOS_CLIENT_CA` | Caddy 可读取的 PEM 文件路径。服务端证书覆盖该区的通配域名。客户端 CA 用来核对准入设备的客户端证书。 |
 | `FORGEOS_CONTROL_UPSTREAM`、`FORGEOS_PREVIEW_UPSTREAM`、`FORGEOS_PREVIEW_PORT` | 同机默认分别为 127.0.0.1:8080、127.0.0.1:8091 和 8091。预览端口应对应控制面的 `FORGEOS_PREVIEW_ADDR`。 |
 
-在 Caddy 的服务环境中设置上述变量后，运行 `caddy validate --config deploy/caddy/Caddyfile --adapter caddyfile`，用同一环境运行 `caddy run --config deploy/caddy/Caddyfile --adapter caddyfile`。在验收设备安装受信任的服务端 CA 和该设备自己的客户端证书、私钥。tailnet 访问规则将验收人员对该主机的访问限制到网关端口。登录工作台仍需 Owner 令牌。
+在 Caddy 的服务环境中设置上述变量后，运行 `caddy validate --config deploy/caddy/Caddyfile --adapter caddyfile`，用同一环境运行 `caddy run --config deploy/caddy/Caddyfile --adapter caddyfile`。在验收设备安装受信任的服务端 CA 和该设备自己的客户端证书、私钥。tailnet 访问规则将验收人员对该主机的访问限制到网关端口。浏览器通过客户端证书验证后，用 Owner 邮箱和密码登录工作台。
 
-工作台仅代理静态 UI 和任务、项目、执行操作的路径。私网预览从另一浏览器来源读取，Caddy 转发到预览监听器时移除 Authorization 和 Cookie。控制面、预览上游及数据库等服务保持原来的本机监听配置。[Caddy 客户端证书配置](https://caddyserver.com/docs/caddyfile/directives/tls) · [反向代理的上游请求头](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+工作台代理静态 UI 及工作台使用的接口，包括原生命令和文件补丁审批、独立角色进程归档下载。私网预览从另一浏览器来源读取，Caddy 转发到预览监听器时移除 Authorization 和 Cookie。控制面、预览上游及数据库等服务保持原来的本机监听配置。[Caddy 客户端证书配置](https://caddyserver.com/docs/caddyfile/directives/tls) · [反向代理的上游请求头](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 
 ## 5. 资源管理
 

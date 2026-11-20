@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { formatTime, Icon, type ApiRequest } from './shared'
+import { formatTime, Icon, projectHref, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
 
 export const approvalLabels = { plan: 'Goal 计划', decision: '项目决策', share: '跨项目共享', question: '业务决定', command: '原生命令', patch: '文件补丁' }
@@ -17,13 +17,13 @@ export type ApprovalItem = { kind: Kind; id: number; project_id: number; title: 
 type Page = { items: ApprovalItem[]; next_before?: string }
 
 export function approvalPath(item: ApprovalItem) {
-  if (item.kind === 'command' || item.kind === 'patch') return '#/approvals'
-  if (item.kind === 'question') return `#/tasks/${item.task_id}/questions/${item.id}`
-  if (item.kind === 'plan') return `#/tasks/${item.id}/plans/${item.revision}`
-  return `#/projects/${item.project_id}/${item.kind === 'decision' ? 'decisions' : 'shares'}/${item.id}`
+  if (item.kind === 'command' || item.kind === 'patch') return projectHref(item.project_id, '/reviews')
+  if (item.kind === 'question') return projectHref(item.project_id, `/tasks/${item.task_id}/questions/${item.id}`)
+  if (item.kind === 'plan') return projectHref(item.project_id, `/tasks/${item.id}/plans/${item.revision}`)
+  return projectHref(item.project_id, `/${item.kind === 'decision' ? 'decisions' : 'shares'}/${item.id}`)
 }
 
-export function Approvals({request}: {request: ApiRequest}) {
+export function Approvals({projectId, request}: {projectId: number; request: ApiRequest}) {
   const [kind, setKind] = useState('')
   const [cursors, setCursors] = useState<string[]>([])
   const [page, setPage] = useState<Page>()
@@ -43,7 +43,7 @@ export function Approvals({request}: {request: ApiRequest}) {
   const before = cursors.at(-1)
   useEffect(() => {
     const controller = new AbortController()
-    const query = new URLSearchParams({include_questions: '1', include_commands: '1', include_patches: '1'})
+    const query = new URLSearchParams({include_questions: '1', include_commands: '1', include_patches: '1', project_id: String(projectId)})
     if (kind) query.set('kind', kind)
     if (before) query.set('before', before)
     setPage(undefined); setError('')
@@ -51,9 +51,9 @@ export function Approvals({request}: {request: ApiRequest}) {
       .then(p => { if (!controller.signal.aborted) setPage(p) })
       .catch(e => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : '读取待审批记录失败。') })
     return () => controller.abort()
-  }, [request, kind, before, revision])
+  }, [projectId, request, kind, before, revision])
   return <>
-    <PageHeading title="审批中心" actions={<button className="button" onClick={() => setRevision(n => n + 1)}>
+    <PageHeading title="项目审批" actions={<button className="button" onClick={() => setRevision(n => n + 1)}>
       <Icon name="RefreshCw" size={15}/>刷新审批列表
     </button>}/>
     {error && <p className="detail-problem" role="alert">{error}</p>}
@@ -68,7 +68,7 @@ export function Approvals({request}: {request: ApiRequest}) {
       {page?.items.length === 0 && <EmptyState icon="ListChecks" title="本页没有待审批记录"/>}
       {page?.items.map(item => <article className="notification-row" key={item.kind + item.id}>
         <h2>{approvalLabels[item.kind]} · {item.kind === 'command' ? <code className="record-command">{item.title}</code> : item.title}</h2>
-        <p>项目 #{item.project_id} · {item.kind === 'plan' ? '任务 T-' : '记录 #'}{item.id}
+        <p>{item.kind === 'plan' ? '任务 T-' : '记录 #'}{item.id}
           {item.level && item.kind !== 'decision' && ' · ' + item.level}{item.revision && ' · 修订 ' + item.revision}
           {item.recipient && ' · 接收项目 #' + item.recipient}</p>
         {item.verdict && <p>{item.kind === 'decision' ? '来源知识审核' + (item.level ? ' · ' + item.level : '') : 'Management 审核'} · {verdicts[item.verdict]}</p>}
@@ -76,7 +76,7 @@ export function Approvals({request}: {request: ApiRequest}) {
         {item.patch && <PatchPreview files={item.patch}/>}
         {item.valid_until && <p>有效期至 <time dateTime={item.valid_until}>{formatTime(item.valid_until)}</time></p>}
         {item.kind === 'command' || item.kind === 'patch' ? <>
-          <p><a href={'#/tasks/' + item.task_id}>任务 T-{item.task_id}</a> · 执行 #{item.execution_id} · 进程 #{item.instance}</p>
+          <p><a href={projectHref(item.project_id, '/tasks/' + item.task_id)}>任务 T-{item.task_id}</a> · 执行 #{item.execution_id} · 进程 #{item.instance}</p>
           <p>目录 <code>{item.cwd}</code> · 基线 <code>{item.base_commit}</code></p>
           <p>会话 <code>{item.session_id}</code> · 回合 <code>{item.turn_id}</code> · 调用 <code>{item.item_id}</code></p>
           <div className="detail-actions">{Object.entries({accept:'仅允许本次', decline:'拒绝本次', cancel:'取消回合'}).map(([decision,label]) =>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError, formatTime, type ApiRequest } from './shared'
+import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import { BackLink, PageHeading } from './ui'
 
@@ -94,7 +94,7 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
     } finally { setBusy(false) }
   }
   return <div className="project-setup">
-    <BackLink href="#/projects">返回项目接入</BackLink>
+    <BackLink href={projectHref(project)}>返回项目概览</BackLink>
     <PageHeading title={`项目 #${project} · 项目决策`}/>
     {error && <p role="alert" className="detail-problem">{error}</p>}
     {notice && <p role="status">{notice}</p>}

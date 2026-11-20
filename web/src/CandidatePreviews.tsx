@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { formatTime, type ApiRequest } from './shared'
+import { formatTime, projectHref, type ApiRequest } from './shared'
 
 type Preview = { id: string; environment: string; directory: string; state: 'active' | 'stopped' | 'expired'; url: string; expires_at: string }
 type Listing = { enabled: boolean; applications: boolean; gateway?: string; previews: Preview[] }
 
-export function CandidatePreviews({ task, execution, commit, request }: { task: number; execution: number; commit: string; request: ApiRequest }) {
+export function CandidatePreviews({ projectId, task, execution, commit, request }: { projectId: number; task: number; execution: number; commit: string; request: ApiRequest }) {
   const [open, setOpen] = useState(false)
   const [listing, setListing] = useState<Listing | null>(null)
   const [directory, setDirectory] = useState('')
@@ -38,7 +38,7 @@ export function CandidatePreviews({ task, execution, commit, request }: { task: 
         {listing.applications && <button className="button" disabled={busy} onClick={() => void change(undefined, true)}>启动应用预览（local-mock）</button>}</>
         : listing && <p>控制面尚未配置本机预览端口。</p>}
       {listing?.previews.map(p => <div key={p.id}><strong>{p.environment === 'local-mock' ? '应用预览（local-mock）' : p.directory}</strong> · {p.state === 'active' ? '运行中' : p.state === 'stopped' ? '已停止' : '已到期'} · 到期时间 {formatTime(p.expires_at)}
-        {' '}<a href={`#/tasks/${task}/previews/${p.id}/feedback`}>预览反馈</a>
+        {' '}<a href={projectHref(projectId, `/tasks/${task}/previews/${p.id}/feedback`)}>预览反馈</a>
         {p.state === 'active' && <> <a href={p.url} target="_blank" rel="noreferrer">打开预览</a>
           {listing.gateway && <> · <a href={`https://p-${p.id}.${listing.gateway}/`} target="_blank" rel="noreferrer">打开私网预览</a></>}
           {' '}<button className="button" disabled={busy} onClick={() => void change(p.id)}>停止预览</button></>}

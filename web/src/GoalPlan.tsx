@@ -1,13 +1,13 @@
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState } from 'react'
-import { ApiError, Fact, Status, type ApiRequest } from './shared'
+import { ApiError, Fact, projectHref, Status, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
 
 export type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[]; context_refs?: string[] }
 export type Plan = { review_processes?: ReviewProcess[]; revision: number; minimum_level?: string; git_commit?: string; review_context?: CandidateContext; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 export type GoalChild = { id: number; key: string; status: string; plan_revision?: number }
-type Props = { taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
+type Props = { projectId: number; taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
 
 function PlanArchive({taskID, plan, request, disabled}: Pick<Props, 'taskID' | 'request' | 'disabled'> & {plan: Plan}) {
   const [receipt, setReceipt] = useState('')
@@ -31,7 +31,7 @@ function PlanArchive({taskID, plan, request, disabled}: Pick<Props, 'taskID' | '
     {error && <p role="alert">{error}</p>}</div>
 }
 
-export default function GoalPlan({taskID, selected, latest, active, items, request, activate, disabled}: Props) {
+export default function GoalPlan({projectId, taskID, selected, latest, active, items, request, activate, disabled}: Props) {
   const [archived, setArchived] = useState<Plan>()
   const [error, setError] = useState('')
   const historical = selected !== undefined && selected !== latest?.revision
@@ -47,7 +47,7 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
 
   const plan = historical ? archived : latest
   const shown = selected ?? latest?.revision
-  const path = `#/tasks/${taskID}`
+  const path = projectHref(projectId, `/tasks/${taskID}`)
   const children = new Map(items?.filter(child =>
     (active === shown && child.status !== 'SUPERSEDED') || child.plan_revision === shown
   ).map(child => [child.key, child]))
@@ -75,7 +75,7 @@ export default function GoalPlan({taskID, selected, latest, active, items, reque
       {plan.plan.milestones.map((milestone, index) => <div key={index}>
         <h3>{milestone.name}</h3>
         <ul>{milestone.items?.map(item => <li key={item.key}>
-          {children.has(item.key) ? <a href={`#/tasks/${children.get(item.key)!.id}`}>{item.key} · {item.objective} {active !== shown && '当前状态：'}<Status value={children.get(item.key)!.status}/></a>
+          {children.has(item.key) ? <a href={projectHref(projectId, `/tasks/${children.get(item.key)!.id}`)}>{item.key} · {item.objective} {active !== shown && '当前状态：'}<Status value={children.get(item.key)!.status}/></a>
             : <strong>{item.key} · {item.objective}</strong>}
           <dl><Fact label="范围">{item.scope}</Fact><Fact label="验收条件">{item.acceptance_criteria}</Fact>
             <Fact label="交付物">{item.deliverables}</Fact>

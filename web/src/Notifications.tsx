@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { formatTime, Icon, Status, type ApiRequest } from './shared'
+import { formatTime, Icon, projectHref, Status, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
 
 export const noticeLabels = { question: '需要答复', plan: '计划审核需要处理', acceptance: '候选等待验收', failure: '执行需要核对' }
@@ -8,28 +8,29 @@ export type Notice = { id: number; task_id: number; project_id: number; executio
 type Page = { items: Notice[]; next_before?: number }
 
 export function noticePath(n: Notice) {
-  return `#/tasks/${n.task_id}${n.plan_revision ? '/plans/' + n.plan_revision : ''}`
+  return projectHref(n.project_id, `/tasks/${n.task_id}${n.plan_revision ? '/plans/' + n.plan_revision : ''}`)
 }
 
-export function NotificationCount({request, revision}: {request: ApiRequest; revision: number}) {
+export function NotificationCount({projectId, request, revision}: {projectId?: number; request: ApiRequest; revision: number}) {
   const [count, setCount] = useState(0)
   useEffect(() => {
     const stop = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     async function read() {
       try {
-        const result = await request<{unread: number}>('/tasks/notifications/unread', {signal: stop.signal})
+        const path = '/tasks/notifications/unread' + (projectId === undefined ? '' : `?project_id=${projectId}`)
+        const result = await request<{unread: number}>(path, {signal: stop.signal})
         if (!stop.signal.aborted) setCount(result.unread)
       } catch { /* The inbox also reports connection failures when opened. */ }
       if (!stop.signal.aborted) timer = setTimeout(read, 8000)
     }
     void read()
     return () => { stop.abort(); clearTimeout(timer) }
-  }, [request, revision])
+  }, [projectId, request, revision])
   return count > 0 ? <span className="nav-count" aria-label={count + ' 条待处理未读通知'}>{count}</span> : null
 }
 
-export function Notifications({request, onRead}: {request: ApiRequest; onRead: () => void}) {
+export function Notifications({projectId, request, onRead}: {projectId?: number; request: ApiRequest; onRead: () => void}) {
   const [history, setHistory] = useState(false)
   const [cursors, setCursors] = useState<number[]>([])
   const before = cursors.at(-1)
@@ -40,16 +41,19 @@ export function Notifications({request, onRead}: {request: ApiRequest; onRead: (
   useEffect(() => {
     const stop = new AbortController()
     let timer: ReturnType<typeof setTimeout>
+    const params = new URLSearchParams({scope: history ? 'history' : 'pending'})
+    if (projectId !== undefined) params.set('project_id', String(projectId))
+    if (before) params.set('before', String(before))
     async function read() {
       try {
-        const rows = await request<Page>('/tasks/notifications?scope=' + (history ? 'history' : 'pending') + (before ? '&before=' + before : ''), {signal: stop.signal})
+        const rows = await request<Page>('/tasks/notifications?' + params, {signal: stop.signal})
         if (!stop.signal.aborted) { setPage(rows); setError('') }
       } catch (e) { if (!stop.signal.aborted) setError(e instanceof Error ? e.message : '读取通知失败。') }
       if (!stop.signal.aborted) timer = setTimeout(read, 8000)
     }
     void read()
     return () => { stop.abort(); clearTimeout(timer) }
-  }, [request, history, before, revision])
+  }, [projectId, request, history, before, revision])
 
   async function mark(id: number) {
     setMarking(id)
@@ -61,7 +65,7 @@ export function Notifications({request, onRead}: {request: ApiRequest; onRead: (
     finally { setMarking(0) }
   }
   return <>
-    <PageHeading title="通知" actions={<button className="button" onClick={() => setRevision(n => n + 1)}>
+    <PageHeading title={projectId === undefined ? '通知' : '项目通知'} actions={<button className="button" onClick={() => setRevision(n => n + 1)}>
       <Icon name="RefreshCw" size={15}/>刷新通知
     </button>}/>
     {error && <p className="detail-problem" role="alert">{error}</p>}
@@ -75,7 +79,7 @@ export function Notifications({request, onRead}: {request: ApiRequest; onRead: (
       {page?.items.length === 0 && <EmptyState icon="Inbox" title={history ? '本页没有通知记录' : '本页没有待处理通知'}/>}
       {page?.items.map(n => <article className="notification-row" key={n.id}>
         <h2>{noticeLabels[n.kind]} · {n.title}</h2>
-        <p>项目 #{n.project_id} · 任务 T-{n.task_id}{n.execution_id && ' · 执行 #' + n.execution_id}{n.plan_revision && ' · 修订 ' + n.plan_revision}
+        <p>{projectId === undefined && `项目 #${n.project_id} · `}任务 T-{n.task_id}{n.execution_id && ' · 执行 #' + n.execution_id}{n.plan_revision && ' · 修订 ' + n.plan_revision}
           {' · '}<time dateTime={n.at}>{formatTime(n.at)}</time></p>
         <p>{n.pending ? '待处理' : '已离开此处理阶段'} · {n.read_at ? '已读' : '未读'} · <Status value={n.status}/></p>
         <div className="detail-actions"><a href={noticePath(n)}>{n.plan_revision ? '查看计划修订' : '打开任务'}</a>

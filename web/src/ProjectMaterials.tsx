@@ -3,7 +3,7 @@ import { KnowledgeCuration } from './KnowledgeCuration'
 import { ExperienceSearch } from './ExperienceSearch'
 import { RepositoryDocumentChanges } from './RepositoryDocumentChanges'
 import { ShareDraft } from './ProjectShares'
-import { ApiError, formatTime, type ApiRequest } from './shared'
+import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
 import { BackLink, PageHeading } from './ui'
 
 const kinds = { material: '导入资料', profile: '项目档案', environment: '环境说明', memory: 'Owner 记忆请求' }
@@ -113,7 +113,7 @@ export function ProjectMaterials({ project, request }: { project: number; reques
   }
   const formLocked = busy || Boolean(draft)
   return <div className="project-setup">
-    <BackLink href="#/projects">返回项目接入</BackLink>
+    <BackLink href={projectHref(project)}>返回项目概览</BackLink>
     <PageHeading title={`项目 #${project} · 项目资料`}/>
     <RepositoryDocumentChanges key={project} project={project} request={request}/>
     <ExperienceSearch key={'experience-' + project} project={project} request={request}/>

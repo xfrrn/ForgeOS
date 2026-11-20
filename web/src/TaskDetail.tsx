@@ -9,7 +9,7 @@ import { PlanEditor } from './PlanEditor'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import GoalPlan, { type Plan, type GoalChild } from './GoalPlan'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ApiError, Fact, Icon, Status, formatTime, safeGitHubURL, type ApiRequest } from './shared'
+import { ApiError, Fact, Icon, Status, formatTime, projectHref, safeGitHubURL, type ApiRequest } from './shared'
 import { QuestionAdvice, type Advice } from './QuestionAdvice'
 import './detail.css'
 import { CandidateTestPlans } from './CandidateTestPlans'
@@ -81,7 +81,7 @@ type Task = {
   children?: GoalChild[]
   questions?: Question[]
 }
-type Props = { id: number; planRevision?: number; questionID?: number; request: ApiRequest; onChanged: () => void }
+type Props = { projectId: number; id: number; planRevision?: number; questionID?: number; request: ApiRequest; onChanged: () => void }
 type Diff = { diff: string; truncated: boolean }
 
 const events: Record<string, string> = {
@@ -210,7 +210,7 @@ function RequirementHistory({ id, project, latest, request, canApply, onApply }:
     {failed ? <p role="alert">无法读取此需求版本。</p> : value?.revision === revision
       ? <><h4>{value.issue.title}</h4><p className="detail-issue-text">{value.issue.body}</p>
         {value.suggestion && <ClassificationAdvice key={value.classification_id} suggestion={value.suggestion} classification={value.classification_id} project={project} request={request} />}
-        <p>{value.feedback_id ? <a href={`#/tasks/${value.feedback_task}/previews/${value.feedback_preview}/feedback`}>Owner 修订 · 预览反馈 #{value.feedback_id} · {formatTime(value.observed_at)}</a> : `GitHub 更新时间 · ${formatTime(value.issue.updated_at)}`}</p></>
+        <p>{value.feedback_id ? <a href={projectHref(project, `/tasks/${value.feedback_task}/previews/${value.feedback_preview}/feedback`)}>Owner 修订 · 预览反馈 #{value.feedback_id} · {formatTime(value.observed_at)}</a> : `GitHub 更新时间 · ${formatTime(value.issue.updated_at)}`}</p></>
       : <p role="status">正在读取需求修订…</p>}
     {canApply && revision === latest && value?.revision === latest &&
       (value.issue.work_type === 'clarification'
@@ -499,7 +499,7 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
     </section>}
     {task.spec && <CandidateDiff key={result?.commit} taskID={task.id} attempt={attempt} request={request} />}
     {task.spec && result?.commit && validation?.commit === result.commit && validation.exit_code === 0 &&
-      <CandidatePreviews task={task.id} execution={attempt.id} commit={result.commit} request={request} />}
+      <CandidatePreviews projectId={task.project_id} task={task.id} execution={attempt.id} commit={result.commit} request={request} />}
     {result?.commit && validation?.exit_code === 0 && (attempt.test_plan_revision || (latest && task.status === 'WAITING_ACCEPTANCE')) ?
       <CandidateTestPlans task={task.id} execution={attempt.id} commit={result.commit} latest={attempt.test_plan_revision ?? 0}
         state={attempt.test_plan_state ?? ''} attempts={attempt.test_case_attempts ?? 0} required={Boolean(attempt.requires_test_plan)}
@@ -510,8 +510,8 @@ function Execution({ attempt, task, latest, request, refresh }: { attempt: Attem
   </details>
 }
 
-function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, reviewPending }: {
-  taskID: number; attempt: Attempt; request: ApiRequest; onUpdate: (task: Task) => void; refresh: (message: string) => void; locked: boolean; reviewPending: boolean
+function Acceptance({ projectId, taskID, attempt, request, onUpdate, refresh, locked, reviewPending }: {
+  projectId: number; taskID: number; attempt: Attempt; request: ApiRequest; onUpdate: (task: Task) => void; refresh: (message: string) => void; locked: boolean; reviewPending: boolean
 }) {
   const commit = attempt.result!.commit!
   const [selected, setSelected] = useState<number[]>([])
@@ -559,7 +559,7 @@ function Acceptance({ taskID, attempt, request, onUpdate, refresh, locked, revie
         disabled={!selected.includes(f.id) && incompatible(f.decision)}
         onChange={e => setSelected(e.target.checked ? [...selected, f.id] : selected.filter(id => id !== f.id))} />
         #{f.id} · {f.decision === 'approve' ? '通过' : '退回'} · {f.note}</label>{' '}
-        <a href={`#/tasks/${taskID}/previews/${f.preview_id}/feedback`}>查看反馈依据</a></div>)}
+        <a href={projectHref(projectId, `/tasks/${taskID}/previews/${f.preview_id}/feedback`)}>查看反馈依据</a></div>)}
     </fieldset>}
     <label htmlFor="acceptance-note">验收说明</label>
     <textarea id="acceptance-note" ref={noteField} value={note} disabled={busy} placeholder="退回时请说明需要修改的内容" onChange={e => { setNote(e.target.value); setError('') }} />
@@ -616,7 +616,7 @@ function RefreshDelivery({ id, delivery, request, reload }: { id: number; delive
     <button className="button" disabled={busy} onClick={() => void submit()}>在最新目标版本上重新验证</button></div>
 }
 
-function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
+function Detail({ projectId, id, planRevision, questionID, request, onChanged }: Props) {
   const [task, setTask] = useState<Task | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -633,8 +633,9 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
     let timer: ReturnType<typeof setTimeout>
     async function read() {
       try {
-        const fresh = await request<Task>(`/tasks/${id}`, { signal: controller.signal })
+        const fresh = await request<Task>(`/tasks/${id}?project_id=${projectId}`, { signal: controller.signal })
         if (controller.signal.aborted || epoch !== generation.current) return
+        if (fresh.project_id !== projectId) throw new ApiError(404, '在当前项目中找不到这项任务。')
         setTask(fresh)
         setError('')
         if (['PLANNING', 'ACTIVE', 'BLOCKED', 'READY', 'RUNNING', 'PAUSED', 'WAITING_INPUT', 'WAITING_ACCEPTANCE'].includes(fresh.status) || (fresh.status === 'ACCEPTED' && fresh.delivery)) {
@@ -642,14 +643,19 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
         }
       } catch (cause) {
         if (controller.signal.aborted || epoch !== generation.current) return
-        setError(cause instanceof ApiError && cause.status === 404 ? '找不到这项任务。' : '无法获取最新任务记录，请重新加载。')
+        if (cause instanceof ApiError && cause.status === 404) {
+          setTask(null)
+          setError('在当前项目中找不到这项任务。')
+        } else {
+          setError('无法获取最新任务记录，请重新加载。')
+        }
       } finally {
         if (!controller.signal.aborted && epoch === generation.current) setLoading(false)
       }
     }
     void read()
     return () => { controller.abort(); clearTimeout(timer) }
-  }, [id, planRevision, request, revision])
+  }, [projectId, id, planRevision, request, revision])
 
   function refresh(message = '') {
     generation.current++
@@ -690,14 +696,14 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
     }
   }
   if (!task) return <>
-    <BackLink href="#/tasks">返回任务列表</BackLink>
+    <BackLink href={projectHref(projectId, '/tasks')}>返回任务列表</BackLink>
     <PageHeading title={`任务 T-${id}`}/>
     <div className="panel detail-placeholder" role={error ? 'alert' : 'status'}>{error || '正在读取任务详情…'}
       {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
   </>
   if (questionID !== undefined) {
     const question = task.questions?.find(q => q.id === questionID)
-    return <article className="task-detail"><BackLink href={`#/tasks/${id}`}>返回任务 T-{id}</BackLink>
+    return <article className="task-detail"><BackLink href={projectHref(projectId, '/tasks/' + id)}>返回任务 T-{id}</BackLink>
       <PageHeading title={`任务 T-${id} · 待答问题`}/>
       {question ? <Decision key={question.id} taskID={id} q={question} canAnswer={task.status === 'WAITING_INPUT'} request={request}
         onAnswer={() => { refresh(); onChanged() }}/> : <p role="status">本任务没有这条业务决定。</p>}
@@ -713,7 +719,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
     result?.exit_code === 0 && result.commit && fullSHA.test(result.commit) && result.validation?.commit === result.commit &&
     result.validation.exit_code === 0 && !reviews.some(review => review.execution_id === last.id)
   return <article className="task-detail">
-    <BackLink href="#/tasks">返回任务列表</BackLink>
+    <BackLink href={projectHref(projectId, '/tasks')}>返回任务列表</BackLink>
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
       <h1>{issue?.title || (task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>
@@ -722,9 +728,9 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
         <Fact label="实现 Harness">{(task.spec.child_harness || task.spec.harness) === 'claude' ? 'Claude Code' : 'Codex'}</Fact>
         <Fact label="project.yaml 对象" code>{task.spec.project_config_blob}</Fact>
       </dl></details>}
-      {task.goal_id && <a href={`#/tasks/${task.goal_id}${task.plan_revision ? `/plans/${task.plan_revision}` : ''}`}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
+      {task.goal_id && <a href={projectHref(projectId, `/tasks/${task.goal_id}${task.plan_revision ? `/plans/${task.plan_revision}` : ''}`)}>Goal #{task.goal_id} · 修订 {task.plan_revision}</a>}
       <div className="detail-subtitle">{issue ? <><Icon name="GitBranch" size={15} /><span>{issue.repository}</span><span aria-hidden="true">/</span>
-        <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · {task.startup ? <>{task.startup.environment} · <a href={`#/tasks/${task.startup.source_task_id}`}>来源 HEAD 检查 #{task.startup.source_task_id}</a> · <code>{task.startup.commit}</code></> : task.kind}</span>}
+        <OutLink href={issue.url}>Issue #{issue.number}</OutLink></> : <span>项目 #{task.project_id} · {task.startup ? <>{task.startup.environment} · <a href={projectHref(projectId, '/tasks/' + task.startup.source_task_id)}>来源 HEAD 检查 #{task.startup.source_task_id}</a> · <code>{task.startup.commit}</code></> : task.kind}</span>}
         <button className="button detail-refresh" disabled={loading} onClick={() => refresh()}><Icon name="RefreshCw" size={15} />刷新</button>
       </div>
     </div>
@@ -764,8 +770,8 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
       {task.status === 'RUNNING' ? '等待 Worker 停止执行并提交回执。' : '任务已取消。'}</p>}
     <div className="detail-layout">
       <div className="detail-column">
-        {task.kind === 'git_head' && task.status === 'DONE' && <RepositoryInventory task={task.id} request={request}/>}
-        {(task.plan || planRevision) && <GoalPlan key={planRevision ?? 'latest'} taskID={task.id}
+        {task.kind === 'git_head' && task.status === 'DONE' && <RepositoryInventory projectId={projectId} task={task.id} request={request}/>}
+        {(task.plan || planRevision) && <GoalPlan key={planRevision ?? 'latest'} projectId={projectId} taskID={task.id}
           selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}
           activate={task.status === 'PLANNING' ? activatePlan : undefined} disabled={loading || sendingCommand || Boolean(error)}/>}
         {issue && task.kind === 'codex_issue' && !task.goal_id && <PlanEditor task={id} current={task.plan}
@@ -773,11 +779,11 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
           canEdit={['READY', 'FAILED', 'WAITING_ACCEPTANCE', 'PLANNING', 'ACTIVE'].includes(task.status) && (!planRevision || task.plan?.revision === planRevision)}
           onConflict={() => refresh()} onSaved={saved => {
             refresh(`已发布计划修订 ${saved}。`)
-            location.hash = `/tasks/${id}/plans/${saved}`
+            location.hash = projectHref(projectId, `/tasks/${id}/plans/${saved}`)
             onChanged()
           }}/>}
         {issue && <section className="panel detail-card"><h2><Icon name="MessageSquare" size={18} />Issue 说明</h2>
-          {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={`#/tasks/${f.task_id}/previews/${f.preview}/feedback`}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
+          {task.feedback_sources?.map(f => <p key={f.feedback_id}><a href={projectHref(projectId, `/tasks/${f.task_id}/previews/${f.preview}/feedback`)}>来源任务 T-{f.task_id} · 执行 #{f.execution_id} · 预览反馈 #{f.feedback_id}</a></p>)}
           {task.requirement_revision && <p>任务绑定需求修订 {task.requirement_revision}</p>}
           <div className="detail-issue-text" tabIndex={0} aria-label="Issue 正文">{issue.body || '此 Issue 没有正文。'}</div>
           {task.latest_requirement && <RequirementHistory id={id} project={task.project_id} latest={task.latest_requirement} request={request}
@@ -790,7 +796,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
       </div>
       <aside className="detail-column">
         {task.questions?.map(q => <Decision key={q.id} taskID={id} q={q} canAnswer={task.status === 'WAITING_INPUT'} request={request} onAnswer={() => { refresh('已记录业务答复。'); onChanged() }}/>)}
-        {canReview && <Acceptance key={`${last.id}:${result.commit}`} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)}
+        {canReview && <Acceptance key={`${last.id}:${result.commit}`} projectId={projectId} taskID={task.id} attempt={last} request={request} onUpdate={accepted} refresh={refresh} locked={loading || Boolean(error)}
           reviewPending={(Boolean(task.requires_code_review || last.code_review_state) && last.code_review_state !== 'clear') ||
             Boolean((last.test_plan_state || last.requires_test_plan) && last.test_case_state !== 'passed')} />}
         {task.spec && <section className="panel detail-card"><h2><Icon name="GitPullRequest" size={18} />GitHub 交付</h2>
@@ -822,8 +828,8 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
           <ol className="detail-timeline">{[...task.events].reverse().map(event =>
             <li key={event.id}><strong>{events[event.type] || event.type}</strong>
               <div><time dateTime={event.at}>{formatTime(event.at)}</time>{event.execution_id != null && <span> · 执行 #{event.execution_id}</span>}</div>
-              {event.question_id && <a href={`#/tasks/${task.id}/questions/${event.question_id}`}>问题 #{event.question_id}</a>}
-              {event.plan_revision && <a href={`#/tasks/${task.goal_id || task.id}/plans/${event.plan_revision}`}>计划修订 {event.plan_revision}</a>}
+              {event.question_id && <a href={projectHref(projectId, `/tasks/${task.id}/questions/${event.question_id}`)}>问题 #{event.question_id}</a>}
+              {event.plan_revision && <a href={projectHref(projectId, `/tasks/${task.goal_id || task.id}/plans/${event.plan_revision}`)}>计划修订 {event.plan_revision}</a>}
               {event.issue_feedback_at && issue && <div><OutLink href={issue.url}>已回写 Issue #{issue.number}</OutLink> · <time dateTime={event.issue_feedback_at}>{formatTime(event.issue_feedback_at)}</time></div>}
               <ArchiveDownload request={request} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}`} file={`task-${task.id}-event-${event.id}.json`} label="下载事件回执"/>
               {(event.type === 'pr_merged' || event.type === 'goal_delivered') && <KnowledgeCuration project={task.project_id} path={`/projects/${task.project_id}/tasks/${task.id}/events/${event.id}/curation`} request={request}/>}</li>)}</ol>
@@ -834,5 +840,5 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
 }
 
 export default function TaskDetail(props: Props) {
-  return <Detail key={props.id} {...props} />
+  return <Detail key={`${props.projectId}/${props.id}`} {...props} />
 }

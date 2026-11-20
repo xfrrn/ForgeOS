@@ -1,0 +1,222 @@
+.project-home-toolbar {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.project-home-toolbar .project-search {
+  width: 100%;
+  min-width: 0;
+}
+
+.project-add-mark {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.project-registration {
+  margin-bottom: var(--space-5);
+}
+
+.project-directory-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.project-directory-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  padding: var(--space-5);
+}
+
+.project-card-content {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.project-card-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.project-card-identity > svg {
+  margin-top: 2px;
+  flex: none;
+}
+
+.project-card-identity > div {
+  min-width: 0;
+}
+
+.project-card-identity h2 {
+  margin: 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.project-card-identity h2 a, .project-card-open {
+  color: var(--ink);
+}
+
+.project-repository {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.project-repository svg {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.project-card-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.project-card-metrics a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.project-card-metrics a:hover {
+  border-color: var(--accent-line);
+  background: var(--accent);
+}
+
+.project-card-metrics strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.project-card-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-5);
+  margin-inline-start: var(--space-5);
+  border-inline-start: 1px solid var(--line);
+  font-weight: 650;
+}
+
+.project-more {
+  justify-self: start;
+}
+
+.project-breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+}
+
+.project-breadcrumb li {
+  display: flex;
+  gap: var(--space-2);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.project-breadcrumb li + li::before {
+  content: "/";
+  color: var(--muted);
+}
+
+.project-breadcrumb [aria-current] {
+  color: var(--ink);
+}
+
+.project-workspace-heading {
+  margin-bottom: var(--space-4);
+}
+
+.project-workspace-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: clamp(23px, 3vw, 30px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.project-workspace-name svg {
+  flex: none;
+}
+
+.project-tabs, .project-secondary-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.project-tabs {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.project-tabs a, .project-secondary-links[aria-label] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.project-tabs a:hover, .project-secondary-links[aria-label] a:hover {
+  background: var(--surface-muted);
+}
+
+.project-tabs a[aria-current="page"], .project-secondary-links[aria-label] a[aria-current="page"] {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.project-operations {
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 560px) {
+  .project-directory-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .project-card-open {
+    justify-content: flex-start;
+    padding: var(--space-3) 0 0;
+    margin: 0;
+    border-inline-start: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .project-tabs {
+    gap: var(--space-1);
+  }
+}

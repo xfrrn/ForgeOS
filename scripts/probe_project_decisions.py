@@ -1,10 +1,10 @@
 """Verify the decision lifecycle in a designated test project using two Owner sessions."""
 
 import argparse
-import os
 from uuid import uuid4
 
 from playwright.sync_api import expect, sync_playwright
+from probe_workbench_login import login_to_workbench
 
 
 def main():
@@ -21,8 +21,7 @@ def main():
         def login():
             page = browser.new_context().new_page()
             page.goto(args.url.rstrip("/") + "/#/projects")
-            page.locator("#owner").fill(os.environ["FORGEOS_OWNER_TOKEN"])
-            page.locator("#owner").press("Enter")
+            login_to_workbench(page)
             project = page.locator("article").filter(has=page.get_by_role("heading", name=f"项目 #{args.project}", exact=True))
             project.get_by_role("link", name="项目决策").click()
             return page
