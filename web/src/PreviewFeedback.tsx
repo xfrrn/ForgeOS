@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState, type FormEvent } from 'react'
 import { formatTime, projectHref, type ApiRequest } from './shared'
@@ -168,8 +169,8 @@ export function PreviewFeedback({ projectId, task, preview, captureQuery, reques
           {capture.get('canvas_point') && <p>画布位置（左、上）　{capture.get('canvas_point')}</p>}</div>}
         {nonce && !mismatch && <p role="status">{media ? (captureFeedback ? `${mediaName}已关联反馈 #${captureFeedback}。` : kind === 'recording' ? '已收到录屏。登记观察后可回放并确认上传。' : '已收到截图。登记观察后可遮挡、标注并确认上传。') : `正在从扩展读取${mediaName}…`}</p>}
         <label>页面路径（省略查询参数和片段）<input readOnly={Boolean(nonce)} required maxLength={2048} value={path} onChange={e => setPath(e.target.value)} /></label>
-        <label>关联测试用例<select value={caseID} onChange={e => setCaseID(e.target.value)}><option value="">无关联用例</option>
-          {page.plan?.cases.map(c => <option key={c.id} value={c.id}>{c.id} · {c.objective}</option>)}</select></label>
+        <ThemedSelect label="关联测试用例" value={caseID} onChange={setCaseID}
+          options={[{value:'',label:'无关联用例'},...(page.plan?.cases ?? []).map(c=>({value:c.id,label:c.id+' · '+c.objective}))]}/>
         <label>观察结果或修改意见<textarea required maxLength={8192} value={note} onChange={e => setNote(e.target.value)} /></label>
         <button className="button primary" disabled={busy || mismatch || !note.trim() || Boolean(nonce && !media)}>提交反馈</button>
       </fieldset></form>
@@ -200,13 +201,11 @@ export function PreviewFeedback({ projectId, task, preview, captureQuery, reques
               <a href={`https://github.com/${page.repository}/issues/new`} target="_blank" rel="noreferrer">在 {page.repository} 新建 Issue</a>
               <label>独立 Issue 编号<input required inputMode="numeric" pattern="[1-9][0-9]*" value={issueNumber} onChange={e => setIssueNumber(e.target.value)} /></label>
               {/^[1-9]\d*$/.test(issueNumber) && <a href={`https://github.com/${page.repository}/issues/${issueNumber}`} target="_blank" rel="noreferrer">核对 Issue #{issueNumber}</a>}
-              <label>目标 Issue 工作类型<select key={issueNumber} name="work_type" defaultValue="">
-                <option value="">沿用 Issue 类型</option>
-                {Object.entries(workTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-              <label>执行 Harness<select value={harness} onChange={e => setHarness(e.target.value)}>
-                <option value="">项目默认</option><option value="codex">Codex</option><option value="claude">Claude Code</option></select></label>
-              <label>验证方式<select value={validation} onChange={e => setValidation(e.target.value)}>
-                {['auto','docs','go-test','V1','V2','V3','V4'].map(v => <option key={v}>{v}</option>)}</select></label>
+              <IssueTypeSelect key={issueNumber}/>
+              <ThemedSelect label="执行 Harness" value={harness} onChange={setHarness}
+                options={[{value:'',label:'项目默认'},{value:'codex',label:'Codex'},{value:'claude',label:'Claude Code'}]}/>
+              <ThemedSelect label="验证方式" value={validation} onChange={setValidation}
+                options={['auto','docs','go-test','V1','V2','V3','V4'].map(value=>({value,label:value}))}/>
               <button className="button" disabled={!issueNumber}>确认派发</button>
               <button type="button" className="detail-text-button" onClick={() => setDispatching(0)}>取消</button></fieldset></form> :
             <button className="button" disabled={busy} onClick={() => { setDispatching(f.id); setIssueNumber(''); setValidation('auto'); setHarness('') }}>派发独立工作项</button>)}
@@ -228,4 +227,10 @@ export function PreviewFeedback({ projectId, task, preview, captureQuery, reques
       </section>
     </>}
   </div>
+}
+
+function IssueTypeSelect() {
+  const [value,setValue] = useState('')
+  return <ThemedSelect label="目标 Issue 工作类型" name="work_type" value={value} onChange={setValue}
+    options={[{value:'',label:'沿用 Issue 类型'},...Object.entries(workTypes).map(([value,label])=>({value,label}))]}/>
 }

@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useState } from 'react'
 import { formatTime, Icon, projectHref, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
@@ -60,9 +61,8 @@ export function Approvals({projectId, request}: {projectId: number; request: Api
     {receipt && <p className="detail-notice" role="status">{receipt}</p>}
     <section className="panel detail-card" aria-label="待审批记录">
       <div className="detail-actions record-toolbar">
-        <label>操作类型<select value={kind} onChange={e => { setKind(e.target.value); setCursors([]) }}>
-          <option value="">全部操作</option>{Object.entries(approvalLabels).map(([k,label]) => <option key={k} value={k}>{label}</option>)}
-        </select></label>
+        <ThemedSelect label="操作类型" value={kind} onChange={value => {setKind(value); setCursors([])}}
+          options={[{value:'',label:'全部操作'}, ...Object.entries(approvalLabels).map(([value,label])=>({value,label}))]}/>
       </div>
       {!page && !error && <div className="table-message" role="status">正在读取待审批记录…</div>}
       {page?.items.length === 0 && <EmptyState icon="ListChecks" title="本页没有待审批记录"/>}

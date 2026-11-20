@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useState } from 'react'
 import { formatTime, Icon, projectHref, Status, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
@@ -71,9 +72,9 @@ export function Notifications({projectId, request, onRead}: {projectId?: number;
     {error && <p className="detail-problem" role="alert">{error}</p>}
     <section className="panel detail-card" aria-label="通知列表">
       <div className="detail-actions record-toolbar">
-        <label>通知范围<select value={history ? 'history' : 'pending'} onChange={e => {
-          setPage(undefined); setCursors([]); setHistory(e.target.value === 'history')
-        }}><option value="pending">待处理</option><option value="history">全部记录</option></select></label>
+        <ThemedSelect label="通知范围" value={history ? 'history' : 'pending'}
+          options={[{value:'pending',label:'待处理'},{value:'history',label:'全部记录'}]}
+          onChange={value=>{setPage(undefined);setCursors([]);setHistory(value==='history')}}/>
       </div>
       {!page && !error && <div className="table-message" role="status">正在读取通知…</div>}
       {page?.items.length === 0 && <EmptyState icon="Inbox" title={history ? '本页没有通知记录' : '本页没有待处理通知'}/>}

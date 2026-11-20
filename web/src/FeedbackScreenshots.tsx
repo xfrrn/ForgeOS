@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { ApiRequest } from './shared'
 
@@ -104,8 +105,8 @@ export function FeedbackScreenshots({ api, artifacts, request, saved, captured }
       {captured && !image && <button className="detail-text-button" onClick={() => void load(captured)}>重新载入扩展截图</button>}
       {error && <p role="alert">{error}</p>}
       {image && <><p>{view ? `已归档截图 #${view}` : '在图上拖动矩形或输入坐标，确认敏感区域已遮挡后提交。'} · {image.width} × {image.height}</p>
-        {!view && <label>标注方式<select value={mask ? 'mask' : 'outline'} onChange={e => setMask(e.target.value === 'mask')}>
-          <option value="mask">遮挡</option><option value="outline">红框标注</option></select></label>}
+        {!view && <ThemedSelect label="标注方式" value={mask ? 'mask' : 'outline'} onChange={value=>setMask(value==='mask')}
+          options={[{value:'mask',label:'遮挡'},{value:'outline',label:'红框标注'}]}/>}
         <canvas ref={canvas} aria-label={view ? '已归档截图' : '截图标注预览'} style={{ display: 'block', maxWidth: '100%', height: 'auto', touchAction: view ? 'auto' : 'none' }}
           onPointerDown={e => { if (view || busy || !e.isPrimary || e.button !== 0) return
             e.currentTarget.setPointerCapture(e.pointerId); start.current = point(e) }}

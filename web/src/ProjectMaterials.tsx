@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import { ExperienceSearch } from './ExperienceSearch'
@@ -12,7 +13,7 @@ type Draft = { key: string; kind: Kind; title: string; source: string; content: 
 type Document = Draft & { revision: number; content_sha256: string; imported_at: string }
 type Summary = Omit<Document, 'content'> & { excerpt: string; start_char?: number; end_char?: number }
 const empty: Draft = { key: '', kind: 'material', title: '', source: '', content: '' }
-const options = Object.entries(kinds).map(([k, label]) => <option key={k} value={k}>{label}</option>)
+const options = Object.entries(kinds).map(([value,label])=>({value,label}))
 
 function DocumentText({ doc }: { doc: Document }) {
   return <>
@@ -124,7 +125,7 @@ export function ProjectMaterials({ project, initialKey, initialRevision, request
       <h2 id="material-list-heading">浏览项目资料</h2>
       <form className="project-input" onSubmit={e => { e.preventDefault(); setFilter({ q: query.trim(), kind, after: '' }) }}>
         <input aria-label="检索资料" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或正文"/>
-        <select aria-label="筛选资料类型" value={kind} onChange={e => setKind(e.target.value)}><option value="">全部类型</option>{options}</select>
+        <ThemedSelect label="筛选资料类型" hideLabel value={kind} onChange={setKind} options={[{value:'',label:'全部类型'},...options]}/>
         <button className="button">检索</button>
         <button type="button" className="button" disabled={formLocked} onClick={() => edit(empty)}>导入资料</button>
         <button type="button" className="button" disabled={formLocked} onClick={remember}>记住一条项目经验</button>
@@ -144,8 +145,7 @@ export function ProjectMaterials({ project, initialKey, initialRevision, request
       <h2 ref={contentHeading} tabIndex={-1}>{previous ? '编辑资料' : draft.kind === 'memory' ? '记住一条项目经验' : '导入项目资料'}</h2>
       <fieldset disabled={busy}>
         <label>资料标识<input required value={draft.key} readOnly={previous > 0} onChange={e => { setConflict(undefined); setDraft({ ...draft, key: e.target.value }) }}/></label>
-        <label htmlFor="material-kind">资料类型</label>
-        <select id="material-kind" value={draft.kind} onChange={e => setDraft({ ...draft, kind: e.target.value as Kind })}>{options}</select>
+        <ThemedSelect label="资料类型" value={draft.kind} options={options} onChange={kind=>setDraft({...draft,kind:kind as Kind})}/>
         <label>标题<input required value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })}/></label>
         <label>来源<input required value={draft.source} onChange={e => setDraft({ ...draft, source: e.target.value })}/></label>
         <label htmlFor="material-body">正文</label>

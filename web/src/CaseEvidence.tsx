@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useState } from 'react'
 import { formatTime, type ApiRequest } from './shared'
 
@@ -39,7 +40,8 @@ export function CaseEvidence({ task, execution, revision, commit, digest, caseID
         <label>实际操作（每行一步）<textarea value={operations} onChange={e => setOperations(e.target.value)} /></label>
         <label>观察到的结果<textarea value={actual} onChange={e => setActual(e.target.value)} /></label>
         <label>证据（每行一项）<textarea value={evidence} onChange={e => setEvidence(e.target.value)} /></label>
-        <label>实测结论<select value={result} onChange={e => setResult(e.target.value)}><option value="passed">通过</option><option value="failed">未通过</option><option value="blocked">受阻</option></select></label>
+        <ThemedSelect label="实测结论" value={result} onChange={setResult}
+          options={[{value:'passed',label:'通过'},{value:'failed',label:'未通过'},{value:'blocked',label:'受阻'}]}/>
         <button className="button" disabled={busy || !operations.trim() || !actual.trim() || !evidence.trim()} onClick={() => void save()}>保存实测结果</button>
         {error && <p role="alert">{error}</p>}
       </fieldset>}</>}

@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useState } from 'react'
 import { Fact, type ApiRequest } from './shared'
 import { ModelSelect } from './ModelSelect'
@@ -45,9 +46,9 @@ export function AgentSettings({projectId, request}: {projectId?: number; request
       <div className="agent-content">
         <section className="panel agent-panel">
           <h2>{selected.role}</h2>
-          <label>用途<select value={key} onChange={e=>choose(entries.find(item=>item.key===e.target.value)!)}>
-            {entries.filter(e=>e.role===selected.role).map(e=><option key={e.key} value={e.key}>{e.title}</option>)}
-          </select></label>
+          <ThemedSelect label="用途" value={key}
+            options={entries.filter(e=>e.role===selected.role).map(e=>({value:e.key,label:e.title}))}
+            onChange={value=>choose(entries.find(item=>item.key===value)!)}/>
           <AgentForm key={[selected.key,selected.local_revision,selected.effective.revision].join('/')} entry={selected} catalog={catalog}
             project={!!projectId} request={request} path={path}
             onSaved={async(message)=>{const rows=await request<Entry[]>(path);setEntries(rows);setNotice(message)}} onReload={()=>setReload(n=>n+1)}/>
@@ -86,8 +87,9 @@ function AgentForm({entry,project,path,request,onSaved,onReload,catalog}: {entry
   }
   return <form onSubmit={e=>{e.preventDefault();void save(false)}}>
     <p>当前生效版本　<strong>{version(current)}</strong></p>
-    <div className="agent-fields"><label>执行 Harness<select value={harness} onChange={e=>{setHarness(e.target.value);setModel('')}}>
-      {entry.harnesses.map(h=><option key={h} value={h}>{harnessNames[h]}</option>)}</select></label>
+    <div className="agent-fields"><ThemedSelect label="执行 Harness" value={harness}
+      options={entry.harnesses.map(value=>({value,label:harnessNames[value]}))}
+      onChange={value=>{setHarness(value);setModel('')}}/>
     <ModelSelect key={harness} request={request} harness={harness} value={model} onChange={(id,provider)=>{
       setModel(id)
       if(harness==='task' && provider)setHarness(provider)

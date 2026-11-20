@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useState, type FormEvent } from 'react'
 import { ApiError, type ApiRequest } from './shared'
 import type { Plan, PlanItem } from './GoalPlan'
@@ -59,9 +60,8 @@ export function PlanEditor({task, current, issueTitle, docsOnly, canEdit, disabl
     {current && current.revision !== base && <p role="status">此编辑基于修订 {base}，最新修订为 {current.revision}。</p>}
     <fieldset disabled={busy}>
       <label>Goal 目标<textarea required value={document.objective} onChange={e => change({...document, objective: e.target.value})}/></label>
-      <label>最低决策等级<select value={draft.level} onChange={e => setDraft({...draft, level: e.target.value})}>
-        <option value="">默认（D2）</option>{docsOnly && <option value="D1">D1</option>}<option>D2</option><option>D3</option>
-      </select></label>
+      <ThemedSelect label="最低决策等级" value={draft.level} onChange={level=>setDraft({...draft,level})}
+        options={[{value:'',label:'默认（D2）'},...(docsOnly ? ['D1','D2','D3'] : ['D2','D3']).map(value=>({value,label:value}))]}/>
       {document.milestones.map((m, mi) => <fieldset className="plan-stage" key={mi}>
         <legend>里程碑 {mi + 1}</legend>
         <label>里程碑名称<input required value={m.name} onChange={e => milestone(mi, {name: e.target.value})}/></label>

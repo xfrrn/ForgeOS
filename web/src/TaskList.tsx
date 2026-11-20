@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useState } from 'react'
 import { formatTime, Icon, projectHref, Status, statusLabels, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
@@ -91,10 +92,8 @@ export default function TaskList({ projectId, request, queue, category, initialS
         <div className="tools">
           <label className="search"><Icon name="Search" size={16} /><input type="search" aria-label="搜索任务、仓库或编号"
             placeholder="搜索任务" maxLength={120} value={input} onChange={e => setInput(e.target.value)} /></label>
-          {!queue && <label className="filter"><Icon name="SlidersHorizontal" size={15} />
-            <select aria-label="任务状态" value={filter} onChange={e => changeFilter(e.target.value)}>
-              <option value="">全部状态</option>{filters.map(key => <option key={key} value={key}>{statusLabels[key]}</option>)}
-            </select><Icon name="ChevronDown" size={13} /></label>}
+          {!queue && <ThemedSelect label="任务状态" hideLabel value={filter} onChange={changeFilter}
+            options={[{value:'',label:'全部状态'},...filters.map(value=>({value,label:statusLabels[value]}))]}/>}
         </div>
       </div>
       {error ? <div role="alert"><EmptyState icon="AlertCircle" title="读取任务记录失败" description={error}>

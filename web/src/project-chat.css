@@ -119,5 +119,5 @@
   .chat-action-controls .themed-select { flex-basis: 100%; max-width: none; }
 }
 
-.chat-composer .model-select-field { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
-.chat-composer .model-select select { max-width:100%; min-height:36px; padding:4px 10px; color:var(--ink); background:var(--surface); border:1px solid var(--control-line); border-radius:var(--radius-control); font:inherit; }
+.chat-composer .model-select .themed-select { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+.chat-composer .model-select .themed-select-trigger { width:auto; max-width:100%; }

@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
@@ -60,9 +61,8 @@ export function ProjectShares({ project, receipt, request }: { project: number; 
   return <div className="project-setup">
     <BackLink href={projectHref(project)}>返回项目概览</BackLink>
     <PageHeading title={`项目 #${project} · 共享经验`} actions={receipt ? <a className="button" href={`#/projects/${project}/shares`}>浏览共享经验</a> :
-      <select aria-label="共享方向" value={direction} onChange={e => setDirection(e.target.value)}>
-        <option value="shared-experience">接收的经验</option><option value="shares">发出的副本</option>
-      </select>}/>
+      <ThemedSelect label="共享方向" hideLabel value={direction} onChange={setDirection}
+        options={[{value:'shared-experience',label:'接收的经验'},{value:'shares',label:'发出的副本'}]}/>}/>
     <ShareList key={selected} project={project} receipt={receipt} direction={selected} request={request}/>
   </div>
 }

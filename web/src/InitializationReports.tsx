@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useState } from 'react'
 import { Fact, Status, formatTime, projectHref, type ApiRequest } from './shared'
 
@@ -51,9 +52,8 @@ export function InitializationReports({projectId,task,request}:{projectId:number
     <button className="button" disabled={busy} onClick={()=>void open()}>归档当前报告</button>
     {error && <p role="alert">{error}</p>}
     {report && <>
-      <label>报告版本 <select disabled={busy} value={report.revision} onChange={e=>void open(Number(e.target.value))}>
-        {revisions.map(r=><option key={r.revision} value={r.revision}>第 {r.revision} 版 · {formatTime(r.generated_at)}</option>)}
-      </select></label> <button className="button" disabled={busy} onClick={()=>download(report)}>下载 JSON</button>
+      <ThemedSelect label="报告版本" disabled={busy} value={String(report.revision)} onChange={value=>void open(Number(value))}
+        options={revisions.map(r=>({value:String(r.revision),label:'第 '+r.revision+' 版 · '+formatTime(r.generated_at)}))}/> <button className="button" disabled={busy} onClick={()=>download(report)}>下载 JSON</button>
       <dl className="detail-facts"><Fact label="仓库映射">{report.repository_mapping.path}</Fact>
         <Fact label="GitHub 仓库">{report.repository_mapping.github_origin || '未记录 origin'} · {report.repository_mapping.repository_id || '未绑定数字 ID'}</Fact>
         <Fact label="来源提交" code>{report.repository_inventory.commit_sha}</Fact>

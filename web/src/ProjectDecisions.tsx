@@ -1,3 +1,4 @@
+import { ThemedSelect } from './ThemedSelect'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
 import { KnowledgeCuration } from './KnowledgeCuration'
@@ -114,9 +115,8 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
         <input type="search" aria-label="检索项目决策" placeholder="检索项目决策" value={query} onChange={e => setQuery(e.target.value)}/>
         <button className="button">检索</button>
       </form>
-      <select aria-label="决策状态" value={page.status} onChange={e => refresh(e.target.value)}>
-        {Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}<option value="ALL">全部状态</option>
-      </select><button className="button" disabled={loading} onClick={() => refresh()}>刷新</button>
+      <ThemedSelect label="决策状态" hideLabel value={page.status} onChange={value=>refresh(value)}
+        options={[...Object.entries(labels).map(([value,label])=>({value,label})),{value:'ALL',label:'全部状态'}]}/><button className="button" disabled={loading} onClick={() => refresh()}>刷新</button>
       <button className="button" disabled={busy || Boolean(proposal)} onClick={() => start()}>提出决策</button></div>}
       {readError && <p role="alert">{readError}</p>}
       {loading && <p role="status">正在读取决策…</p>}
