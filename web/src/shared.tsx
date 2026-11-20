@@ -65,10 +65,11 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const shareSearchPath = /^\/projects\/[1-9]\d*\/shared-experience\/search\?q=[^&#]+$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
-    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
+    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:overview-context|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
+    const workerPath = /^\/workers(?:\/(?:control-plane|model-budgets))?$/.test(path)
     const clonePath = /^\/projects\/(?:clone-settings|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
     const projectPath = /^\/projects(?:\?[^#]*|\/[1-9]\d*(?:\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?)?$/.test(path)
-    if (!nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && !projectPath && path !== '/workers' && path !== '/workers/model-budgets' && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
+    if (!nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && !projectPath && !workerPath && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
     let response: Response

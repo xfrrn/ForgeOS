@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"forgeos/internal/localrepo"
+	"forgeos/internal/runtimeinfo"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
 )
@@ -56,6 +57,12 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			if len(raw) > 2048 || json.Unmarshal([]byte(raw), &input.Adapters) != nil || input.Adapters == nil {
 				problem(w, 400, "invalid adapter probe")
 				return
+			}
+		}
+		if raw := r.URL.Query().Get("diagnostics"); raw != "" {
+			var sample runtimeinfo.Snapshot
+			if len(raw) <= 3072 && json.Unmarshal([]byte(raw), &sample) == nil && sample.Valid() {
+				input.Diagnostics = &sample
 			}
 		}
 		for _, name := range []string{"codex", "claude"} {

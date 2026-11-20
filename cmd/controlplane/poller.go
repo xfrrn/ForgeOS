@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"forgeos/internal/store"
@@ -26,6 +27,13 @@ type issuePoller struct {
 	validation string
 	hookSecret []byte
 	wake       chan struct{}
+	status     atomic.Pointer[githubPollStatus]
+}
+
+type githubPollStatus struct {
+	State       string     `json:"state"`
+	CheckedAt   time.Time  `json:"checked_at"`
+	LastSuccess *time.Time `json:"last_success,omitempty"`
 }
 
 type pollStore interface {
@@ -101,6 +109,9 @@ func (p *issuePoller) start(ctx context.Context, data pollStore, root string, ge
 		defer close(stopped)
 		for ctx.Err() == nil {
 			err := p.scan(ctx, data, root, get)
+			if ctx.Err() == nil {
+				p.recordStatus(err)
+			}
 			pause := time.Minute
 			if errors.Is(err, errGHLimit) {
 				pause = time.Hour
@@ -124,6 +135,21 @@ func (p *issuePoller) start(ctx context.Context, data pollStore, root string, ge
 		cancel()
 		<-stopped
 	}
+}
+
+func (p *issuePoller) recordStatus(err error) {
+	at := time.Now().UTC()
+	current := githubPollStatus{State: "ok", CheckedAt: at, LastSuccess: &at}
+	if err != nil {
+		current.State, current.LastSuccess = "failed", nil
+		if previous := p.status.Load(); previous != nil {
+			current.LastSuccess = previous.LastSuccess
+		}
+		if errors.Is(err, errGHLimit) {
+			current.State = "rate_limited"
+		}
+	}
+	p.status.Store(&current)
 }
 
 func (p *issuePoller) scan(ctx context.Context, data pollStore, root string, get githubGET) error {

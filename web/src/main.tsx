@@ -234,6 +234,7 @@ function App() {
       <a className="brand-link" aria-label="ForgeOS 项目首页" href="#/projects"><Brand/></a>
       <nav className="workbench-nav" aria-label="工作台导航">
         <a href="#/projects" aria-current={page.kind === 'projects' ? 'page' : page.kind === 'project' || page.kind === 'legacy-task' ? 'location' : undefined}>项目</a>
+        <a href="#/workers" aria-current={page.kind === 'system' ? 'page' : undefined}>运行环境</a>
       </nav>
       <div className="header-actions">
         <a className="icon-button notification-button" href={projectId ? projectHref(projectId, '/notifications') : '#/notifications'} title={projectId ? '项目通知' : '通知'}

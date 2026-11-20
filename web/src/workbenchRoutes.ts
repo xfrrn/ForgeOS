@@ -92,7 +92,7 @@ export function workbenchRoute(location: string): WorkbenchRoute {
 
 export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.kind === 'projects') return '项目'
-  if (route.kind === 'system') return '执行节点'
+  if (route.kind === 'system') return '运行环境'
   if (route.kind === 'notifications') return '通知'
   if (route.kind === 'legacy-task') return route.task.preview ? '预览反馈' : '任务详情'
   if (route.kind !== 'project') return '页面不存在'

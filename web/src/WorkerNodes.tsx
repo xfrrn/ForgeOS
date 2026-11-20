@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Fact, formatTime, Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
+import { HostDiagnostics, useRuntimeStatus, type Diagnostics, type WorkerSummary } from './RuntimeStatus'
 
 type AgentProfile = { version: number; sandbox?: string; permission: string; tools?: string[] }
 type Adapter = { version: string; operations: string[]; profiles?: Partial<Record<'implementation' | 'planner', AgentProfile>> }
-type Node = { worker: string; os: string; arch: string; cpus: number; slots: number; reserved: number
-  model_slots?: number; model_reserved: number; ci_slots?: number; ci_reserved: number
-  last_seen: string; online: boolean; capabilities: Record<string, unknown> & { adapters?: Record<string, Adapter> } }
+type Node = WorkerSummary & { capabilities: Record<string, unknown> & { adapters?: Record<string, Adapter>; diagnostics?: Diagnostics } }
 
 const agentRoleLabels = { curator: '知识提取', curation_review: '知识审核', plan_review: 'Goal 计划审核', share_review: '共享资料审核', repository_analysis: '仓库分析', issue_classification: 'Issue 分类', feedback_classification: '预览反馈分类', question_advice: '业务问题建议' }
 
@@ -17,49 +16,45 @@ const capabilities: Record<string, string> = { supports_startup: '本地环境�
 const operations: Record<string, string> = { probe: '探测', start: '启动', resume: '恢复会话', events: '读取事件', interrupt: '中断回合' }
 
 export function WorkerNodes({ request }: { request: ApiRequest }) {
-  const [nodes, setNodes] = useState<Node[]>([])
+  const { nodes, control, nodeError, controlError } = useRuntimeStatus<Node>(request)
   const [budgets, setBudgets] = useState<ModelBudget[]>([])
-  const [error, setError] = useState('')
-  const [loaded, setLoaded] = useState(false)
+  const [budgetError, setBudgetError] = useState('')
   useEffect(() => {
     const stop = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     async function refresh() {
       try {
-        const [rows, accounts] = await Promise.all([
-          request<Node[]>('/workers', { signal: stop.signal }),
-          request<ModelBudget[]>('/workers/model-budgets', { signal: stop.signal }),
-        ])
-        if (!stop.signal.aborted) { setNodes(rows); setBudgets(accounts); setError(''); setLoaded(true) }
-      } catch (e) { if (!stop.signal.aborted) setError(e instanceof Error ? e.message : '节点读取失败。') }
-      if (!stop.signal.aborted) timer = setTimeout(refresh, 5000)
+        const accounts = await request<ModelBudget[]>('/workers/model-budgets', { signal: stop.signal })
+        if (!stop.signal.aborted) { setBudgets(accounts); setBudgetError('') }
+      } catch { if (!stop.signal.aborted) setBudgetError('读取共享模型名额失败。') }
+      if (!stop.signal.aborted) timer = setTimeout(refresh, 15000)
     }
     void refresh()
     return () => { stop.abort(); clearTimeout(timer) }
   }, [request])
   return <>
-    <PageHeading title="执行节点"/>
-    {error && <p className="detail-problem" role="alert">{error}</p>}
+    <PageHeading title="运行环境" description="按 ForgeOS 服务进程所在的机器查看资源与 CLI。"/>
+    {nodeError && <p className="detail-problem" role="alert">{nodes ? '节点刷新失败，显示上次结果。' : '读取执行节点失败。'}</p>}
+    {budgetError && <p className="detail-problem" role="alert">{budgetError}</p>}
     <div className="worker-stack">
-      {budgets.length > 0 && <section className="panel detail-card" aria-labelledby="shared-model-budgets">
-        <h2 id="shared-model-budgets"><Icon name="Layers3" size={18}/>共享模型名额</h2>
-        <ul className="worker-budgets">
-          {budgets.map(b => {
-            const consumers = [...b.workers, ...(b.reviewer_projects ?? []).map(id => `项目 ${id} 的 Reviewer`),
-              ...(b.test_plan_roles ?? []).map(m => `项目 ${m.project_id} ${m.role === 'test' ? '的 Test Agent' : '的覆盖审核'}`),
-              ...(b.agent_roles ?? []).map(m => `项目 ${m.project_id} 的${agentRoleLabels[m.role]}`)]
-            return <li key={b.name} className="worker-budget"><div><strong>{b.name}</strong><p className="muted">
-              {b.harness}{consumers.length > 0 && ' · ' + consumers.join('、')}
-            </p></div><span className="mono">已占 {b.reserved} / {b.slots}</span></li>
-          })}
-        </ul>
-      </section>}
-      {!error && !nodes.length && <div className="panel">{loaded ?
-        <EmptyState icon="Terminal" title="尚未收到 Worker 心跳"/> :
-        <div className="table-message" role="status">正在读取节点…</div>}
-      </div>}
-      {nodes.length > 0 && <section className="worker-grid" aria-label="节点列表">
-        {nodes.map(n => <article key={n.worker} className="panel detail-card">
+      <section className="worker-grid" aria-label="控制面与执行节点">
+        <article className="panel detail-card" aria-labelledby="control-plane-heading">
+          <h2 id="control-plane-heading"><Icon name="Activity" size={18}/>控制面</h2>
+          {controlError && <p className="detail-problem" role="alert">{control ? '控制面状态刷新失败，显示上次结果。' : '当前无法读取控制面状态。'}</p>}
+          {!control && !controlError && <p className="muted" role="status">正在读取控制面状态…</p>}
+          {control && <>
+            <dl className="detail-facts">
+              <Fact label="运行环境">{control.os} / {control.arch} · {control.cpus} 个逻辑 CPU</Fact>
+              <Fact label="PostgreSQL">{control.postgresql === 'reachable' ? '连通' : <span className="runtime-warning">不可用</span>}</Fact>
+            </dl>
+            <HostDiagnostics diagnostics={control.diagnostics}/>
+          </>}
+        </article>
+        {!nodeError && !nodes?.length && <div className="panel">{nodes ?
+          <EmptyState icon="Terminal" title="尚未收到 Worker 心跳"/> :
+          <div className="table-message" role="status">正在读取节点…</div>}
+        </div>}
+        {nodes?.map(n => <article key={n.worker} className="panel detail-card">
           <div className="worker-card-heading"><h2><Icon name="Terminal" size={18}/>{n.worker}</h2>
             <span className={'status worker-presence' + (n.online ? ' online' : '')}><i aria-hidden="true"/>{n.online ? '在线' : '心跳超时'}</span>
           </div>
@@ -83,7 +78,21 @@ export function WorkerNodes({ request }: { request: ApiRequest }) {
                 </p>)}
               </div>)}
           </div>
+          <HostDiagnostics diagnostics={n.capabilities.diagnostics} online={n.online}/>
         </article>)}
+      </section>
+      {budgets.length > 0 && <section className="panel detail-card" aria-labelledby="shared-model-budgets">
+        <h2 id="shared-model-budgets"><Icon name="Layers3" size={18}/>共享模型名额</h2>
+        <ul className="worker-budgets">
+          {budgets.map(b => {
+            const consumers = [...b.workers, ...(b.reviewer_projects ?? []).map(id => `项目 ${id} 的 Reviewer`),
+              ...(b.test_plan_roles ?? []).map(m => `项目 ${m.project_id} ${m.role === 'test' ? '的 Test Agent' : '的覆盖审核'}`),
+              ...(b.agent_roles ?? []).map(m => `项目 ${m.project_id} 的${agentRoleLabels[m.role]}`)]
+            return <li key={b.name} className="worker-budget"><div><strong>{b.name}</strong><p className="muted">
+              {b.harness}{consumers.length > 0 && ' · ' + consumers.join('、')}
+            </p></div><span className="mono">已占 {b.reserved} / {b.slots}</span></li>
+          })}
+        </ul>
       </section>}
     </div>
   </>

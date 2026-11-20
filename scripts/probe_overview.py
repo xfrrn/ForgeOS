@@ -17,20 +17,27 @@ def main():
         browser = pw.chromium.launch(channel="chrome")
         page = browser.new_page()
         page.goto(origin)
-        with page.expect_response(lambda r: r.url == origin + "/projects" and r.ok) as directory:
+        with (
+            page.expect_response(lambda r: r.url == origin + "/projects" and r.ok) as directory,
+            page.expect_response(lambda r: r.url == origin + "/workers/control-plane" and r.ok),
+        ):
             login_to_workbench(page)
         projects = directory.value.json()["items"]
         assert projects or args.project_id, "Register a project before checking the workbench."
         project = args.project_id or projects[0]["id"]
         root = f"/#/projects/{project}"
         expect(page.get_by_role("heading", name="项目", exact=True)).to_be_visible()
+        expect(page.get_by_role("region", name="运行状态").get_by_text("Worker 在线")).to_be_visible()
 
         def project_counts(response):
             url = urlsplit(response.url)
             query = parse_qs(url.query)
             return response.ok and url.path == "/tasks" and query.get("limit") == ["1"] and query.get("project_id") == [str(project)]
 
-        with page.expect_response(project_counts) as loaded:
+        with (
+            page.expect_response(project_counts) as loaded,
+            page.expect_response(lambda r: r.url == f"{origin}/projects/{project}/overview-context" and r.ok),
+        ):
             page.goto(origin + root)
         counts = loaded.value.json()["counts"]
         overview = page.get_by_role("heading", name="项目概览", exact=True)
@@ -49,8 +56,12 @@ def main():
         page.set_viewport_size({"width": 390, "height": 844})
         expect(metrics).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        page.get_by_role("link", name="运行环境", exact=True).click()
+        expect(page.get_by_role("heading", name="控制面", exact=True)).to_be_visible()
+        expect(page.get_by_text("PostgreSQL", exact=True)).to_be_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         browser.close()
-    print("Project landing, scoped overview counts, queue navigation and mobile width passed.")
+    print("Project landing, runtime status, scoped overview, queue navigation and mobile width passed.")
 
 
 if __name__ == "__main__":

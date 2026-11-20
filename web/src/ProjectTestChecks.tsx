@@ -11,7 +11,7 @@ type TestCheck = {
 }
 type TestPage = { items: TestCheck[]; next_before?: number }
 
-const ciLabels: Record<string, [string, string]> = {
+export const ciLabels: Record<string, [string, string]> = {
   passed: ['通过', 'done'], failed: ['失败', 'failed'], pending: ['等待验证', 'pending'], running: ['正在验证', 'running'],
   paused: ['已暂停', 'paused'], interrupted: ['执行已结束，未取得验证结果', 'paused'],
   lease_expired: ['执行租约已到期', 'paused'], missing_receipt: ['没有验证回执', 'paused'],

@@ -24,7 +24,9 @@ import (
 	"syscall"
 	"time"
 
+	"forgeos/internal/localrepo"
 	"forgeos/internal/nodetls"
+	"forgeos/internal/runtimeinfo"
 	"forgeos/internal/store"
 )
 
@@ -357,9 +359,24 @@ func (w *worker) run(ctx context.Context) error {
 	if w.claude.streamInput {
 		heartbeat += "&claude_interrupt=1"
 	}
+	monitorCtx, stopMonitor := context.WithCancel(ctx)
+	defer stopMonitor()
+	monitor := runtimeinfo.Start(monitorCtx, runtimeinfo.Paths{
+		Repositories: w.repoRoot, Managed: localrepo.ManagedRoot(), Workspace: w.workspaceRoot,
+	}, map[string]runtimeinfo.Harness{
+		"codex": {Path: w.codex, Version: w.codexVersion}, "claude": {Path: w.claude.bin, Version: w.claude.version},
+	})
 	beat := func(ctx context.Context) error {
 		for ctx.Err() == nil {
-			status, err := w.post(ctx, heartbeat, h, nil)
+			path := heartbeat
+			sample := monitor.Snapshot()
+			// Older control planes ignore extra heartbeat query fields.
+			if sample.Valid() && (sample.Host != nil || sample.Tools != nil) {
+				if raw, err := json.Marshal(sample); err == nil {
+					path += "&diagnostics=" + url.QueryEscape(string(raw))
+				}
+			}
+			status, err := w.post(ctx, path, h, nil)
 			if err == nil && status == http.StatusNoContent {
 				return nil
 			}

@@ -115,6 +115,7 @@ func run(ctx context.Context) error {
 	mux := routes(data, root, owner, workers, delivery)
 	ownerAuth.register(mux)
 	registerProjectWorkViews(mux, data, owner)
+	registerProjectOverviewContext(mux, data, root, owner, pollers)
 	registerProjectChat(mux, data, root, owner, chatNodes, ghRead)
 	clones := projectCloneService{data: data, localRoot: root, extraHosts: os.Getenv("FORGEOS_GIT_CLONE_HOSTS")}
 	clones.register(mux, owner)
@@ -193,6 +194,9 @@ func run(ctx context.Context) error {
 		start(nodeListener, workers.nodeRoutes)
 		log.Printf("ForgeOS Worker mTLS listening on %s", nodeListener.Addr())
 	}
+	runtimeCtx, stopRuntime := context.WithCancel(ctx)
+	defer stopRuntime()
+	registerRuntimeStatus(runtimeCtx, mux, db, root, owner)
 	start(listener, ownerAuth.middleware(mux))
 	cloneCtx, stopClones := context.WithCancel(ctx)
 	cloneDone := make(chan struct{})

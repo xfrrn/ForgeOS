@@ -11,7 +11,7 @@ type QueueItem = {
 type RoleQueue = { role: string; pending: number; running: number }
 export type ExecutionQueuePage = { items: QueueItem[]; counts: Record<string, number>; roles: RoleQueue[] }
 
-const taskRoles: Record<string, string> = { planner: 'Planner', worker: 'Worker', ci: '本地 CI Runner' }
+export const taskRoles: Record<string, string> = { planner: 'Planner', worker: 'Worker', ci: '本地 CI Runner' }
 
 const roleDetails: Record<string, { label: string; path: string }> = {
   plan_review: { label: 'Management · 计划审核', path: '/reviews?tab=approvals' },

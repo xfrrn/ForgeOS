@@ -3,6 +3,7 @@ import { Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
 import { projectDisplayName, type WorkspaceProject } from './ProjectWorkspace'
 import { pendingProjectClone, ProjectRegistration, type ProjectRegistrationMethod } from './ProjectRegistration'
+import { RuntimeSummary } from './RuntimeStatus'
 
 type Page = { items: WorkspaceProject[]; next_before?: number }
 type Directory = Page & { query: string }
@@ -69,6 +70,7 @@ export function Projects({ request }: { request: ApiRequest }) {
 
   return <div className="project-home">
     <PageHeading title="项目"/>
+    <RuntimeSummary request={request}/>
     <div className="project-home-toolbar">
       <button className="button primary" type="button" aria-expanded={showRegistration}
         aria-controls={showRegistration ? 'project-registration' : undefined} onClick={() => {

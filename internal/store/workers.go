@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	"forgeos/internal/runtimeinfo"
 )
 
 var windowsWorkspaceRoot = regexp.MustCompile(`^([A-Za-z]:/|//[^/]+/[^/]+(/|$))`)
@@ -130,6 +132,7 @@ type WorkerHeartbeat struct {
 	CISlots      int                     `json:"ci_slots,omitempty"`
 	Capabilities WorkerCapabilities      `json:"capabilities"`
 	Adapters     map[string]AdapterProbe `json:"-"`
+	Diagnostics  *runtimeinfo.Snapshot   `json:"-"`
 }
 
 type AdapterProbe struct {
@@ -182,8 +185,9 @@ func (s *Store) RecordHeartbeat(ctx context.Context, h WorkerHeartbeat) error {
 	}
 	caps, err := json.Marshal(struct {
 		WorkerCapabilities
-		Adapters map[string]AdapterProbe `json:"adapters,omitempty"`
-	}{h.Capabilities, h.Adapters})
+		Adapters    map[string]AdapterProbe `json:"adapters,omitempty"`
+		Diagnostics *runtimeinfo.Snapshot   `json:"diagnostics,omitempty"`
+	}{h.Capabilities, h.Adapters, h.Diagnostics})
 	if err != nil {
 		return err
 	}
