@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { formatTime, type ApiRequest } from './shared'
+import { Fact, formatTime, Icon, type ApiRequest } from './shared'
+import { EmptyState, PageHeading } from './ui'
 
 type AgentProfile = { version: number; sandbox?: string; permission: string; tools?: string[] }
 type Adapter = { version: string; operations: string[]; profiles?: Partial<Record<'implementation' | 'planner', AgentProfile>> }
@@ -36,22 +37,54 @@ export function WorkerNodes({ request }: { request: ApiRequest }) {
     void refresh()
     return () => { stop.abort(); clearTimeout(timer) }
   }, [request])
-  return <section className="panel detail-card"><h1>执行节点</h1>
-    {error && <p role="alert">{error}</p>}
-    {budgets.length > 0 && <section><h2>共享模型名额</h2>{budgets.map(b =>
-      <p key={b.name}>{b.name} · {b.harness} · 已占 {b.reserved} / {b.slots} · {[...b.workers, ...(b.reviewer_projects ?? []).map(id => `项目 ${id} 的 Reviewer`),
-        ...(b.test_plan_roles ?? []).map(m => `项目 ${m.project_id} ${m.role === 'test' ? '的 Test Agent' : '的覆盖审核'}`),
-        ...(b.agent_roles ?? []).map(m => `项目 ${m.project_id} 的${agentRoleLabels[m.role]}`)].join('、')}</p>)}</section>}
-    {!error && !nodes.length && <p>{loaded ? '尚未收到 Worker 心跳。' : '正在读取节点…'}</p>}
-    {nodes.map(n => <article key={n.worker}><h2>{n.worker}</h2><p>{n.online ? '在线' : '心跳超时'} · {n.os} / {n.arch} · {n.cpus} 个逻辑 CPU</p>
-      <p>已占名额 {n.reserved} / {n.slots}</p><p>最近心跳　<time dateTime={n.last_seen}>{formatTime(n.last_seen)}</time></p>
-      {n.model_slots && n.ci_slots && <p>模型名额 {n.model_reserved} / {n.model_slots} · CI 名额 {n.ci_reserved} / {n.ci_slots}</p>}
-      <p>{['Git HEAD', ...Object.entries(capabilities).filter(([key]) => n.capabilities[key]).map(([, label]) => label)].join(' · ')}</p>
-      {Object.entries(n.capabilities.adapters ?? {}).map(([name, probe]) =>
-        <div key={name}><p>{capabilities[`supports_${name}`] ?? name} {probe.version} · {probe.operations.map(op => operations[op] ?? op).join('、')}</p>
-          {Object.entries(probe.profiles ?? {}).map(([role, p]) => <p key={role}>
-            {role === 'planner' ? '规划' : '实现'}角色配置 v{p.version} · 权限 {p.permission}
-            {p.sandbox && ` · 沙箱 ${p.sandbox}`}{p.tools && ` · 工具 ${p.tools.join('、')}`}
-          </p>)}</div>)}
-    </article>)}</section>
+  return <>
+    <PageHeading title="执行节点"/>
+    {error && <p className="detail-problem" role="alert">{error}</p>}
+    <div className="worker-stack">
+      {budgets.length > 0 && <section className="panel detail-card" aria-labelledby="shared-model-budgets">
+        <h2 id="shared-model-budgets"><Icon name="Layers3" size={18}/>共享模型名额</h2>
+        <ul className="worker-budgets">
+          {budgets.map(b => {
+            const consumers = [...b.workers, ...(b.reviewer_projects ?? []).map(id => `项目 ${id} 的 Reviewer`),
+              ...(b.test_plan_roles ?? []).map(m => `项目 ${m.project_id} ${m.role === 'test' ? '的 Test Agent' : '的覆盖审核'}`),
+              ...(b.agent_roles ?? []).map(m => `项目 ${m.project_id} 的${agentRoleLabels[m.role]}`)]
+            return <li key={b.name} className="worker-budget"><div><strong>{b.name}</strong><p className="muted">
+              {b.harness}{consumers.length > 0 && ' · ' + consumers.join('、')}
+            </p></div><span className="mono">已占 {b.reserved} / {b.slots}</span></li>
+          })}
+        </ul>
+      </section>}
+      {!error && !nodes.length && <div className="panel">{loaded ?
+        <EmptyState icon="Terminal" title="尚未收到 Worker 心跳"/> :
+        <div className="table-message" role="status">正在读取节点…</div>}
+      </div>}
+      {nodes.length > 0 && <section className="worker-grid" aria-label="节点列表">
+        {nodes.map(n => <article key={n.worker} className="panel detail-card">
+          <div className="worker-card-heading"><h2><Icon name="Terminal" size={18}/>{n.worker}</h2>
+            <span className={'status worker-presence' + (n.online ? ' online' : '')}><i aria-hidden="true"/>{n.online ? '在线' : '心跳超时'}</span>
+          </div>
+          <dl className="detail-facts">
+            <Fact label="运行环境">{n.os} / {n.arch} · {n.cpus} 个逻辑 CPU</Fact>
+            <Fact label="已占名额" code>{n.reserved} / {n.slots}</Fact>
+            <Fact label="最近心跳"><time dateTime={n.last_seen}>{formatTime(n.last_seen)}</time></Fact>
+            {!!n.model_slots && !!n.ci_slots && <>
+              <Fact label="模型名额" code>{n.model_reserved} / {n.model_slots}</Fact>
+              <Fact label="CI 名额" code>{n.ci_reserved} / {n.ci_slots}</Fact>
+            </>}
+          </dl>
+          <div className="worker-capabilities">
+            <h3>执行能力</h3>
+            <p>{['Git HEAD', ...Object.entries(capabilities).filter(([key]) => n.capabilities[key]).map(([, label]) => label)].join(' · ')}</p>
+            {Object.entries(n.capabilities.adapters ?? {}).map(([name, probe]) =>
+              <div key={name}><p>{capabilities[`supports_${name}`] ?? name} {probe.version} · {probe.operations.map(op => operations[op] ?? op).join('、')}</p>
+                {Object.entries(probe.profiles ?? {}).map(([role, p]) => <p key={role}>
+                  {role === 'planner' ? '规划' : '实现'}角色配置 v{p.version} · 权限 {p.permission}
+                  {p.sandbox && ` · 沙箱 ${p.sandbox}`}{p.tools && ` · 工具 ${p.tools.join('、')}`}
+                </p>)}
+              </div>)}
+          </div>
+        </article>)}
+      </section>}
+    </div>
+  </>
 }

@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react'
 import {
-  Activity, AlertCircle, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight,
+  Activity, AlertCircle, ArrowRight, Bell, Check, CheckCircle2, ChevronDown, ChevronRight,
   Circle, ClipboardCheck, ExternalLink, FileCode2, GitBranch, GitPullRequest,
   History, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
-  MessageSquare, PanelLeft, RefreshCw, Search, SlidersHorizontal, Terminal,
+  MessageSquare, RefreshCw, Search, SlidersHorizontal, Terminal, X,
   type LucideProps,
 } from 'lucide-react'
 
-const icons = { Activity, AlertCircle, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight,
+const icons = { Activity, AlertCircle, ArrowRight, Bell, Check, CheckCircle2, ChevronDown, ChevronRight,
   Circle, ClipboardCheck, ExternalLink, FileCode2, GitBranch, GitPullRequest, History, Inbox,
-  KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu, MessageSquare, PanelLeft,
-  RefreshCw, Search, SlidersHorizontal, Terminal }
+  KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu, MessageSquare,
+  RefreshCw, Search, SlidersHorizontal, Terminal, X }
 
 export function Icon({ name, size = 17, ...props }: LucideProps & { name: keyof typeof icons }) {
   const Glyph = icons[name]

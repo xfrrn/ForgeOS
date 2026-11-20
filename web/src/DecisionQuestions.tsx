@@ -2,6 +2,7 @@ import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, Icon, type ApiRequest } from './shared'
 import { QuestionAdvice, type Advice } from './QuestionAdvice'
+import { EmptyState, PageHeading } from './ui'
 
 type Question = {
   management_processes?: ReviewProcess[]; management_advice?: Advice
@@ -81,9 +82,9 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
   }
 
   return <>
-    <div className="page-heading"><h1>待答问题</h1>
-      <button className="button" disabled={busy} onClick={() => void load()}><Icon name="RefreshCw" size={15}/>刷新</button>
-    </div>
+    <PageHeading title="待答问题" actions={<button className="button" disabled={busy} onClick={() => void load()}>
+      <Icon name="RefreshCw" size={15}/>刷新
+    </button>}/>
     {problem && <p className="detail-problem" role="alert">{problem}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
     <form className="decision-queue" aria-busy={busy} onSubmit={e => { e.preventDefault(); if (!busy && selected.length) void submit() }}>
@@ -103,7 +104,8 @@ export function DecisionQuestions({ request, onChanged }: { request: ApiRequest;
           <button type="button" className="detail-text-button" onClick={() => setRows(prev => prev.filter(item => item.id !== q.id))}>移除已答问题</button></> :
           q.error && <p className="detail-problem" role="alert">{q.error}</p>}
       </section>)}
-      {!rows.length && !problem && <div className="panel table-message">{busy ? '正在读取问题…' : before ? '本页问题已处理。' : '没有待答问题。'}</div>}
+      {!rows.length && !problem && (busy ? <div className="panel table-message" role="status">正在读取问题…</div> :
+        <div className="panel"><EmptyState icon="MessageSquare" title={before ? '本页问题已处理' : '没有待答问题'}/></div>)}
       <div className="detail-actions">
         {rows.length > 0 && <button type="submit" className="button primary" disabled={busy || !selected.length}>提交已填答复（{selected.length}）</button>}
         {before && <button type="button" className="button" disabled={busy} onClick={() => void load(before)}>加载更多问题</button>}

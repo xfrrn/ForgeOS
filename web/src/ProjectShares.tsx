@@ -2,6 +2,7 @@ import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
+import { BackLink, PageHeading } from './ui'
 
 type Copy = { id: number; title: string; content: string; digest: string; published_at?: string }
 type Receipt = Copy & {
@@ -55,12 +56,12 @@ export function ShareDraft({ project, material, revision, request }: {
 
 export function ProjectShares({ project, receipt, request }: { project: number; receipt?: number; request: ApiRequest }) {
   const [direction, setDirection] = useState('shares')
-  return <div className="project-setup"><a href="#/projects">返回项目接入</a>
-    <div className="page-heading"><h1>项目 #{project} · 共享经验</h1></div>
-    {receipt ? <a href={`#/projects/${project}/shares`}>查看全部共享记录</a> :
+  return <div className="project-setup">
+    <BackLink href="#/projects">返回项目接入</BackLink>
+    <PageHeading title={`项目 #${project} · 共享经验`} actions={receipt ? <a className="button" href={`#/projects/${project}/shares`}>查看全部共享记录</a> :
       <select aria-label="共享方向" value={direction} onChange={e => setDirection(e.target.value)}>
         <option value="shares">发出的副本</option><option value="shared-experience">接收的经验</option>
-      </select>}
+      </select>}/>
     <ShareList key={direction} project={project} receipt={receipt} direction={direction} request={request}/>
   </div>
 }
@@ -101,7 +102,7 @@ function ShareList({ project, receipt, direction, request }: { project: number; 
   return <section className="panel detail-card">
     {direction === 'shared-experience' && <form onSubmit={e => { e.preventDefault(); setPage({ before: 0, query: query.trim() }) }}>
       <label>检索已接收的经验<input type="search" maxLength={512} value={query} onChange={e => setQuery(e.target.value)}/></label>
-      <button className="button">检索</button>{page.query && <button type="button" onClick={() => {setQuery(''); setPage({before: 0})}}>显示全部</button>}
+      <button className="button">检索</button>{page.query && <button className="button" type="button" onClick={() => {setQuery(''); setPage({before: 0})}}>显示全部</button>}
     </form>}
     <div className="detail-actions"><button className="button" disabled={busy || loading} onClick={() => setPage({ before: 0, query: page.query })}>刷新共享记录</button>
       {direction === 'shares' && <a href={`#/projects/${project}/materials`}>从项目资料起草副本</a>}</div>

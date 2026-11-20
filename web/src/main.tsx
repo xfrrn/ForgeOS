@@ -14,9 +14,20 @@ import { ProjectShares } from './ProjectShares'
 import { ProjectDecisions } from './ProjectDecisions'
 import { ProjectMaterials } from './ProjectMaterials'
 import { Icon, requestWith } from './shared'
+import { EmptyState, PageHeading } from './ui'
 import './style.css'
 
 const keyName = 'forgeos.owner'
+const navigation = [
+  { path: '/overview', label: '总览', icon: 'Layers3' },
+  { path: '/tasks', label: '任务列表', icon: 'LayoutList' },
+  { path: '/projects', label: '项目接入', icon: 'GitBranch' },
+  { path: '/review', label: '验收队列', icon: 'ClipboardCheck' },
+  { path: '/approvals', label: '审批中心', icon: 'ListChecks' },
+  { path: '/questions', label: '待答问题', icon: 'MessageSquare' },
+  { path: '/workers', label: '执行节点', icon: 'Terminal' },
+] as const
+
 function storedOwner() { try { return sessionStorage.getItem(keyName) || '' } catch { return '' } }
 function storeOwner(value: string) {
   try { if (value) sessionStorage.setItem(keyName, value); else sessionStorage.removeItem(keyName) } catch { /* The current page can still connect. */ }
@@ -39,8 +50,8 @@ function Connect({ onConnect, initialError }: { onConnect: (key: string) => void
     finally { setBusy(false) }
   }
   return <div className="connect-page">
-    <div className="connect-header"><Brand/><span>交付工作台</span></div>
-    <main className="connect-main"><div className="connect-card">
+    <header className="connect-header frame"><Brand/><span>交付工作台</span></header>
+    <main className="connect-main"><div className="panel connect-card">
       <div className="signin-icon"><Icon name="KeyRound" size={25}/></div>
       <h1>连接控制面</h1><p>使用 Owner 令牌查看项目任务、检查执行结果并验收候选提交。</p>
       <form onSubmit={submit}><label htmlFor="owner">Owner 令牌</label>
@@ -61,6 +72,7 @@ function App() {
   const [loginError, setLoginError] = useState('')
   const [route, setRoute] = useState(() => location.hash.slice(1) || '/overview')
   const [mobileNav, setMobileNav] = useState(false)
+  const menuToggle = useRef<HTMLButtonElement>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const overview = route === '/overview' || route === '/'
   const running = route === '/tasks?status=RUNNING'
@@ -83,6 +95,7 @@ function App() {
   const id = idMatch && Number.isSafeInteger(Number(idMatch[1])) && (!idMatch[5] || Number.isSafeInteger(Number(idMatch[5]))) ? Number(idMatch[1]) : undefined
   const valid = Boolean(overview || running || id || approvals || queue || notifications || nodes || questions || projects || route === '/tasks')
   const preview = idMatch?.[2]
+  const activePath = overview ? '/overview' : projects ? '/projects' : running || id ? '/tasks' : route
   const title = overview ? '工作台总览' : running ? '执行中任务' : preview ? '预览反馈' : id ? '任务详情' : approvals ? '审批中心' : queue ? '验收队列' : notifications ? '通知' : nodes ? '执行节点' : questions ? '待答问题' : inbox ? '讨论收件箱' : shares ? '共享经验' : decisions ? '项目决策' : materials ? '项目资料' : projects ? '项目接入' : valid ? '任务列表' : '页面不存在'
   const logout = useCallback((reason = '') => {
     activeOwner.current = ''; setOwner(''); storeOwner(''); setLoginError(reason); setCounts({}); setMobileNav(false)
@@ -100,38 +113,57 @@ function App() {
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
+  useEffect(() => {
+    if (!mobileNav) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileNav(false)
+        menuToggle.current?.focus()
+      }
+    }
+    const wide = window.matchMedia('(min-width: 1080px)')
+    const closeOnWide = (event: MediaQueryListEvent) => { if (event.matches) setMobileNav(false) }
+    window.addEventListener('keydown', closeOnEscape)
+    wide.addEventListener('change', closeOnWide)
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape)
+      wide.removeEventListener('change', closeOnWide)
+    }
+  }, [mobileNav])
   useEffect(() => { document.title = (owner ? title : '连接控制面') + ' · ForgeOS' }, [owner, title])
   if (!owner) return <Connect initialError={loginError} onConnect={value => {
     activeOwner.current = value; storeOwner(value); setOwner(value); setLoginError('')
   }}/>
+  const navCounts: Record<string, number> = { '/review': counts.WAITING_ACCEPTANCE, '/questions': counts.WAITING_INPUT }
   return <div className="shell">
     <a href="#content" className="skip-link" onClick={e => {e.preventDefault(); document.getElementById('content')?.focus()}}>跳到主要内容</a>
-    <aside className={'sidebar' + (mobileNav ? ' open' : '')}>
-      <a className="brand-link" aria-label="ForgeOS 工作台总览" href="#/overview"><Brand/></a>
-      <div className="work-label">工作区</div>
-      <nav aria-label="工作台导航">
-        <a className={overview ? 'active' : ''} aria-current={overview ? 'page' : undefined} href="#/overview"><Icon name="Layers3"/>工作台总览</a>
-        <a className={!overview && !queue && !approvals && !notifications && !nodes && !questions && !projects ? 'active' : ''} aria-current={!overview && !queue && !approvals && !notifications && !nodes && !questions && !projects ? 'page' : undefined} href="#/tasks" onClick={() => setMobileNav(false)}><Icon name="LayoutList"/>任务列表</a>
-        <a className={projects ? 'active' : ''} aria-current={projects ? 'page' : undefined} href="#/projects" onClick={() => setMobileNav(false)}><Icon name="GitBranch"/>项目接入</a>
-        <a className={queue ? 'active' : ''} aria-current={queue ? 'page' : undefined} href="#/review" onClick={() => setMobileNav(false)}><Icon name="ClipboardCheck"/>验收队列
-          {counts.WAITING_ACCEPTANCE > 0 && <span className="nav-count">{counts.WAITING_ACCEPTANCE}</span>}</a>
-        <a className={approvals ? 'active' : ''} aria-current={approvals ? 'page' : undefined} href="#/approvals"><Icon name="ListChecks"/>审批中心</a>
-        <a className={notifications ? 'active' : ''} aria-current={notifications ? 'page' : undefined} href="#/notifications"><Icon name="Inbox"/>通知<NotificationCount request={request} revision={notificationRevision}/></a>
-        <a className={nodes ? 'active' : ''} aria-current={nodes ? 'page' : undefined} href="#/workers"><Icon name="Terminal"/>执行节点</a>
-        <a className={questions ? 'active' : ''} aria-current={questions ? 'page' : undefined} href="#/questions" onClick={() => setMobileNav(false)}><Icon name="MessageSquare"/>待答问题
-          {counts.WAITING_INPUT > 0 && <span className="nav-count">{counts.WAITING_INPUT}</span>}</a>
+    <header className="topbar frame">
+      <a className="brand-link" aria-label="ForgeOS 工作台总览" href="#/overview" onClick={() => setMobileNav(false)}><Brand/></a>
+      <button ref={menuToggle} type="button" className="icon-button mobile-toggle" aria-label={mobileNav ? '关闭工作台导航' : '打开工作台导航'}
+        aria-controls="workbench-nav" aria-expanded={mobileNav} onClick={() => setMobileNav(open => !open)}>
+        <Icon name={mobileNav ? 'X' : 'Menu'} size={20}/>
+      </button>
+      <nav id="workbench-nav" className={'workbench-nav' + (mobileNav ? ' open' : '')} aria-label="工作台导航">
+        {navigation.map(item => <a key={item.path} href={'#' + item.path}
+          aria-current={activePath === item.path ? (route === item.path || overview ? 'page' : 'location') : undefined}
+          onClick={() => { if (mobileNav) { setMobileNav(false); menuToggle.current?.focus() } }}>
+          <Icon name={item.icon} size={18}/>{item.label}
+          {navCounts[item.path] > 0 && <span className="nav-count">{navCounts[item.path] > 99 ? '99+' : navCounts[item.path]}</span>}
+        </a>)}
       </nav>
-      <div className="sidebar-foot"><span className="owner-avatar">O</span><div><strong>Owner</strong><small>工作区维护者</small></div>
-        <button className="logout" onClick={() => logout()} title="断开连接" aria-label="断开连接"><Icon name="LogOut" size={16}/></button></div>
-    </aside>
-    {mobileNav && <button className="nav-scrim" aria-label="关闭导航" onClick={() => setMobileNav(false)}/>}
-    <div className="work-area"><header className="topbar">
-      <button className="mobile-toggle" aria-label="切换导航" aria-expanded={mobileNav} onClick={() => setMobileNav(!mobileNav)}><Icon name="Menu"/></button>
-      <div className="crumb"><Icon name="PanelLeft" size={16}/><span>工作区</span><b>/</b>
-        {id ? <><a href="#/tasks">任务列表</a><b>/</b><strong className="mono">T-{id}</strong></> : <strong>{title}</strong>}</div>
-      <div className="connected"><i/>本地控制面</div>
+      <div className="header-actions">
+        <a className="icon-button notification-button" href="#/notifications" title="通知" aria-current={notifications ? 'page' : undefined} onClick={() => setMobileNav(false)}>
+          <span className="sr-only">通知</span><Icon name="Bell" size={19}/><NotificationCount request={request} revision={notificationRevision}/>
+        </a>
+        <div className="owner">
+          <span className="owner-avatar" aria-hidden="true">O</span>
+          <div className="owner-copy"><strong>Owner</strong><small><i/>本地控制面</small></div>
+        </div>
+        <button type="button" className="icon-button" onClick={() => logout()} title="断开连接" aria-label="断开连接"><Icon name="LogOut" size={18}/></button>
+      </div>
     </header>
-    <main id="content" tabIndex={-1} className="content">
+    {mobileNav && <div className="nav-scrim" aria-hidden="true" onClick={() => { setMobileNav(false); menuToggle.current?.focus() }}/>}
+    <main id="content" tabIndex={-1} className="content frame">
       {id && preview ? <PreviewFeedback key={route} task={id} preview={preview} captureQuery={idMatch?.[3]} request={request}/> :
         id ? <TaskDetail key={id} id={id} questionID={idMatch?.[5] ? Number(idMatch[5]) : undefined} planRevision={idMatch?.[4] ? Number(idMatch[4]) : undefined} request={request} onChanged={refreshCounts}/> :
         overview ? <Overview request={request} onCounts={setCounts}/> :
@@ -145,8 +177,10 @@ function App() {
         projects ? <Projects request={request}/> :
         questions ? <DecisionQuestions request={request} onChanged={refreshCounts}/> :
         valid ? <TaskList key={route} queue={queue} running={running} request={request} onCounts={setCounts}/> :
-        <div className="panel table-message"><h1>页面不存在</h1><a className="button" href="#/tasks">返回任务列表</a></div>}
-    </main></div>
+        <><PageHeading title="页面不存在"/><section className="panel"><EmptyState icon="AlertCircle" title="找不到这条工作台路径">
+          <a className="button" href="#/tasks">返回任务列表</a>
+        </EmptyState></section></>}
+    </main>
   </div>
 }
 

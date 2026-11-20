@@ -12,6 +12,8 @@ ForgeOS 让维护者在远程提交需求，由自有机器上的 Worker 调用 
 
 了解最终产品可读[产品章程](docs/00-product-charter.md)和[端到端流程](docs/01-end-to-end-workflow.md)。开始写基座时，重点看[系统架构](docs/02-system-architecture.md)、[模块职责](docs/03-module-catalog.md)、[领域模型](docs/04-domain-model.md)和[待验证事项](docs/16-open-decisions.md)。
 
+开发工作台页面时，按[工作台界面规范](docs/workbench-ui.md)复用设计变量、共享组件和验收流程。
+
 ## 架构与技术基线
 
 | 部分 | 建议技术与职责 |

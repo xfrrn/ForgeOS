@@ -20,7 +20,7 @@
 
 跟踪验收后的交付可查看[验收 API 与交付循环](cmd/controlplane/delivery.go)、[验收记录与交付队列](internal/store/delivery.go)及 [GitHub PR 与 Issue 回写](cmd/controlplane/delivery_remote.go)。
 
-维护任务工作台时，从[工作台总览](web/src/Overview.tsx)、[任务列表](web/src/TaskList.tsx)、[任务详情与候选验收](web/src/TaskDetail.tsx)及[同源页面入口](cmd/controlplane/web.go)开始。
+维护任务工作台时，先阅读[工作台界面规范](docs/workbench-ui.md)，再查看[工作台总览](web/src/Overview.tsx)、[任务列表](web/src/TaskList.tsx)、[任务详情与候选验收](web/src/TaskDetail.tsx)及[同源页面入口](cmd/controlplane/web.go)。
 
 ## 确定范围与实施顺序
 

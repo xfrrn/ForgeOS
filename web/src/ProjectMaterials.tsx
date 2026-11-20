@@ -4,6 +4,7 @@ import { ExperienceSearch } from './ExperienceSearch'
 import { RepositoryDocumentChanges } from './RepositoryDocumentChanges'
 import { ShareDraft } from './ProjectShares'
 import { ApiError, formatTime, type ApiRequest } from './shared'
+import { BackLink, PageHeading } from './ui'
 
 const kinds = { material: '导入资料', profile: '项目档案', environment: '环境说明', memory: 'Owner 记忆请求' }
 type Kind = keyof typeof kinds
@@ -112,8 +113,8 @@ export function ProjectMaterials({ project, request }: { project: number; reques
   }
   const formLocked = busy || Boolean(draft)
   return <div className="project-setup">
-    <a href="#/projects">返回项目接入</a>
-    <div className="page-heading"><h1>项目 #{project} · 项目资料</h1></div>
+    <BackLink href="#/projects">返回项目接入</BackLink>
+    <PageHeading title={`项目 #${project} · 项目资料`}/>
     <RepositoryDocumentChanges key={project} project={project} request={request}/>
     <ExperienceSearch key={'experience-' + project} project={project} request={request}/>
     <section className="panel detail-card">

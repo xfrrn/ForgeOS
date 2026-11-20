@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, formatTime, type ApiRequest } from './shared'
 import { KnowledgeCuration } from './KnowledgeCuration'
+import { BackLink, PageHeading } from './ui'
 
 const labels = { PROPOSED: '待确认', CONFIRMED: '已确认', REJECTED: '已拒绝', SUPERSEDED: '已替代', EXPIRED: '已失效' }
 type State = keyof typeof labels
@@ -92,8 +93,9 @@ export function ProjectDecisions({ project, decision, request }: { project: numb
       refresh()
     } finally { setBusy(false) }
   }
-  return <div className="project-setup"><a href="#/projects">返回项目接入</a>
-    <div className="page-heading"><h1>项目 #{project} · 项目决策</h1></div>
+  return <div className="project-setup">
+    <BackLink href="#/projects">返回项目接入</BackLink>
+    <PageHeading title={`项目 #${project} · 项目决策`}/>
     {error && <p role="alert" className="detail-problem">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {proposal && <form onSubmit={submit} className="panel detail-card material-form">

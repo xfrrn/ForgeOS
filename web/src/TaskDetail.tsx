@@ -15,6 +15,7 @@ import './detail.css'
 import { CandidateTestPlans } from './CandidateTestPlans'
 import { CandidatePreviews } from './CandidatePreviews'
 import { RepositoryInventory } from './RepositoryInventory'
+import { BackLink, PageHeading } from './ui'
 
 type CheckRun = { id: string; runner: string; level: string; profile?: string; config_blob?: string; image?: string
   decision?: { rules_blob?: string; changed_paths: number; reasons: { source: string; level: string; evidence: string }[] }
@@ -137,9 +138,9 @@ function DeclaredChecks({ run, path, request }: { run: CheckRun; path: string; r
       <dl className="detail-facts"><Fact label="退出码" code>{c.exit_code ?? '无退出码'}</Fact>
         <Fact label="检查时间">{formatTime(c.started_at)} — {formatTime(c.finished_at)}</Fact><Fact label="本地日志" code>{c.log}{c.log_digest && ` · ${c.log_digest.bytes} 字节`}</Fact>
         {c.log_digest && <Fact label="日志 SHA-256" code>{c.log_digest.sha256}</Fact>}</dl>
-      {c.log_digest && <button type="button" onClick={() => download(c.log)}>下载 {c.log}</button>}
+      {c.log_digest && <button className="detail-text-button" type="button" onClick={() => download(c.log)}>下载 {c.log}</button>}
       {c.outputs?.map(o => <dl key={o.file} className="detail-facts"><Fact label={o.kind === 'report' ? '报告' : '产物'}>{o.source} · {o.bytes} 字节</Fact>
-        <Fact label="归档文件" code><button type="button" onClick={() => download(o.file)}>下载 {o.file}</button></Fact><Fact label="SHA-256" code>{o.sha256}</Fact></dl>)}
+        <Fact label="归档文件" code><button className="detail-text-button" type="button" onClick={() => download(o.file)}>下载 {o.file}</button></Fact><Fact label="SHA-256" code>{o.sha256}</Fact></dl>)}
     </li>)}</ol>
     {error && <p role="alert">{error}</p>}
   </details>
@@ -688,11 +689,16 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
       setSendingCommand(false)
     }
   }
-  if (!task) return <div className="panel detail-placeholder" role="status">{error || '正在读取任务详情…'}
-    {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
+  if (!task) return <>
+    <BackLink href="#/tasks">返回任务列表</BackLink>
+    <PageHeading title={`任务 T-${id}`}/>
+    <div className="panel detail-placeholder" role={error ? 'alert' : 'status'}>{error || '正在读取任务详情…'}
+      {error && <button className="button" onClick={() => refresh()}>重新加载</button>}</div>
+  </>
   if (questionID !== undefined) {
     const question = task.questions?.find(q => q.id === questionID)
-    return <article className="task-detail"><a href={`#/tasks/${id}`}>查看任务 T-{id}</a>
+    return <article className="task-detail"><BackLink href={`#/tasks/${id}`}>返回任务 T-{id}</BackLink>
+      <PageHeading title={`任务 T-${id} · 待答问题`}/>
       {question ? <Decision key={question.id} taskID={id} q={question} canAnswer={task.status === 'WAITING_INPUT'} request={request}
         onAnswer={() => { refresh(); onChanged() }}/> : <p role="status">本任务没有这条业务决定。</p>}
     </article>
@@ -707,6 +713,7 @@ function Detail({ id, planRevision, questionID, request, onChanged }: Props) {
     result?.exit_code === 0 && result.commit && fullSHA.test(result.commit) && result.validation?.commit === result.commit &&
     result.validation.exit_code === 0 && !reviews.some(review => review.execution_id === last.id)
   return <article className="task-detail">
+    <BackLink href="#/tasks">返回任务列表</BackLink>
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
       <h1>{issue?.title || (task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>

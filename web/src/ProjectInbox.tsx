@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError, safeGitHubURL, type ApiRequest } from './shared'
 import { workTypeName, workTypes } from './workTypes'
 import { ClassificationAdvice, type IssueSuggestion } from './ClassificationAdvice'
+import { BackLink, EmptyState, PageHeading } from './ui'
 
 type Discussion = { id: number; number: number; title: string; url: string; work_type?: string; source_digest?: string; suggestion?: IssueSuggestion; classification_id?: number }
 
@@ -49,11 +50,11 @@ export function ProjectInbox({ project, request }: { project: number; request: A
     }
   }
 
-  return <section className="panel detail-card">
-    <a href="#/projects">返回项目接入</a>
-    <h1>项目 #{project} · 讨论收件箱</h1>
-    <p>开发任务进入实现队列。审查、测试、调查和运维先进入只读规划，供 Owner 核对范围。</p>
-    <form onSubmit={e => {
+  return <div className="project-setup">
+    <BackLink href="#/projects">返回项目接入</BackLink>
+    <PageHeading title={`项目 #${project} · 讨论收件箱`} description="开发任务进入实现队列。审查、测试、调查和运维先进入只读规划，供 Owner 核对范围。"
+      actions={<button className="button" disabled={loading || !!converting} onClick={() => { setChoices({}); setBefore(0); setRevision(v => v + 1) }}>刷新讨论</button>}/>
+    <form className="panel detail-card material-form" onSubmit={e => {
       e.preventDefault()
       const workType = new FormData(e.currentTarget).get('work_type')
       void convert(Number(issueNumber), { require_work_type: true, work_type: typeof workType === 'string' && workType ? workType : undefined })
@@ -63,18 +64,17 @@ export function ProjectInbox({ project, request }: { project: number; request: A
           setIssueNumber(e.target.value)
           e.target.setCustomValidity(Number.isSafeInteger(Number(e.target.value)) ? '' : '请输入有效的 Issue 编号。')
         }}/></label>
-        <label htmlFor="dispatch-work-type">工作类型</label>
-        <select id="dispatch-work-type" key={issueNumber} name="work_type" defaultValue="">
+        <label>工作类型<select key={issueNumber} name="work_type" defaultValue="">
           <option value="">沿用 Issue 类型</option>
           {Object.entries(workTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-        </select>
-        <button className="button" type="submit">派发 Issue</button>
+        </select></label>
+        <button className="button primary" type="submit">派发 Issue</button>
       </fieldset>
     </form>
-    <div><button className="button" disabled={loading || !!converting} onClick={() => { setChoices({}); setBefore(0); setRevision(v => v + 1) }}>刷新讨论</button></div>
     {error && <p className="detail-problem" role="alert">{error}</p>}
-    {loading && <p role="status">正在读取讨论…</p>}
-    {!loading && !error && !rows.length && <p>暂无待转换的讨论。</p>}
+    <section className="panel detail-card"><h2>待转换讨论</h2>
+    {loading && <p role="status" className="table-message">正在读取讨论…</p>}
+    {!loading && !error && !rows.length && <EmptyState icon="Inbox" title="暂无待转换的讨论"/>}
     {rows.map(row => {
       const classified = workTypeName(row.work_type)
       const choice = classified ? row.work_type! : choices[row.id] ?? (row.work_type === 'clarification' ? '' : 'development')
@@ -92,5 +92,6 @@ export function ProjectInbox({ project, request }: { project: number; request: A
       </div>
     </article>})}
     {more && rows.length > 0 && <div><button className="button" disabled={loading || !!converting} onClick={() => { setBefore(rows[rows.length - 1].number); setRevision(v => v + 1) }}>更多讨论</button></div>}
-  </section>
+    </section>
+  </div>
 }

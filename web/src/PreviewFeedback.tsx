@@ -7,6 +7,7 @@ import { FeedbackScreenshots, type FeedbackArtifactReceipt } from './FeedbackScr
 
 import { RolePermissions, type StructuredProfile } from './RolePermissions'
 import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvidence'
+import { BackLink, EmptyState, PageHeading } from './ui'
 
 type FeedbackContext = {
   candidate: { execution_id: number; base_commit: string | null; commit: string }
@@ -146,10 +147,14 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
     } catch (e) { setError(e instanceof Error ? e.message : '派发失败。') }
     finally { setBusy(false) }
   }
-  return <section className="panel"><a href={`#/tasks/${task}`}>返回任务 T-{task}</a><h1>预览反馈</h1>
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    {page && <><p>执行 {page.preview.execution_id} · {page.preview.environment === 'local-mock' ? '应用预览（local-mock）' : page.preview.directory} · <code>{page.preview.commit}</code></p>
-      <form onSubmit={submit}><fieldset><legend>记录观察</legend>
+  return <div className="project-setup">
+    <BackLink href={`#/tasks/${task}`}>返回任务 T-{task}</BackLink>
+    <PageHeading title="预览反馈" description={page && <>执行 {page.preview.execution_id} · {page.preview.environment === 'local-mock' ? '应用预览（local-mock）' : page.preview.directory} · <code>{page.preview.commit}</code></>}/>
+    {error && <p className="detail-problem" role="alert">{error}</p>}
+    {message && <p className="detail-notice" role="status">{message}</p>}
+    {!page && !error && <p className="panel table-message" role="status">正在读取预览反馈…</p>}
+    {page && <>
+      <form className="panel detail-card material-form" onSubmit={submit}><fieldset><legend>记录观察</legend>
         {mismatch && <p role="alert">捕获页面的候选或执行与此预览不一致，请返回预览重新选择。</p>}
         {captureQuery && <div><p>采集环境　{capture.get('browser')} · {capture.get('width')} × {capture.get('height')}</p>
           <FramePath frames={capture.getAll('frame')}/>{capture.get('element') && <p>所选元素　<code>{capture.get('element')}</code></p>}
@@ -159,11 +164,13 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
         <label>关联测试用例<select value={caseID} onChange={e => setCaseID(e.target.value)}><option value="">无关联用例</option>
           {page.plan?.cases.map(c => <option key={c.id} value={c.id}>{c.id} · {c.objective}</option>)}</select></label>
         <label>观察结果或修改意见<textarea required maxLength={8192} value={note} onChange={e => setNote(e.target.value)} /></label>
-        <button className="button" disabled={busy || mismatch || !note.trim() || Boolean(nonce && !media)}>提交反馈</button>
-      </fieldset></form><h2>该预览的反馈</h2>
-      <button className="detail-text-button" onClick={() => { setError(''); setVersion(n => n + 1) }}>刷新反馈分类</button>
-      {!page.feedback.length && <p>尚无反馈。</p>}
-      {page.feedback.map(f => <article key={f.id}><h3>反馈 #{f.id}</h3><p>{f.classification ? 'Management 分类 · ' + categories[f.classification.category] : f.state === 'in_review' ? 'Management 正在分类' : '待 Management 分类'} · {formatTime(f.created_at)} · <code>{f.body.path}</code>
+        <button className="button primary" disabled={busy || mismatch || !note.trim() || Boolean(nonce && !media)}>提交反馈</button>
+      </fieldset></form>
+      <section className="panel detail-card">
+      <div className="section-toolbar"><h2>该预览的反馈</h2>
+        <button className="button" onClick={() => { setError(''); setVersion(n => n + 1) }}>刷新反馈分类</button></div>
+      {!page.feedback.length && <EmptyState icon="MessageSquare" title="尚无反馈"/>}
+      {page.feedback.map(f => <article className="notification-row" key={f.id}><h3>反馈 #{f.id}</h3><p>{f.classification ? 'Management 分类 · ' + categories[f.classification.category] : f.state === 'in_review' ? 'Management 正在分类' : '待 Management 分类'} · {formatTime(f.created_at)} · <code>{f.body.path}</code>
         {f.body.case_id && ` · 计划 v${f.body.plan_revision} · ${f.body.case_id}`}</p><p>{f.body.note}</p>
         <FramePath frames={f.body.frames}/>{f.body.element && <p>元素 <code>{f.body.element}</code></p>}
         {f.body.canvas_point && <p>画布位置（左、上）　{f.body.canvas_point}</p>}
@@ -211,6 +218,7 @@ export function PreviewFeedback({ task, preview, captureQuery, request }: { task
               <button className="button" disabled={busy || !question.trim()} onClick={() => void ask(f)}>提交澄清问题</button>
               <button className="detail-text-button" disabled={busy} onClick={() => setAsking(0)}>取消</button></fieldset> :
             <button className="button" onClick={() => { setAsking(f.id); setQuestion(f.body.note) }}>转入澄清</button>)}</article>)}
+      </section>
     </>}
-  </section>
+  </div>
 }

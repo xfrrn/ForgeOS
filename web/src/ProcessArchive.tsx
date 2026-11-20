@@ -31,6 +31,6 @@ export function ArchiveDownload({ path, file, request, label = '下载进程日�
     }
     finally { setBusy(false) }
   }
-  return <div><button disabled={busy} onClick={() => void download()}>{busy ? '正在下载…' : label}</button>
-    {error && <p role="alert">{error}</p>}</div>
+  return <div><button type="button" className="detail-text-button" disabled={busy} onClick={() => void download()}>{busy ? '正在下载…' : label}</button>
+    {error && <p className="detail-problem" role="alert">{error}</p>}</div>
 }
