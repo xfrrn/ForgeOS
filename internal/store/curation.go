@@ -200,7 +200,7 @@ const curationReceipt = `SELECT jsonb_build_object('id',c.id,'revision',s.revisi
 		'decisions',COALESCE((SELECT jsonb_agg(jsonb_build_object('fact',d.curation_fact,'id',d.id,'status',i.status) ORDER BY d.curation_fact,d.id)
 		  FROM project_decisions d JOIN project_decision_index i ON i.id=d.id WHERE d.curation_id=c.id),'[]'::jsonb))
 		|| jsonb_strip_nulls(jsonb_build_object('key',c.key,'decision_id',c.decision_id,'event_id',c.event_id,'source',CASE WHEN c.event_id IS NOT NULL THEN s.source END,'delivery',s.delivery,'goal',s.goal,'document',s.document,'content',CASE WHEN c.document_id IS NOT NULL THEN s.content END))
-		|| CASE WHEN c.reviewed_at IS NULL OR c.review IS NULL THEN '{}'::jsonb ELSE jsonb_build_object(
+		|| CASE WHEN c.reviewed_at IS NULL OR c.review IS NULL OR c.review->>'actor'='owner' THEN '{}'::jsonb ELSE jsonb_build_object(
 		    'review_event',jsonb_build_object('schema_version','1.0','message_type','EVENT',
 		    'message_id',format('CURATION-%s-REVIEWED',c.id),'correlation_id',format('CURATION-%s',c.id),
 		    'idempotency_key',format('CURATION-%s-REVIEWED',c.id),'project_id',format('PROJECT-%s',c.project_id),

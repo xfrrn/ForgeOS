@@ -24,6 +24,7 @@ import { EmptyState, PageHeading } from './ui'
 import { credentialsHref, workbenchRoute, workbenchTitle, type ProjectRoute, type WorkbenchRoute } from './workbenchRoutes'
 import './style.css'
 
+const ProjectPlanning = lazy(() => import('./ProjectPlanning'))
 const ProjectMaterials = lazy(() => import('./ProjectMaterials').then(module => ({default:module.ProjectMaterials})))
 const ProjectDecisions = lazy(() => import('./ProjectDecisions').then(module => ({default:module.ProjectDecisions})))
 const ProjectExperience = lazy(() => import('./ProjectExperience').then(module => ({default:module.ProjectExperience})))
@@ -131,6 +132,8 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
     case 'inbox': return <ProjectInbox project={projectId} request={request}/>
     case 'model-settings': return <Suspense fallback={<p role="status">正在打开模型设置…</p>}>
       <KnowledgeModelSettings projectId={projectId} request={request}/></Suspense>
+    case 'planning': case 'retrospectives': return <Suspense fallback={<p role="status">正在打开项目规划…</p>}>
+      <ProjectPlanning key={page.view} project={projectId} retrospectives={page.view==='retrospectives'} selected={page.selected} request={request}/></Suspense>
     case 'materials': return <Suspense fallback={<p role="status">正在打开资料库…</p>}>
       <ProjectMaterials project={projectId}
         initialKey={page.key} initialRevision={page.revision} initialPath={page.path} request={request}/></Suspense>

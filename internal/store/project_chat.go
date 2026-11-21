@@ -32,6 +32,7 @@ type ChatActivity struct {
 type ChatAction struct {
 	Body            string     `json:"body,omitempty"`
 	CreationStarted *time.Time `json:"creation_started_at,omitempty"`
+	PlanMode        string     `json:"-"`
 	CreateKey       string     `json:"-"`
 
 	ID          int64  `json:"id"`
@@ -287,12 +288,12 @@ func (s *Store) CompleteChat(ctx context.Context, project, id int64, lease, answ
 }
 
 const chatActionSelect = `SELECT id,turn_id,kind,label,repository,issue_number,work_type,COALESCE(task_id,0),status,
-	repository_id,source_digest,head_retry,issue_body,create_key,create_started_at FROM project_chat_actions WHERE project_id=$1 AND id=$2`
+	repository_id,source_digest,head_retry,issue_body,create_key,create_started_at,plan_mode FROM project_chat_actions WHERE project_id=$1 AND id=$2`
 
 func scanChatAction(row interface{ Scan(...any) error }) (ChatAction, error) {
 	var a ChatAction
 	err := row.Scan(&a.ID, &a.TurnID, &a.Kind, &a.Label, &a.Repository, &a.IssueNumber, &a.WorkType, &a.TaskID, &a.Status,
-		&a.RepositoryID, &a.SourceDigest, &a.HeadRetry, &a.Body, &a.CreateKey, &a.CreationStarted)
+		&a.RepositoryID, &a.SourceDigest, &a.HeadRetry, &a.Body, &a.CreateKey, &a.CreationStarted, &a.PlanMode)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}

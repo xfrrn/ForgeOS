@@ -1,6 +1,6 @@
 import { taskCategory, type TaskCategory } from './workTypes'
 
-export type ProjectTab = 'overview' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials' | 'knowledge'
+export type ProjectTab = 'overview' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials' | 'knowledge' | 'planning'
 
 type TaskRoute = {
   id: number
@@ -13,6 +13,7 @@ type TaskRoute = {
 
 type ProjectPage =
   | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' | 'model-settings' }
+  | { view: 'planning' | 'retrospectives'; selected?: number }
   | { view: 'materials'; key?: string; revision?: number; path?: string }
   | { view: 'tasks'; status?: string; queue: boolean; category: TaskCategory }
   | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' | 'checks' }
@@ -75,6 +76,8 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   const subpath = scope[2] ?? '/'
   switch (subpath) {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
+    case '/planning': return { ...root, view: 'planning', projectTab: 'planning', selected: positiveId(params.get('milestone') ?? undefined) }
+    case '/planning/retrospectives': return { ...root, view: 'retrospectives', projectTab: 'planning', selected: positiveId(params.get('retro') ?? undefined) }
     case '/agents': return { ...root, view: 'agents', projectTab: 'agents' }
     case '/chat': return { ...root, view: 'chat', projectTab: 'chat' }
     case '/knowledge': return { ...root, view: 'decisions', projectTab: 'knowledge' }
@@ -124,7 +127,7 @@ export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.view === 'reviews') return { approvals: '待审批', acceptance: '待验收', 'code-reviews': '代码审查', checks: '测试与检查' }[route.tab]
   if (route.view === 'tasks' && route.queue) return '执行队列'
   return {
-    overview: '项目概览', agents: 'Agent 管理', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
+    planning: '项目规划', retrospectives: '项目复盘', overview: '项目概览', agents: 'Agent 管理', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
     decisions: '项目决策', experience: '项目经验', shares: '共享经验', 'model-settings': '知识库模型设置', questions: '待答问题', notifications: '项目通知',
   }[route.view]
 }

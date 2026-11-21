@@ -69,7 +69,7 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const receivedSharePath = /^\/projects\/[1-9]\d*\/shared-experience(?:\?(?:versions=1(?:&before=[1-9]\d*)?|before=[1-9]\d*)|\/search\?(?:versions=1&)?q=[^&#]+|\/[1-9]\d*)?$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
-    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:overview-context|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
+    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:planning(?:\/tasks\/[1-9]\d*)?|overview-context|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
     const workerPath = /^\/workers(?:\/(?:control-plane|model-budgets|process-pool|fixed-pool))?$/.test(path)
     const clonePath = /^\/projects\/(?:chat-models(?:\/test)?|clone-settings|clone-check|repository-credentials|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
     const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull|identity)$/.test(path)
@@ -90,6 +90,7 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
       throw new ApiError(response.status, response.status === 401 ? '登录已失效，请重新登录。' :
         response.status === 409 && info?.error === 'select an Issue work type before dispatch' ? '请先为这条 Issue 选择工作类型。' :
         response.status === 409 && info?.error === 'work type differs from the current GitHub Issue' ? '所选工作类型与 GitHub Issue 声明的类型不一致。' :
+        response.status === 409 && /^\/projects\/\d+\/planning$/.test(path) ? '规划已更新或操作条件已变化，请刷新后再保存。' :
         response.status === 409 && libraryPath ? '登记的仓库当前不可用，请检查本地仓库后重试。' :
         response.status === 404 && libraryPath && path.includes('/documents/read?') ? '当前仓库版本中找不到此文档路径。' :
         response.status === 409 && !agentPath && !clonePath && !projectGitPath && !issuePreviewPath && !/^\/projects\/\d+\/chat$/.test(path) ? '任务状态或候选版本已变化，请刷新记录。' :

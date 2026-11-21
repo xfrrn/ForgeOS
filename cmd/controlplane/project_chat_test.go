@@ -562,4 +562,70 @@ func TestProjectChatWorkflow(t *testing.T) {
 		}
 	})
 
+	t.Run("project plan dispatch preserves task and Goal modes", func(t *testing.T) {
+		var posts int64
+		issueClient = func(ctx context.Context, p store.Project) (deliveryAPI, error) {
+			return func(ctx context.Context, method, path string, body, dest any) error {
+				if method == "GET" {
+					return get(ctx, path, dest)
+				}
+				posts++
+				draft := body.(map[string]string)
+				n := 100 + posts
+				*(dest.(*githubIssue)) = githubIssue{ID: 1000 + n, Number: n, State: "open", Title: draft["title"], Body: draft["body"], UpdatedAt: "2026-01-06T10:00:00Z",
+					HTMLURL: fmt.Sprintf("https://github.com/my-org/project/issues/%d", n), RepoURL: "https://api.github.com/repos/my-org/project"}
+				return nil
+			}, nil
+		}
+		handler = newHandler(nodes)
+		path := fmt.Sprintf("/projects/%d/planning", alpha.ID)
+		var state struct {
+			Revision   int64
+			Milestones []struct {
+				ID         int64
+				Deliveries []struct {
+					ID    int64
+					Tasks []struct{ ID int64 }
+				}
+			}
+			Drafts []struct{ ID int64 }
+		}
+		edit := func(e store.PlanningEdit) {
+			t.Helper()
+			e.Revision = &state.Revision
+			request("POST", path, "owner", "", e, 200, &state)
+		}
+		edit(store.PlanningEdit{Action: "milestone", Title: "Release"})
+		edit(store.PlanningEdit{Action: "delivery", Target: state.Milestones[0].ID, Title: "Ship", Body: "Check version"})
+		d := state.Milestones[0].Deliveries[0].ID
+		for _, mode := range []string{"", "plan"} {
+			edit(store.PlanningEdit{Action: "draft", ID: d, Title: "Release work", Body: "Check version", Flag: mode == "plan"})
+			if len(state.Drafts) != 1 {
+				t.Fatal("missing pending dispatch")
+			}
+			a := state.Drafts[0].ID
+			done := confirm(alpha.ID, a, chatIssueDraft{}, 200)
+			again := confirm(alpha.ID, a, chatIssueDraft{}, 200)
+			if again.Action.TaskID != done.Action.TaskID {
+				t.Fatal("repeated dispatch created another task")
+			}
+			task, err := data.Task(ctx, done.Action.TaskID)
+			if err != nil || task.Spec.Mode != mode {
+				t.Fatal("incorrect execution mode", mode, err)
+			}
+			request("GET", path, "owner", "", nil, 200, &state)
+			tasks := state.Milestones[0].Deliveries[0].Tasks
+			if tasks[len(tasks)-1].ID != task.ID || len(state.Drafts) != 0 {
+				t.Fatal("missing milestone task", task.ID)
+			}
+			var backlinks []struct{ ID int64 }
+			request("GET", fmt.Sprintf("%s/tasks/%d", path, task.ID), "owner", "", nil, 200, &backlinks)
+			if len(backlinks) != 1 || backlinks[0].ID != state.Milestones[0].ID {
+				t.Fatal("missing planning backlink")
+			}
+		}
+		if posts != 2 {
+			t.Fatal("unexpected external writes", posts)
+		}
+	})
 }

@@ -17,7 +17,7 @@ type Experience = {
 type Revision = {revision:number; title:string; statement:string; quote:string; source:string; validity:string; receipt_path:string; actor:string; change_reason:string; created_at:string; is_current:boolean}
 type Change = {id:number; expected_revision:number; title:string; source:string; content:string; reason:string; status:keyof typeof changes
   validity:string; facts:{statement:string;quote:string}[]; review?:{rationale?:string}; created_at:string; receipt_path?:string}
-type Entry = Experience & {revisions:Revision[]; changes:Change[]}
+type Entry = Experience & {source_retro?:number; revisions:Revision[]; changes:Change[]}
 type EditorState = {entryID?:number; revision:number; title:string; validity:string; source:string; content:string}
 
 function comparisonText(title:string, source:string, validity:string, content:string) {
@@ -145,6 +145,7 @@ function ExperienceDetails({doc,project,request,edit,refresh}:{doc:Entry;project
   }
   return <article>
     <header><p className="knowledge-meta">项目经验 #{doc.id} · {states[doc.status]}{doc.current_revision>0 && ' · 修订 '+doc.current_revision}</p><h2>{doc.title}</h2></header>
+    {doc.source_retro && <p><a href={projectHref(project,'/planning/retrospectives?retro='+doc.source_retro)}>查看来源复盘</a></p>}
     {active && <><MaterialReader markdown content={active.statement}/><div><strong>原文引句</strong><blockquote>{active.quote}</blockquote><p>来源 · {active.source}</p></div>
       {active.validity && <p>适用场景 · {active.validity}</p>}{doc.reviewed_at && <p>审核时间 · {formatTime(doc.reviewed_at)}</p>}
       {active.receipt_path && <KnowledgeCuration project={project} path={active.receipt_path} request={request}/>}</>}

@@ -266,7 +266,7 @@ func (c projectChat) confirmNewIssue(w http.ResponseWriter, r *http.Request, pro
 	if err == nil && issue.Title == a.Label && issue.Body == a.Body+marker && (issue.WorkType == "" || issue.WorkType == a.WorkType) {
 		issue.OwnerClassified = issue.WorkType == ""
 		issue.WorkType = a.WorkType
-		frozen := repo.spec(issue, "auto", "", validation.Policy{})
+		frozen := repo.spec(issue, "auto", a.PlanMode, validation.Policy{})
 		frozen.ImportOrigin = "owner"
 		spec = &frozen
 	} else if err != nil && !errors.Is(err, errNotOpen) {

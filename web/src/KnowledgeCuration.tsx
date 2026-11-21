@@ -18,7 +18,7 @@ type Receipt = {
   content_sha256: string
   decisions?: {fact: number; id: number; status: string}[]
   extraction: { session: string; facts: { statement: string; quote: string }[]; profile?: StructuredProfile } | null
-  review: { level: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile } | null
+  review: { actor?: string; level: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile } | null
   review_event?: { message_id: string; correlation_id: string; timestamp: string; from: { id: string }; to: { id: string } }
 }
 
@@ -67,6 +67,8 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
   const extraction = receipt?.extraction
   const review = receipt?.review
   const needsOwner = review?.verdict === 'needs_owner' || (review?.verdict === 'approve' && ['D2','D3'].includes(review.level))
+  if (review?.actor==='owner') return <section><button className="button" aria-expanded={open} onClick={()=>setOpen(!open)}>选存记录</button>
+    {open && <p>Owner 手动选存 · {review.rationale}</p>}</section>
   return <section>
     <button className="button" aria-expanded={open} onClick={() => setOpen(!open)}>知识提取与审核</button>
     {open && <>

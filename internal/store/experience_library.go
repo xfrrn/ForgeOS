@@ -46,6 +46,7 @@ func (s *Store) ExperienceEntries(ctx context.Context, project, before int64, st
 
 func (s *Store) ExperienceEntry(ctx context.Context, project, entry int64) (json.RawMessage, error) {
 	return readCurationReceipt(s.db.QueryRowContext(ctx, `SELECT to_jsonb(l) || jsonb_build_object(
+		'source_retro',(SELECT x.retro FROM plan_excerpts x WHERE x.project_id=l.project_id AND x.entry=l.id),
 		'revisions',coalesce((SELECT jsonb_agg(to_jsonb(r) ORDER BY revision DESC)
 		 FROM experience_revision_facts r WHERE r.project_id=l.project_id AND r.entry_id=l.id),'[]'),
 		'changes',coalesce((SELECT jsonb_agg(to_jsonb(d)-'request_key' ORDER BY id DESC)

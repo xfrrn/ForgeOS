@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
+import { PlanningTaskLinks } from './PlanningTaskLinks'
 import './project-workspace.css'
 
 export type WorkspaceProject = {
@@ -17,6 +18,7 @@ const workspaceTabs = [
   { key: 'overview', href: '', label: '概览' },
   { key: 'chat', href: '/chat', label: '聊天' },
   { key: 'agents', href: '/agents', label: 'Agent 管理' },
+  { key: 'planning', href: '/planning', label: '项目规划' },
   { key: 'tasks', href: '/tasks', label: '任务' },
   { key: 'reviews', href: '/reviews', label: '审核与验收' },
   { key: 'materials', href: '/materials', label: '项目资料' },
@@ -92,6 +94,10 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
         {workspaceTabs.map(tab => <a key={tab.key} href={base + tab.href}
           aria-current={currentTab === tab.key ? 'page' : undefined}>{tab.label}</a>)}
       </nav>
+      {currentTab === 'planning' && <nav className="project-secondary-links" aria-label="项目规划导航">
+        <a href={base+'/planning'} aria-current={section==='planning'?'page':undefined}>规划</a>
+        <a href={base+'/planning/retrospectives'} aria-current={section==='retrospectives'?'page':undefined}>复盘</a>
+      </nav>}
       {currentTab === 'knowledge' && <nav className="project-secondary-links" aria-label="知识库导航">
         {knowledgeSections.map(item => <a key={item.key} href={base + item.href}
           aria-current={section === item.key ? 'page' : undefined}>{item.label}</a>)}
@@ -104,6 +110,7 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
       {loadError && <p className="detail-problem" role="alert">刷新项目信息失败。 {loadError}
         <button className="button" type="button" onClick={() => setRevision(n => n + 1)}>重试</button>
       </p>}
+      {taskId && <PlanningTaskLinks key={taskId} project={projectId} task={taskId} request={request}/>}
       {children}
     </>}
   </div>

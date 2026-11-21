@@ -105,6 +105,7 @@ type projectChat struct {
 
 func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner string, nodes chatNodes, get githubGET, providers chatProviders, issueClient chatIssueClient) {
 	chat := projectChat{data: data, root: root, get: get, issueClient: issueClient}
+	registerProjectPlanning(mux, chat, owner)
 	registerChatProvider(mux, data, owner, nodes, providers)
 	registerChatStream(mux, data, owner, nodes)
 	mux.HandleFunc("GET /projects/{id}/chat", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
