@@ -482,7 +482,7 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-const workerCapabilityQuery = "claude_planning=1&agent_settings=1&supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1&supports_go_test_archive=1&supports_knowledge_tools=1"
+const workerCapabilityQuery = "planner_discussion=1&claude_planning=1&agent_settings=1&supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1&supports_go_test_archive=1&supports_knowledge_tools=1"
 
 func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
 	ctx, stop := context.WithCancelCause(parent)

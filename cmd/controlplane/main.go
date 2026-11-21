@@ -129,6 +129,7 @@ func run(ctx context.Context) error {
 			return err
 		}
 	}
+	registerGoalDiscussion(mux, data, owner)
 	registerProjectChat(mux, data, root, owner, chatNodes, ghRead, clones.credentials, clones.chatIssueAPI)
 	registerKnowledgeModelSettings(mux, data, owner)
 	clones.register(mux, owner)

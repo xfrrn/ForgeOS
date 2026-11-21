@@ -102,6 +102,19 @@ func (s *Store) SavePlan(ctx context.Context, taskID int64, previous int, plan P
 }
 
 func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous int, plan Plan, level string) (PlanRevision, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return PlanRevision{}, err
+	}
+	defer tx.Rollback()
+	rev, err := savePlanTx(ctx, tx, taskID, previous, plan, level, false)
+	if err != nil {
+		return rev, err
+	}
+	return rev, tx.Commit()
+}
+
+func savePlanTx(ctx context.Context, tx *sql.Tx, taskID int64, previous int, plan Plan, level string, ownerRequired bool) (PlanRevision, error) {
 	var rev PlanRevision
 	if (level != "" && !decisionLevel(level)) || previous < 0 || previous >= 2147483647 || plan.Validate() != nil {
 		return rev, ErrConflict
@@ -110,11 +123,6 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 	if err != nil {
 		return rev, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return rev, err
-	}
-	defer tx.Rollback()
 	// Serialize draft publication with Worker admission, including a claim already waiting on this project.
 	var project int64
 	err = tx.QueryRowContext(ctx, `SELECT p.id FROM projects p JOIN work_items t ON t.project_id=p.id WHERE t.id=$1 FOR UPDATE OF p`, taskID).Scan(&project)
@@ -142,10 +150,10 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 	err = tx.QueryRowContext(ctx, `SELECT at,plan=$3::jsonb,COALESCE(git_commit,''),COALESCE(minimum_level,'') FROM plan_revisions WHERE task_id=$1 AND revision=$2`,
 		taskID, rev.Revision, string(doc)).Scan(&rev.At, &same, &rev.GitCommit, &rev.MinimumLevel)
 	if err == nil {
-		if !same || (level != "" && rev.MinimumLevel != level) {
+		if ownerRequired || !same || (level != "" && rev.MinimumLevel != level) {
 			return rev, ErrConflict
 		}
-		return rev, tx.Commit()
+		return rev, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return rev, err
@@ -156,9 +164,9 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 	if _, err = rollingChanges(ctx, tx, taskID, active, plan); err != nil {
 		return rev, err
 	}
-	err = tx.QueryRowContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan,minimum_level)
-		SELECT $1,$2,$3,NULLIF($4,'') WHERE $2::integer=(SELECT COALESCE(MAX(revision),0)+1 FROM plan_revisions WHERE task_id=$1)
-		RETURNING at`, taskID, rev.Revision, string(doc), level).Scan(&rev.At)
+	err = tx.QueryRowContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan,minimum_level,owner_activation_required)
+		SELECT $1,$2,$3,NULLIF($4,''),$5 WHERE $2::integer=(SELECT COALESCE(MAX(revision),0)+1 FROM plan_revisions WHERE task_id=$1)
+		RETURNING at`, taskID, rev.Revision, string(doc), level, ownerRequired).Scan(&rev.At)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rev, ErrConflict
 	}
@@ -171,7 +179,7 @@ func (s *Store) SavePlanWithPolicy(ctx context.Context, taskID int64, previous i
 	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,plan_revision) VALUES ($1,'plan_revised',$2)`, taskID, rev.Revision); err != nil {
 		return rev, err
 	}
-	return rev, tx.Commit()
+	return rev, nil
 }
 
 func (s *Store) PlanRevision(ctx context.Context, taskID int64, revision int64) (PlanRevision, error) {

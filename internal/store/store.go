@@ -443,6 +443,12 @@ var knowledgeModelSettingsSchema string
 //go:embed 148_knowledge_model_attempts.sql
 var knowledgeModelAttemptsSchema string
 
+//go:embed 154_worker_goal_discussion.sql
+var workerGoalDiscussionSchema string
+
+//go:embed 153_goal_discussion.sql
+var goalDiscussionSchema string
+
 //go:embed 152_planned_task_dates.sql
 var plannedTaskDatesSchema string
 
@@ -568,6 +574,7 @@ type Event struct {
 }
 
 type Job struct {
+	Discussion            *PlannerDiscussion `json:"discussion,omitempty"`
 	Agent                 *agents.Assignment `json:"agent,omitempty"`
 	IssueImportOrigin     string             `json:"issue_import_origin,omitempty"`
 	ModelPause            bool               `json:"model_pause,omitempty"`
@@ -620,21 +627,22 @@ type Job struct {
 }
 
 type Result struct {
-	EnvironmentRun *EnvironmentRun   `json:"environment_run,omitempty"`
-	Processes      *ProcessHistory   `json:"processes,omitempty"`
-	Harness        string            `json:"harness,omitempty"`
-	HarnessVersion string            `json:"harness_version,omitempty"`
-	Plan           *Plan             `json:"plan,omitempty"`
-	Commit         string            `json:"commit"`
-	ExitCode       int               `json:"exit_code"`
-	Error          string            `json:"error"`
-	BaseCommit     string            `json:"base_commit,omitempty"`
-	SessionID      string            `json:"session_id,omitempty"`
-	Validation     *ValidationResult `json:"validation,omitempty"`
+	DiscussionAnswer string            `json:"discussion_answer,omitempty"`
+	EnvironmentRun   *EnvironmentRun   `json:"environment_run,omitempty"`
+	Processes        *ProcessHistory   `json:"processes,omitempty"`
+	Harness          string            `json:"harness,omitempty"`
+	HarnessVersion   string            `json:"harness_version,omitempty"`
+	Plan             *Plan             `json:"plan,omitempty"`
+	Commit           string            `json:"commit"`
+	ExitCode         int               `json:"exit_code"`
+	Error            string            `json:"error"`
+	BaseCommit       string            `json:"base_commit,omitempty"`
+	SessionID        string            `json:"session_id,omitempty"`
+	Validation       *ValidationResult `json:"validation,omitempty"`
 }
 
 func (r Result) succeeded() bool {
-	return r.ExitCode == 0 && r.Error == "" && (r.Commit != "" || r.Plan != nil)
+	return r.ExitCode == 0 && r.Error == "" && (r.Commit != "" || r.Plan != nil || r.DiscussionAnswer != "")
 }
 
 type Store struct {
@@ -660,7 +668,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema, repositoryCredentialsSchema, sharedChatModelsSchema, chatCreateIssueSchema, chatTaskProgressSchema, executionKnowledgeSchema, experienceEntriesSchema, shareSeriesSchema, sharedCitationStatusSchema, knowledgeModelSettingsSchema, knowledgeModelAttemptsSchema, ownerInstructionsSourceSchema, projectPlanningSchema, milestoneDatesSchema, plannedTaskDatesSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema, repositoryCredentialsSchema, sharedChatModelsSchema, chatCreateIssueSchema, chatTaskProgressSchema, executionKnowledgeSchema, experienceEntriesSchema, shareSeriesSchema, sharedCitationStatusSchema, knowledgeModelSettingsSchema, knowledgeModelAttemptsSchema, ownerInstructionsSourceSchema, projectPlanningSchema, milestoneDatesSchema, plannedTaskDatesSchema, goalDiscussionSchema, workerGoalDiscussionSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -907,6 +915,16 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			caps.SupportsCodex, caps.SupportsClaude = false, false
 		}
 	}
+	if caps.PlannerDiscussion && caps.AgentSettings && (caps.SupportsPlanner && caps.SupportsCodex || caps.ClaudePlanning && caps.SupportsClaude) {
+		job, err := claimGoalDiscussion(ctx, tx, worker, projects, caps)
+		if err != nil {
+			return nil, err
+		}
+		if job != nil {
+			job.ManageResources = registered != nil && caps.SupportsResources
+			return leaseClaimedJob(ctx, tx, worker, workspaceRoot, job, globalRevision)
+		}
+	}
 	canStart := registered != nil && caps.SupportsResources && caps.SupportsStartup
 	canAssess := caps.SupportsDeclaredChecks && caps.SupportsRiskPolicy
 	err = tx.QueryRowContext(ctx, `
@@ -1024,11 +1042,6 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			}
 		}
 	}
-	var token [32]byte
-	if _, err = rand.Read(token[:]); err != nil {
-		return nil, err
-	}
-	j.LeaseToken = hex.EncodeToString(token[:])
 	if caps.AgentSettings && j.Kind == "codex_issue" && j.Spec != nil && j.Spec.VerifyCommit == "" {
 		key := "implementation"
 		if j.Spec.Mode == "plan" {
@@ -1042,10 +1055,19 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			return nil, err
 		}
 	}
+	return leaseClaimedJob(ctx, tx, worker, workspaceRoot, &j, globalRevision)
+}
+func leaseClaimedJob(ctx context.Context, tx *sql.Tx, worker, workspaceRoot string, j *Job, globalRevision int) (*Job, error) {
+	var err error
+	var token [32]byte
+	if _, err = rand.Read(token[:]); err != nil {
+		return nil, err
+	}
+	j.LeaseToken = hex.EncodeToString(token[:])
 	hash := sha256.Sum256([]byte(j.LeaseToken))
 	j.Workspace = workerWorkspace(workspaceRoot, "execution-"+strconv.FormatInt(j.ExecutionID, 10))
 	j.LeaseSeconds = executionLeaseSeconds(j.Kind)
-	if j.Kind != "codex_issue" || j.Spec.VerifyCommit != "" {
+	if (j.Kind != "codex_issue" && j.Kind != "planner_discussion") || j.Spec.VerifyCommit != "" {
 		globalRevision = 0
 	}
 	var rules []byte
@@ -1076,7 +1098,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &j, nil
+	return j, nil
 }
 
 func (s *Store) Complete(ctx context.Context, id int64, token string, result Result) error {
@@ -1149,6 +1171,9 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 			}
 		}
 	}
+	if kind != "planner_discussion" && result.DiscussionAnswer != "" {
+		return ErrConflict
+	}
 	if kind == "environment_check" {
 		expected, err := startupSpec(ctx, tx, taskID)
 		if err != nil {
@@ -1184,7 +1209,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if err = json.Unmarshal(spec, &issue); err != nil {
 			return err
 		}
-		if !issue.accepts(result) || (ciCandidate != "" && result.Commit != "" && result.Commit != ciCandidate) {
+		if !issue.acceptsResult(result, kind == "planner_discussion") || (ciCandidate != "" && result.Commit != "" && result.Commit != ciCandidate) {
 			return ErrConflict
 		}
 		if issue.Mode != "plan" && result.Processes != nil {
@@ -1300,6 +1325,14 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		status, eventType = "PAUSED", "ci_paused"
 	} else if !result.succeeded() {
 		status, eventType = "FAILED", "execution_failed"
+	} else if kind == "planner_discussion" {
+		status, err = publishDiscussionReply(ctx, tx, taskID, result)
+		if err != nil {
+			return err
+		}
+		if status == "FAILED" {
+			eventType = "execution_failed"
+		}
 	} else if result.Plan != nil {
 		status, eventType = "PLANNING", "planner_completed"
 		plan, err := json.Marshal(result.Plan)
@@ -1351,6 +1384,12 @@ func (s *Store) Abandon(ctx context.Context, id int64) error {
 func finishTask(ctx context.Context, tx *sql.Tx, taskID, executionID int64, status, eventType string) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE decision_questions SET withdrawn_at=now() WHERE execution_id=$1 AND checkpoint_sequence IS NOT NULL AND answer IS NULL AND withdrawn_at IS NULL`, executionID); err != nil {
 		return err
+	}
+	if status == "FAILED" || status == "CANCELLED" {
+		_, err := tx.ExecContext(ctx, `UPDATE goal_discussion_turns SET status='failed',answer=COALESCE(NULLIF((SELECT result->>'error' FROM executions WHERE id=$2),''),'Worker 执行已结束，请重试本轮。') WHERE worker_task_id=$1 AND status='running'`, taskID, executionID)
+		if err != nil {
+			return err
+		}
 	}
 	var eventID int64
 	err := tx.QueryRowContext(ctx, `

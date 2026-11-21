@@ -349,3 +349,11 @@ pre.material-content {
   .detail-heading { margin-bottom: var(--space-4); }
   .detail-card { padding: var(--space-4); }
 }
+
+.goal-discussion { border-block: 1px solid var(--line); padding-block: var(--space-4); margin-block: var(--space-3); min-width: 0; }
+.goal-discussion form, .goal-discussion-history li { display: grid; gap: var(--space-2); min-width: 0; }
+.goal-discussion textarea { width: 100%; resize: vertical; }
+.goal-discussion-history { list-style: none; padding: 0; }
+.goal-discussion-history li { padding-block: var(--space-3); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.goal-discussion small { color: var(--muted); font-weight: normal; }
+.goal-discussion-message { white-space: pre-wrap; }

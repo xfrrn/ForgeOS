@@ -781,7 +781,7 @@ function Detail({ projectId, id, planRevision, questionID, executionID, category
       <div className="detail-column">
         {task.kind === 'git_head' && task.status === 'DONE' && <RepositoryInventory projectId={projectId} task={task.id} request={request}/>}
         {(task.plan || planRevision) && <GoalPlan key={planRevision ?? 'latest'} projectId={projectId} taskID={task.id}
-          selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}
+          canDraft={task.status === 'PLANNING' || task.status === 'ACTIVE'} selected={planRevision} latest={task.plan} active={task.active_revision} items={task.children} request={request}
           activate={task.status === 'PLANNING' ? activatePlan : undefined} disabled={loading || sendingCommand || Boolean(error)}/>}
         {issue && task.kind === 'codex_issue' && !task.goal_id && <PlanEditor task={id} current={task.plan}
           issueTitle={issue.title} docsOnly={task.spec?.validation === 'docs'} request={request} disabled={loading || sendingCommand || Boolean(error)}

@@ -141,10 +141,10 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	}
 	var floor string
 	var stored []byte
-	var current, valid bool
+	var current, valid, ownerRequired bool
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(minimum_level,'D2'),review,review_until>clock_timestamp(),
-		revision=(SELECT max(revision) FROM plan_revisions WHERE task_id=$1)
-		FROM plan_revisions WHERE task_id=$1 AND revision=$2 AND review_lease::text=$3 FOR UPDATE`, id, revision, lease).Scan(&floor, &stored, &valid, &current)
+		revision=(SELECT max(revision) FROM plan_revisions WHERE task_id=$1),owner_activation_required
+		FROM plan_revisions WHERE task_id=$1 AND revision=$2 AND review_lease::text=$3 FOR UPDATE`, id, revision, lease).Scan(&floor, &stored, &valid, &current, &ownerRequired)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
@@ -194,7 +194,7 @@ func (s *Store) CompleteManagement(ctx context.Context, projectID, id int64, rev
 	if _, err = tx.ExecContext(ctx, `INSERT INTO task_events(task_id,type,plan_revision) VALUES ($1,'management_reviewed',$2)`, id, revision); err != nil {
 		return err
 	}
-	if review.EffectiveLevel == "D1" && review.Verdict == "approve" {
+	if !ownerRequired && review.EffectiveLevel == "D1" && review.Verdict == "approve" {
 		if err = activatePlan(ctx, tx, id, revision, "management"); err != nil {
 			return err
 		}

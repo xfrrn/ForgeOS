@@ -29,7 +29,7 @@ func workerWorkspace(root, name string) string {
 }
 
 func executionLeaseSeconds(kind string) int {
-	if kind == "codex_issue" {
+	if kind == "codex_issue" || kind == "planner_discussion" {
 		return 25 * 60
 	}
 	return 2 * 60
@@ -77,6 +77,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 
 type WorkerCapabilities struct {
 	ClaudePlanning           bool  `json:"supports_claude_planning,omitempty"`
+	PlannerDiscussion        bool  `json:"-"`
 	AgentSettings            bool  `json:"-"`
 	SupportsKnowledgeTools   bool  `json:"-"`
 	CommandApprovalProject   int64 `json:"command_approval_project,omitempty"`
@@ -107,7 +108,7 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 		approvals = 0
 	}
 	return WorkerCapabilities{
-		AgentSettings: c.AgentSettings, ClaudePlanning: c.ClaudePlanning && node.ClaudePlanning,
+		PlannerDiscussion: c.PlannerDiscussion, AgentSettings: c.AgentSettings, ClaudePlanning: c.ClaudePlanning && node.ClaudePlanning,
 		SupportsKnowledgeTools: c.SupportsKnowledgeTools,
 		CommandApprovalProject: approvals,
 		SupportsModelPause:     c.SupportsModelPause && node.SupportsModelPause,

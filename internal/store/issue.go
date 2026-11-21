@@ -302,7 +302,11 @@ func ValidHarnessVersion(harness, version string) bool {
 	return len(version) <= 64 && (harness == "claude" && harnessVersion.MatchString(version) || harness == "codex" && codexVersion.MatchString(version))
 }
 
-func (spec IssueSpec) accepts(r Result) bool {
+func (spec IssueSpec) accepts(r Result) bool { return spec.acceptsResult(r, false) }
+func (spec IssueSpec) acceptsResult(r Result, discussion bool) bool {
+	if !discussion && r.DiscussionAnswer != "" {
+		return false
+	}
 	if r.Processes != nil && !r.Processes.matches(r) {
 		return false
 	}
@@ -324,10 +328,13 @@ func (spec IssueSpec) accepts(r Result) bool {
 			return false
 		}
 		if r.ExitCode != 0 {
-			return r.Plan == nil && strings.TrimSpace(r.Error) != ""
+			return r.DiscussionAnswer == "" && r.Plan == nil && strings.TrimSpace(r.Error) != ""
 		}
 		if r.BaseCommit != spec.BaseCommit {
 			return false
+		}
+		if discussion {
+			return strings.TrimSpace(r.DiscussionAnswer) != "" && len(r.DiscussionAnswer) <= 32<<10 && !strings.ContainsRune(r.DiscussionAnswer, 0) && (r.Plan == nil || r.Plan.Validate() == nil) && r.Error == "" && strings.TrimSpace(r.SessionID) != ""
 		}
 		return r.Plan != nil && r.Plan.Validate() == nil && r.Error == "" && strings.TrimSpace(r.SessionID) != ""
 	}

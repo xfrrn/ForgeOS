@@ -1,3 +1,4 @@
+import GoalDiscussion, { type DiscussionTarget } from './GoalDiscussion'
 import { ManagementProcesses, type ReviewProcess } from './ManagementProcesses'
 import { useEffect, useState } from 'react'
 import { ApiError, Fact, projectHref, Status, type ApiRequest } from './shared'
@@ -7,7 +8,7 @@ import { CandidateRuleEvidence, type CandidateContext } from './CandidateRuleEvi
 export type PlanItem = { key: string; objective: string; scope: string; acceptance_criteria: string; deliverables: string; dependencies?: string[]; context_refs?: string[] }
 export type Plan = { review_processes?: ReviewProcess[]; revision: number; minimum_level?: string; git_commit?: string; review_context?: CandidateContext; review?: { level: string; effective_level: string; validation_minimum?: string; verdict: string; rationale: string; evidence: string; session_id: string; profile?: StructuredProfile }; plan: { objective: string; milestones: { name: string; items: PlanItem[] | null }[] } }
 export type GoalChild = { id: number; key: string; status: string; plan_revision?: number }
-type Props = { projectId: number; taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean }
+type Props = { projectId: number; taskID: number; selected?: number; latest?: Plan; active?: number; items?: GoalChild[]; request: ApiRequest; activate?: (revision: number) => Promise<void>; disabled: boolean; canDraft: boolean }
 
 function PlanArchive({taskID, plan, request, disabled}: Pick<Props, 'taskID' | 'request' | 'disabled'> & {plan: Plan}) {
   const [receipt, setReceipt] = useState('')
@@ -31,7 +32,8 @@ function PlanArchive({taskID, plan, request, disabled}: Pick<Props, 'taskID' | '
     {error && <p role="alert">{error}</p>}</div>
 }
 
-export default function GoalPlan({projectId, taskID, selected, latest, active, items, request, activate, disabled}: Props) {
+export default function GoalPlan({projectId, taskID, selected, latest, active, items, request, activate, disabled, canDraft}: Props) {
+  const [discussion, setDiscussion] = useState<DiscussionTarget>()
   const [archived, setArchived] = useState<Plan>()
   const [error, setError] = useState('')
   const historical = selected !== undefined && selected !== latest?.revision
@@ -62,6 +64,11 @@ export default function GoalPlan({projectId, taskID, selected, latest, active, i
     {historical && error ? <p role="alert">{error}</p> : !plan ? <p role="status">正在读取计划修订…</p> : <>
       {shown === active ? <p>当前生效版本</p> : shown === latest?.revision ? <p>尚未生效</p> : <p>历史修订</p>}
       <p>{plan.plan.objective}</p>
+      <div className="detail-actions"><button className="button" aria-expanded={!!discussion} onClick={() =>
+        setDiscussion(discussion && !discussion.item && discussion.revision === plan.revision ? undefined : {revision: plan.revision, item: ''})}>
+        {discussion && !discussion.item && discussion.revision === plan.revision ? '收起 Planner 讨论' : '与 Planner 讨论'}</button></div>
+      {discussion && <GoalDiscussion project={projectId} task={taskID} target={discussion} request={request} path={path}
+        canDraft={canDraft && discussion.revision === latest?.revision}/>}
       <PlanArchive key={plan.revision} taskID={taskID} plan={plan} request={request} disabled={disabled}/>
       {plan.review_context && <CandidateRuleEvidence context={plan.review_context} title="计划审核使用的规则依据"/>}
       <ManagementProcesses request={request} processes={plan.review_processes}/>
@@ -81,6 +88,7 @@ export default function GoalPlan({projectId, taskID, selected, latest, active, i
             <Fact label="交付物">{item.deliverables}</Fact>
             {item.dependencies?.length ? <Fact label="依赖">{item.dependencies.join('、')}</Fact> : null}
             {item.context_refs?.length ? <Fact label="上下文引用">{item.context_refs.join('、')}</Fact> : null}</dl>
+          <button className="button" onClick={() => setDiscussion({revision: plan.revision, item: item.key})}>讨论此工作项</button>
         </li>)}</ul>
       </div>)}
       {activate && plan.revision === latest?.revision && plan.revision !== active &&

@@ -363,6 +363,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		input.ClaudePlanning = r.URL.Query().Get("claude_planning") == "1"
+		input.PlannerDiscussion = r.URL.Query().Get("planner_discussion") == "1"
 		input.AgentSettings = r.URL.Query().Get("agent_settings") == "1"
 		input.SupportsKnowledgeTools = r.URL.Query().Get("supports_knowledge_tools") == "1"
 		input.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"
@@ -444,18 +445,19 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		var input struct {
-			LeaseToken     string                `json:"lease_token"`
-			EnvironmentRun *store.EnvironmentRun `json:"environment_run"`
-			Processes      *store.ProcessHistory `json:"processes"`
-			Plan           *store.Plan           `json:"plan"`
-			Commit         string                `json:"commit"`
-			ExitCode       *int                  `json:"exit_code"`
-			Error          string                `json:"error"`
-			BaseCommit     string                `json:"base_commit"`
-			SessionID      string                `json:"session_id"`
-			Harness        string                `json:"harness"`
-			HarnessVersion string                `json:"harness_version"`
-			Validation     *struct {
+			LeaseToken       string                `json:"lease_token"`
+			EnvironmentRun   *store.EnvironmentRun `json:"environment_run"`
+			Processes        *store.ProcessHistory `json:"processes"`
+			DiscussionAnswer string                `json:"discussion_answer"`
+			Plan             *store.Plan           `json:"plan"`
+			Commit           string                `json:"commit"`
+			ExitCode         *int                  `json:"exit_code"`
+			Error            string                `json:"error"`
+			BaseCommit       string                `json:"base_commit"`
+			SessionID        string                `json:"session_id"`
+			Harness          string                `json:"harness"`
+			HarnessVersion   string                `json:"harness_version"`
+			Validation       *struct {
 				Profile  string          `json:"profile"`
 				Commit   string          `json:"commit"`
 				ExitCode *int            `json:"exit_code"`
@@ -472,7 +474,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		sha, err := hex.DecodeString(input.Commit)
 		validSHA := err == nil && (len(sha) == 20 || len(sha) == 32)
-		if (*input.ExitCode == 0 && ((!validSHA && input.Plan == nil) || input.Error != "")) ||
+		if (*input.ExitCode == 0 && ((!validSHA && input.Plan == nil && input.DiscussionAnswer == "") || input.Error != "")) ||
 			(*input.ExitCode != 0 && (strings.TrimSpace(input.Error) == "" || (input.Commit != "" && !validSHA))) {
 			problem(w, http.StatusBadRequest, "success requires a commit, failure requires an error")
 			return
@@ -482,7 +484,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		result := store.Result{EnvironmentRun: input.EnvironmentRun, Commit: input.Commit, ExitCode: *input.ExitCode, Error: input.Error, Harness: input.Harness, HarnessVersion: input.HarnessVersion,
-			BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan, Processes: input.Processes}
+			DiscussionAnswer: input.DiscussionAnswer, BaseCommit: input.BaseCommit, SessionID: input.SessionID, Plan: input.Plan, Processes: input.Processes}
 		if v := input.Validation; v != nil {
 			if v.ExitCode == nil || *v.ExitCode < -1 || *v.ExitCode > 2147483647 {
 				problem(w, http.StatusBadRequest, "validation requires an explicit exit code")

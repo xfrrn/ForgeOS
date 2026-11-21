@@ -10,6 +10,9 @@ import (
 	"strings"
 )
 
+//go:embed plan_schema.json
+var PlanSchema string
+
 //go:embed catalog.json
 var catalog []byte
 

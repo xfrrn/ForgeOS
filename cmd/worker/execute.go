@@ -31,7 +31,7 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 
 func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *checkpointRecovery) store.Result {
 	timeout := time.Minute
-	if job.Kind == "codex_issue" {
+	if job.Kind == "codex_issue" || job.Kind == "planner_discussion" {
 		timeout = 20 * time.Minute
 	} else if job.Kind == "environment_check" {
 		timeout = 10 * time.Minute
@@ -73,7 +73,7 @@ func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *ch
 	} else if _, err := os.Lstat(expected); !errors.Is(err, os.ErrNotExist) {
 		return failed("execution workspace already exists or is inaccessible", err)
 	}
-	if job.Kind == "codex_issue" {
+	if job.Kind == "codex_issue" || job.Kind == "planner_discussion" {
 		deadline, _ := ctx.Deadline()
 		return w.executeIssue(leaseCtx, repo, expected, job, deadline, recovery)
 	}
