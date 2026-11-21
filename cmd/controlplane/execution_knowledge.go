@@ -26,7 +26,7 @@ func (in executionKnowledgeRequest) valid() bool {
 		return in.Query != "" && len(in.Query) <= 512 && strings.IndexFunc(in.Query, unicode.IsControl) < 0 && in.Kind == "" && in.Ref == ""
 	case "read", "cite":
 		switch in.Kind {
-		case "decision", "experience", "material", "git", store.SharedKnowledgeKind:
+		case "decision", "experience", "instruction", "material", "git", store.SharedKnowledgeKind:
 			return in.Query == "" && in.Ref != "" && len(in.Ref) <= 32<<10 && strings.IndexFunc(in.Ref, unicode.IsControl) < 0
 		}
 	}
@@ -66,7 +66,7 @@ func registerExecutionKnowledge(mux *http.ServeMux, data *store.Store, root stri
 			respond(w, http.StatusOK, map[string]any{"evidence": evidence}, err)
 			return
 		}
-		hits, searchErr := knowledgeSearch(ctx, data, root, project, commit, in.Query)
+		hits, searchErr := knowledgeSearch(ctx, data, project, in.Query)
 		if _, _, err := data.KnowledgeScope(ctx, id, in.LeaseToken); err != nil {
 			respond(w, 0, nil, err)
 			return

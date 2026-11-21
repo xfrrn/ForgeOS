@@ -64,7 +64,7 @@ func knowledgeRead(ctx context.Context, data *store.Store, root string, project 
 			return out, err
 		}
 		out.Kind, out.Ref = kind, ref
-	case "material":
+	case "material", "instruction":
 		parts := strings.SplitN(ref, ":", 3)
 		if len(parts) != 3 || !store.ValidMaterialKey(parts[2]) {
 			return out, store.ErrNotFound
@@ -81,6 +81,9 @@ func knowledgeRead(ctx context.Context, data *store.Store, root string, project 
 		var row knowledgeMaterial
 		if err = json.Unmarshal(raw, &row); err != nil {
 			return out, err
+		}
+		if kind == "instruction" && row.Kind != kind {
+			return out, store.ErrNotFound
 		}
 		text := []rune(row.Content)
 		if offset >= int64(len(text)) {

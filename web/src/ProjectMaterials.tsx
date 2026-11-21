@@ -95,8 +95,8 @@ function ForgeReader({ project, selection, request, refresh, onRetry, onSelect, 
     {head?.error && <p role="alert">{head.error} <button className="button" onClick={onRetry}>重试读取最新版</button></p>}
     <details className="materials-meta"><summary>资料信息与链接</summary><p>资料标识 <code>{doc.key}</code></p>
       {selection.revision && <p>资料链接打开最新版。</p>}<MaterialLink href={href}/></details>
-    <details className="materials-meta"><summary>知识提取与共享</summary>
-      <KnowledgeCuration project={project} path={base+'/revisions/'+doc.revision+'/curation'} request={request}/>
+    <details className="materials-meta"><summary>{doc.kind === 'instruction' ? '共享' : '知识提取与共享'}</summary>
+      {doc.kind !== 'instruction' && <KnowledgeCuration project={project} path={base+'/revisions/'+doc.revision+'/curation'} request={request}/>}
       <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/>
     </details>
   </>
@@ -172,13 +172,13 @@ export function ProjectMaterials({ project, initialKey, initialRevision, initial
   function afterSave(item: {key:string; revision:number}) {
     setScope('forge');setKind('');setText('');setQuery('');setSelected({source:'forge',key:item.key});refreshLibrary()
   }
-  function newDraft(memory: boolean) {
+  function newDraft(kind: 'instruction'|'memory'|'material') {
     const rnd = crypto.getRandomValues(new Uint32Array(3)).join('-')
-    setDraft({key:(memory?'memory-':'note-')+rnd,kind:memory?'memory':'material',title:'',source:'Owner 工作台',content:''})
+    setDraft({key:kind+'-'+rnd,kind,title:'',source:'Owner 工作台',content:''})
   }
   return <div className="project-setup project-materials">
     <PageHeading title="项目资料" actions={!importing && !draft &&
-      <button className="button primary" ref={add} onClick={()=>{lastImport.current=undefined;setImporting(true)}}>添加到 ForgeOS</button>}/>
+      <div className="detail-actions"><button className="button primary" onClick={()=>newDraft('instruction')}>写项目指令</button><button className="button" ref={add} onClick={()=>{lastImport.current=undefined;setImporting(true)}}>添加到 ForgeOS</button></div>}/>
     {importing ? <MaterialBatchImport project={project} request={request}
       onSaved={item=>{lastImport.current=item}}
       onClose={()=>{setImporting(false);if(lastImport.current){afterSave(lastImport.current);setMobileRead(true)}requestAnimationFrame(()=>add.current?.focus())}}/> :
@@ -212,8 +212,8 @@ export function ProjectMaterials({ project, initialKey, initialRevision, initial
         </section>
         <details className="panel materials-tools" onToggle={e=>setToolsOpen(e.currentTarget.open)}><summary>资料管理与历史</summary>
           {toolsOpen && <div className="project-setup"><div className="detail-actions">
-            <button className="button" onClick={()=>newDraft(false)}>手动建档</button>
-            <button className="button" onClick={()=>newDraft(true)}>记住一条项目经验</button>
+            <button className="button" onClick={()=>newDraft('material')}>手动建档</button>
+            <button className="button" onClick={()=>newDraft('memory')}>记住一条项目经验</button>
             <a className="button" href={projectHref(project,'/knowledge/experience')}>在知识库维护项目经验</a></div>
             <ExperienceSearch project={project} request={request}/><RepositoryDocumentChanges project={project} request={request}/>
             <ProjectGit projectId={project} request={request} onUpdated={refreshGit}/></div>}

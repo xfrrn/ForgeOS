@@ -63,7 +63,15 @@ func TestExecutionKnowledgeSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hits, err := knowledgeSearch(ctx, data, root, p.ID, base, "请问这个项目怎么实现批量导入？")
+	instruction := store.MaterialInput{Kind: "instruction", Title: "导入指令", Source: "Owner", Content: body}
+	if _, err := data.SaveMaterial(ctx, p.ID, "owner-instruction", instruction); err != nil {
+		t.Fatal(err)
+	}
+	var queued int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM material_curations WHERE project_id=$1 AND key='owner-instruction'", p.ID).Scan(&queued); err != nil || queued != 0 {
+		t.Fatal("instruction entered extraction", queued, err)
+	}
+	hits, err := knowledgeSearch(ctx, data, p.ID, "请问这个项目怎么实现批量导入？")
 	if err != nil || len(hits) != 4 {
 		t.Fatalf("cross-source discovery: hits=%+v err=%v", hits, err)
 	}
@@ -77,7 +85,7 @@ func TestExecutionKnowledgeSources(t *testing.T) {
 		if hit.Kind == "decision" && out.Validity != "当前项目" {
 			t.Fatal("lost decision validity")
 		}
-		if hit.Kind == "material" || hit.Kind == "git" {
+		if hit.Kind == "material" || hit.Kind == "instruction" {
 			got := out.Content
 			for out.NextRef != "" {
 				out, err = knowledgeRead(ctx, data, root, p.ID, base, hit.Kind, out.NextRef)
@@ -97,7 +105,10 @@ func TestExecutionKnowledgeSources(t *testing.T) {
 			t.Fatalf("cross-project read %s", hit.Kind)
 		}
 	}
-	if _, err = knowledgeRead(ctx, data, root, p.ID, old, "git", byKind["git"].Ref); !errors.Is(err, store.ErrNotFound) {
+	if byKind["instruction"].Ref == "" || byKind["git"].Ref != "" {
+		t.Fatal("incorrect external knowledge sources", hits)
+	}
+	if _, err = knowledgeRead(ctx, data, root, p.ID, old, "git", fmt.Sprintf("%s:0:%s", base, path)); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("accepted different baseline", err)
 	}
 	if _, err = knowledgeRead(ctx, data, root, p.ID, base, "git", fmt.Sprintf("%s:1:%s", base, path)); !errors.Is(err, store.ErrNotFound) {
@@ -120,8 +131,8 @@ func TestExecutionKnowledgeSources(t *testing.T) {
 	if err != nil || !strings.HasPrefix(body, out.Content) || out.Version != "1" {
 		t.Fatal("lost pinned material", err)
 	}
-	partial, err := knowledgeSearch(ctx, data, root, p.ID, "", "新版")
-	if err == nil || len(partial) != 1 || partial[0].Kind != "material" {
+	partial, err := knowledgeSearch(ctx, data, p.ID, "新版")
+	if err != nil || len(partial) != 1 || partial[0].Kind != "material" {
 		t.Fatal("unavailable Git blocked materials", partial, err)
 	}
 }

@@ -70,7 +70,7 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 	var job CurationJob
 	var extraction []byte
 	err = tx.QueryRowContext(ctx, `WITH candidate AS (
-		SELECT id FROM material_curations WHERE project_id=$1 `+knowledgeAttemptEligible(ctx, "material_curations.id", attemptKind)+` AND `+pending+` AND (`+until+` IS NULL OR `+until+`<=now())
+		SELECT id FROM material_curations WHERE project_id=$1 AND document_id IS NULL `+knowledgeAttemptEligible(ctx, "material_curations.id", attemptKind)+` AND `+pending+` AND (`+until+` IS NULL OR `+until+`<=now())
 		AND (experience_change_id IS NULL OR EXISTS (SELECT 1 FROM experience_changes d JOIN experience_entries e ON e.id=d.entry_id
 		    WHERE d.id=experience_change_id AND d.discarded_at IS NULL AND e.withdrawn_at IS NULL AND coalesce(e.current_revision,0)=d.expected_revision))
 		ORDER BY `+until+` NULLS FIRST,id LIMIT 1 FOR UPDATE SKIP LOCKED)

@@ -246,13 +246,6 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 			return
 		}
 		task, err := data.ProjectCheck(r.Context(), id, input.Retry)
-		if err == nil {
-			scan, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-			defer cancel()
-			if scanErr := observeDocuments(scan, data, root, id); scanErr != nil {
-				log.Printf("project %d document scan at HEAD check: %v", id, scanErr)
-			}
-		}
 		respond(w, 200, task, err)
 	}))
 	mux.HandleFunc("POST /projects", authorized(owner, func(w http.ResponseWriter, r *http.Request) {

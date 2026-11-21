@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ApiError, Icon, type ApiRequest } from './shared'
 import { ThemedSelect } from './ThemedSelect'
 
-export const materialKinds = { material: '导入资料', profile: '项目档案', environment: '环境说明', memory: 'Owner 记忆请求' }
+export const materialKinds = { instruction: '项目指令', material: '导入资料', profile: '项目档案', environment: '环境说明', memory: 'Owner 记忆请求' }
 export type MaterialKind = keyof typeof materialKinds
 export type MaterialSelection =
   | { source: 'git'; path: string; anchor?: string }

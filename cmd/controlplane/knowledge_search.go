@@ -31,9 +31,9 @@ type knowledgeExperience struct {
 }
 
 type knowledgeMaterial struct {
-	Key, Title, Source, Content, Excerpt string
-	Revision                             int
-	Start                                int64 `json:"start_char"`
+	Key, Title, Source, Content, Excerpt, Kind string
+	Revision                                   int
+	Start                                      int64 `json:"start_char"`
 }
 
 func knowledgeHit(kind, ref, title, excerpt string) store.KnowledgeHit {
@@ -113,13 +113,11 @@ func knowledgeTerms(query string) []string {
 	return terms[:min(3, len(terms))]
 }
 
-func knowledgeSearch(ctx context.Context, data *store.Store, root string, project int64, commit, query string) ([]store.KnowledgeHit, error) {
+func knowledgeSearch(ctx context.Context, data *store.Store, project int64, query string) ([]store.KnowledgeHit, error) {
 	query = strings.TrimSpace(query)
 	if query == "" || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
 		return nil, store.ErrConflict
 	}
-	// Resolve the repository only for Git. An unavailable checkout must leave
-	// the project's independent ForgeOS sources readable.
 	sourceSearch := []func(string) ([]store.KnowledgeHit, error){
 		func(term string) ([]store.KnowledgeHit, error) {
 			raw, err := data.SearchDecisions(ctx, project, "CONFIRMED", term)
@@ -136,7 +134,11 @@ func knowledgeSearch(ctx context.Context, data *store.Store, root string, projec
 		func(term string) ([]store.KnowledgeHit, error) {
 			raw, err := data.SearchMaterials(ctx, project, "", term, "")
 			return knowledgePage(raw, err, func(row knowledgeMaterial) store.KnowledgeHit {
-				return knowledgeHit("material", fmt.Sprintf("%d:%d:%s", row.Revision, row.Start, row.Key), row.Title, row.Excerpt)
+				kind := "material"
+				if row.Kind == "instruction" {
+					kind = "instruction"
+				}
+				return knowledgeHit(kind, fmt.Sprintf("%d:%d:%s", row.Revision, row.Start, row.Key), row.Title, row.Excerpt)
 			})
 		},
 		func(term string) ([]store.KnowledgeHit, error) {
@@ -147,24 +149,6 @@ func knowledgeSearch(ctx context.Context, data *store.Store, root string, projec
 			}) store.KnowledgeHit {
 				return knowledgeHit(store.SharedKnowledgeKind, fmt.Sprintf("%d:%s", row.ID, row.Digest), row.Title, row.Content)
 			})
-		},
-		func(term string) ([]store.KnowledgeHit, error) {
-			if !gitCommit.MatchString(commit) {
-				return nil, localrepo.ErrDocumentRevision
-			}
-			repo, err := knowledgeRepository(ctx, data, root, project)
-			if err != nil {
-				return nil, err
-			}
-			result, err := data.SearchDocumentCommit(ctx, project, repo, commit, term)
-			if err != nil {
-				return nil, err
-			}
-			var hits []store.KnowledgeHit
-			for _, row := range result.Items[:min(len(result.Items), knowledgeHitLimit)] {
-				hits = append(hits, knowledgeHit("git", fmt.Sprintf("%s:%d:%s", result.Commit, row.ExcerptStart, row.Path), row.Path, row.Excerpt))
-			}
-			return hits, nil
 		},
 	}
 	failures := make([]error, len(sourceSearch))

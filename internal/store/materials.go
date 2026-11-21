@@ -21,7 +21,7 @@ var materialKey = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}._-]{0,95}$`)
 
 func ValidMaterialKey(key string) bool { return materialKey.MatchString(key) }
 func ValidMaterialKind(kind string) bool {
-	return kind == "material" || kind == "profile" || kind == "environment" || kind == "memory"
+	return kind == "instruction" || kind == "material" || kind == "profile" || kind == "environment" || kind == "memory"
 }
 func (m MaterialInput) Valid() bool {
 	return m.PreviousRevision >= 0 && m.PreviousRevision < 2147483647 && ValidMaterialKind(m.Kind) &&

@@ -80,12 +80,20 @@ func (s *Store) RoleClaim(ctx context.Context, project int64, role, node, key st
 		// A worker can retry a receipt after the Owner switched its knowledge
 		// role to an API model. Do not hand the old input to the worker again.
 		knowledge := role == "curator"
-		if role == "management" {
-			var target struct{ Curation, Share *struct{} }
+		if role == "curator" || role == "management" {
+			type source struct{ Material struct{ Kind string } }
+			var target struct {
+				source
+				Curation *source
+				Share    *struct{}
+			}
 			if err := json.Unmarshal(body, &target); err != nil {
 				return 0, nil, err
 			}
-			knowledge = target.Curation != nil || target.Share != nil
+			if target.Material.Kind == "repository_document" || (target.Curation != nil && target.Curation.Material.Kind == "repository_document") {
+				return 204, nil, nil
+			}
+			knowledge = knowledge || target.Curation != nil || target.Share != nil
 		}
 		if knowledge {
 			allowed, err := knowledgeModelAllowed(ctx, tx, project, role)

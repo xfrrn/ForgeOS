@@ -1,7 +1,7 @@
 import type { GlobalRulesRevision } from './GlobalRules'
 import { formatTime } from './shared'
 
-const sourceKinds = { decision: '已确认项目决策', experience: '已审核项目经验', shared_experience: '收到的共享经验', git: 'Git 仓库文档', material: 'ForgeOS 资料' }
+const sourceKinds = { instruction: '项目指令', decision: '已确认项目决策', experience: '已审核项目经验', shared_experience: '收到的共享经验', git: 'Git 仓库文档', material: 'ForgeOS 资料' }
 
 type KnowledgeReference = {
   citation_id: number

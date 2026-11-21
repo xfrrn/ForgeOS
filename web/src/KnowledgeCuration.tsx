@@ -58,7 +58,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
         const result = await request<Receipt>(path, {signal: stop.signal})
         if (stop.signal.aborted) return
         setReceipt(result); setError('')
-        if (!result.extraction || (result.extraction.facts.length && !result.review)) timer = setTimeout(read, 8000)
+        if (!result.document && (!result.extraction || (result.extraction.facts.length && !result.review))) timer = setTimeout(read, 8000)
       } catch (e) { if (!stop.signal.aborted) setError(e instanceof Error ? e.message : '读取提取记录失败。') }
     }
     void read()
@@ -82,7 +82,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
       {receipt?.delivery && <><p>合并事件 #{receipt.event_id} · PR #{receipt.delivery.pr_number} · {receipt.delivery.target_branch}</p>
         <p>候选 <code>{receipt.delivery.candidate}</code> · 合并 <code>{receipt.delivery.merge_sha}</code></p></>}
       {receipt?.event_id && <><p>来源 · {receipt.source}</p><p>正文 SHA-256 · <code>{receipt.content_sha256}</code></p></>}
-      <p role="status">{!receipt ? '正在读取记录…' : !extraction ? '等待 Curator 提取' : !extraction.facts.length ? '此修订没有提取到项目经验' :
+      <p role="status">{!receipt ? '正在读取记录…' : receipt.document && !receipt.review ? '仓库文档变更记录，由 CLI 在工作区直接阅读。' : !extraction ? '等待 Curator 提取' : !extraction.facts.length ? '此修订没有提取到项目经验' :
         !review ? '建议等待 Management 审核' : review.verdict === 'approve' && review.level === 'D1' ? '此修订已通过项目经验审核' :
         review.verdict === 'revise' ? '建议已退回' : '需要 Owner 决定'}</p>
       <ManagementProcesses request={request} processes={receipt?.extraction_processes} title="Curator 提取进程"/>

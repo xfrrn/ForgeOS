@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"forgeos/internal/localrepo"
@@ -24,40 +22,6 @@ func observeDocuments(ctx context.Context, data *store.Store, root string, proje
 		return store.ErrConflict
 	}
 	return data.ObserveDocumentHead(ctx, project, repo)
-}
-
-func watchDocuments(ctx context.Context, data *store.Store, root string) {
-	tick := time.NewTicker(30 * time.Second)
-	defer tick.Stop()
-	for ctx.Err() == nil {
-		var before int64
-		for ctx.Err() == nil {
-			page, err := data.RegisteredProjects(ctx, before)
-			if err != nil {
-				if ctx.Err() == nil {
-					log.Printf("list projects for document scans: %v", err)
-				}
-				break
-			}
-			for _, p := range page {
-				run, stop := context.WithTimeout(ctx, 2*time.Minute)
-				err := observeDocuments(run, data, root, p.ID)
-				stop()
-				if err != nil && ctx.Err() == nil {
-					log.Printf("project %d document scan: %v", p.ID, err)
-				}
-			}
-			if len(page) < 31 {
-				break
-			}
-			before = page[len(page)-1].ID
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-		}
-	}
 }
 
 func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner string, workers *workerRegistry) {

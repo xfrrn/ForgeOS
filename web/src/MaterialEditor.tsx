@@ -44,12 +44,13 @@ export function MaterialEditor({project, initial, request, onSave, onClose}: {
     } finally { if (!signal.aborted) setBusy(false) }
   }
   return <form className="panel detail-card material-form" onSubmit={save}>
-    <h2>{initial.revision ? '编辑资料' : draft.kind === 'memory' ? '记住一条项目经验' : '手动建档'}</h2>
+    <h2>{initial.revision ? '编辑资料' : draft.kind === 'instruction' ? '写项目指令' : draft.kind === 'memory' ? '记住一条项目经验' : '手动建档'}</h2>
     <fieldset disabled={busy}>
       <label>资料标识<input required readOnly={Boolean(initial.revision)} value={draft.key} onChange={e=>{setDraft({...draft,key:e.target.value});setConflict(undefined);setPrevious(0)}}/></label>
       <ThemedSelect label="资料类型" value={draft.kind} options={Object.entries(materialKinds).map(([value,label])=>({value,label}))} onChange={kind=>setDraft({...draft,kind:kind as MaterialKind})}/>
       <label>标题<input required value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></label>
       <label>来源<input required value={draft.source} onChange={e=>setDraft({...draft,source:e.target.value})}/></label>
+      {draft.kind === 'instruction' && <p>保存后，项目里的 CLI 可按需检索这份 Markdown 指令。</p>}
       <label>正文<textarea required rows={12} value={draft.content} onChange={e=>setDraft({...draft,content:e.target.value})}/></label>
       {error && <p role="alert">{error}</p>}
       {conflict && <section><h3>当前最新版 · {conflict.title}</h3><pre className="material-content">{conflict.content}</pre>

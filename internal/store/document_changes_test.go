@@ -68,19 +68,23 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	git("commit", "-qm", "Add repository guides")
 	write("docs/recovery.md", "uncommitted draft")
 	observe()
-	j, err := s.ClaimCuration(ctx, p.ID, false, false)
-	if err != nil || j == nil {
-		t.Fatal(j, err)
+	if job, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || job != nil {
+		t.Fatal("repository text was offered to Curator", job, err)
 	}
 	var src struct {
-		Revision      int64
-		Content, Kind string
+		Revision int64
+		Content  string
 	}
-	if err := json.Unmarshal(j.Material, &src); err != nil || src.Kind != "repository_document" || src.Content != "Observed offset 418." {
-		t.Fatal(string(j.Material), err)
+	var curationID int64
+	if err := s.db.QueryRowContext(ctx, `SELECT curation_id,revision,content FROM curation_sources WHERE project_id=$1 AND title='docs/recovery.md'`, p.ID).Scan(&curationID, &src.Revision, &src.Content); err != nil || src.Content != "Observed offset 418." {
+		t.Fatal(src, err)
 	}
-	if j, err := s.ClaimCuration(ctx, p.ID, false, false); err != nil || j != nil {
-		t.Fatal("duplicate or unreadable source queued", j, err)
+	// Simulate an approved fact retained by an upgraded installation.
+	if _, err := s.db.ExecContext(ctx, `UPDATE material_curations SET extraction='{"facts":[{"statement":"offset","quote":"418"}]}', review='{"level":"D1","verdict":"approve"}' WHERE id=$1`, curationID); err != nil {
+		t.Fatal(err)
+	}
+	if hits, err := s.SearchExperience(ctx, p.ID, "offset"); err != nil || string(hits) != "[]" {
+		t.Fatal("archived Git fact is searchable", string(hits), err)
 	}
 	if _, err := s.DocumentCuration(ctx, p.ID+1, src.Revision); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
@@ -93,7 +97,7 @@ func TestDocumentChangesBindCommittedBlobs(t *testing.T) {
 	git("commit", "-qm", "Remove recovery guide")
 	observe()
 	var current bool
-	if err := s.db.QueryRowContext(ctx, "SELECT is_current FROM curation_sources WHERE curation_id=$1", j.ID).Scan(&current); err != nil || current {
+	if err := s.db.QueryRowContext(ctx, "SELECT is_current FROM curation_sources WHERE curation_id=$1", curationID).Scan(&current); err != nil || current {
 		t.Fatal("deleted source is current", err)
 	}
 	history, err := s.DocumentCuration(ctx, p.ID, src.Revision)
