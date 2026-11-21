@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"forgeos/internal/agents"
+	"forgeos/internal/chatkernel"
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 )
@@ -78,12 +79,15 @@ func findCodex(configured string, implementation bool) (string, bool, error) {
 }
 
 func readCodexVersion(bin string) (string, error) {
+	return readKernelVersion(bin, "codex-cli ")
+}
+func readKernelVersion(bin, prefix string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--version")
 	cmd.Env = harnessEnv()
 	out, err := cmd.Output()
-	version, found := strings.CutPrefix(strings.TrimSpace(string(out)), "codex-cli ")
+	version, found := strings.CutPrefix(strings.TrimSpace(string(out)), prefix)
 	if err != nil || !found || !store.ValidHarnessVersion("codex", version) {
 		return "", errors.New("cannot identify the Codex CLI version")
 	}
@@ -199,7 +203,18 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 	if err != nil {
 		return "", err
 	}
-	args = skillServer.codexArgs(agent.modelArgs("codex", args))
+	args = skillServer.codexArgs(args)
+	config, projectChat := ctx.Value(chatProjectKey{}).(*chatkernel.Config)
+	if projectChat {
+		base, closeBridge, err := config.Start(ctx)
+		if err != nil {
+			return "", err
+		}
+		defer closeBridge()
+		args = append(args, config.Arguments(base)...)
+	} else {
+		args = agent.modelArgs("codex", args)
+	}
 	args = append(args, c.options...)
 	disabled := c.disabledFeatures
 	if disabled == nil {
@@ -220,6 +235,18 @@ func (c codexCLI) runTurn(ctx context.Context, process processLog, workspace, pr
 		cmd.Stderr = &cappedLog{dest: &diagnostic, remaining: 4096}
 	}
 	cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, harnessEnv(), 3*time.Second
+	if projectChat {
+		state, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		privateHome := filepath.Join(state, "ForgeOS", "chat-kernel", strconv.FormatInt(config.ProjectID, 10))
+		if err = os.MkdirAll(privateHome, 0700); err != nil {
+			return "", err
+		}
+		cmd.Env = slices.DeleteFunc(cmd.Env, func(entry string) bool { return strings.HasPrefix(strings.ToUpper(entry), "CODEX_HOME=") })
+		cmd.Env = append(cmd.Env, "CODEX_HOME="+privateHome)
+	}
 	cmd.Stdin = strings.NewReader(prompt)
 	stream, err := cmd.StdoutPipe()
 	if err != nil {

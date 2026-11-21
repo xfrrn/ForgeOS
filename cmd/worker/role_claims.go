@@ -55,8 +55,10 @@ func (w *worker) claimRole(ctx context.Context, role, path string, body, out any
 		if w.planner && w.codex != "" {
 			harnesses = append(harnesses, "codex")
 		}
-		if _, err := claudeExecutable(); err == nil {
-			harnesses = append(harnesses, "claude")
+		if w.role != managementChatRole {
+			if _, err := claudeExecutable(); err == nil {
+				harnesses = append(harnesses, "claude")
+			}
 		}
 		if len(harnesses) == 0 {
 			harnesses = append(harnesses, "none")

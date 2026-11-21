@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { type WorkspaceProject } from './ProjectWorkspace'
 import { ApiError, type ApiRequest } from './shared'
+import { CredentialForm, IdentitySelect, useRepositoryCredentials } from './RepositoryCredentials'
 import './project-registration.css'
 
 type CloneSettings = { root: string; directory: string; local_root: string }
@@ -29,6 +30,11 @@ export function ProjectRegistration({ open, request, onRegistered }: {
   const [method, setMethod] = useState<ProjectRegistrationMethod>('clone')
   const [path, setPath] = useState('')
   const [url, setURL] = useState('')
+  const [identity, setIdentity] = useState(0)
+  const [addingCredential, setAddingCredential] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [verification, setVerification] = useState('')
+  const credentials = useRepositoryCredentials(request, open && method === 'clone')
   const [started, setStarted] = useState(false)
   const [registrationError, setRegistrationError] = useState('')
   const [cloneID, setCloneID] = useState(pendingProjectClone)
@@ -82,6 +88,7 @@ export function ProjectRegistration({ open, request, onRegistered }: {
     rememberClone()
     if (value.status === 'done' && value.project) {
       setURL('')
+      setIdentity(0); setAddingCredential(false); setVerification('')
       onRegistered(value.project, 'clone')
     } else {
       setCloneError(value.error || (value.status === 'done' ? '无法读取已克隆项目，请刷新项目列表。' : '克隆失败，请核对仓库链接和访问权限。'))
@@ -115,16 +122,27 @@ export function ProjectRegistration({ open, request, onRegistered }: {
     return () => { controller.abort(); clearTimeout(timer) }
   }, [cloneID, request, updateClone])
 
+  async function verify() {
+    setChecking(true); setVerification(''); setCloneError('')
+    const signal = lifetime.current?.signal
+    try {
+      await request('/projects/clone-check', {method: 'POST', body: JSON.stringify({url, credential_id: identity}), signal})
+      if (!signal?.aborted) setVerification('所选身份可以读取此仓库。')
+    } catch (cause) {
+      if (!signal?.aborted) setCloneError(cause instanceof Error ? cause.message : '验证失败。')
+    } finally { if (!signal?.aborted) setChecking(false) }
+  }
+
   async function register(event: FormEvent) {
     event.preventDefault()
     const signal = lifetime.current?.signal
     const value = (method === 'clone' ? url : path).trim()
-    if (started || !value || !signal || (method === 'clone' && (cloneID || editingSettings || cloneUnavailable))) return
+    if (checking || started || !value || !signal || (method === 'clone' && (cloneID || addingCredential || editingSettings || cloneUnavailable))) return
     setStarted(true)
     setRegistrationError('')
     setCloneError('')
     try {
-      const body = JSON.stringify(method === 'clone' ? { url: value } : { path: value })
+      const body = JSON.stringify(method === 'clone' ? { url: value, credential_id: identity || undefined } : { path: value })
       const options = { method: 'POST', body, signal }
       if (method === 'clone') {
         const value = await request<CloneJob>('/projects/clone', options)
@@ -175,8 +193,8 @@ export function ProjectRegistration({ open, request, onRegistered }: {
   return <section id="project-registration" className="panel detail-card project-registration" aria-labelledby="project-registration-heading">
     <h2 id="project-registration-heading">接入项目</h2>
     <div className="project-registration-method" role="group" aria-label="接入方式">
-      <button type="button" className="button" aria-pressed={method === 'clone'} disabled={started || savingSettings} onClick={() => setMethod('clone')}>从链接克隆</button>
-      <button type="button" className="button" aria-pressed={method === 'local'} disabled={started || savingSettings} onClick={() => setMethod('local')}>登记本地仓库</button>
+      <button type="button" className="button" aria-pressed={method === 'clone'} disabled={started || savingSettings || checking} onClick={() => setMethod('clone')}>从链接克隆</button>
+      <button type="button" className="button" aria-pressed={method === 'local'} disabled={started || savingSettings || checking} onClick={() => setMethod('local')}>登记本地仓库</button>
     </div>
     <form onSubmit={register}>
       {method === 'clone' ? <>
@@ -184,9 +202,18 @@ export function ProjectRegistration({ open, request, onRegistered }: {
         <p id="repo-url-hint" className="muted">ForgeOS 会在控制面机器上克隆仓库并登记为项目。</p>
         <div className="project-input">
           <input key="url" ref={sourceField} id="repo-url" aria-describedby="repo-url-hint" inputMode="url" autoComplete="off" required
-            placeholder="https://github.com/owner/repo.git" disabled={started || Boolean(cloneID)} value={url} onChange={event => setURL(event.target.value)}/>
-          <button className="button primary" disabled={started || Boolean(cloneID) || editingSettings || cloneUnavailable || !url.trim()}>{started ? '正在提交…' : '克隆并接入'}</button>
+            placeholder="https://github.com/owner/repo.git" disabled={started || checking || Boolean(cloneID)} value={url} onChange={event => {setURL(event.target.value); setVerification(''); setCloneError('')}}/>
+          <button className="button primary" disabled={started || checking || addingCredential || Boolean(cloneID) || editingSettings || cloneUnavailable || !url.trim()}>{started ? '正在提交…' : '克隆并接入'}</button>
         </div>
+        <div className="credential-controls"><IdentitySelect catalog={credentials.catalog} value={identity} url={url}
+          disabled={started || checking || Boolean(cloneID) || addingCredential} onChange={id => {setIdentity(id); setVerification(''); setCloneError('')}}/>
+          <button type="button" className="button" disabled={started || checking || !url.trim() || Boolean(cloneID) || addingCredential} onClick={() => void verify()}>{checking ? '正在验证…' : '验证读取权限'}</button>
+          {credentials.catalog?.configured && <button type="button" className="button" disabled={started || checking || Boolean(cloneID) || addingCredential}
+            onClick={() => setAddingCredential(true)}>添加凭据</button>}
+          <a href="#/settings/credentials">管理凭据</a>
+        </div>
+        {verification && <p role="status" className="detail-notice">{verification}</p>}
+        {credentials.error && <p role="alert">{credentials.error} <button type="button" className="button" onClick={credentials.refresh}>重试</button></p>}
       </> : <>
         <label htmlFor="repo-path">本地仓库路径</label>
         <p id="repo-path-hint" className="muted">填写控制面机器上的仓库根目录。{settings?.local_root ? <>也可以填写相对于 <code>{settings.local_root}</code> 的路径。</> : '也可以填写相对于 FORGEOS_REPO_ROOT 的路径。'}</p>
@@ -198,6 +225,8 @@ export function ProjectRegistration({ open, request, onRegistered }: {
         {registrationError && <p className="detail-problem" role="alert">{registrationError}</p>}
       </>}
     </form>
+    {method === 'clone' && addingCredential && <CredentialForm request={request} initialURL={url} onCancel={() => setAddingCredential(false)}
+      onError={credentials.refresh} onSaved={(id, target) => {setURL(target); setIdentity(id); setAddingCredential(false); setVerification(''); setCloneError(''); credentials.refresh()}}/>}
     {method === 'clone' && <div className="project-clone-directory">
       {cloneUnavailable ? <p>当前服务尚未配置 ForgeOS 托管仓库根目录。</p> : settings ? editingSettings ? <form onSubmit={saveDirectory}>
         <label htmlFor="repo-clone-directory">ForgeOS 克隆目录</label>

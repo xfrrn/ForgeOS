@@ -1,7 +1,9 @@
-// Package bao reads KV v2 metadata and requests single-use, response-wrapped values.
+// Package bao accesses OpenBao with separate identities for project metadata,
+// wrapped task secrets, and control-plane repository credentials.
 package bao
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -18,6 +20,8 @@ import (
 	"time"
 
 	"forgeos/internal/store"
+
+	"github.com/google/uuid"
 )
 
 type Client struct {
@@ -108,7 +112,11 @@ func (c *Client) Status(ctx context.Context, m store.SecretMeta) (Status, error)
 }
 
 func (c *Client) get(ctx context.Context, path string, wrapSeconds int) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.address+"/v1/"+path, nil)
+	return c.request(ctx, "GET", path, nil, wrapSeconds)
+}
+
+func (c *Client) request(ctx context.Context, method, path string, body io.Reader, wrapSeconds int) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.address+"/v1/"+path, body)
 	if err != nil {
 		return nil, ErrUnavailable
 	}
@@ -120,11 +128,72 @@ func (c *Client) get(ctx context.Context, path string, wrapSeconds int) (*http.R
 	if token == "" || strings.ContainsAny(token, " \t\r\n") {
 		return nil, ErrUnavailable
 	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("X-Vault-Token", token)
 	if wrapSeconds > 0 {
 		req.Header.Set("X-Vault-Wrap-TTL", strconv.Itoa(wrapSeconds)+"s")
 	}
 	return c.http.Do(req)
+}
+
+// Repository tokens have a separate control-plane identity and KV namespace.
+func (c *Client) repositoryRequest(ctx context.Context, key, method string, version int, body io.Reader, dest any) error {
+	id, err := uuid.Parse(key)
+	if c == nil || err != nil {
+		return ErrUnavailable
+	}
+	path := "secret/data/forgeos/repository-credentials/" + id.String()
+	if version > 0 {
+		path += "?version=" + strconv.Itoa(version)
+	}
+	resp, err := c.request(ctx, method, path, body, 0)
+	if err != nil {
+		return ErrUnavailable
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ErrUnavailable
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16385))
+	if err != nil || len(raw) > 16384 || json.Unmarshal(raw, dest) != nil {
+		return ErrUnavailable
+	}
+	return nil
+}
+
+func (c *Client) SetRepositoryToken(ctx context.Context, key, token string) (int, error) {
+	body, err := json.Marshal(map[string]any{"data": map[string]string{"token": token}})
+	if err != nil {
+		return 0, ErrUnavailable
+	}
+	var out struct {
+		Data struct {
+			Version int `json:"version"`
+		} `json:"data"`
+	}
+	if err = c.repositoryRequest(ctx, key, "POST", 0, bytes.NewReader(body), &out); err != nil || out.Data.Version < 1 {
+		return 0, ErrUnavailable
+	}
+	return out.Data.Version, nil
+}
+
+func (c *Client) RepositoryToken(ctx context.Context, key string, version int) (string, error) {
+	var out struct {
+		Data struct {
+			Data struct {
+				Token string `json:"token"`
+			} `json:"data"`
+			Metadata struct {
+				Version int `json:"version"`
+			} `json:"metadata"`
+		} `json:"data"`
+	}
+	if version < 1 || c.repositoryRequest(ctx, key, "GET", version, nil, &out) != nil || out.Data.Metadata.Version != version || out.Data.Data.Token == "" {
+		return "", ErrUnavailable
+	}
+	return out.Data.Data.Token, nil
 }
 
 type Wrapped struct {

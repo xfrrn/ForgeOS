@@ -117,19 +117,34 @@ func run(ctx context.Context) error {
 	registerProjectWorkViews(mux, data, owner)
 	registerProjectOverviewContext(mux, data, root, owner, pollers)
 	registerAgentSettings(mux, data, owner, workers)
-	registerProjectChat(mux, data, root, owner, chatNodes, ghRead)
 	clones := projectCloneService{data: data, localRoot: root, extraHosts: os.Getenv("FORGEOS_GIT_CLONE_HOSTS")}
+	if file := os.Getenv("FORGEOS_BAO_REPOSITORY_TOKEN_FILE"); file != "" {
+		for _, other := range []string{"FORGEOS_BAO_BROKER_TOKEN_FILE", "FORGEOS_BAO_METADATA_TOKEN_FILE"} {
+			if filepath.Clean(file) == filepath.Clean(os.Getenv(other)) {
+				return errors.New("configure a dedicated OpenBao repository credential identity")
+			}
+		}
+		clones.credentials, err = bao.New(os.Getenv("FORGEOS_BAO_ADDR"), file, os.Getenv("FORGEOS_BAO_CA_FILE"))
+		if err != nil {
+			return err
+		}
+	}
+	registerProjectChat(mux, data, root, owner, chatNodes, ghRead, clones.credentials, clones.chatIssueAPI)
 	clones.register(mux, owner)
-	registerProjectGit(mux, data, root, owner)
+	clones.registerCredentials(mux, owner)
+	clones.registerProjectGit(mux, owner)
 	registerGitHubWebhooks(mux, data, owner, pollers)
 	stopPreviews, err := startPreviews(mux, data, root, owner, os.Getenv("FORGEOS_PREVIEW_ADDR"))
 	if err != nil {
 		return err
 	}
 	defer stopPreviews()
-	vault, err := bao.New(os.Getenv("FORGEOS_BAO_ADDR"), os.Getenv("FORGEOS_BAO_METADATA_TOKEN_FILE"), os.Getenv("FORGEOS_BAO_CA_FILE"))
-	if err != nil {
-		return err
+	var vault *bao.Client
+	if clones.credentials == nil || os.Getenv("FORGEOS_BAO_METADATA_TOKEN_FILE") != "" {
+		vault, err = bao.New(os.Getenv("FORGEOS_BAO_ADDR"), os.Getenv("FORGEOS_BAO_METADATA_TOKEN_FILE"), os.Getenv("FORGEOS_BAO_CA_FILE"))
+		if err != nil {
+			return err
+		}
 	}
 	registerSecrets(mux, data, owner, workers, vault)
 	var broker *bao.Client

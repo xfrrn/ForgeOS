@@ -311,27 +311,32 @@ func ghRead(ctx context.Context, path string, dest any) error {
 	return nil
 }
 
+func githubHTTPClient(ctx context.Context) (*http.Client, error) {
+	proxy, err := cloneProxy(ctx, os.TempDir(), "https://github.com/")
+	if err != nil {
+		return nil, errGHRead
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxy != "" {
+		parsed, err := url.Parse(proxy)
+		if err != nil {
+			return nil, errGHRead
+		}
+		transport.Proxy = http.ProxyURL(parsed)
+	}
+	return &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
+}
+
 func publicGitHubRead(ctx context.Context, path string, dest any) error {
 	target, err := url.Parse("https://api.github.com/" + strings.TrimPrefix(path, "/"))
 	if err != nil || target.Host != "api.github.com" || target.Scheme != "https" {
 		return errGHRead
 	}
-	proxy, err := cloneProxy(ctx, os.TempDir(), "https://github.com/")
+	client, err := githubHTTPClient(ctx)
 	if err != nil {
-		return errGHRead
+		return err
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	defer transport.CloseIdleConnections()
-	if proxy != "" {
-		parsed, err := url.Parse(proxy)
-		if err != nil {
-			return errGHRead
-		}
-		transport.Proxy = http.ProxyURL(parsed)
-	}
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
+	defer client.CloseIdleConnections()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return errGHRead

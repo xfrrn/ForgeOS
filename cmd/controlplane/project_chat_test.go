@@ -14,11 +14,25 @@ import (
 	"strings"
 	"testing"
 
+	"forgeos/internal/chatkernel"
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 	"forgeos/internal/testdb"
 	"github.com/google/uuid"
 )
+
+type testChatProviders map[string]chatkernel.Provider
+
+func (v testChatProviders) ChatProvider(ctx context.Context, id int64) (chatkernel.Provider, error) {
+	return v[fmt.Sprint(id)], nil
+}
+func (v testChatProviders) ModelConnection(ctx context.Context, id uuid.UUID) (chatkernel.Provider, error) {
+	return v[id.String()], nil
+}
+func (v testChatProviders) SetModelConnection(ctx context.Context, id uuid.UUID, p chatkernel.Provider) error {
+	v[id.String()] = p
+	return nil
+}
 
 func TestProjectChatWorkflow(t *testing.T) {
 	t.Setenv("FORGEOS_SKILLS_DIR", t.TempDir())
@@ -61,6 +75,9 @@ func TestProjectChatWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for n, name := range map[int64]string{alpha.ID: "AlphaLoginEvidence", beta.ID: "PrivateBetaLoginEvidence"} {
+		if _, err := data.SaveMaterial(ctx, n, "team-convention", store.MaterialInput{Title: "Team convention", Source: "owner", Kind: "memory", Content: name + "-persistent-memory"}); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := data.SaveMaterial(ctx, n, "login-notes", store.MaterialInput{Title: name, Source: "lab", Kind: "material",
 			Content: "登录方式与部署步骤"}); err != nil {
 			t.Fatal(err)
@@ -88,9 +105,11 @@ func TestProjectChatWorkflow(t *testing.T) {
 		return json.Unmarshal(raw, dest)
 	}
 	nodes := chatNodes{alpha.ID: sha256.Sum256([]byte("alpha-worker")), beta.ID: sha256.Sum256([]byte("beta-worker"))}
+	providers := testChatProviders{}
+	var issueClient chatIssueClient
 	newHandler := func(nodes chatNodes) *http.ServeMux {
 		mux := http.NewServeMux()
-		registerProjectChat(mux, data, root, "owner", nodes, get)
+		registerProjectChat(mux, data, root, "owner", nodes, get, providers, issueClient)
 		registerAgentSettings(mux, data, "owner", legacyWorker("worker"))
 		return mux
 	}
@@ -120,10 +139,11 @@ func TestProjectChatWorkflow(t *testing.T) {
 		return res.Body.Bytes()
 	}
 	chat := func(project int64) string { return fmt.Sprintf("/projects/%d/chat", project) }
+	var profile, second store.ChatModel
 	send := func(project int64, text string) store.ChatTurn {
 		t.Helper()
 		var turn, replay store.ChatTurn
-		body := map[string]string{"client_id": uuid.NewString(), "text": text}
+		body := map[string]string{"client_id": uuid.NewString(), "text": text, "profile_id": second.ID.String()}
 		request("POST", chat(project), "owner", "", body, 201, &turn)
 		request("POST", chat(project), "owner", "", body, 201, &replay)
 		if replay.ID != turn.ID {
@@ -136,7 +156,7 @@ func TestProjectChatWorkflow(t *testing.T) {
 		t.Helper()
 		var job store.ChatJob
 		key := strings.ReplaceAll(uuid.NewString(), "-", "")
-		path := "/internal/management-chat/claim?supports_role_resume=1"
+		path := "/internal/management-chat/claim?project_kernel=1&supports_role_resume=1"
 		if want.RequestedModel != "" {
 			path += "&agent_settings=1&role_harnesses=codex,claude"
 		}
@@ -148,7 +168,7 @@ func TestProjectChatWorkflow(t *testing.T) {
 			if json.Unmarshal(first, &frozen) != nil || frozen.Agent.Model != want.RequestedModel || frozen.Agent.Harness != want.RequestedHarness {
 				t.Fatal("selected model did not reach the frozen assignment")
 			}
-			if !strings.Contains(frozen.Agent.Prompt, skill.Entry) || strings.Contains(frozen.Agent.Prompt, "Quote the verified handoff.") {
+			if token == "alpha-worker" && (!strings.Contains(frozen.Agent.Prompt, skill.Entry) || strings.Contains(frozen.Agent.Prompt, "Quote the verified handoff.")) {
 				t.Fatal("selected skill missing from chat harness input")
 			}
 		}
@@ -201,18 +221,132 @@ func TestProjectChatWorkflow(t *testing.T) {
 		},
 	}, 204, nil)
 	var query store.ChatTurn
-	body := map[string]string{"client_id": uuid.NewString(), "text": "搜索登录相关的项目资料", "model": "alternate-model", "harness": "claude"}
+	body := map[string]string{"client_id": uuid.NewString(), "text": "搜索登录相关的项目资料"}
+	request("POST", chat(alpha.ID), "owner", "", body, 409, nil)
+	const catalog = "/projects/chat-models"
+	t.Run("test a draft and a saved model without changing credentials", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/chat/completions" || r.Method != "POST" {
+				t.Errorf("incorrect probe route: %s", r.URL.Path)
+			}
+			if r.Header.Get("Authorization") != "Bearer local-fixture" {
+				w.WriteHeader(401)
+				fmt.Fprint(w, "private error text")
+				return
+			}
+			var in struct {
+				Model  string
+				Stream bool
+				Format struct{ Type string } `json:"response_format"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&in); err != nil || !in.Stream || in.Format.Type != "json_schema" {
+				t.Error("invalid probe payload")
+			}
+			if in.Model == "malformed" {
+				fmt.Fprint(w, `{"choices":[]}`)
+				return
+			}
+			fmt.Fprint(w, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"ok\":true}"}}]}`)
+		}))
+		defer upstream.Close()
+		testURL := catalog + "/test"
+		cfg := map[string]string{"model": "probe", "base_url": upstream.URL + "/v1", "api_key": "local-fixture", "output_format": "json_schema"}
+		request("POST", testURL, "alpha-worker", "", cfg, 401, nil)
+		request("POST", testURL, "owner", "", cfg, 204, nil)
+		cfg["model"] = "malformed"
+		request("POST", testURL, "owner", "", cfg, 502, nil)
+		cfg["model"] = "probe"
+		cfg["api_key"] = "wrong-key"
+		msg := request("POST", testURL, "owner", "", cfg, 502, nil)
+		if !bytes.Contains(msg, []byte("401")) || bytes.Contains(msg, []byte("private error text")) || bytes.Contains(msg, []byte("wrong-key")) {
+			t.Fatal("invalid diagnostic")
+		}
+		cfg["api_key"] = ""
+		request("POST", testURL, "owner", "", cfg, 400, nil)
+		var list []store.ChatModel
+		request("GET", catalog, "owner", "", nil, 200, &list)
+		if len(list) != 0 {
+			t.Fatal("probe activated a model")
+		}
+		cfg["api_key"] = "local-fixture"
+		var saved store.ChatModel
+		request("POST", catalog, "owner", "", cfg, 200, &saved)
+		cfg["id"], cfg["revision"], cfg["api_key"] = saved.ID.String(), saved.Revision.String(), ""
+		request("POST", testURL, "owner", "", cfg, 204, nil)
+		cfg["base_url"] = upstream.URL + "/other"
+		request("POST", testURL, "owner", "", cfg, 400, nil)
+		request("DELETE", catalog, "owner", "", map[string]string{"id": cfg["id"], "revision": cfg["revision"]}, 204, nil)
+		request("POST", testURL, "owner", "", cfg, 409, nil)
+	})
+	// Simulate the migration marker created for a project predating this schema.
+	providers[fmt.Sprint(alpha.ID)] = chatkernel.Provider{BaseURL: "http://127.0.0.1:8020/v1", Model: "legacy", APIKey: "legacy-key"}
+	if _, err := db.ExecContext(ctx, "INSERT INTO chat_models(legacy_project) VALUES($1),($2)", alpha.ID, beta.ID); err != nil {
+		t.Fatal(err)
+	}
+	var migrated []store.ChatModel
+	request("GET", catalog, "owner", "", nil, 200, &migrated)
+	if len(migrated) != 1 || migrated[0].Model != "legacy" || providers[migrated[0].Revision.String()].APIKey != "legacy-key" {
+		t.Fatal("legacy model import failed")
+	}
+	request("DELETE", catalog, "owner", "", map[string]any{"id": migrated[0].ID, "revision": migrated[0].Revision}, 204, nil)
+	fields := map[string]string{"model": "alternate-model", "base_url": "http://127.0.0.1:8010/v1", "name": "设计"}
+	request("POST", catalog, "owner", "", fields, 400, nil)
+	fields["api_key"] = "   "
+	request("POST", catalog, "owner", "", fields, 400, nil)
+	request("GET", catalog, "owner", "", nil, 200, &migrated)
+	if len(migrated) != 0 {
+		t.Fatal("keyless model in active catalog")
+	}
+	fields["api_key"] = "fixture-secret"
+	request("POST", catalog, "owner", "", fields, 200, &profile)
+	if profile.Name != fields["model"] {
+		t.Fatal("role alias exposed as model name")
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE chat_models SET name='旧管理名称' WHERE id=$1", profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	fields["model"] = "second-model"
+	fields["api_key"] = "second-key"
+	request("POST", catalog, "owner", "", fields, 200, &second)
+	var models []store.ChatModel
+	catalogJSON := request("GET", catalog, "owner", "", nil, 200, &models)
+	if len(models) != 2 || bytes.Contains(catalogJSON, []byte("旧管理名称")) || bytes.Contains(catalogJSON, []byte("fixture-secret")) || bytes.Contains(catalogJSON, []byte("api_key")) {
+		t.Fatal("invalid public catalog")
+	}
+	body["profile_id"] = profile.ID.String()
 	request("POST", chat(alpha.ID), "owner", "", body, 201, &query)
 	if query.RequestedModel != "alternate-model" {
-		t.Fatal("message lost selected model")
+		t.Fatal("wrong model recorded")
 	}
-	body["model"] = "other-model"
+	fields["id"] = profile.ID.String()
+	fields["revision"] = profile.Revision.String()
+	fields["api_key"] = "rotated-key"
+	request("PUT", catalog, "owner", "", fields, 200, nil)
+	body["profile_id"] = second.ID.String()
 	request("POST", chat(alpha.ID), "owner", "", body, 409, nil)
 	request("POST", "/internal/management-chat/claim?supports_role_resume=1", "alpha-worker", strings.Repeat("b", 32), struct{}{}, 204, nil)
 	request("POST", "/internal/management-chat/claim", "owner", strings.Repeat("a", 32), struct{}{}, 401, nil)
 	request("POST", "/internal/management-chat/claim", "beta-worker", strings.Repeat("a", 32), struct{}{}, 204, nil)
 	request("POST", "/internal/management-chat/claim?supports_role_resume=1&agent_settings=1&role_harnesses=codex", "alpha-worker", strings.Repeat("c", 32), struct{}{}, 204, nil)
 	job := claim("alpha-worker", query)
+	leaseRequest := map[string]any{"id": job.ID, "lease": job.Lease}
+	draft := map[string]any{"id": job.ID, "lease": job.Lease, "answer": "正在生成正文"}
+	request("POST", "/internal/management-chat/progress", "beta-worker", "", draft, 409, nil)
+	request("POST", "/internal/management-chat/progress", "alpha-worker", "", draft, 204, nil)
+	interim, err := data.ChatTurn(ctx, alpha.ID, job.ID)
+	if err != nil || interim.Status != "running" || interim.Answer != "正在生成正文" || interim.Action != nil {
+		t.Fatal("missing in-progress snapshot")
+	}
+
+	var activeProvider chatkernel.Provider
+	request("POST", "/internal/management-chat/provider", "beta-worker", "", leaseRequest, 409, nil)
+	request("POST", "/internal/management-chat/provider", "alpha-worker", "", leaseRequest, 200, &activeProvider)
+	if activeProvider.APIKey != "fixture-secret" || activeProvider.Model != query.RequestedModel {
+		t.Fatal("active project lease did not resolve its model credentials")
+	}
+	if !strings.Contains(job.Prompt, "AlphaLoginEvidence-persistent-memory") || strings.Contains(job.Prompt, "PrivateBetaLoginEvidence-persistent-memory") {
+		t.Fatal("durable memory must be recalled without keywords and isolated by project")
+	}
 	if !strings.Contains(job.Prompt, "AlphaLoginEvidence") || strings.Contains(job.Prompt, "PrivateBetaLoginEvidence") {
 		t.Fatal("chat context did not stay in the selected project")
 	}
@@ -220,6 +354,8 @@ func TestProjectChatWorkflow(t *testing.T) {
 	result(job, "beta-worker", nil, keys, 409)
 	result(job, "alpha-worker", nil, keys, 204)
 	result(job, "alpha-worker", nil, keys, 204)
+	request("POST", "/internal/management-chat/provider", "alpha-worker", "", leaseRequest, 409, nil)
+	request("POST", "/internal/management-chat/progress", "alpha-worker", "", draft, 409, nil)
 	turn, err := data.ChatTurn(ctx, alpha.ID, query.ID)
 	if err != nil || len(turn.Sources) != 1 || turn.Sources[0].Key != "material:login-notes" {
 		t.Fatalf("chat did not keep only authorized citations: %+v %v", turn.Sources, err)
@@ -283,4 +419,147 @@ func TestProjectChatWorkflow(t *testing.T) {
 	if page.Enabled || len(page.Messages) != 4 || page.Messages[0].ID != query.ID || page.Messages[3].Action.TaskID != headSaved.Action.TaskID {
 		t.Fatalf("history lost its project scope or saved state on restart: %+v", page)
 	}
+	t.Run("create and dispatch an edited chat draft", func(t *testing.T) {
+		var raw githubIssue
+		var posts int
+		const endpoint = "repos/my-org/project/issues"
+		issueClient = func(ctx context.Context, p store.Project) (deliveryAPI, error) {
+			if p.ID != alpha.ID {
+				t.Fatal("wrong project")
+			}
+			return func(ctx context.Context, method, path string, body, dest any) error {
+				switch {
+				case method == "POST" && path == endpoint:
+					posts++
+					if posts == 1 {
+						return issueAPIStatus(403)
+					}
+					draft := body.(map[string]string)
+					raw = githubIssue{ID: 902, Number: 22, State: "open", Title: draft["title"], Body: draft["body"], UpdatedAt: "2026-01-06T10:00:00Z", HTMLURL: "https://github.com/my-org/project/issues/22", RepoURL: "https://api.github.com/repos/my-org/project"}
+					if raw.Title != "Owner 修改的标题" || !strings.HasPrefix(raw.Body, "Owner 修改的验收标准\n\n<!-- forgeos-chat-issue:") {
+						t.Fatal("published unapproved draft")
+					}
+					// The remote committed the write, but its reply was lost.
+					return context.DeadlineExceeded
+				case method == "GET" && strings.HasPrefix(path, endpoint+"?"):
+					*(dest.(*[]githubIssue)) = []githubIssue{raw}
+					return nil
+				case method == "GET" && path == endpoint+"/22":
+					*(dest.(*githubIssue)) = raw
+					return nil
+				case method == "GET":
+					return get(ctx, path, dest)
+				default:
+					t.Fatalf("unexpected mutation %s %s", method, path)
+					return nil
+				}
+			}, nil
+		}
+		handler = newHandler(nodes)
+		proposed := propose(alpha.ID, "alpha-worker", "需求：增加筛选按钮", chatProposal{Kind: "create_issue", Title: "增加筛选", Body: "需求与验收标准", WorkType: "development"})
+		if posts != 0 || proposed.Action.Body != "需求与验收标准" || proposed.Action.IssueNumber != 0 {
+			t.Fatal("draft must not publish")
+		}
+		edits := chatIssueDraft{Title: "Owner 修改的标题", Body: "Owner 修改的验收标准", WorkType: "testing"}
+		id := proposed.Action.ID
+		draftRef, err := data.ResolveChatTask(ctx, alpha.ID, proposed.ID+1, store.TaskReference{By: "recent"})
+		if err != nil || draftRef.Result != "not_dispatched" {
+			t.Fatalf("pending draft treated as dispatched: %+v %v", draftRef, err)
+		}
+		confirm(beta.ID, id, edits, 404)
+		request("POST", fmt.Sprintf("%s/actions/%d/confirm", chat(alpha.ID), id), "alpha-worker", "", edits, 401, nil)
+		confirm(alpha.ID, id, edits, 502)
+		afterReject, err := data.ChatAction(ctx, alpha.ID, id)
+		if err != nil || afterReject.CreationStarted != nil || afterReject.WorkType != "testing" {
+			t.Fatal("definite rejection did not unlock draft")
+		}
+		confirm(alpha.ID, id, edits, 502)
+		// A local dispatch error after successful reconciliation must retain #22.
+		if _, err = db.ExecContext(ctx, `CREATE FUNCTION fail_chat_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'temporary'; END $$; CREATE TRIGGER fail_chat_test BEFORE INSERT ON work_items FOR EACH ROW EXECUTE FUNCTION fail_chat_test()`); err != nil {
+			t.Fatal(err)
+		}
+		confirm(alpha.ID, id, chatIssueDraft{}, 502)
+		partial, err := data.ChatAction(ctx, alpha.ID, id)
+		if err != nil || partial.IssueNumber != 22 || partial.TaskID != 0 || partial.Status != "pending" {
+			t.Fatal("lost remote receipt")
+		}
+		if _, err = db.ExecContext(ctx, "DROP TRIGGER fail_chat_test ON work_items"); err != nil {
+			t.Fatal(err)
+		}
+		done := confirm(alpha.ID, id, chatIssueDraft{}, 200)
+		again := confirm(alpha.ID, id, edits, 200)
+		if done.Action.Status != "confirmed" || done.Action.TaskID == 0 || done.Action.TaskID != again.Action.TaskID || posts != 2 {
+			t.Fatal("duplicate issue or task")
+		}
+		task, err := data.Task(ctx, done.Action.TaskID)
+		if err != nil || task.Spec.Issue.Number != 22 || task.Spec.Issue.WorkType != "testing" || task.Spec.Mode != "plan" {
+			t.Fatal("incorrect dispatched task")
+		}
+		for i := 0; i < 6; i++ {
+			if _, err := db.ExecContext(ctx, "INSERT INTO project_chat_turns(project_id,client_id,text,answer,status) VALUES($1,$2,'无关话题','无任务引用','completed')", alpha.ID, uuid.NewString()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		job := claim("alpha-worker", send(alpha.ID, "刚才那个任务做到哪了"))
+		lookup := func(node, name string, args any, status int, out any) {
+			t.Helper()
+			request("POST", "/internal/management-chat/task-tool", node, "", map[string]any{
+				"id": job.ID, "lease": job.Lease, "name": name, "arguments": args,
+			}, status, out)
+		}
+		for _, ref := range []store.TaskReference{{By: "recent"}, {By: "latest_dispatch"}, {By: "issue_number", Value: "22"}, {By: "title", Value: "修改的标题"}, {By: "task_id", Value: fmt.Sprint(task.ID)}} {
+			var found struct{ Data store.ChatTaskMatches }
+			lookup("alpha-worker", chatkernel.ResolveTask, ref, 200, &found)
+			if found.Data.Result != "resolved" || found.Data.Matches[0].TaskID != task.ID {
+				t.Fatalf("incorrect reference for %v: %+v", ref, found)
+			}
+		}
+		lookup("beta-worker", chatkernel.TaskProgress, map[string]int64{"task_id": task.ID}, 409, nil)
+		foreign, err := data.CreateTask(ctx, beta.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lookup("alpha-worker", chatkernel.TaskProgress, map[string]int64{"task_id": foreign.ID}, 404, nil)
+		var progress struct {
+			Data    struct{ Status string }
+			Sources []store.ChatSource
+		}
+		lookup("alpha-worker", chatkernel.TaskProgress, map[string]int64{"task_id": task.ID}, 200, &progress)
+		if progress.Data.Status != task.Status || len(progress.Sources) != 1 || progress.Sources[0].Key != store.ChatTaskSource(task.ID).Key {
+			t.Fatal("missing current task or citation")
+		}
+		result(job, "alpha-worker", nil, []string{progress.Sources[0].Key}, 204)
+		lookup("alpha-worker", chatkernel.TaskProgress, map[string]int64{"task_id": task.ID}, 409, nil)
+		if _, err = db.ExecContext(ctx, "UPDATE work_items SET status='BLOCKED' WHERE id=$1", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.ExecContext(ctx, "INSERT INTO work_dependencies(task_id,prerequisite) VALUES($1,$2)", task.ID, alphaTask.ID); err != nil {
+			t.Fatal(err)
+		}
+		snapshot, _, err := data.ChatTaskProgress(ctx, alpha.ID, task.ID)
+		var blocked struct {
+			Dependencies []struct {
+				Prerequisite int64
+				TaskStatus   string `json:"task_status"`
+			} `json:"pending_dependencies"`
+		}
+		if err != nil || json.Unmarshal(snapshot, &blocked) != nil || len(blocked.Dependencies) != 1 || blocked.Dependencies[0].Prerequisite != alphaTask.ID || blocked.Dependencies[0].TaskStatus != "DONE" {
+			t.Fatal("lost outstanding delivery dependency", err)
+		}
+		// A turn that discussed two tasks must not silently pick one for "that task".
+		var conversationID int64
+		err = db.QueryRowContext(ctx, "INSERT INTO project_chat_turns(project_id,client_id,text,answer,status,progress_task_ids) VALUES($1,$2,'比较两项任务','对比结果','completed',ARRAY[$3::bigint,$4::bigint]) RETURNING id", alpha.ID, uuid.NewString(), task.ID, alphaTask.ID).Scan(&conversationID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		both, err := data.ResolveChatTask(ctx, alpha.ID, conversationID+1, store.TaskReference{By: "recent"})
+		if err != nil || both.Result != "ambiguous" || len(both.Matches) != 2 {
+			t.Fatal("lost ambiguous reference", both, err)
+		}
+		last, err := data.ResolveChatTask(ctx, alpha.ID, conversationID+1, store.TaskReference{By: "latest_dispatch"})
+		if err != nil || last.Result != "resolved" || last.Matches[0].TaskID != task.ID {
+			t.Fatal("discussion displaced last dispatch", last, err)
+		}
+	})
+
 }

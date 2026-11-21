@@ -17,13 +17,14 @@ import { ProjectCodeReviews } from './ProjectCodeReviews'
 import { ProjectMaterials } from './ProjectMaterials'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { SkillLibrary } from './SkillLibrary'
+import { RepositoryCredentials } from './RepositoryCredentials'
 import { AgentSettings } from './AgentSettings'
 import { ProjectChat } from './ProjectChat'
 import { ProjectExecutionQueue } from './ProjectExecutionQueue'
 import { ProjectTestChecks } from './ProjectTestChecks'
 import { ApiError, Icon, projectHref, requestWith, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
-import { workbenchRoute, workbenchTitle, type ProjectRoute, type WorkbenchRoute } from './workbenchRoutes'
+import { credentialsHref, workbenchRoute, workbenchTitle, type ProjectRoute, type WorkbenchRoute } from './workbenchRoutes'
 import './style.css'
 
 type OwnerSession = { email: string }
@@ -257,6 +258,7 @@ function App() {
           <summary className="icon-button" aria-label="账号与系统" title="账号与系统"><span className="owner-avatar" aria-hidden="true">O</span></summary>
           <div className="owner-menu-panel panel">
             <strong>Owner</strong><small>{owner.email}</small>
+            <a className="button" href={credentialsHref(projectId)} onClick={() => { if (ownerMenu.current) ownerMenu.current.open = false }}>密钥与凭据</a>
             <a className="button" href="#/workers" onClick={() => { if (ownerMenu.current) ownerMenu.current.open = false }}>执行节点与全局规则</a>
             <button type="button" className="button" disabled={loggingOut} onClick={() => void logout()}><Icon name="LogOut" size={16}/>退出登录</button>
           </div>
@@ -274,6 +276,7 @@ function App() {
         page.kind === 'legacy-task' ? <LegacyTaskLink key={route} page={page} request={request}/> :
         page.kind === 'notifications' ? <Notifications request={request} onRead={onChanged}/> :
         page.kind === 'skills' ? <SkillLibrary request={request}/> :
+        page.kind === 'credentials' ? <RepositoryCredentials request={request} projectId={page.projectId}/> :
         page.kind === 'agents' ? <AgentSettings request={request}/> :
         page.kind === 'system' ? <><WorkerNodes request={request}/><GlobalRules request={request}/></> :
         <MissingPage/>}

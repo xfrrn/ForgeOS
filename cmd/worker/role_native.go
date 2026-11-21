@@ -226,6 +226,9 @@ func checkRoleWorkspace(dir, workspace string) error {
 }
 
 func (w *worker) roleHarnessVersion(harness string) (string, error) {
+	if w.role == managementChatRole {
+		return readKernelVersion(w.codex, "forgeos-chat-kernel ")
+	}
 	if harness == "codex" {
 		return readCodexVersion(w.codex)
 	}

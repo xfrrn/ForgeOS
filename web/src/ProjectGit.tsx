@@ -1,9 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatTime, Icon, type ApiRequest } from './shared'
+import { IdentitySelect, useRepositoryCredentials } from './RepositoryCredentials'
 
 type Commit = { sha: string; branch: string; subject?: string; date?: string; remote?: string }
 type Pull = { local: Commit; remote: Commit; updated: boolean }
 type Action = 'remote' | 'local' | 'pull'
+
+function ProjectIdentity({projectId, request, close}: {projectId: number; request: ApiRequest; close: () => void}) {
+  const {catalog, error: catalogError, refresh} = useRepositoryCredentials(request)
+  const [identity, setIdentity] = useState<number>()
+  const [url, setURL] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const path = `/projects/${projectId}/git/identity`
+  useEffect(() => {
+    const controller = new AbortController()
+    setError('')
+    void request<{credential_id: number; url: string}>(path, {signal: controller.signal}).then(value => {
+      if (!controller.signal.aborted) {setIdentity(value.credential_id); setURL(value.url)}
+    }).catch(cause => { if (!controller.signal.aborted) setError(cause.message || '读取身份失败。') })
+    return () => controller.abort()
+  }, [request, path, revision])
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      await request(path, {method: 'PUT', body: JSON.stringify({credential_id: identity})})
+      close()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '无法保存访问身份。') }
+    finally { setSaving(false) }
+  }
+  return <div>
+    {identity === undefined && !error && <p role="status">正在读取当前身份…</p>}
+    <div className="credential-controls">
+      {identity !== undefined && <IdentitySelect catalog={catalog} url={url} value={identity} onChange={setIdentity} disabled={saving}/>}
+      <button className="button" disabled={saving || identity === undefined} onClick={() => void save()}>{saving ? '正在保存…' : '保存身份'}</button>
+      <button className="button" disabled={saving} onClick={close}>关闭</button>
+    </div>
+    {(error || catalogError) && <p role="alert">{error || catalogError} <button className="button" onClick={() => {setRevision(n => n + 1); refresh()}}>重新读取</button></p>}
+  </div>
+}
 
 function CommitDetails({ commit }: { commit?: Commit }) {
   if (!commit) return <p className="muted">等待读取提交</p>
@@ -21,6 +57,7 @@ export function ProjectGit({ projectId, request }: { projectId: number; request:
   const [pending, setPending] = useState<Action>()
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [editingIdentity, setEditingIdentity] = useState(false)
   const active = useRef<AbortController | null>(null)
   useEffect(() => () => active.current?.abort(), [])
 
@@ -55,7 +92,7 @@ export function ProjectGit({ projectId, request }: { projectId: number; request:
       <div>
         <h3>远端提交</h3>
         <CommitDetails commit={remote}/>
-        <button className="button" type="button" disabled={Boolean(pending)} onClick={() => void run('remote')}>
+        <button className="button" type="button" disabled={Boolean(pending) || editingIdentity} onClick={() => void run('remote')}>
           {pending === 'remote' ? '正在读取远端…' : '查看远端提交'}
         </button>
       </div>
@@ -68,10 +105,13 @@ export function ProjectGit({ projectId, request }: { projectId: number; request:
       </div>
     </div>
     <div className="detail-actions">
-      <button className="button primary" type="button" disabled={Boolean(pending)} onClick={() => void run('pull')}>
+      <button className="button primary" type="button" disabled={Boolean(pending) || editingIdentity} onClick={() => void run('pull')}>
         <Icon name="GitBranch" size={16}/>{pending === 'pull' ? '正在拉取…' : '拉取远端更新'}
       </button>
+      <button className="button" type="button" aria-expanded={editingIdentity} disabled={Boolean(pending) || editingIdentity}
+        onClick={() => setEditingIdentity(true)}>更改访问身份</button>
     </div>
+    {editingIdentity && <ProjectIdentity projectId={projectId} request={request} close={() => setEditingIdentity(false)}/>}
     {error && <p className="detail-problem" role="alert">{error}</p>}
     {notice && <p className="detail-notice" role="status">{notice}</p>}
   </section>

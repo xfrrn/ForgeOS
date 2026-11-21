@@ -63,6 +63,10 @@ func agentConfig(ctx context.Context, q configReader, scope int64, d agents.Defi
 			entry.Effective.Source = "project"
 		}
 	}
+	if d.Key == "management-chat" {
+		entry.Effective.Harness = "codex"
+		entry.Effective.Model = ""
+	}
 	return entry, rows.Err()
 }
 func (s *Store) AgentHarness(ctx context.Context, project int64, key string) (string, error) {

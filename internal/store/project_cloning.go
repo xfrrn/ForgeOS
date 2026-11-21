@@ -7,15 +7,16 @@ import (
 )
 
 type RepositoryClone struct {
-	ID         int64
-	ProjectID  int64
-	URL        string
-	Repository string
-	Directory  string
-	Lease      string `json:"-"`
-	Status     string
-	Path       string
-	Error      string
+	ID           int64
+	CredentialID int64
+	ProjectID    int64
+	URL          string
+	Repository   string
+	Directory    string
+	Lease        string `json:"-"`
+	Status       string
+	Path         string
+	Error        string
 }
 
 func (s *Store) CloneDirectory(ctx context.Context) (string, error) {
@@ -33,25 +34,28 @@ func (s *Store) SetCloneDirectory(ctx context.Context, directory string) error {
 	return err
 }
 
-const cloneColumns = `id,COALESCE(project_id,0),url,repository,directory,COALESCE(lease::text,''),status,path,error`
+const cloneColumns = `id,COALESCE(project_id,0),url,repository,directory,COALESCE(lease::text,''),status,path,error,COALESCE(credential_id,0)`
 
 func scanRepositoryClone(row interface{ Scan(...any) error }) (RepositoryClone, error) {
 	var j RepositoryClone
-	err := row.Scan(&j.ID, &j.ProjectID, &j.URL, &j.Repository, &j.Directory, &j.Lease, &j.Status, &j.Path, &j.Error)
+	err := row.Scan(&j.ID, &j.ProjectID, &j.URL, &j.Repository, &j.Directory, &j.Lease, &j.Status, &j.Path, &j.Error, &j.CredentialID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return RepositoryClone{}, ErrNotFound
 	}
 	return j, err
 }
 
-func (s *Store) QueueRepositoryClone(ctx context.Context, url, repository, directory string) (RepositoryClone, error) {
-	j, err := scanRepositoryClone(s.db.QueryRowContext(ctx, `INSERT INTO repository_clone_jobs(url,repository,directory)
-		VALUES ($1,$2,$3) ON CONFLICT(url) DO UPDATE SET
-			repository=EXCLUDED.repository,directory=EXCLUDED.directory,status='queued',error='',updated_at=now()
+func (s *Store) QueueRepositoryClone(ctx context.Context, url, repository, directory string, credentialID int64) (RepositoryClone, error) {
+	j, err := scanRepositoryClone(s.db.QueryRowContext(ctx, `INSERT INTO repository_clone_jobs(url,repository,directory,credential_id)
+		VALUES ($1,$2,$3,NULLIF($4::bigint,0)) ON CONFLICT(url) DO UPDATE SET
+			credential_id=EXCLUDED.credential_id,repository=EXCLUDED.repository,directory=EXCLUDED.directory,status='queued',error='',updated_at=now()
 		WHERE repository_clone_jobs.status='failed'
-		RETURNING `+cloneColumns, url, repository, directory))
+		RETURNING `+cloneColumns, url, repository, directory, credentialID))
 	if errors.Is(err, ErrNotFound) {
-		return scanRepositoryClone(s.db.QueryRowContext(ctx, `SELECT `+cloneColumns+` FROM repository_clone_jobs WHERE url=$1`, url))
+		j, err = scanRepositoryClone(s.db.QueryRowContext(ctx, `SELECT `+cloneColumns+` FROM repository_clone_jobs WHERE url=$1`, url))
+		if err == nil && j.Status != "done" && j.CredentialID != credentialID {
+			return RepositoryClone{}, ErrConflict
+		}
 	}
 	return j, err
 }
@@ -97,6 +101,9 @@ func (s *Store) CompleteRepositoryClone(ctx context.Context, id int64, lease, pa
 	}
 	project, err := createProject(ctx, tx, path)
 	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE projects SET repository_credential_id=(SELECT credential_id FROM repository_clone_jobs WHERE id=$1) WHERE id=$2`, id, project.ID); err != nil {
 		return err
 	}
 	if err = settleRepositoryClone(tx.ExecContext(ctx, `UPDATE repository_clone_jobs SET status='done',

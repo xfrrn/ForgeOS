@@ -124,13 +124,15 @@ Windows 计划任务部署可以在 `services.json` 顶层设置 `toolDirectorie
 
 ### 启用项目聊天
 
-工作台顶栏的「Agent 管理」设置全局默认，项目内同名页可按用途覆盖或恢复继承。每个用途都可独立选择 Codex CLI 或 Claude Code，项目聊天的模型列表跟随聊天用途的 Harness。规划任务在派发时分别确定规划和实现子任务的 Harness。独立角色节点通过服务 PATH 或 FORGEOS_CODEX_BIN、FORGEOS_CLAUDE_BIN 查找对应的原生程序。项目聊天页可直接进入 Management Agent 的聊天配置。「模型」下拉菜单显示控制面账号的 Codex 模型目录和 Claude Code 别名，也可输入自定义模型 ID，或选择跟随 Harness 默认。项目聊天输入框的「本条消息模型」只覆盖当前消息，发送后恢复跟随项目配置。新版本 Worker 领取时固定提示词和模型，运行后回报节点、Harness、实际观测到的模型和配置版本。实现任务的 Harness 在派发时确定，派发时明确指定的选择优先。执行所需的节点授权、CLI 安装和登录仍在部署端配置。
+使用自有 Chat Completions 模型、项目 MCP 工具及长期记忆时，见[项目聊天内核的构建与配置](project-chat-kernel.md)。
+
+工作台顶栏的「Agent 管理」设置全局默认，项目内同名页可按用途覆盖或恢复继承。项目聊天使用内置的 ForgeOS 聊天内核，在「密钥与凭据 → 聊天模型」中添加可供各项目使用的连接，在项目聊天输入框旁选择本次使用的模型。其他用途可独立选择各自支持的 Harness。规划任务在派发时分别确定规划和实现子任务的 Harness。独立角色节点通过服务 PATH 或 FORGEOS_CODEX_BIN、FORGEOS_CLAUDE_BIN 查找对应的原生程序。新版本 Worker 领取时固定提示词和模型，运行后回报节点、Harness、实际观测到的模型和配置版本。实现任务的 Harness 在派发时确定，派发时明确指定的选择优先。执行所需的节点授权、CLI 安装和登录仍在部署端配置。
 
 在顶栏「Skill 库」选择直接包含 UTF-8 编码 SKILL.md 的文件夹，文件头需含 name 和 description。ForgeOS 保留脚本、参考资料等文件的相对路径。相同内容重复导入会复用同一版本，任意文件变更后重新导入会生成新版本。「Agent 管理」可按用途多选并保存，全局配置由各项目继承，项目可覆盖或清空选择。任务领取时固定所选版本，并将入口路径交给 Harness。Codex 和结构化 Claude 通过限定到所选目录的只读工具访问文件，Claude 实现任务通过原生文件工具读取本次运行的独立副本。
 
 控制面和 Worker 默认使用当前服务账号配置目录中的 ForgeOS/skills。跨账号或跨主机部署时，用环境变量 FORGEOS_SKILLS_DIR 分别指定同一共享存储的绝对挂载路径。备份时一并保留技能目录和数据库。
 
-在控制面设置 `FORGEOS_MANAGEMENT_CHAT_NODES_FILE` 为本机授权文件的绝对路径。文件为 JSON 数组，每项包含 `project_id` 和独立随机聊天令牌的十六进制 SHA-256 `token_sha256`。每个已启用项目使用独立令牌。为该项目以普通账号运行 `worker management-chat`，仅配置回环 `FORGEOS_API_URL`、本项目的 `FORGEOS_MANAGEMENT_CHAT_TOKEN` 和已登录的所选本机 Harness。可设置 `FORGEOS_CODEX_BIN` 指定 Codex，设置 `FORGEOS_WORKER_STATE_DIR` 保存私有的恢复日志。Windows 可在现有启动任务配置的 `services` 里增加 `management-chat`，将工作程序的参数设为 `["management-chat"]`，通过 `Install-ForgeOSTasks.ps1 -Role management-chat` 注册。
+在控制面设置 `FORGEOS_MANAGEMENT_CHAT_NODES_FILE` 为本机授权文件的绝对路径。文件为 JSON 数组，每项包含 `project_id` 和独立随机聊天令牌的十六进制 SHA-256 `token_sha256`。每个已启用项目使用独立令牌。为该项目以普通账号运行 `worker management-chat`，仅配置回环 `FORGEOS_API_URL`、本项目的 `FORGEOS_MANAGEMENT_CHAT_TOKEN` 和 `FORGEOS_CHAT_KERNEL_BIN` 指向自编译的聊天内核。设置 `FORGEOS_WORKER_STATE_DIR` 保存私有的恢复日志。Windows 可在现有启动任务配置的 `services` 里增加 `management-chat`，将工作程序的参数设为 `["management-chat"]`，通过 `Install-ForgeOSTasks.ps1 -Role management-chat` 注册。
 
 每个项目保留一条聊天历史。Management 回答项目进度、执行队列和已有资料问题。派发本项目已有 Issue 或检查 HEAD 时，聊天先展示待确认卡。Issue 确认时重新核对来源版本，成功卡可回到具体任务。关联任务有真实角色回执时，聊天内可打开处理记录。关闭聊天节点配置后，Owner 仍可回读历史。
 

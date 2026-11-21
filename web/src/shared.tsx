@@ -66,10 +66,10 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const shareSearchPath = /^\/projects\/[1-9]\d*\/shared-experience\/search\?q=[^&#]+$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
-    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:overview-context|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
+    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:overview-context|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
     const workerPath = /^\/workers(?:\/(?:control-plane|model-budgets|process-pool|fixed-pool))?$/.test(path)
-    const clonePath = /^\/projects\/(?:clone-settings|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
-    const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull)$/.test(path)
+    const clonePath = /^\/projects\/(?:chat-models(?:\/test)?|clone-settings|clone-check|repository-credentials|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
+    const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull|identity)$/.test(path)
     const issuePreviewPath = (!init.method || init.method === 'GET') && /^\/projects\/[1-9]\d*\/issues\/[1-9]\d*$/.test(path)
     const projectPath = /^\/projects(?:\?[^#]*|\/[1-9]\d*(?:\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?)?$/.test(path)
     if (!agentPath && !nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !projectGitPath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && !projectPath && !workerPath && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
@@ -87,7 +87,7 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
       throw new ApiError(response.status, response.status === 401 ? '登录已失效，请重新登录。' :
         response.status === 409 && info?.error === 'select an Issue work type before dispatch' ? '请先为这条 Issue 选择工作类型。' :
         response.status === 409 && info?.error === 'work type differs from the current GitHub Issue' ? '所选工作类型与 GitHub Issue 声明的类型不一致。' :
-        response.status === 409 && !agentPath && !clonePath && !projectGitPath && !issuePreviewPath ? '任务状态或候选版本已变化，请刷新记录。' :
+        response.status === 409 && !agentPath && !clonePath && !projectGitPath && !issuePreviewPath && !/^\/projects\/\d+\/chat$/.test(path) ? '任务状态或候选版本已变化，请刷新记录。' :
         response.status === 404 ? '找不到这条记录。' : (info?.error || '请求失败，请稍后重试。'))
     }
     if (format === 'blob') return await response.blob() as T

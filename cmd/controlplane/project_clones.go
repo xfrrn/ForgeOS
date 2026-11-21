@@ -15,11 +15,18 @@ import (
 	"strings"
 	"time"
 
+	"forgeos/internal/bao"
 	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 )
 
+type gitCredential struct {
+	username string
+	token    string
+}
+
 type cloneRemote struct {
+	credential *gitCredential
 	URL        string
 	Host       string
 	Repository string
@@ -33,6 +40,18 @@ var (
 	errCloneURL  = errors.New("请填写受支持的 Git 仓库链接，且地址中不能包含密码、查询参数或分支页面。")
 	errCloneHost = errors.New("此 Git 服务器尚未配置。默认支持 GitHub、GitLab 和 Bitbucket。")
 )
+
+func validateCloneHost(host, extraHosts string) error {
+	if !cloneHost.MatchString(host) || strings.Contains(host, "..") || !filepath.IsLocal(host) {
+		return errCloneURL
+	}
+	if host == "github.com" || host == "gitlab.com" || host == "bitbucket.org" || slices.ContainsFunc(strings.Split(extraHosts, ","), func(v string) bool {
+		return strings.EqualFold(strings.TrimSpace(v), host)
+	}) {
+		return nil
+	}
+	return errCloneHost
+}
 
 func parseCloneRemote(raw string, extraHosts string) (cloneRemote, error) {
 	raw = strings.TrimSpace(raw)
@@ -56,14 +75,8 @@ func parseCloneRemote(raw string, extraHosts string) (cloneRemote, error) {
 		return cloneRemote{}, errCloneURL
 	}
 	host := strings.ToLower(u.Hostname())
-	if !cloneHost.MatchString(host) || strings.Contains(host, "..") || !filepath.IsLocal(host) {
-		return cloneRemote{}, errCloneURL
-	}
-	allowed := host == "github.com" || host == "gitlab.com" || host == "bitbucket.org"
-	if !allowed && !slices.ContainsFunc(strings.Split(extraHosts, ","), func(v string) bool {
-		return strings.EqualFold(strings.TrimSpace(v), host)
-	}) {
-		return cloneRemote{}, errCloneHost
+	if err := validateCloneHost(host, extraHosts); err != nil {
+		return cloneRemote{}, err
 	}
 	path := strings.TrimSuffix(strings.Trim(u.Path, "/"), ".git")
 	parts := strings.Split(path, "/")
@@ -84,9 +97,10 @@ func parseCloneRemote(raw string, extraHosts string) (cloneRemote, error) {
 }
 
 type projectCloneService struct {
-	data       *store.Store
-	localRoot  string
-	extraHosts string
+	credentials *bao.Client
+	data        *store.Store
+	localRoot   string
+	extraHosts  string
 }
 
 type cloneDirectorySettings struct {
@@ -137,7 +151,8 @@ func (c projectCloneService) register(mux *http.ServeMux, owner string) {
 	}))
 	mux.HandleFunc("POST /projects/clone", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			URL string `json:"url"`
+			URL          string `json:"url"`
+			CredentialID int64  `json:"credential_id"`
 		}
 		if !decode(w, r, &input) {
 			return
@@ -156,13 +171,32 @@ func (c projectCloneService) register(mux *http.ServeMux, owner string) {
 			problem(w, http.StatusServiceUnavailable, "当前服务没有配置 ForgeOS 托管仓库根目录。")
 			return
 		}
-		job, err := c.data.QueueRepositoryClone(r.Context(), remote.URL, remote.Repository, settings.Directory)
+		if input.CredentialID != 0 {
+			if _, err = c.checkCredential(r.Context(), input.CredentialID, remote); err != nil {
+				credentialProblem(w, err)
+				return
+			}
+		}
+		job, err := c.data.QueueRepositoryClone(r.Context(), remote.URL, remote.Repository, settings.Directory, input.CredentialID)
+		if errors.Is(err, store.ErrConflict) {
+			problem(w, 409, "该仓库正使用另一个身份克隆。请等当前任务结束后再切换。")
+			return
+		}
 		if err != nil {
 			respond(w, 0, nil, err)
 			return
 		}
 		status := http.StatusAccepted
 		if job.Status == "done" {
+			current, err := c.data.Project(r.Context(), job.ProjectID)
+			if err != nil {
+				respond(w, 0, nil, err)
+				return
+			}
+			if current.RepositoryCredentialID != input.CredentialID {
+				problem(w, 409, "该仓库已接入。请打开已有项目，在仓库同步面板更改访问身份。")
+				return
+			}
 			status = http.StatusOK
 		}
 		c.respondJob(w, r, job, status)
@@ -239,6 +273,12 @@ func (c projectCloneService) clone(ctx context.Context, job store.RepositoryClon
 	if err != nil {
 		return "", err
 	}
+	if err = c.authenticateRemote(ctx, job.CredentialID, &remote); err != nil {
+		if errors.Is(err, errCredentialScope) || errors.Is(err, errCredentialVault) {
+			return "", err
+		}
+		return "", errors.New("所选仓库凭据不可用。")
+	}
 	parent := filepath.Join(append([]string{job.Directory, remote.Host}, remote.Parts[:len(remote.Parts)-1]...)...)
 	parent, err = localrepo.ResolveManagedDirectory(parent)
 	if err != nil {
@@ -285,10 +325,18 @@ func (c projectCloneService) clone(ctx context.Context, job store.RepositoryClon
 func projectHTTPSGit(ctx context.Context, dir string, remote cloneRemote, args ...string) (*exec.Cmd, error) {
 	opts := []string{"-c", "protocol.https.allow=always", "-c", "http.followRedirects=false",
 		"-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=60", "-c", "credential.helper=", "-c", "credential.interactive=false"}
-	if remote.Host == "github.com" {
+	if remote.credential != nil {
+		// Git invokes the scoped helper on an authentication challenge. Values
+		// come from the child environment and never become shell source or argv.
+		const helper = `!f() { if test "$1" = get; then printf 'username=%s\npassword=%s\n' "$FORGEOS_REPO_USER" "$FORGEOS_REPO_TOKEN"; fi; }; f`
+		opts = append(opts, "-c", "credential.useHttpPath=true", "-c", "credential."+remote.URL+".helper="+helper)
+	} else if remote.Host == "github.com" {
 		opts = append(opts, "-c", "credential.https://github.com.helper=!gh auth git-credential")
 	}
 	cmd := localrepo.GitCommand(ctx, dir, append(opts, args...)...)
+	if remote.credential != nil {
+		cmd.Env = append(cmd.Env, "FORGEOS_REPO_USER="+remote.credential.username, "FORGEOS_REPO_TOKEN="+remote.credential.token, "GIT_ASKPASS=", "SSH_ASKPASS=")
+	}
 	proxy, err := cloneProxy(ctx, dir, remote.URL)
 	if err != nil {
 		return nil, err

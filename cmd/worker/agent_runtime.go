@@ -7,10 +7,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"forgeos/internal/agents"
+	"forgeos/internal/chatkernel"
 	"forgeos/internal/store"
 )
 
@@ -56,7 +58,13 @@ func (a *agentRuntime) finish(ctx context.Context, harness, session string, turn
 	defer cancel()
 	model := a.observedModel
 	if harness == "codex" && session != "" && model == "" {
-		model = codexSessionModel(call, session)
+		if cfg, ok := ctx.Value(chatProjectKey{}).(*chatkernel.Config); ok {
+			if state, err := os.UserConfigDir(); err == nil {
+				model = sessionModelIn(call, session, filepath.Join(state, "ForgeOS", "chat-kernel", strconv.FormatInt(cfg.ProjectID, 10)))
+			}
+		} else if a.worker.role != managementChatRole {
+			model = codexSessionModel(call, session)
+		}
 	}
 	outcome := "completed"
 	if turnErr != nil {
@@ -88,6 +96,10 @@ func codexSessionModel(ctx context.Context, session string) string {
 		}
 		dir = filepath.Join(home, ".codex")
 	}
+	return sessionModelIn(ctx, session, dir)
+}
+
+func sessionModelIn(ctx context.Context, session, dir string) string {
 	path := filepath.Join(dir, "state_5.sqlite")
 	u := url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(path), "/"), RawQuery: "mode=ro"}
 	db, err := sql.Open("sqlite", u.String())

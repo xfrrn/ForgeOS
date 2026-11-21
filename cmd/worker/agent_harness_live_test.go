@@ -16,12 +16,12 @@ import (
 	"forgeos/internal/store"
 )
 
-// Opt in to three model calls on synthetic inputs using the locally configured CLIs.
+// Opt in to two model calls on synthetic inputs using the locally configured CLIs.
 func TestLiveAlternateRoleHarnesses(t *testing.T) {
 	if os.Getenv("FORGEOS_TEST_LIVE_HARNESSES") != "1" {
 		t.Skip("requires two authenticated local harnesses")
 	}
-	for _, purpose := range []string{"management-chat", "reviewer", "planner"} {
+	for _, purpose := range []string{"reviewer", "planner"} {
 		t.Run(purpose, func(t *testing.T) {
 			h := "claude"
 			if purpose == "reviewer" {
@@ -43,12 +43,6 @@ func TestLiveAlternateRoleHarnesses(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			switch purpose {
-			case "management-chat":
-				var answer managementChatAnswer
-				_, err := node.roleJSONTurn(ctx, false, store.ManagementProcessReport{}, managementChatSchema, "Answer the greeting Bonjour in one sentence. There are no project sources or requested actions.", 32<<10, &answer)
-				if err != nil || answer.Answer == "" || answer.Action != nil {
-					t.Fatalf("chat failed: %v", err)
-				}
 			case "reviewer":
 				snapshot := review.Snapshot{Base: strings.Repeat("a", 40), Commit: strings.Repeat("b", 40), Files: []review.File{{Path: "hello.txt", Before: []string{"helo"}, After: []string{"hello"}}}}
 				r, err := reviewSnapshot(node.agentContext(ctx, &a), snapshot, candidateReview{Requirement: "Correct the spelling in hello.txt."}, processLog{})

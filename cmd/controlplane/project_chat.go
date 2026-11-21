@@ -18,7 +18,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"forgeos/internal/agents"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
 	"github.com/google/uuid"
@@ -98,13 +97,16 @@ func (n chatNodes) authorize(next func(int64, http.ResponseWriter, *http.Request
 }
 
 type projectChat struct {
-	data *store.Store
-	root string
-	get  githubGET
+	issueClient chatIssueClient
+	data        *store.Store
+	root        string
+	get         githubGET
 }
 
-func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner string, nodes chatNodes, get githubGET) {
-	chat := projectChat{data: data, root: root, get: get}
+func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner string, nodes chatNodes, get githubGET, providers chatProviders, issueClient chatIssueClient) {
+	chat := projectChat{data: data, root: root, get: get, issueClient: issueClient}
+	registerChatProvider(mux, data, owner, nodes, providers)
+	registerChatStream(mux, data, owner, nodes)
 	mux.HandleFunc("GET /projects/{id}/chat", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
@@ -159,10 +161,9 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			return
 		}
 		var in struct {
-			Model    string `json:"model"`
-			Harness  string `json:"harness,omitempty"`
-			ClientID string `json:"client_id"`
-			Text     string `json:"text"`
+			ProfileID uuid.UUID `json:"profile_id"`
+			ClientID  string    `json:"client_id"`
+			Text      string    `json:"text"`
 		}
 		if !decodeLimited(w, r, &in, 32<<10) {
 			return
@@ -173,17 +174,25 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			problem(w, http.StatusBadRequest, "请输入 1 至 4000 个字符。")
 			return
 		}
-		if !agents.ValidModel(in.Model) {
-			problem(w, 400, "模型标识无效。")
+		if in.ProfileID == uuid.Nil {
+			problem(w, 409, "请先选择聊天模型。")
 			return
 		}
-		turn, err := data.SendChat(r.Context(), project, id.String(), in.Text, in.Model, in.Harness)
+		turn, err := data.SendChat(r.Context(), project, id.String(), in.Text, in.ProfileID)
+		if errors.Is(err, store.ErrConflict) {
+			problem(w, 409, "模型选择已失效，或该消息已使用其他模型发送。请刷新模型列表后重试。")
+			return
+		}
 		respond(w, http.StatusCreated, turn, err)
 	}))
 	mux.HandleFunc("POST /projects/{id}/chat/actions/{action}/confirm", authorized(owner, chat.confirm))
 	mux.HandleFunc("POST /internal/management-chat/claim", nodes.authorize(func(project int64, w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-ForgeOS-Claim-Key") == "" || r.Header.Get("X-ForgeOS-Node") == "" {
 			problem(w, http.StatusBadRequest, "Management chat claims require a node and a claim key")
+			return
+		}
+		if r.URL.Query().Get("project_kernel") != "1" {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		idempotentRoleClaim(data, project, "management-chat", func(w http.ResponseWriter, r *http.Request) {
@@ -209,10 +218,14 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			respond(w, http.StatusOK, job, nil)
 		})(w, r)
 	}))
+	mux.HandleFunc("POST /internal/management-chat/task-tool", nodes.authorize(chat.taskTool))
 	mux.HandleFunc("POST /internal/management-chat/result", nodes.authorize(chat.result))
 }
 
 type chatProposal struct {
+	Title       string `json:"title,omitempty"`
+	Body        string `json:"body,omitempty"`
+	WorkType    string `json:"work_type,omitempty"`
 	Kind        string `json:"kind"`
 	IssueNumber int64  `json:"issue_number"`
 }
@@ -248,7 +261,20 @@ func (c projectChat) result(project int64, w http.ResponseWriter, r *http.Reques
 	failure := ""
 	if in.Error != "" {
 		in.Answer, in.Citations = "", nil
-		failure = "Management 回合失败，请重试。"
+		switch in.Error {
+		case "provider_unreachable":
+			failure = "聊天节点无法连接模型服务，请检查项目的 Base URL。"
+		case "provider_auth":
+			failure = "模型服务拒绝了认证，请检查此项目的 API Key 和模型访问权限。"
+		case "provider_not_found":
+			failure = "模型服务未找到接口或模型，请检查 Base URL 和模型 ID。"
+		case "provider_request":
+			failure = "模型服务拒绝了请求，请检查模型 ID、回复格式和工具支持。"
+		case "provider_limit":
+			failure = "模型服务已限流或配额不足，请检查配额后重试。"
+		default:
+			failure = "Management 回合失败，请重试。"
+		}
 	} else if in.Action != nil && in.Action.Kind != "" {
 		var reason string
 		action, reason = c.prepareAction(ctx, project, text, *in.Action)
@@ -262,6 +288,17 @@ func (c projectChat) result(project int64, w http.ResponseWriter, r *http.Reques
 
 func (c projectChat) prepareAction(ctx context.Context, project int64, text string, proposed chatProposal) (*store.ChatAction, string) {
 	switch proposed.Kind {
+	case "create_issue":
+		title, body := strings.TrimSpace(proposed.Title), strings.ReplaceAll(strings.TrimSpace(proposed.Body), "\r\n", "\n")
+		if !validChatIssue(title, body, proposed.WorkType) {
+			return nil, "Issue 草稿缺少有效的标题、需求正文或工作类型，请补充后重试。"
+		}
+		repo, _, err := c.issueRepository(ctx, project)
+		if err != nil {
+			return nil, "暂时无法核对本项目的 GitHub 仓库，请检查仓库连接和读取权限。"
+		}
+		return &store.ChatAction{Kind: "create_issue", Label: title, Body: body, WorkType: proposed.WorkType, Repository: repo.FullName, RepositoryID: repo.ID}, ""
+
 	case "check_head":
 		p, err := c.data.ProjectWorkspace(ctx, project)
 		if err != nil {
@@ -291,7 +328,7 @@ func (c projectChat) prepareAction(ctx context.Context, project int64, text stri
 		}
 		return card, ""
 	default:
-		return nil, "项目聊天支持派发现有 Issue 和运行 HEAD 检查。"
+		return nil, "项目聊天支持创建并派发新 Issue、派发现有 Issue 和运行 HEAD 检查。"
 	}
 }
 
@@ -313,9 +350,7 @@ func (c projectChat) confirm(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusBadRequest, "无效的操作卡。")
 		return
 	}
-	var in struct {
-		WorkType string `json:"work_type"`
-	}
+	var in chatIssueDraft
 	if !decode(w, r, &in) {
 		return
 	}
@@ -323,6 +358,10 @@ func (c projectChat) confirm(w http.ResponseWriter, r *http.Request) {
 	action, err := c.data.ChatAction(ctx, project, id)
 	if err != nil {
 		respond(w, 0, nil, err)
+		return
+	}
+	if action.Kind == "create_issue" && action.Status == "pending" {
+		c.confirmNewIssue(w, r, project, action, in)
 		return
 	}
 	var spec *store.IssueSpec

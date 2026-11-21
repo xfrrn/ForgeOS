@@ -127,6 +127,17 @@ func fromEnv(role string) (*worker, error) {
 		if strings.TrimSpace(w.token) == "" {
 			return nil, fmt.Errorf("set the dedicated %s token", role)
 		}
+		if role == managementChatRole {
+			bin := os.Getenv("FORGEOS_CHAT_KERNEL_BIN")
+			if !filepath.IsAbs(bin) || !strings.EqualFold(strings.TrimSuffix(filepath.Base(bin), filepath.Ext(bin)), "forgeos-chat-kernel") {
+				return nil, errors.New("set FORGEOS_CHAT_KERNEL_BIN to the ForgeOS project chat kernel")
+			}
+			if _, err = readKernelVersion(bin, "forgeos-chat-kernel "); err != nil {
+				return nil, err
+			}
+			w.codex, w.planner = bin, true
+			return w, nil
+		}
 		w.codex, w.planner, err = findCodex(os.Getenv("FORGEOS_CODEX_BIN"), false)
 		if err != nil {
 			return nil, err

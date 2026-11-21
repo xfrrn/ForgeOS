@@ -28,8 +28,13 @@ export type ProjectRoute = ProjectPage & {
 
 export type WorkbenchRoute =
   | { kind: 'projects' | 'skills' | 'agents' | 'system' | 'notifications' | 'missing' }
+  | { kind: 'credentials'; projectId?: number }
   | { kind: 'legacy-task'; task: TaskRoute; path: string; captureQuery?: string }
   | ProjectRoute
+
+export function credentialsHref(projectId?: number) {
+  return '#/settings/credentials' + (projectId ? '?project=' + projectId : '')
+}
 
 function positiveId(value: string | undefined): number | undefined {
   const id = Number(value)
@@ -56,6 +61,7 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   }
   if (path === '/skills') return { kind: 'skills' }
   if (path === '/agents') return { kind: 'agents' }
+  if (path === '/settings/credentials') return { kind: 'credentials', projectId: positiveId(params.get('project') ?? undefined) }
   if (path === '/workers') return { kind: 'system' }
   if (path === '/notifications') return { kind: 'notifications' }
   const legacy = readTaskRoute(path)
@@ -102,6 +108,7 @@ export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.kind === 'projects') return '项目'
   if (route.kind === 'skills') return 'Skill 库'
   if (route.kind === 'agents') return 'Agent 管理'
+  if (route.kind === 'credentials') return '密钥与凭据'
   if (route.kind === 'system') return '运行环境'
   if (route.kind === 'notifications') return '通知'
   if (route.kind === 'legacy-task') return route.task.preview ? '预览反馈' : '任务详情'

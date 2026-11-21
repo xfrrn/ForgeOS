@@ -55,7 +55,7 @@ export function AgentSettings({projectId, request}: {projectId?: number; request
           {notice && <p role="status">{notice}</p>}
         </section>
         <section className="panel agent-panel"><h2>最近一次运行</h2>
-        {selected.last ? <RunDetails run={selected.last} catalog={catalog}/> : <p>此用途尚无新版 Worker 的运行回执。</p>}</section>
+        {selected.last ? <RunDetails run={selected.last} catalog={catalog} projectChat={selected.key==='management-chat'}/> : <p>此用途尚无新版 Worker 的运行回执。</p>}</section>
       </div>
     </div>}
   </div>
@@ -81,12 +81,13 @@ function AgentForm({entry,project,path,request,onSaved,onReload,catalog}: {entry
     setSaving(true);setError('')
     try {
       await request(path,{method:'PUT',body:JSON.stringify({key:entry.key,previous:entry.local_revision,effective:current.revision,
-        reset,settings:reset?null:{prompt,harness,model:model.trim(),skills}})})
+        reset,settings:reset?null:{prompt,harness:entry.key==='management-chat'?'codex':harness,model:entry.key==='management-chat'?'':model.trim(),skills}})})
       await onSaved(reset?'已恢复继承。':'已保存，新领取的任务将使用此版本。')
     } catch(e){setError(e instanceof Error?e.message:'保存失败。')} finally{setSaving(false)}
   }
   return <form onSubmit={e=>{e.preventDefault();void save(false)}}>
     <p>当前生效版本　<strong>{version(current)}</strong></p>
+    {entry.key==='management-chat' ? <p>项目聊天使用 ForgeOS 内核。{project ? <a href={path.replace(/^\/projects\/(\d+)\/agents$/, '#/settings/credentials?project=$1')}>管理共享聊天模型</a> : <a href="#/settings/credentials">管理共享聊天模型</a>}</p> : <>
     <div className="agent-fields"><ThemedSelect label="执行 Harness" value={harness}
       options={entry.harnesses.map(value=>({value,label:harnessNames[value]}))}
       onChange={value=>{setHarness(value);setModel('')}}/>
@@ -94,6 +95,7 @@ function AgentForm({entry,project,path,request,onSaved,onReload,catalog}: {entry
       setModel(id)
       if(harness==='task' && provider)setHarness(provider)
     }}/></div>
+    </>}
     {(entry.key==='planner' || entry.key==='operations') && <p>新派发的规划任务使用此 Harness。子任务使用任务实现的配置。</p>}
     {entry.key==='implementation' && <p>Harness 选择在新任务派发时生效。派发时明确选择的 Harness 优先。</p>}
     <fieldset className="agent-skills" disabled={saving}>
@@ -112,10 +114,10 @@ function AgentForm({entry,project,path,request,onSaved,onReload,catalog}: {entry
     {error && <p role="alert">{error} <button type="button" className="button" onClick={onReload}>重新读取配置</button></p>}
   </form>
 }
-function RunDetails({run,catalog}: {run:Run;catalog:Skill[]}) {
+function RunDetails({run,catalog,projectChat}: {run:Run;catalog:Skill[];projectChat:boolean}) {
   return <><dl className="agent-facts"><Fact label="完成时间">{new Date(run.at).toLocaleString()}</Fact>
     <Fact label="执行结果">{run.outcome==='completed'?'已完成':'失败'}</Fact><Fact label="执行节点">{run.node}</Fact>
-    <Fact label="实际 Harness">{harnessNames[run.harness]}</Fact><Fact label="实际模型">{run.model||'Harness 未报告'}</Fact>
+    <Fact label="实际 Harness">{projectChat && run.harness==='codex' ? 'Codex 内核' : harnessNames[run.harness]}</Fact><Fact label="实际模型">{run.model||'Harness 未报告'}</Fact>
     <Fact label="本次 Skills">{run.config.packages?.map(s=>s.name).join("、") || run.config.skills?.map(id=>catalog.find(s=>s.id===id)?.name ?? "#"+id).join("、") || "无"}</Fact>
     <Fact label="提示词版本">{version(run.config)}</Fact><Fact label="项目">#{run.project_id}</Fact>
     {run.session && <Fact label="原生会话" code>{run.session}</Fact>}</dl>

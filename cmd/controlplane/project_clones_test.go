@@ -53,7 +53,7 @@ func TestProjectCloneRoutes(t *testing.T) {
 	managed := filepath.Join(t.TempDir(), "repositories")
 	t.Setenv("FORGEOS_MANAGED_REPO_ROOT", managed)
 	handler := routes(data, local, "owner", legacyWorker("worker"), nil)
-	registerProjectChat(handler, data, local, "owner", nil, ghRead)
+	registerProjectChat(handler, data, local, "owner", nil, ghRead, &testChatProviders{}, nil)
 	registerProjectWorkViews(handler, data, "owner")
 	service := projectCloneService{data: data, localRoot: local}
 	service.register(handler, "owner")

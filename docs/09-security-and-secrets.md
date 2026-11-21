@@ -20,6 +20,20 @@
 
 路径建议：`secret/projects/{project_id}/{environment}/{secret_name}`。
 
+### 工作台中的仓库身份
+
+Owner 从右上角「账号与系统 → 密钥与凭据」管理仓库凭据。接入项目默认使用控制面服务账号的本机身份（GitHub 沿用 `gh` 登录），也可为指定仓库添加 Git 用户名与只读访问令牌、验证读取权限并克隆。在项目的「仓库提交与同步 → 更改访问身份」可以切回本机身份。查看远端提交和拉取使用项目绑定的身份；停用凭据后，下一次操作会提示重新选择。创建 PR 等交付操作仍按既有交付身份运行。
+
+启用面板的令牌存储时，为控制面配置 `FORGEOS_BAO_ADDR`、独立的 `FORGEOS_BAO_REPOSITORY_TOKEN_FILE`（绝对路径），私有 CA 使用 `FORGEOS_BAO_CA_FILE`。仓库身份只需访问以下 KV v2 数据路径。本机身份可以独立使用。
+
+```hcl
+path "secret/data/forgeos/repository-credentials/*" {
+  capabilities = ["create", "update", "read"]
+}
+```
+
+「单个仓库」凭据绑定完整仓库地址。「Git 账号」凭据绑定一个 Git 平台域名，可在该域名下多个项目中选择。实际可读仓库取决于 Git 账号和令牌的授权。PostgreSQL 保存名称、Git 用户名、适用范围、启停状态、OpenBao 键与版本引用。令牌只写入 OpenBao，控制面在执行 Git HTTPS 读取时按版本取用。更换令牌会启用新版本，绑定项目下次操作时使用新值。停用影响 ForgeOS 对该凭据的使用；要撤销令牌本身，请在签发它的 Git 服务中撤销。
+
 ### 项目声明的需求
 
 在仓库根目录的 `project.yaml` 中使用可选的 `secret_requirements` 数组。每项仅含 `environment`、`name`、`risk`，分别使用下文的五种环境标识、Secret Manager 的键名格式和 S0–S3。最多 128 项，同一环境内名称唯一。不同环境可使用相同名称。参见[项目配置示例](../schemas/project.yaml.example)。

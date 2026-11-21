@@ -64,8 +64,8 @@ func ValidValidation(profile string) bool {
 
 func (s *Store) Project(ctx context.Context, id int64) (Project, error) {
 	var p Project
-	err := s.db.QueryRowContext(ctx, `SELECT id, path, COALESCE(github_repository_id, 0)
-		FROM projects WHERE id = $1`, id).Scan(&p.ID, &p.Path, &p.RepositoryID)
+	err := s.db.QueryRowContext(ctx, `SELECT id, path, COALESCE(github_repository_id, 0), COALESCE(repository_credential_id, 0)
+		FROM projects WHERE id = $1`, id).Scan(&p.ID, &p.Path, &p.RepositoryID, &p.RepositoryCredentialID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}

@@ -22,8 +22,8 @@ func (s *Store) ChatTaskFacts(ctx context.Context, project int64, ids []int64) (
 			'active_worker',CASE WHEN t.status='RUNNING' AND e.lease_until>now() THEN e.worker END,
 			'execution_lease_expired',CASE WHEN t.status='RUNNING' THEN e.lease_until<=now() END,
 			'pending_dependencies',(SELECT jsonb_agg(d) FROM (
-				SELECT p.id,p.status FROM work_dependencies w JOIN work_items p ON p.id=w.prerequisite
-				WHERE w.task_id=t.id AND p.project_id=$1 AND p.status<>'DONE' ORDER BY p.id LIMIT 10) d),
+				SELECT p.id,p.status,delivery.state AS delivery_status FROM work_dependencies w JOIN work_items p ON p.id=w.prerequisite LEFT JOIN deliveries delivery ON delivery.task_id=p.id
+				WHERE w.task_id=t.id AND p.project_id=$1 AND (p.status<>'DONE' OR delivery.state IS DISTINCT FROM 'DONE') ORDER BY p.id LIMIT 10) d),
 			'pending_questions',(SELECT jsonb_agg(q) FROM (
 				SELECT id,left(question,300) AS question FROM decision_questions
 				WHERE task_id=t.id AND answer IS NULL AND withdrawn_at IS NULL ORDER BY id DESC LIMIT 3) q),

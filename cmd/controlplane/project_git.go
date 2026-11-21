@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"forgeos/internal/localrepo"
-	"forgeos/internal/store"
 )
 
 type projectUpstream struct {
@@ -20,7 +19,7 @@ type projectUpstream struct {
 	trackingRef string
 }
 
-func registerProjectGit(mux *http.ServeMux, data *store.Store, root, owner string) {
+func (c projectCloneService) registerProjectGit(mux *http.ServeMux, owner string) {
 	var pulls sync.Map
 	for _, route := range []struct{ method, action string }{{"GET", "local"}, {"GET", "remote"}, {"POST", "pull"}} {
 		mux.HandleFunc(route.method+" /projects/{id}/git/"+route.action, authorizedFor(owner, 90*time.Second, func(w http.ResponseWriter, r *http.Request) {
@@ -29,12 +28,12 @@ func registerProjectGit(mux *http.ServeMux, data *store.Store, root, owner strin
 				return
 			}
 			ctx := r.Context()
-			project, err := data.Project(ctx, id)
+			project, err := c.data.Project(ctx, id)
 			if err != nil {
 				respond(w, 0, nil, err)
 				return
 			}
-			repo, err := localrepo.ResolveRepo(ctx, root, project.Path)
+			repo, err := localrepo.ResolveRepo(ctx, c.localRoot, project.Path)
 			if err != nil {
 				problem(w, http.StatusConflict, "项目的本地 Git 仓库不可用。")
 				return
@@ -65,6 +64,10 @@ func registerProjectGit(mux *http.ServeMux, data *store.Store, root, owner strin
 			upstream, err := findProjectUpstream(ctx, repo, local.Branch)
 			if err != nil {
 				problem(w, http.StatusConflict, err.Error())
+				return
+			}
+			if err = c.authenticateRemote(ctx, project.RepositoryCredentialID, &upstream.remote); err != nil {
+				credentialProblem(w, err)
 				return
 			}
 			tmp, err := os.MkdirTemp("", "forgeos-project-git-")
