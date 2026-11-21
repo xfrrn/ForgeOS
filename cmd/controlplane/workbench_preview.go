@@ -21,7 +21,7 @@ import (
 	"forgeos/internal/store"
 )
 
-var workbenchPreviewReadPath = regexp.MustCompile(`^(/projects/[1-9][0-9]*(/(overview-context|planning|chat|chat/provider|execution-queue|test-checks|preview))?|/tasks/[1-9][0-9]*)$`)
+var workbenchPreviewReadPath = regexp.MustCompile(`^(/projects/[1-9][0-9]*(/(overview-context|planning|chat|chat/provider|execution-queue|test-checks))?|/tasks/[1-9][0-9]*)$`)
 
 func runWorkbenchPreview(ctx context.Context, sampleRepo string) error {
 	appPort, appErr := strconv.Atoi(os.Getenv("PORT"))
@@ -69,7 +69,6 @@ func runWorkbenchPreview(ctx context.Context, sampleRepo string) error {
 	registerProjectWorkViews(mux, data, owner)
 	registerProjectOverviewContext(mux, data, root, owner, nil)
 	registerProjectChat(mux, data, root, owner, nil, nil, nil, nil)
-	registerProjectPreview(mux, data, owner, "", 0)
 	registerRuntimeStatus(ctx, mux, db, root, owner)
 	server := &http.Server{
 		Addr:              net.JoinHostPort("127.0.0.1", strconv.Itoa(appPort)),
