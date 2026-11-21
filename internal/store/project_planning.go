@@ -7,19 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 // The workspace revision protects edits made from two different browser tabs.
 // Task execution state is read directly from work_items and never copied back.
 type PlanningEdit struct {
-	Revision *int64 `json:"revision"`
-	Action   string `json:"action"`
-	ID       int64  `json:"id"`
-	Target   int64  `json:"target"`
-	Title    string `json:"title"`
-	Body     string `json:"body"`
-	Flag     bool   `json:"flag"`
+	// Older clients omit both dates. Explicit empty strings clear the schedule.
+	StartDate *string `json:"start_date"`
+	EndDate   *string `json:"end_date"`
+	Revision  *int64  `json:"revision"`
+	Action    string  `json:"action"`
+	ID        int64   `json:"id"`
+	Target    int64   `json:"target"`
+	Title     string  `json:"title"`
+	Body      string  `json:"body"`
+	Flag      bool    `json:"flag"`
 }
 
 func (e PlanningEdit) Valid() bool {
@@ -30,7 +34,25 @@ func (e PlanningEdit) Valid() bool {
 	switch e.Action {
 	case "overview":
 		return true
-	case "milestone", "delivery", "retro", "improvement":
+	case "milestone":
+		if (e.StartDate == nil) != (e.EndDate == nil) {
+			return false
+		}
+		if e.StartDate != nil {
+			for _, date := range []string{*e.StartDate, *e.EndDate} {
+				if date == "" {
+					continue
+				}
+				if _, err := time.Parse(time.DateOnly, date); err != nil || strings.HasPrefix(date, "0000") {
+					return false
+				}
+			}
+			if *e.StartDate != "" && *e.EndDate != "" && *e.StartDate > *e.EndDate {
+				return false
+			}
+		}
+		return strings.TrimSpace(e.Title) != ""
+	case "delivery", "retro", "improvement":
 		return strings.TrimSpace(e.Title) != ""
 	case "excerpt":
 		return e.ID > 0 && strings.TrimSpace(e.Title) != "" && strings.TrimSpace(e.Body) != "" && len(e.Body) <= 8192
@@ -110,9 +132,12 @@ func (s *Store) EditPlanning(ctx context.Context, p int64, e PlanningEdit, repo 
 		err = exec(`UPDATE project_plans SET overview=$2 WHERE project_id=$1`, p, e.Body)
 	case "milestone":
 		if e.ID == 0 {
-			err = exec(`INSERT INTO plan_milestones(project_id,title,body,position) SELECT $1,$2,$3,coalesce(max(position),0)+1 FROM plan_milestones WHERE project_id=$1`, p, e.Title, e.Body)
+			err = exec(`INSERT INTO plan_milestones(project_id,title,body,position,start_date,end_date) SELECT $1,$2,$3,coalesce(max(position),0)+1,NULLIF($4,'')::date,NULLIF($5,'')::date FROM plan_milestones WHERE project_id=$1`, p, e.Title, e.Body, e.StartDate, e.EndDate)
 		} else {
-			err = exec(`UPDATE plan_milestones SET title=$3,body=$4 WHERE project_id=$1 AND id=$2`, p, e.ID, e.Title, e.Body)
+			err = exec(`UPDATE plan_milestones SET title=$3,body=$4,
+            start_date=CASE WHEN $5::text IS NULL THEN start_date ELSE NULLIF($5,'')::date END,
+            end_date=CASE WHEN $6::text IS NULL THEN end_date ELSE NULLIF($6,'')::date END
+            WHERE project_id=$1 AND id=$2`, p, e.ID, e.Title, e.Body, e.StartDate, e.EndDate)
 		}
 	case "order":
 		err = exec(`WITH neighbors AS (SELECT id,position,lag(id) OVER w AS prev,lead(id) OVER w AS next FROM plan_milestones WHERE project_id=$1 WINDOW w AS (ORDER BY position,id)),

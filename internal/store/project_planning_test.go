@@ -42,6 +42,8 @@ func TestPlanningMilestoneRetrospective(t *testing.T) {
 	type row struct {
 		ID         int64
 		Title      string
+		StartDate  *string `json:"start_date"`
+		EndDate    *string `json:"end_date"`
 		Deliveries []struct {
 			ID    int64
 			Tasks []struct{ ID int64 }
@@ -56,12 +58,29 @@ func TestPlanningMilestoneRetrospective(t *testing.T) {
 		Improvements []row
 		Excerpts     []struct{ Entry int64 }
 		Drafts       []row
-	}) { t.Helper(); raw, err := s.ProjectPlanning(ctx, p.ID); must(err); must(json.Unmarshal(raw, &d)); return }
+	}) {
+		t.Helper()
+		raw, err := s.ProjectPlanning(ctx, p.ID)
+		must(err)
+		must(json.Unmarshal(raw, &d))
+		return
+	}
 	edit(PlanningEdit{Action: "overview", Body: "# Roadmap"})
-	edit(PlanningEdit{Action: "milestone", Title: "First"})
+	start, end, empty, bad := "2026-11-16", "2026-11-20", "", "2026-02-30"
+	denied(PlanningEdit{Action: "milestone", Title: "Invalid", StartDate: &end, EndDate: &start})
+	denied(PlanningEdit{Action: "milestone", Title: "Invalid", StartDate: &bad, EndDate: &empty})
+	edit(PlanningEdit{Action: "milestone", Title: "First", StartDate: &start, EndDate: &end})
 	edit(PlanningEdit{Action: "milestone", Title: "Next"})
 	ms := read().Milestones
 	a, b := ms[0].ID, ms[1].ID
+	if ms[1].StartDate != nil || ms[1].EndDate != nil {
+		t.Fatal("invented dates")
+	}
+	edit(PlanningEdit{Action: "milestone", ID: a, Title: "First edited by legacy client"})
+	dates := read().Milestones[0]
+	if dates.StartDate == nil || *dates.StartDate != start || dates.EndDate == nil || *dates.EndDate != end {
+		t.Fatal("lost stored dates")
+	}
 	edit(PlanningEdit{Action: "delivery", Title: "Small release", Body: "Smoke check", Target: a})
 	d := read().Milestones[0].Deliveries[0].ID
 	denied(PlanningEdit{Action: "link", ID: d, Target: foreign.ID})
@@ -74,6 +93,13 @@ func TestPlanningMilestoneRetrospective(t *testing.T) {
 	r := read().Retros[0]
 	if len(r.Snapshot) != 1 || r.Snapshot[0].Deliveries[0].Tasks[0].ID != work.ID {
 		t.Fatal(r)
+	}
+	edit(PlanningEdit{Action: "milestone", ID: a, Title: "First", StartDate: &empty, EndDate: &empty})
+	if m := read().Milestones[0]; m.StartDate != nil || m.EndDate != nil {
+		t.Fatal("dates not cleared")
+	}
+	if saved := read().Retros[0].Snapshot[0]; saved.EndDate == nil || *saved.EndDate != end {
+		t.Fatal("changed historical dates")
 	}
 	edit(PlanningEdit{Action: "improvement", Target: r.ID, Title: "Automate smoke check"})
 	i := read().Improvements[0].ID
