@@ -1,0 +1,5 @@
+{
+  "script": "scripts/preview-forgeos.ps1",
+  "health_path": "/ui/",
+  "timeout_seconds": 120
+}
