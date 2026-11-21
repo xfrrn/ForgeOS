@@ -34,13 +34,16 @@ $password = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]
 $reservation = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 
 Set-Location -LiteralPath $source
+Write-Output 'Building the preview control plane.'
 & $go build -buildvcs=false -o $control ./cmd/controlplane
-& $npm --prefix web ci --no-audit --no-fund
+Write-Output 'Building the preview web bundle.'
+& $npm --prefix web ci --prefer-offline --fetch-retries=0 --fetch-timeout=10000 --no-audit --no-fund
 & $npm --prefix web run build
 
 # Create a small repository for the sample project. It has no remotes.
 & git init --quiet $previewRepo
 & git -C $previewRepo -c user.name='ForgeOS Preview' -c user.email='preview@forgeos.test' -c core.hooksPath=NUL commit --allow-empty --quiet -m 'ForgeOS sample project'
+Write-Output 'Starting a temporary PostgreSQL cluster.'
 [IO.File]::WriteAllText($dbPasswordFile, "$password`n")
 try {
     & (Join-Path $postgresBin 'initdb.exe') -D $data -U forgeos_preview --auth=scram-sha-256 --encoding=UTF8 --no-locale --pwfile=$dbPasswordFile
