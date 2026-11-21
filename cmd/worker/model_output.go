@@ -82,12 +82,14 @@ func (p *processLog) saveOutputState(tx *sql.Tx, stream string, open bool) error
 }
 
 func (o *modelOutput) redact(text string) (string, error) {
-	token, err := o.credential()
-	if err != nil {
-		return "", err
-	}
-	if token != "" && !slices.Contains(o.secrets, token) {
-		o.secrets = append(o.secrets, token)
+	if o.credential != nil {
+		token, err := o.credential()
+		if err != nil {
+			return "", err
+		}
+		if token != "" && !slices.Contains(o.secrets, token) {
+			o.secrets = append(o.secrets, token)
+		}
 	}
 	// Preserve private-key redaction across output records; never journal the raw text.
 	if o.privateKey {
