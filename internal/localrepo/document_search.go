@@ -29,6 +29,29 @@ type DocumentSearch struct {
 	More        bool            `json:"more"`
 }
 
+// DocumentRevision pins HEAD once and admits historical commits reachable from it.
+func DocumentRevision(ctx context.Context, repo, revision string) (string, error) {
+	if revision != "" && !objectID.MatchString(revision) {
+		return "", ErrDocumentRevision
+	}
+	raw, err := Git(ctx, repo, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return "", err
+	}
+	head := strings.TrimSpace(string(raw))
+	if revision == "" || revision == head {
+		return head, nil
+	}
+	if _, err := Git(ctx, repo, "merge-base", "--is-ancestor", revision, head); err != nil {
+		return "", ErrDocumentRevision
+	}
+	kind, err := Git(ctx, repo, "cat-file", "-t", revision)
+	if err != nil || strings.TrimSpace(string(kind)) != "commit" {
+		return "", ErrDocumentRevision
+	}
+	return revision, nil
+}
+
 // SearchDocuments pins the revision and validates the entire blob before reporting a text file.
 // With a visitor, all eligible files are visited for ranking, including those without a literal match.
 func SearchDocuments(ctx context.Context, repo, revision, query string, visit func(DocumentMatch) error) (DocumentSearch, error) {
@@ -39,17 +62,11 @@ func SearchDocuments(ctx context.Context, repo, revision, query string, visit fu
 	if len(query) == 0 || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
 		return result, errors.New("invalid document query")
 	}
-	head, err := Git(ctx, repo, "rev-parse", "--verify", "HEAD^{commit}")
+	commit, err := DocumentRevision(ctx, repo, revision)
 	if err != nil {
 		return result, err
 	}
-	result.Commit = strings.TrimSpace(string(head))
-	if revision != "" && revision != result.Commit {
-		if _, err := Git(ctx, repo, "merge-base", "--is-ancestor", revision, result.Commit); err != nil {
-			return result, ErrDocumentRevision
-		}
-		result.Commit = revision
-	}
+	result.Commit = commit
 	date, err := Git(ctx, repo, "show", "-s", "--no-patch", "--format=%cI", "--no-show-signature", result.Commit, "--")
 	if err != nil {
 		return result, err

@@ -1,169 +1,222 @@
-import { ThemedSelect } from './ThemedSelect'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { MaterialBatchImport } from './MaterialBatchImport'
+import { MaterialCatalog, materialKinds, useLibraryResource, type DocumentTree, type MaterialScope, type MaterialSelection } from './MaterialCatalog'
+import { MaterialEditor, type MaterialDraft, type StoredMaterial } from './MaterialEditor'
+import { MaterialReader } from './MaterialReader'
 import { KnowledgeCuration } from './KnowledgeCuration'
 import { ExperienceSearch } from './ExperienceSearch'
 import { RepositoryDocumentChanges } from './RepositoryDocumentChanges'
+import { ProjectGit } from './ProjectGit'
 import { ShareDraft } from './ProjectShares'
-import { ApiError, formatTime, projectHref, type ApiRequest } from './shared'
-import { BackLink, PageHeading } from './ui'
+import { Icon, formatTime, projectHref, type ApiRequest } from './shared'
+import { PageHeading } from './ui'
+import './project-materials.css'
 
-const kinds = { material: '导入资料', profile: '项目档案', environment: '环境说明', memory: 'Owner 记忆请求' }
-type Kind = keyof typeof kinds
-type Draft = { key: string; kind: Kind; title: string; source: string; content: string }
-type Document = Draft & { revision: number; content_sha256: string; imported_at: string }
-type Summary = Omit<Document, 'content'> & { excerpt: string; start_char?: number; end_char?: number }
-const empty: Draft = { key: '', kind: 'material', title: '', source: '', content: '' }
-const options = Object.entries(kinds).map(([value,label])=>({value,label}))
+type GitDocument = { path: string; commit: string; blob: string; content: string }
+type DisplayedGit = {commit: string} | {missingPath: string}
+const sourceOptions = [{value:'all',label:'全部'}, {value:'git',label:'Git 仓库'}, {value:'forge',label:'ForgeOS'}] as const
 
-function DocumentText({ doc }: { doc: Document }) {
+function MaterialLink({ href }: { href: string }) {
+  const [message, setMessage] = useState('')
+  const field = useRef<HTMLInputElement>(null)
+  const url = new URL(href, window.location.href).href
+  async function copy() {
+    try { await navigator.clipboard.writeText(url); setMessage('已复制资料链接。') }
+    catch { field.current?.focus(); field.current?.select(); setMessage('已选中资料链接，可直接复制。') }
+  }
+  return <div className="materials-reference"><label>资料链接<input readOnly ref={field} value={url} onFocus={e=>e.target.select()}/></label>
+    <button className="button" onClick={copy}>复制资料链接</button>{message && <small role="status">{message}</small>}</div>
+}
+
+function GitReader({ project, selection, request, refresh, onRetry, onSelect, onRead }: {
+  project: number; selection: Extract<MaterialSelection,{source:'git'}>; request: ApiRequest; onSelect: (item: MaterialSelection)=>void
+  refresh: string; onRetry: () => void; onRead: (observed?: DisplayedGit) => void
+}) {
+  const [linkError, setLinkError] = useState('')
+  const params = new URLSearchParams({path:selection.path})
+  const result = useLibraryResource<GitDocument>(request,'/projects/'+project+'/documents/read?'+params,refresh)
+  const commit = result?.data?.commit
+  useEffect(() => {
+    if (commit) onRead({commit})
+    else if (result?.status === 404) onRead({missingPath:selection.path})
+    return () => onRead(undefined)
+  },[commit,result?.status,selection.path,onRead])
+  if (!result) return <p role="status">正在读取仓库原文…</p>
+  if (!result.data) return <p role="alert"><code>{selection.path}</code> · {result.error} <button className="button" onClick={onRetry}>重试</button></p>
+  const doc = result.data
+  function openLink(target: string) {
+    try {
+      const origin = 'https://repository.invalid'
+      const base = origin+'/'+doc.path.split('/').map(encodeURIComponent).join('/')
+      const url = new URL(target,base)
+      if (url.origin !== origin) throw new Error()
+      const path = decodeURIComponent(url.pathname.slice(1))
+      if (!path || path.includes('\\')) throw new Error()
+      onSelect({source:'git',path,anchor:decodeURIComponent(url.hash.slice(1)) || undefined})
+    } catch { setLinkError('无法解析文档路径。') }
+  }
+  const name = doc.path.split('/').at(-1)!
   return <>
-    <h3>{doc.title}</h3>
-    <p>{kinds[doc.kind]} · 修订 {doc.revision} · {formatTime(doc.imported_at)}</p>
-    <p>来源 · {doc.source}</p>
-    <p>SHA-256 · <code>{doc.content_sha256}</code></p>
-    <pre className="material-content">{doc.content}</pre>
+    <div className="materials-origin"><Icon name="GitBranch" size={15}/> Git 仓库 <code>{doc.commit.slice(0,9)}</code></div>
+    <h2 className="materials-title">{name}</h2><p className="materials-path">{doc.path}</p>
+    <MaterialReader content={doc.content} markdown={/\.(?:md|mdx|markdown)$/i.test(name) || /^readme$/i.test(name)}
+      initialAnchor={selection.anchor} onDocumentLink={openLink}/>
+    {linkError && <p role="alert">{linkError}</p>}
+    <details className="materials-meta"><summary>资料信息与链接</summary><p>当前读取的提交 <code>{doc.commit}</code></p>
+      <MaterialLink href={projectHref(project,'/materials?'+params)}/></details>
   </>
 }
 
-export function ProjectMaterials({ project, initialKey, initialRevision, request }: {
-  project: number; initialKey?: string; initialRevision?: number; request: ApiRequest
+function ForgeReader({ project, selection, request, refresh, onRetry, onSelect, onEdit }: {
+  project: number; selection: Extract<MaterialSelection,{source:'forge'}>; request: ApiRequest
+  refresh: string; onRetry: () => void
+  onSelect: (item: MaterialSelection)=>void; onEdit: (item: StoredMaterial)=>void
 }) {
-  const base = `/projects/${project}/materials`
-  const [query, setQuery] = useState('')
-  const [kind, setKind] = useState('')
-  const [filter, setFilter] = useState({ q: '', kind: '', after: '' })
-  const [rows, setRows] = useState<Summary[]>([])
-  const [more, setMore] = useState(false)
-  const [listing, setListing] = useState(true)
-  const [listError, setListError] = useState('')
-  const [doc, setDoc] = useState<Document>()
-  const [latest, setLatest] = useState(0)
-  const [draft, setDraft] = useState<Draft>()
-  const [previous, setPrevious] = useState(0)
-  const [conflict, setConflict] = useState<Document>()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const lifetime = useRef<AbortController | null>(null)
-  const contentHeading = useRef<HTMLHeadingElement>(null)
-  const editing = Boolean(draft)
-  useEffect(() => { contentHeading.current?.focus() }, [doc, editing])
-  useEffect(() => {
-    const c = new AbortController()
-    lifetime.current = c
-    return () => c.abort()
-  }, [request, project])
-  useEffect(() => {
-    const c = new AbortController()
-    const params = new URLSearchParams()
-    for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value)
-    setListing(true); setListError(''); setMore(false)
-    if (!filter.after) setRows([])
-    request<Summary[]>(base + (params.size ? '?' + params : ''), { signal: c.signal }).then(items => {
-      if (c.signal.aborted) return
-      setRows(old => filter.after ? old.concat(items.filter(i => !old.some(r => r.key === i.key))) : items)
-      setMore(!filter.q && items.length === 30)
-    }).catch(e => { if (!c.signal.aborted) setListError(e.message) })
-      .finally(() => { if (!c.signal.aborted) setListing(false) })
-    return () => c.abort()
-  }, [request, base, filter])
+  const base = '/projects/'+project+'/materials/'+encodeURIComponent(selection.key)
+  const head = useLibraryResource<StoredMaterial>(request,base,refresh)
+  // Read a pinned revision independently so its availability does not depend on the list or the current revision.
+  const pinned = useLibraryResource<StoredMaterial>(request,selection.revision ? base+'?revision='+selection.revision : '',refresh)
+  const result = selection.revision ? pinned : head
+  if (!result) return <p role="status">正在读取资料修订…</p>
+  if (!result.data) return <p role="alert">{result.error} <button className="button" onClick={onRetry}>重试</button></p>
+  const doc = result.data
+  const jump = (revision?: number) => onSelect({source:'forge',key:doc.key,revision})
+  const href = projectHref(project,'/materials?'+new URLSearchParams({key:doc.key}))
+  return <>
+    <div className="materials-origin"><Icon name="Inbox" size={15}/> ForgeOS <span>修订 {doc.revision}</span></div>
+    <h2 className="materials-title">{doc.title}</h2><p className="materials-path">{materialKinds[doc.kind]} / {doc.source} · {formatTime(doc.imported_at)}</p>
+    <MaterialReader content={doc.content} markdown/>
+    <div className="detail-actions">
+      {doc.revision>1 && <button className="button" onClick={()=>jump(doc.revision-1)}>上一修订</button>}
+      {head?.data && head.data.revision>doc.revision && <><button className="button" onClick={()=>jump(doc.revision+1)}>下一修订</button>
+        <button className="button" onClick={()=>jump()}>查看最新版</button></>}
+      {head?.data?.revision===doc.revision && <button className="button" onClick={()=>onEdit(doc)}>编辑此修订</button>}
+    </div>
+    {head?.error && <p role="alert">{head.error} <button className="button" onClick={onRetry}>重试读取最新版</button></p>}
+    <details className="materials-meta"><summary>资料信息与链接</summary><p>资料标识 <code>{doc.key}</code></p>
+      {selection.revision && <p>资料链接打开最新版。</p>}<MaterialLink href={href}/></details>
+    <details className="materials-meta"><summary>知识提取与共享</summary>
+      <KnowledgeCuration project={project} path={base+'/revisions/'+doc.revision+'/curation'} request={request}/>
+      <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/>
+    </details>
+  </>
+}
 
-  const read = useCallback(async function (key: string, revision?: number, loadLatest = false) {
-    const signal = lifetime.current?.signal
-    setBusy(true); setError('')
-    try {
-      const path = base + '/' + encodeURIComponent(key)
-      const head = loadLatest && revision ? await request<Document>(path, { signal }) : undefined
-      const value = head && head.revision === revision ? head : await request<Document>(path + (revision ? '?revision=' + revision : ''), { signal })
-      if (signal?.aborted) return
-      setDoc(value); setDraft(undefined); setConflict(undefined)
-      if (head || !revision) setLatest(head?.revision ?? value.revision)
-    } catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : '无法读取资料。') }
-    finally { if (!signal?.aborted) setBusy(false) }
-  }, [base, request])
+export function ProjectMaterials({ project, initialKey, initialRevision, initialPath, request }: {
+  project: number; initialKey?: string; initialRevision?: number; initialPath?: string; request: ApiRequest
+}) {
+  const [selected, setSelected] = useState<MaterialSelection | undefined>(() => initialKey ? {source:'forge',key:initialKey,revision:initialRevision} :
+    initialPath ? {source:'git',path:initialPath} : undefined)
+  const [scope, setScope] = useState<MaterialScope>(selected?.source || 'all')
+  const [kind,setKind] = useState('')
+  const [text, setText] = useState('')
+  const [query, setQuery] = useState('')
+  const [refresh, setRefresh] = useState(0)
+  const [gitRefresh, setGitRefresh] = useState(0)
+  const [opened, setOpened] = useState(0)
+  const [mobileRead, setMobileRead] = useState(Boolean(selected))
+  const [importing, setImporting] = useState(false)
+  const [draft, setDraft] = useState<(MaterialDraft & {revision?: number})>()
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const reader = useRef<HTMLElement>(null)
+  const search = useRef<HTMLInputElement>(null)
+  const add = useRef<HTMLButtonElement>(null)
+  const lastImport = useRef<{key:string; revision:number} | undefined>(undefined)
+  const displayedGit = useRef<DisplayedGit | undefined>(undefined)
+  const observeRead = useCallback((observed?: DisplayedGit) => {displayedGit.current=observed},[])
+  const browseGit = scope !== 'forge' && !importing && !draft
+  const tree = useLibraryResource<DocumentTree>(request,browseGit ? '/projects/'+project+'/documents/tree' : '',refresh+'/'+gitRefresh)
+  const refreshLibrary = () => setRefresh(n=>n+1)
+  const refreshGit = useCallback(() => setGitRefresh(n=>n+1),[])
   useEffect(() => {
-    if (initialKey) void read(initialKey, initialRevision, true)
-  }, [initialKey, initialRevision, read])
-  function edit(value: Draft, revision = 0) {
-    setDraft(value); setPrevious(revision); setConflict(undefined); setError('')
+    if (!browseGit || !tree) return
+    const controller = new AbortController()
+    let checking = false
+    async function checkHead() {
+      if (document.visibilityState !== 'visible' || checking) return
+      checking = true
+      try {
+        const head = await request<{sha:string; branch:string}>('/projects/'+project+'/git/local',{signal:controller.signal})
+        if (controller.signal.aborted) return
+        const observed = displayedGit.current
+        const readerOutdated = observed && ('commit' in observed ? observed.commit !== head.sha :
+          tree?.data?.documents.some(file => file.path === observed.missingPath))
+        if (head.sha !== tree?.data?.commit || head.branch !== (tree?.data?.branch || '') || readerOutdated) refreshGit()
+      } catch {
+        if (!controller.signal.aborted && tree?.data) refreshGit()
+      } finally { checking = false }
+    }
+    const interval = window.setInterval(checkHead, 30_000)
+    document.addEventListener('visibilitychange',checkHead)
+    window.addEventListener('focus',checkHead)
+    return () => {
+      controller.abort(); window.clearInterval(interval)
+      document.removeEventListener('visibilitychange',checkHead); window.removeEventListener('focus',checkHead)
+    }
+  },[browseGit,tree,project,request,refreshGit])
+  const chooseDefault = useCallback((item:MaterialSelection)=>setSelected(old=>old || item),[])
+  function select(item: MaterialSelection) {
+    setSelected(item);setOpened(n=>n+1);setMobileRead(true)
+    if (window.matchMedia('(max-width: 700px)').matches) requestAnimationFrame(()=>reader.current?.focus())
   }
-  function remember() {
-    const key = 'memory-' + crypto.getRandomValues(new Uint32Array(4)).join('-')
-    edit({ ...empty, kind: 'memory', key, source: 'Owner 工作台' })
+  function changeScope(next: MaterialScope) {
+    if (scope === next) return
+    setScope(next);setSelected(undefined);setMobileRead(false)
   }
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    if (!draft || busy) return
-    const bytes = (value: string) => new TextEncoder().encode(value).length
-    if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]{0,95}$/u.test(draft.key)) { setError('标识须以字母或数字开头，最多 96 字，可包含点、横线和下划线。'); return }
-    if ([draft.title, draft.source, draft.content].some(value => !value.trim() || value.includes('\0'))) { setError('请填写有效的标题、来源和正文。'); return }
-    if (bytes(draft.content) > 256 * 1024 || bytes(draft.title) > 256 || bytes(draft.source) > 2048) { setError('正文最多 256 KiB，标题最多 256 字节，来源最多 2048 字节。'); return }
-    const path = base + '/' + encodeURIComponent(draft.key)
-    const signal = lifetime.current?.signal
-    setBusy(true); setError('')
-    try {
-      const { kind, title, source, content } = draft
-      const saved = await request<Document>(path, { method: 'PUT', signal, body: JSON.stringify({ previous_revision: previous, kind, title, source, content }) })
-      if (signal?.aborted) return
-      setDraft(undefined); setConflict(undefined); setDoc(saved); setLatest(saved.revision)
-      setFilter(old => ({ ...old, after: '' }))
-    } catch (e) {
-      if (signal?.aborted) return
-      if (e instanceof ApiError && e.status === 409) {
-        setError('资料已有其他修订。请核对最新版，草稿已保留。')
-        try {
-          const current = await request<Document>(path, { signal })
-          if (!signal?.aborted) setConflict(current)
-        } catch { if (!signal?.aborted) setError('无法读取冲突版本，草稿已保留。请稍后重试。') }
-      } else setError(e instanceof Error ? e.message : '无法保存资料。')
-    } finally { if (!signal?.aborted) setBusy(false) }
+  useEffect(()=>{
+    const next = text.trim()
+    if(next === query) return
+    const timer = window.setTimeout(()=>{setQuery(next);setSelected(undefined);setMobileRead(false)},300)
+    return ()=>window.clearTimeout(timer)
+  },[text,query])
+  function afterSave(item: {key:string; revision:number}) {
+    setScope('forge');setKind('');setText('');setQuery('');setSelected({source:'forge',key:item.key});refreshLibrary()
   }
-  const formLocked = busy || Boolean(draft)
-  return <div className="project-setup">
-    <BackLink href={projectHref(project)}>返回项目概览</BackLink>
-    <PageHeading title={`项目 #${project} · 项目资料`}/>
-    <section className="panel detail-card" aria-labelledby="material-list-heading">
-      <h2 id="material-list-heading">浏览项目资料</h2>
-      <form className="project-input" onSubmit={e => { e.preventDefault(); setFilter({ q: query.trim(), kind, after: '' }) }}>
-        <input aria-label="检索资料" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或正文"/>
-        <ThemedSelect label="筛选资料类型" hideLabel value={kind} onChange={setKind} options={[{value:'',label:'全部类型'},...options]}/>
-        <button className="button">检索</button>
-        <button type="button" className="button" disabled={formLocked} onClick={() => edit(empty)}>导入资料</button>
-        <button type="button" className="button" disabled={formLocked} onClick={remember}>记住一条项目经验</button>
-      </form>
-      {listError && <p role="alert">{listError} <button className="button" onClick={() => setFilter({ ...filter })}>重试</button></p>}
-      {listing && <p role="status">正在读取资料…</p>}
-      {!listing && !listError && !rows.length && <p>没有匹配的资料。</p>}
-      {rows.map(row => <article className="registered-project" key={row.key}><div>
-        <h3>{row.title}</h3><p><code>{row.key}</code> · {kinds[row.kind]} · 修订 {row.revision}</p>
-        <p>{row.source}{row.start_char !== undefined && row.end_char !== undefined && ` · 正文第 ${row.start_char + 1}–${row.end_char} 字符`}</p>
-        <p>{row.excerpt}</p></div><button className="button" disabled={formLocked} onClick={() => void read(row.key, row.revision, true)}>查看 · {row.key}</button></article>)}
-      {more && <button className="button" disabled={listing} onClick={() => setFilter({ ...filter, after: rows[rows.length-1].key })}>更多资料</button>}
-    </section>
-    {error && <p role="alert" className="detail-problem">{error}</p>}
-    {busy && !draft && <p role="status">正在读取资料修订…</p>}
-    {draft ? <form className="panel detail-card material-form" onSubmit={save}>
-      <h2 ref={contentHeading} tabIndex={-1}>{previous ? '编辑资料' : draft.kind === 'memory' ? '记住一条项目经验' : '导入项目资料'}</h2>
-      <fieldset disabled={busy}>
-        <label>资料标识<input required value={draft.key} readOnly={previous > 0} onChange={e => { setConflict(undefined); setDraft({ ...draft, key: e.target.value }) }}/></label>
-        <ThemedSelect label="资料类型" value={draft.kind} options={options} onChange={kind=>setDraft({...draft,kind:kind as Kind})}/>
-        <label>标题<input required value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })}/></label>
-        <label>来源<input required value={draft.source} onChange={e => setDraft({ ...draft, source: e.target.value })}/></label>
-        <label htmlFor="material-body">正文</label>
-        <textarea id="material-body" required rows={10} value={draft.content} onChange={e => setDraft({ ...draft, content: e.target.value })}/>
-        {conflict && <section><h3>当前最新版</h3><DocumentText doc={conflict}/>
-          <button className="button" type="button" onClick={() => { setPrevious(conflict.revision); setConflict(undefined); setError('') }}>以修订 {conflict.revision} 为基础继续编辑</button></section>}
-        <div className="detail-actions"><button className="button" disabled={Boolean(conflict)}>{!previous && draft.kind === 'memory' ? '提交记忆请求' : `保存修订 ${previous + 1}`}</button>
-          <button type="button" className="button" onClick={() => { setDraft(undefined); setConflict(undefined); setError('') }}>取消编辑</button></div>
-      </fieldset>
-    </form> : doc && <section key={doc.key + '/' + doc.revision} className="panel detail-card"><h2 ref={contentHeading} tabIndex={-1}><code>{doc.key}</code></h2><DocumentText doc={doc}/><div className="detail-actions">
-      {doc.revision > 1 && <button className="button" disabled={busy} onClick={() => void read(doc.key, doc.revision-1)}>上一修订</button>}
-      {doc.revision < latest ? <>
-        <button className="button" disabled={busy} onClick={() => void read(doc.key, doc.revision+1)}>下一修订</button>
-        <button className="button" disabled={busy} onClick={() => void read(doc.key)}>查看最新版</button>
-      </> : <button className="button" disabled={busy} onClick={() => edit(doc, doc.revision)}>编辑此修订</button>}
-    </div><KnowledgeCuration project={project} path={`${base}/${encodeURIComponent(doc.key)}/revisions/${doc.revision}/curation`} request={request}/>
-      <ShareDraft project={project} material={doc.key} revision={doc.revision} request={request}/></section>}
-    <ExperienceSearch project={project} request={request}/>
-    <RepositoryDocumentChanges project={project} request={request}/>
+  function newDraft(memory: boolean) {
+    const rnd = crypto.getRandomValues(new Uint32Array(3)).join('-')
+    setDraft({key:(memory?'memory-':'note-')+rnd,kind:memory?'memory':'material',title:'',source:'Owner 工作台',content:''})
+  }
+  return <div className="project-setup project-materials">
+    <PageHeading title="项目资料" actions={!importing && !draft &&
+      <button className="button primary" ref={add} onClick={()=>{lastImport.current=undefined;setImporting(true)}}>添加到 ForgeOS</button>}/>
+    {importing ? <MaterialBatchImport project={project} request={request}
+      onSaved={item=>{lastImport.current=item}}
+      onClose={()=>{setImporting(false);if(lastImport.current){afterSave(lastImport.current);setMobileRead(true)}requestAnimationFrame(()=>add.current?.focus())}}/> :
+      draft ? <MaterialEditor project={project} initial={draft} request={request}
+        onSave={item=>{setDraft(undefined);afterSave(item);setMobileRead(true)}} onClose={()=>setDraft(undefined)}/> :
+      <>
+        <section className="panel materials-library" aria-label="项目资料库">
+          <div className="materials-toolbar">
+            <div className="materials-scopes" role="group" aria-label="资料来源">{sourceOptions.map(item=>
+              <button type="button" className="button" key={item.value} aria-pressed={scope===item.value} onClick={()=>changeScope(item.value)}>
+                {item.value!=='all' && <Icon size={15} name={item.value==='git'?'GitBranch':'Inbox'}/>} {item.label}</button>)}</div>
+            <form role="search" className="materials-search" onSubmit={e=>{e.preventDefault(); if(text.trim()!==query) setSelected(undefined);setQuery(text.trim());setMobileRead(false)}}>
+              <input ref={search} type="search" aria-label="检索资料" placeholder="搜索标题、路径或正文" value={text} onChange={e=>setText(e.target.value)}/>
+              <button className="button" aria-label="检索"><Icon name="Search"/></button>
+              <button type="button" className="button" aria-label="刷新资料" title="刷新资料" onClick={refreshLibrary}><Icon name="RefreshCw"/></button>
+            </form>
+          </div>
+          <div className={'materials-split'+(mobileRead && selected?' reading':'')}>
+            <MaterialCatalog key={JSON.stringify([scope,query,kind,refresh])} project={project} request={request} scope={scope} query={query} refresh={refresh} kind={kind}
+              selected={selected} tree={scope === 'forge' ? undefined : tree} onSelect={select} onDefault={chooseDefault}
+              onKind={value=>{setKind(value);setSelected(undefined);setMobileRead(false)}} onRetry={refreshLibrary}/>
+            <section ref={reader} tabIndex={-1} className="materials-reader-pane" aria-label="资料正文">
+              <button type="button" className="button materials-back" onClick={()=>{setMobileRead(false);requestAnimationFrame(()=>search.current?.focus())}}>返回目录</button>
+              {selected?.source === 'git' ? <GitReader key={selected.path} project={project} selection={selected} request={request} onSelect={select}
+                refresh={refresh+'/'+gitRefresh+'/'+opened+'/'+(tree?.data?.commit || '')} onRead={observeRead} onRetry={refreshGit}/> :
+                selected?.source === 'forge' ? <ForgeReader key={JSON.stringify(selected)} project={project} selection={selected} request={request} onSelect={select}
+                  refresh={refresh+'/'+opened} onRetry={refreshLibrary} onEdit={setDraft}/> :
+                <p className="muted">从目录选择一份资料，查看正文。</p>}
+            </section>
+          </div>
+        </section>
+        <details className="panel materials-tools" onToggle={e=>setToolsOpen(e.currentTarget.open)}><summary>资料管理与历史</summary>
+          {toolsOpen && <div className="project-setup"><div className="detail-actions">
+            <button className="button" onClick={()=>newDraft(false)}>手动建档</button>
+            <button className="button" onClick={()=>newDraft(true)}>记住一条项目经验</button></div>
+            <ExperienceSearch project={project} request={request}/><RepositoryDocumentChanges project={project} request={request}/>
+            <ProjectGit projectId={project} request={request} onUpdated={refreshGit}/></div>}
+        </details>
+      </>}
   </div>
 }

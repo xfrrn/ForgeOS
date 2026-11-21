@@ -80,9 +80,12 @@ func inventoryKind(file string) string {
 	return ""
 }
 
-type trackedBlob struct{ Path, Blob string }
+type TrackedBlob struct {
+	Path string `json:"path"`
+	Blob string `json:"blob"`
+}
 
-func trackedBlobs(ctx context.Context, repo, commit string, include func(string) bool) ([]trackedBlob, error) {
+func trackedBlobs(ctx context.Context, repo, commit string, include func(string) bool, paths ...string) ([]TrackedBlob, error) {
 	if !objectID.MatchString(commit) {
 		return nil, errors.New("invalid commit")
 	}
@@ -90,11 +93,12 @@ func trackedBlobs(ctx context.Context, repo, commit string, include func(string)
 	if err != nil || string(obj) != "commit\n" {
 		return nil, errors.New("verified commit unavailable")
 	}
-	raw, large, err := LimitedGit(ctx, repo, 16<<20, "ls-tree", "-r", "-z", commit)
+	args := append([]string{"--literal-pathspecs", "ls-tree", "-r", "-z", commit, "--"}, paths...)
+	raw, large, err := LimitedGit(ctx, repo, 16<<20, args...)
 	if err != nil || large {
 		return nil, errors.New("cannot read complete repository tree within 16 MiB")
 	}
-	var blobs []trackedBlob
+	blobs := []TrackedBlob{}
 	for _, entry := range bytes.Split(raw, []byte{0}) {
 		if len(entry) == 0 {
 			continue
@@ -115,7 +119,7 @@ func trackedBlobs(ctx context.Context, repo, commit string, include func(string)
 			continue
 		}
 		if include(file) {
-			blobs = append(blobs, trackedBlob{Path: file, Blob: fields[2]})
+			blobs = append(blobs, TrackedBlob{Path: file, Blob: fields[2]})
 		}
 	}
 	return blobs, nil

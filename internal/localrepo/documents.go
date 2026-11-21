@@ -12,18 +12,7 @@ import (
 )
 
 func DocumentTree(ctx context.Context, repo, commit string) (map[string]string, error) {
-	blobs, err := trackedBlobs(ctx, repo, commit, func(file string) bool {
-		if inventoryKind(file) == "guide" {
-			return true
-		}
-		switch strings.ToLower(path.Ext(file)) {
-		case ".md", ".mdx", ".markdown", ".rst", ".adoc", ".asciidoc":
-			return true
-		case ".txt":
-			return strings.Contains("/"+strings.ToLower(file), "/docs/")
-		}
-		return false
-	})
+	blobs, err := DocumentFiles(ctx, repo, commit)
 	if err != nil {
 		return nil, err
 	}
@@ -34,11 +23,36 @@ func DocumentTree(ctx context.Context, repo, commit string) (map[string]string, 
 	return files, nil
 }
 
+// DocumentFiles lists eligible documentation blobs, optionally under literal repository paths.
+func DocumentFiles(ctx context.Context, repo, commit string, paths ...string) ([]TrackedBlob, error) {
+	return trackedBlobs(ctx, repo, commit, func(file string) bool {
+		if inventoryKind(file) == "guide" {
+			return true
+		}
+		switch strings.ToLower(path.Ext(file)) {
+		case ".md", ".mdx", ".markdown", ".rst", ".adoc", ".asciidoc":
+			return true
+		case ".txt":
+			return strings.Contains("/"+strings.ToLower(file), "/docs/")
+		}
+		return false
+	}, paths...)
+}
+
 func DocumentContent(ctx context.Context, repo, blob string) (content, problem string, err error) {
+	content, problem, err = ReadDocumentText(ctx, repo, blob, 256<<10)
+	if err == nil && problem == "" && strings.TrimSpace(content) == "" {
+		return "", "empty", nil
+	}
+	return content, problem, err
+}
+
+// ReadDocumentText preserves the exact contents of a committed UTF-8 blob, including whitespace.
+func ReadDocumentText(ctx context.Context, repo, blob string, limit int) (content, problem string, err error) {
 	if !objectID.MatchString(blob) {
 		return "", "", errors.New("invalid document blob")
 	}
-	raw, large, err := LimitedGit(ctx, repo, 256<<10, "cat-file", "blob", blob)
+	raw, large, err := LimitedGit(ctx, repo, limit, "cat-file", "blob", blob)
 	switch {
 	case err != nil:
 		return "", "", err
@@ -46,8 +60,6 @@ func DocumentContent(ctx context.Context, repo, blob string) (content, problem s
 		return "", "size_limit", nil
 	case !utf8.Valid(raw) || strings.ContainsRune(string(raw), 0):
 		return "", "non_text", nil
-	case strings.TrimSpace(string(raw)) == "":
-		return "", "empty", nil
 	default:
 		return string(raw), "", nil
 	}

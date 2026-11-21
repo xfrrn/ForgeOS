@@ -58,7 +58,8 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const agentPath = path === '/projects/agent-settings' || path === '/projects/agent-models' || path === '/projects/agent-skills' || /^\/projects\/[1-9]\d*\/agents$/.test(path)
     const globalRulesPath = /^\/global-rules(?:\?revision=[1-9]\d*)?$/.test(path)
     const materialPath = /^\/projects\/[1-9]\d*\/(?:experience(?:\?(?:q=[^&#]+|before=[1-9]\d*))?|materials(?:\?[^#]*|\/[^/?#\\]+(?:\?revision=[1-9]\d*|\/revisions\/[1-9]\d*\/curation)?)?)$/.test(path)
-    const documentPath = /^\/projects\/[1-9]\d*\/document-changes(?:\?before=[1-9]\d*|\/[1-9]\d*\/curation(?:\?part=[1-9]\d*)?)?$/.test(path)
+    const libraryPath = (!init.method || init.method === 'GET') && /^\/projects\/[1-9]\d*\/documents(?:\/tree|\/read)?(?:\?[^#]*)?$/.test(path)
+    const documentPath = libraryPath || /^\/projects\/[1-9]\d*\/document-changes(?:\?before=[1-9]\d*|\/[1-9]\d*\/curation(?:\?part=[1-9]\d*)?)?$/.test(path)
     const taskEventPath = /^\/projects\/[1-9]\d*\/tasks\/[1-9]\d*\/events\/[1-9]\d*(?:\/curation)?$/.test(path)
     const decisionPath = /^\/projects\/[1-9]\d*\/decisions(?:\?[^#]*|\/search\?status=[A-Z]+&q=[^&#]+|\/[1-9]\d*(?:\/(?:status|curation))?)?$/.test(path)
     const sharePath = /^\/projects\/[1-9]\d*\/(?:shares(?:\/[1-9]\d*(?:\/publication)?)?|shared-experience)(?:\?before=[1-9]\d*)?$/.test(path)
@@ -87,6 +88,8 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
       throw new ApiError(response.status, response.status === 401 ? '登录已失效，请重新登录。' :
         response.status === 409 && info?.error === 'select an Issue work type before dispatch' ? '请先为这条 Issue 选择工作类型。' :
         response.status === 409 && info?.error === 'work type differs from the current GitHub Issue' ? '所选工作类型与 GitHub Issue 声明的类型不一致。' :
+        response.status === 409 && libraryPath ? '登记的仓库当前不可用，请检查本地仓库后重试。' :
+        response.status === 404 && libraryPath && path.includes('/documents/read?') ? '当前仓库版本中找不到此文档路径。' :
         response.status === 409 && !agentPath && !clonePath && !projectGitPath && !issuePreviewPath && !/^\/projects\/\d+\/chat$/.test(path) ? '任务状态或候选版本已变化，请刷新记录。' :
         response.status === 404 ? '找不到这条记录。' : (info?.error || '请求失败，请稍后重试。'))
     }

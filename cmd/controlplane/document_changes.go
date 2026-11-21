@@ -61,6 +61,7 @@ func watchDocuments(ctx context.Context, data *store.Store, root string) {
 }
 
 func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner string, workers *workerRegistry) {
+	registerDocumentBrowser(mux, data, root, owner, workers)
 	registerIndexedSearch(mux, "documents", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
 		params := r.URL.Query()
 		query, commit := strings.TrimSpace(params.Get("q")), params.Get("commit")
@@ -68,14 +69,8 @@ func registerDocumentChanges(mux *http.ServeMux, data *store.Store, root, owner 
 			problem(w, 400, "provide a document query and, optionally, a full commit SHA")
 			return
 		}
-		p, err := data.Project(r.Context(), project)
-		if err != nil {
-			respond(w, 0, nil, err)
-			return
-		}
-		repo, err := localrepo.ResolveRepo(r.Context(), root, p.Path)
-		if err != nil {
-			problem(w, 409, "registered repository unavailable")
+		repo, ok := documentRepository(w, r, data, root, project)
+		if !ok {
 			return
 		}
 		result, err := data.SearchDocuments(r.Context(), project, repo, commit, query)

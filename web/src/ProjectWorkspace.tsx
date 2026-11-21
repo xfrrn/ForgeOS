@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Icon, type ApiRequest } from './shared'
 import { EmptyState, PageHeading } from './ui'
-import { ProjectGit } from './ProjectGit'
 import './project-workspace.css'
 
 export type WorkspaceProject = {
@@ -50,7 +49,6 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
   const project = loaded?.id === projectId ? loaded.project : undefined
   const loadError = loaded?.id === projectId ? loaded.error : undefined
   const base = `#/projects/${projectId}`
-  const materials = currentTab === 'materials' && (!section || section === 'materials')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -105,9 +103,6 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
         <button className="button" type="button" onClick={() => setRevision(n => n + 1)}>重试</button>
       </p>}
       {children}
-      {materials && <div className="project-setup">
-        <ProjectGit projectId={projectId} request={request}/>
-      </div>}
     </>}
   </div>
 }

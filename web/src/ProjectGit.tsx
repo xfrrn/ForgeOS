@@ -51,7 +51,7 @@ function CommitDetails({ commit }: { commit?: Commit }) {
   </div>
 }
 
-export function ProjectGit({ projectId, request }: { projectId: number; request: ApiRequest }) {
+export function ProjectGit({ projectId, request, onUpdated }: { projectId: number; request: ApiRequest; onUpdated?: () => void }) {
   const [local, setLocal] = useState<Commit>()
   const [remote, setRemote] = useState<Commit>()
   const [pending, setPending] = useState<Action>()
@@ -72,6 +72,7 @@ export function ProjectGit({ projectId, request }: { projectId: number; request:
         const value = await request<Pull>(path, {method: 'POST', signal: controller.signal})
         if (controller.signal.aborted) return
         setLocal(value.local); setRemote(value.remote)
+        if (value.updated) onUpdated?.()
         setNotice(value.updated ? '本地分支已更新。' : value.local.sha === value.remote.sha
           ? '本地和远端已在同一提交。' : '本地分支领先远端，已保留本地提交。')
       } else {

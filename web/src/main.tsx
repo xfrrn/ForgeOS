@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Overview } from './Overview'
 import { Approvals } from './Approvals'
@@ -14,7 +14,6 @@ import { Projects } from './Projects'
 import { ProjectShares } from './ProjectShares'
 import { ProjectDecisions } from './ProjectDecisions'
 import { ProjectCodeReviews } from './ProjectCodeReviews'
-import { ProjectMaterials } from './ProjectMaterials'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { SkillLibrary } from './SkillLibrary'
 import { RepositoryCredentials } from './RepositoryCredentials'
@@ -26,6 +25,8 @@ import { ApiError, Icon, projectHref, requestWith, type ApiRequest } from './sha
 import { EmptyState, PageHeading } from './ui'
 import { credentialsHref, workbenchRoute, workbenchTitle, type ProjectRoute, type WorkbenchRoute } from './workbenchRoutes'
 import './style.css'
+
+const ProjectMaterials = lazy(() => import('./ProjectMaterials').then(module => ({default:module.ProjectMaterials})))
 
 type OwnerSession = { email: string }
 
@@ -126,8 +127,9 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
     </>
     case 'notifications': return <Notifications projectId={projectId} request={request} onRead={onChanged}/>
     case 'inbox': return <ProjectInbox project={projectId} request={request}/>
-    case 'materials': return <ProjectMaterials key={JSON.stringify([page.key, page.revision])} project={projectId}
-      initialKey={page.key} initialRevision={page.revision} request={request}/>
+    case 'materials': return <Suspense fallback={<p role="status">正在打开资料库…</p>}>
+      <ProjectMaterials project={projectId}
+        initialKey={page.key} initialRevision={page.revision} initialPath={page.path} request={request}/></Suspense>
     case 'decisions': return <ProjectDecisions key={page.record} project={projectId} decision={page.record} request={request}/>
     case 'shares': return <ProjectShares key={page.record} project={projectId} receipt={page.record} request={request}/>
     case 'task': return page.task.preview ?
@@ -270,7 +272,7 @@ function App() {
       {page.kind === 'project' ? <ProjectWorkspace key={page.projectId} projectId={page.projectId} currentTab={page.projectTab} section={page.view}
         taskList={page.view === 'task' && page.task.category ? '/tasks?category=' + page.task.category : undefined}
         taskId={page.view === 'task' ? page.task.id : undefined} taskQueue={page.view === 'tasks' && page.queue} request={request}>
-        <ProjectContent page={page} request={request} onChanged={onChanged}/>
+        <ProjectContent key={page.view === 'materials' ? route : undefined} page={page} request={request} onChanged={onChanged}/>
       </ProjectWorkspace> :
         page.kind === 'projects' ? <Projects request={request}/> :
         page.kind === 'legacy-task' ? <LegacyTaskLink key={route} page={page} request={request}/> :

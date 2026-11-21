@@ -13,7 +13,7 @@ type TaskRoute = {
 
 type ProjectPage =
   | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' }
-  | { view: 'materials'; key?: string; revision?: number }
+  | { view: 'materials'; key?: string; revision?: number; path?: string }
   | { view: 'tasks'; status?: string; queue: boolean; category: TaskCategory }
   | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' | 'checks' }
   | { view: 'decisions' | 'shares'; record?: number }
@@ -89,6 +89,7 @@ export function workbenchRoute(location: string): WorkbenchRoute {
       const key = params.get('key') ?? ''
       return { ...root, view: 'materials', projectTab: 'materials',
         key: /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,95}$/u.test(key) ? key : undefined,
+        path: params.get('path') || undefined,
         revision: positiveId(params.get('revision') ?? undefined) }
     }
   }

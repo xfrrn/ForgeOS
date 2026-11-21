@@ -1,0 +1,21 @@
+.material-batch { min-width: 0; }
+.material-batch .batch-heading,
+.material-batch .batch-actions,
+.material-batch .batch-drop { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.material-batch .batch-heading { justify-content: space-between; }
+.material-batch .batch-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.material-batch .batch-heading h2, .material-batch .batch-heading p, .material-batch .batch-drop p { margin: 0; }
+.material-batch .batch-heading p, .material-batch .batch-drop p { color: var(--muted); font-size: 13px; }
+.material-batch .batch-drop { margin-block: var(--space-3); padding: var(--space-4); border: 1px dashed var(--control-line); border-radius: var(--radius-control); background: var(--surface-muted); }
+.material-batch .batch-drop > div { flex: 1 1 200px; }
+.material-batch .batch-file { border-top: 1px solid var(--line); padding-block: var(--space-3); }
+.material-batch .batch-file .themed-select { margin-top: var(--space-2); }
+.material-batch .batch-preview, .material-batch .batch-paste { display: grid; gap: var(--space-2); margin-block: var(--space-3); min-width: 0; }
+.material-batch .batch-paste > button { justify-self: start; }
+.material-batch .batch-preview > label, .material-batch .batch-paste label { display: grid; gap: var(--space-1); }
+.material-batch input:not([type=file]), .material-batch textarea { width: 100%; min-width: 0; }
+.material-batch .batch-error { color: var(--danger); }
+@media (max-width: 600px) {
+  .material-batch .batch-heading { align-items: flex-start; }
+  .material-batch .batch-drop { padding: var(--space-3); }
+}

@@ -149,9 +149,17 @@ Owner 通过 `GET /projects/{id}/history` 检索某一项目。按项目授权�
 
 ### 项目资料、档案和环境说明
 
-在工作台的“项目接入”选择对应项目的“项目资料”，填写标识、类型、标题、来源和正文即可导入。搜索可组合关键词与类型；不填关键词时可继续加载后续资料。打开资料可查看正文、时间、来源和摘要，逐版回读。两位 Owner 同时编辑时，后提交者的草稿保留在当前页面，并显示服务器上的修订。核对后可明确选择新修订作为编辑基础。
+项目的「项目资料」把两处独立来源放在一起浏览和搜索。选择「Git 仓库」按已提交的目录浏览，选择「ForgeOS」按资料类型浏览。项目可只使用其中一种，也可同时使用两种。Git 文档直接从登记仓库读取，导入的资料存入 ForgeOS，两处各自维护。Markdown 默认显示预览，可切换到原文。
 
-在已登记的测试项目中，用已配置的 `FORGEOS_OWNER_TOKEN` 运行 `python scripts/probe_project_materials.py <控制面地址> <项目ID>`。脚本使用 Playwright 和 Chrome，创建一条独立资料并核对两份浏览器会话的冲突与历史回读。
+Git 文档的日常工作台链接只带相对路径 `path`。每次打开或刷新都读取该项目登记仓库当前本地 HEAD 的文件。页面显示 Git 资料时，回到窗口或持续浏览满 30 秒会检查当前分支和提交，变化后刷新仓库目录及正在阅读的 Git 文档。路径在当前版本中已删除时，阅读区会提示找不到该文档。旧版工作台链接即使带有 `commit`，也按路径打开当前版本。
+
+ForgeOS 资料的日常链接只带 `key`，打开最新版。需要核对原文时，可在资料详情主动切换到这份资料的旧修订。执行记录、知识审核及共享回执按各自记录的提交或修订回读证据。
+
+「添加到 ForgeOS」支持批量拖入或选择 Markdown、UTF-8 TXT，也可粘贴 Markdown。文件默认用文件名作标题，粘贴默认取正文首个非空行，均可修改。TXT 保存为 Markdown 的字面文本块，原有符号和换行可在预览里核对。每份入库正文上限为 256 KiB。同一资料和已有正文相同时自动跳过。不同来源可保存相同正文。确认前可逐项预览，对同名资料选择更新指定修订、另存或跳过。提交后每项列出结果，失败项可随剩余项重试。多人同时编辑时，后提交者的草稿会保留，供对照当前修订。
+
+仓库目录接口为 `GET /projects/{id}/documents/tree`，返回当前本地 HEAD 的路径和 blob 清单。日常原文接口为 `GET /projects/{id}/documents/read?path=<编码后的仓库相对路径>`。需要核对历史证据的 API 调用可显式传入完整 `commit`，读取当前 HEAD 或其祖先中的文档。单份仓库文档预览上限为 8 MiB。「资料管理与历史」提供手动建档、项目经验、仓库变更和 Git 同步入口。
+
+在已登记的测试项目中，设置专用账号的 `FORGEOS_TEST_OWNER_EMAIL` 和 `FORGEOS_TEST_OWNER_PASSWORD`，运行 `python scripts/probe_project_materials.py <控制面地址> <项目ID>`。脚本使用 Playwright 和 Chrome，验证双会话编辑冲突、历史回读、Markdown 与 TXT 批量导入及重复识别。
 
 Owner 用 `PUT /projects/{id}/materials/{key}` 导入 UTF-8 文本，正文上限为 256 KiB。传入 `previous_revision`、`kind`、`title`、`source` 和 `content`。首次使用修订 0，后续传入要更新的修订号。类型可选 `material`（导入资料）、`profile`（项目背景、负责人等）、`environment`（机器和环境说明）和 `memory`（Owner 明确要求记住）。凭据值存入密钥管理服务。
 
@@ -174,7 +182,7 @@ Owner 从 `GET /projects/{id}/materials/{key}` 读取最新版，附加 `?revisi
 
 Owner 和获准节点的资料检索均有 5 分钟处理期限，适用于冷启动编码及排名。单份修订在编码过程中被中断时，重试需重新编码这份修订。[接近大小上限的首次查询与重启回读](acceptance.md#cold-material-index)
 
-数据库用 pgvector 的余弦距离选出每份资料最相关的片段，然后合并语义与关键词名次。命中项含 `project_id`、`key`、`revision`、`status=current`、`source`、`imported_at`、`content_sha256` 和 `excerpt`。正文位置为从零开始、左闭右开的 `[start_char, end_char)`。工作台显示从 1 开始的字符位置，点击结果读取命中修订；若已有更新，可另行打开最新版。工程文档、决策及经审批的经验有各自的来源和读取入口。[pgvector](https://github.com/pgvector/pgvector) · [本地推理服务](https://github.com/huggingface/text-embeddings-inference) · [验收模型](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42)
+数据库用 pgvector 的余弦距离选出每份资料最相关的片段，然后合并语义与关键词名次。命中项含 `project_id`、`key`、`revision`、`status=current`、`source`、`imported_at`、`content_sha256` 和 `excerpt`。正文位置为从零开始、左闭右开的 `[start_char, end_char)`。资料页点击结果按 `key` 打开最新版。核对该次检索的引句时，可凭结果中的修订号和字符位置回读原文。工程文档、决策及经审批的经验有各自的来源和读取入口。[pgvector](https://github.com/pgvector/pgvector) · [本地推理服务](https://github.com/huggingface/text-embeddings-inference) · [验收模型](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/tree/e8f8c211226b894fcb81acc59f3b34ba3efd5f42)
 
 ## 7. 角色上下文
 
