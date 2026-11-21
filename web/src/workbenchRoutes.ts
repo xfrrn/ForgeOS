@@ -13,7 +13,7 @@ type TaskRoute = {
 
 type ProjectPage =
   | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' | 'model-settings' }
-  | { view: 'planning' | 'retrospectives'; selected?: number }
+  | { view: 'planning' | 'retrospectives'; selected?: number; item?: number }
   | { view: 'materials'; key?: string; revision?: number; path?: string }
   | { view: 'tasks'; status?: string; queue: boolean; category: TaskCategory }
   | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' | 'checks' }
@@ -76,7 +76,7 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   const subpath = scope[2] ?? '/'
   switch (subpath) {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
-    case '/planning': return { ...root, view: 'planning', projectTab: 'planning', selected: positiveId(params.get('milestone') ?? undefined) }
+    case '/planning': return { ...root, view: 'planning', projectTab: 'planning', selected: positiveId(params.get('milestone') ?? undefined), item: positiveId(params.get('item') ?? undefined) }
     case '/planning/retrospectives': return { ...root, view: 'retrospectives', projectTab: 'planning', selected: positiveId(params.get('retro') ?? undefined) }
     case '/agents': return { ...root, view: 'agents', projectTab: 'agents' }
     case '/chat': return { ...root, view: 'chat', projectTab: 'chat' }

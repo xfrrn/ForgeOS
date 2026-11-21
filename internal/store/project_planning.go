@@ -34,7 +34,7 @@ func (e PlanningEdit) Valid() bool {
 	switch e.Action {
 	case "overview":
 		return true
-	case "milestone":
+	case "milestone", "delivery":
 		if (e.StartDate == nil) != (e.EndDate == nil) {
 			return false
 		}
@@ -52,7 +52,7 @@ func (e PlanningEdit) Valid() bool {
 			}
 		}
 		return strings.TrimSpace(e.Title) != ""
-	case "delivery", "retro", "improvement":
+	case "retro", "improvement":
 		return strings.TrimSpace(e.Title) != ""
 	case "excerpt":
 		return e.ID > 0 && strings.TrimSpace(e.Title) != "" && strings.TrimSpace(e.Body) != "" && len(e.Body) <= 8192
@@ -145,9 +145,13 @@ func (s *Store) EditPlanning(ctx context.Context, p int64, e PlanningEdit, repo 
             UPDATE plan_milestones m SET position=CASE WHEN m.id=x.id THEN x.dest ELSE x.position END FROM pair x WHERE m.id IN (x.id,x.other)`, p, e.ID, e.Flag)
 	case "delivery":
 		if e.ID == 0 {
-			err = exec(`INSERT INTO plan_deliverables(project_id,milestone,title,body) SELECT project_id,id,$3,$4 FROM plan_milestones WHERE project_id=$1 AND id=$2`, p, e.Target, e.Title, e.Body)
+			err = exec(`INSERT INTO plan_deliverables(project_id,milestone,title,body,start_date,end_date)
+                SELECT project_id,id,$3,$4,NULLIF($5,'')::date,NULLIF($6,'')::date FROM plan_milestones WHERE project_id=$1 AND id=$2`, p, e.Target, e.Title, e.Body, e.StartDate, e.EndDate)
 		} else {
-			err = exec(`UPDATE plan_deliverables SET title=$3,body=$4 WHERE project_id=$1 AND id=$2`, p, e.ID, e.Title, e.Body)
+			err = exec(`UPDATE plan_deliverables SET title=$3,body=$4,
+                start_date=CASE WHEN $5::text IS NULL THEN start_date ELSE NULLIF($5,'')::date END,
+                end_date=CASE WHEN $6::text IS NULL THEN end_date ELSE NULLIF($6,'')::date END
+                WHERE project_id=$1 AND id=$2`, p, e.ID, e.Title, e.Body, e.StartDate, e.EndDate)
 		}
 	case "accept":
 		err = exec(`UPDATE plan_deliverables SET accepted=$3 WHERE project_id=$1 AND id=$2`, p, e.ID, e.Flag)

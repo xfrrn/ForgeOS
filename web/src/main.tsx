@@ -133,7 +133,7 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
     case 'model-settings': return <Suspense fallback={<p role="status">正在打开模型设置…</p>}>
       <KnowledgeModelSettings projectId={projectId} request={request}/></Suspense>
     case 'planning': case 'retrospectives': return <Suspense fallback={<p role="status">正在打开项目规划…</p>}>
-      <ProjectPlanning key={page.view} project={projectId} retrospectives={page.view==='retrospectives'} selected={page.selected} request={request}/></Suspense>
+      <ProjectPlanning key={page.view} project={projectId} retrospectives={page.view==='retrospectives'} selected={page.selected} selectedItem={page.item} request={request}/></Suspense>
     case 'materials': return <Suspense fallback={<p role="status">正在打开资料库…</p>}>
       <ProjectMaterials project={projectId}
         initialKey={page.key} initialRevision={page.revision} initialPath={page.path} request={request}/></Suspense>

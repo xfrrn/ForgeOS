@@ -596,7 +596,10 @@ func TestProjectChatWorkflow(t *testing.T) {
 			request("POST", path, "owner", "", e, 200, &state)
 		}
 		edit(store.PlanningEdit{Action: "milestone", Title: "Release"})
-		edit(store.PlanningEdit{Action: "delivery", Target: state.Milestones[0].ID, Title: "Ship", Body: "Check version"})
+		edit(store.PlanningEdit{Action: "delivery", Target: state.Milestones[0].ID, Title: "Ship"})
+		if posts != 0 || len(state.Drafts) != 0 || len(state.Milestones[0].Deliveries[0].Tasks) != 0 {
+			t.Fatal("creating a planned task dispatched work")
+		}
 		d := state.Milestones[0].Deliveries[0].ID
 		for _, mode := range []string{"", "plan"} {
 			edit(store.PlanningEdit{Action: "draft", ID: d, Title: "Release work", Body: "Check version", Flag: mode == "plan"})

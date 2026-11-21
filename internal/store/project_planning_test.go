@@ -45,8 +45,10 @@ func TestPlanningMilestoneRetrospective(t *testing.T) {
 		StartDate  *string `json:"start_date"`
 		EndDate    *string `json:"end_date"`
 		Deliveries []struct {
-			ID    int64
-			Tasks []struct{ ID int64 }
+			StartDate *string `json:"start_date"`
+			EndDate   *string `json:"end_date"`
+			ID        int64
+			Tasks     []struct{ ID int64 }
 		}
 	}
 	read := func() (d struct {
@@ -81,7 +83,18 @@ func TestPlanningMilestoneRetrospective(t *testing.T) {
 	if dates.StartDate == nil || *dates.StartDate != start || dates.EndDate == nil || *dates.EndDate != end {
 		t.Fatal("lost stored dates")
 	}
-	edit(PlanningEdit{Action: "delivery", Title: "Small release", Body: "Smoke check", Target: a})
+	edit(PlanningEdit{Action: "delivery", Title: "Small release", Target: a})
+	firstItem := read().Milestones[0].Deliveries[0]
+	if firstItem.StartDate != nil || len(firstItem.Tasks) != 0 || len(read().Drafts) != 0 {
+		t.Fatal("name-only item must be unscheduled and undispatched")
+	}
+	denied(PlanningEdit{Action: "delivery", ID: firstItem.ID, Title: "Bad dates", StartDate: &end, EndDate: &start})
+	edit(PlanningEdit{Action: "delivery", ID: firstItem.ID, Title: "Small release", StartDate: &start, EndDate: &end})
+	edit(PlanningEdit{Action: "delivery", ID: firstItem.ID, Title: "Small release", Body: "Smoke check"})
+	dated := read().Milestones[0].Deliveries[0]
+	if dated.StartDate == nil || *dated.StartDate != start || dated.EndDate == nil || *dated.EndDate != end {
+		t.Fatal("lost planned task dates")
+	}
 	d := read().Milestones[0].Deliveries[0].ID
 	denied(PlanningEdit{Action: "link", ID: d, Target: foreign.ID})
 	edit(PlanningEdit{Action: "link", ID: d, Target: work.ID})
@@ -93,6 +106,13 @@ func TestPlanningMilestoneRetrospective(t *testing.T) {
 	r := read().Retros[0]
 	if len(r.Snapshot) != 1 || r.Snapshot[0].Deliveries[0].Tasks[0].ID != work.ID {
 		t.Fatal(r)
+	}
+	edit(PlanningEdit{Action: "delivery", ID: d, Title: "Small release", StartDate: &empty, EndDate: &empty})
+	if item := read().Milestones[0].Deliveries[0]; item.EndDate != nil || item.StartDate != nil || len(item.Tasks) != 1 {
+		t.Fatal("clearing dates changed task linkage")
+	}
+	if frozen := read().Retros[0].Snapshot[0].Deliveries[0].EndDate; frozen == nil || *frozen != end {
+		t.Fatal("lost original item schedule in retrospective")
 	}
 	edit(PlanningEdit{Action: "milestone", ID: a, Title: "First", StartDate: &empty, EndDate: &empty})
 	if m := read().Milestones[0]; m.StartDate != nil || m.EndDate != nil {

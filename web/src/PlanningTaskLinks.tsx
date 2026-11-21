@@ -13,5 +13,5 @@ export function PlanningTaskLinks({project,task,request}:{project:number;task:nu
   },[project,task,request,attempt])
   if(error)return <p role="alert">读取关联规划失败。 <button className="button" onClick={()=>setAttempt(n=>n+1)}>重试</button></p>
   return rows.length?<nav className="project-secondary-links" aria-label="关联项目规划">{rows.map(r=>
-    <a key={r.delivery_id} href={'#/projects/'+project+'/planning?milestone='+r.id}>{r.milestone} · {r.delivery}</a>)}</nav>:null
+    <a key={r.delivery_id} href={'#/projects/'+project+'/planning?milestone='+r.id+'&item='+r.delivery_id}>{r.milestone} · {r.delivery}</a>)}</nav>:null
 }
