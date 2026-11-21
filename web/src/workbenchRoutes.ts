@@ -1,6 +1,6 @@
 import { taskCategory, type TaskCategory } from './workTypes'
 
-export type ProjectTab = 'overview' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials'
+export type ProjectTab = 'overview' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials' | 'knowledge'
 
 type TaskRoute = {
   id: number
@@ -12,11 +12,12 @@ type TaskRoute = {
 }
 
 type ProjectPage =
-  | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' }
+  | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' | 'model-settings' }
   | { view: 'materials'; key?: string; revision?: number; path?: string }
   | { view: 'tasks'; status?: string; queue: boolean; category: TaskCategory }
   | { view: 'reviews'; tab: 'approvals' | 'acceptance' | 'code-reviews' | 'checks' }
-  | { view: 'decisions' | 'shares'; record?: number }
+  | { view: 'decisions' | 'experience'; record?: number }
+  | { view: 'shares'; record?: number; received: boolean }
   | { view: 'task'; task: TaskRoute }
 
 export type ProjectRoute = ProjectPage & {
@@ -28,12 +29,12 @@ export type ProjectRoute = ProjectPage & {
 
 export type WorkbenchRoute =
   | { kind: 'projects' | 'skills' | 'agents' | 'system' | 'notifications' | 'missing' }
-  | { kind: 'credentials'; projectId?: number }
+  | { kind: 'credentials'; projectId?: number; fromKnowledge?: boolean }
   | { kind: 'legacy-task'; task: TaskRoute; path: string; captureQuery?: string }
   | ProjectRoute
 
-export function credentialsHref(projectId?: number) {
-  return '#/settings/credentials' + (projectId ? '?project=' + projectId : '')
+export function credentialsHref(projectId?: number, fromKnowledge = false) {
+  return '#/settings/credentials' + (projectId ? '?project=' + projectId + (fromKnowledge ? '&from=knowledge' : '') : '')
 }
 
 function positiveId(value: string | undefined): number | undefined {
@@ -61,7 +62,7 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   }
   if (path === '/skills') return { kind: 'skills' }
   if (path === '/agents') return { kind: 'agents' }
-  if (path === '/settings/credentials') return { kind: 'credentials', projectId: positiveId(params.get('project') ?? undefined) }
+  if (path === '/settings/credentials') return { kind: 'credentials', projectId: positiveId(params.get('project') ?? undefined), fromKnowledge: params.get('from') === 'knowledge' }
   if (path === '/workers') return { kind: 'system' }
   if (path === '/notifications') return { kind: 'notifications' }
   const legacy = readTaskRoute(path)
@@ -76,6 +77,8 @@ export function workbenchRoute(location: string): WorkbenchRoute {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
     case '/agents': return { ...root, view: 'agents', projectTab: 'agents' }
     case '/chat': return { ...root, view: 'chat', projectTab: 'chat' }
+    case '/knowledge': return { ...root, view: 'decisions', projectTab: 'knowledge' }
+    case '/knowledge/model-settings': return { ...root, view: 'model-settings', projectTab: 'knowledge' }
     case '/tasks': return { ...root, view: 'tasks', projectTab: 'tasks', status: params.get('status') ?? undefined,
       queue: params.get('tab') === 'queue', category: taskCategory(params.get('category')) }
     case '/inbox': return { ...root, view: 'inbox', projectTab: 'tasks' }
@@ -97,10 +100,13 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   if (task) return { ...root, view: 'task', task: { ...task, executionId: positiveId(params.get('execution') ?? undefined),
     category: params.has('category') ? taskCategory(params.get('category')) : undefined },
     projectTab: 'tasks', captureQuery: query }
-  const material = /^\/(decisions|shares)(?:\/([1-9]\d*))?$/.exec(subpath)
-  if (material) {
-    const record = positiveId(material[2])
-    if (!material[2] || record) return { ...root, view: material[1] === 'decisions' ? 'decisions' : 'shares', record, projectTab: 'materials' }
+  const knowledge = /^(?:\/knowledge)?\/(decisions|shares|experience)(?:\/(sent|received))?(?:\/([1-9]\d*))?$/.exec(subpath)
+  if (knowledge) {
+    const [, view, direction, number] = knowledge
+    const record = positiveId(number)
+    if (number && !record || direction && view !== 'shares') return { kind:'missing' }
+    if (view === 'shares') return { ...root, view, record, received: direction === 'received' || (!direction && !record), projectTab:'knowledge' }
+    if (view === 'decisions' || view === 'experience') return { ...root, view, record, projectTab:'knowledge' }
   }
   return { kind: 'missing' }
 }
@@ -119,6 +125,6 @@ export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.view === 'tasks' && route.queue) return '执行队列'
   return {
     overview: '项目概览', agents: 'Agent 管理', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
-    decisions: '项目决策', shares: '共享经验', questions: '待答问题', notifications: '项目通知',
+    decisions: '项目决策', experience: '项目经验', shares: '共享经验', 'model-settings': '知识库模型设置', questions: '待答问题', notifications: '项目通知',
   }[route.view]
 }

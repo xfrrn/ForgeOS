@@ -30,8 +30,9 @@ type parkedCheckpoint struct {
 	Remaining                            time.Duration
 	ReferenceDecisionID                  int64
 	ResourceStep                         int64
-	Planner                              *pausedPlanner `json:",omitempty"`
-	Writer                               *pausedWriter  `json:",omitempty"`
+	Planner                              *pausedPlanner  `json:",omitempty"`
+	Writer                               *pausedWriter   `json:",omitempty"`
+	Knowledge                            writerKnowledge `json:",omitzero"`
 }
 
 type pausedPlanner struct {

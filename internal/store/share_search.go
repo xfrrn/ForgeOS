@@ -15,7 +15,7 @@ func (s *Store) indexShares(ctx context.Context, project int64, dimensions int) 
 	for {
 		var id int64
 		var body string
-		err := s.db.QueryRowContext(ctx, `SELECT id,title||E'\n'||content FROM knowledge_shares k WHERE `+visibleShare+`
+		err := s.db.QueryRowContext(ctx, `SELECT id,title||E'\n'||content FROM visible_knowledge_shares k WHERE recipient=$1
             AND id>$2 AND NOT EXISTS(SELECT 1 FROM share_embeddings e WHERE e.share_id=k.id AND e.model=$3)
             ORDER BY id LIMIT 1`, project, after, s.embeddings.model).Scan(&id, &body)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -31,9 +31,11 @@ func (s *Store) indexShares(ctx context.Context, project int64, dimensions int) 
 		if len(v) != dimensions {
 			return errors.New("share embedding dimensions differ from query")
 		}
-		// Lock the publication while caching so a concurrent revocation also removes this vector.
-		_, err = s.db.ExecContext(ctx, `WITH current_copy AS (SELECT id FROM knowledge_shares WHERE `+visibleShare+` AND id=$2 FOR SHARE)
-            INSERT INTO share_embeddings(share_id,model,embedding) SELECT id,$3,$4 FROM current_copy ON CONFLICT DO NOTHING`,
+		// Check the pointer again after encoding. Lock only the series, in the
+		// same order as publication and withdrawal, until the cache is written.
+		_, err = s.db.ExecContext(ctx, `WITH current_copy AS (SELECT current_share_id FROM knowledge_share_series
+			WHERE recipient=$1 AND current_share_id=$2 FOR SHARE)
+			INSERT INTO share_embeddings(share_id,model,embedding) SELECT current_share_id,$3,$4 FROM current_copy ON CONFLICT DO NOTHING`,
 			project, id, s.embeddings.model, pq.Array(v))
 		if err != nil {
 			return err
@@ -43,6 +45,10 @@ func (s *Store) indexShares(ctx context.Context, project int64, dimensions int) 
 }
 
 func (s *Store) SearchSharedExperience(ctx context.Context, project int64, query string) (json.RawMessage, error) {
+	return s.SearchReceivedShares(ctx, project, query, false)
+}
+
+func (s *Store) SearchReceivedShares(ctx context.Context, project int64, query string, versions bool) (json.RawMessage, error) {
 	if _, err := s.Project(ctx, project); err != nil {
 		return nil, err
 	}
@@ -68,7 +74,7 @@ func (s *Store) SearchSharedExperience(ctx context.Context, project int64, query
 	}
 	var doc json.RawMessage
 	err := s.db.QueryRowContext(ctx, `WITH scoped AS MATERIALIZED (
-        SELECT id,title,content,digest,published_at FROM knowledge_shares WHERE `+visibleShare+`
+        SELECT `+sharedCopyFields(versions)+` FROM visible_knowledge_shares WHERE recipient=$1
     ), words AS (
         SELECT id,title||' '||content AS body FROM scoped
     ), lexical AS (

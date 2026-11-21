@@ -50,6 +50,7 @@ type Attempt = {
   model_pauses?: ModelPause[]
   global_rules?: GlobalRulesRevision
   owner_clarifications?: CandidateContext['owner_clarifications']
+  knowledge_references?: CandidateContext['knowledge_references']
   decision_context?: {id: number; statement: string; validity: string; valid_until: string | null; confirmed_at: string; source: string; ref: string}[] | null
   live_ci_log?: { run: string; commit: string; check: string; bytes: number; text: string; observed_at: string }
   observed_process?: Omit<HarnessProcess, 'exited_at' | 'exit_code'> & { exited_at?: string; exit_code: number | null; observed_at: string }
@@ -418,6 +419,7 @@ function Execution({ attempt, task, latest, selected, request, refresh }: { atte
       {attempt.abandoned_at && <Fact label="人工结束">{formatTime(attempt.abandoned_at)}</Fact>}
     </dl>
     {!!attempt.owner_clarifications?.length && <CandidateRuleEvidence context={{owner_clarifications:attempt.owner_clarifications}} title="返工时沿用的 Owner 答复"/>}
+    {!!attempt.knowledge_references?.length && <CandidateRuleEvidence context={{knowledge_references:attempt.knowledge_references}} title={`本次执行采用的项目知识（${attempt.knowledge_references.length}）`}/>}
     {attempt.global_rules && <details><summary>领取时的全局默认规则 · 修订 {attempt.global_rules.revision}</summary>
       <p>{attempt.global_rules.published_by} · {formatTime(attempt.global_rules.published_at)}</p>
       <pre className="material-content">{attempt.global_rules.content}</pre><p>SHA-256 · <code>{attempt.global_rules.content_sha256}</code></p>

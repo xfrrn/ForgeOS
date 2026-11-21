@@ -20,6 +20,20 @@ type Extraction struct {
 	Profile *AgentProfile   `json:"profile,omitempty"`
 }
 
+// HasSourceQuotes distinguishes an explicitly empty finding set from a missing
+// response and validates model quotations before either runner submits them.
+func (out Extraction) HasSourceQuotes(content string) bool {
+	if out.Facts == nil {
+		return false
+	}
+	for _, fact := range out.Facts {
+		if fact.Quote == "" || !strings.Contains(content, fact.Quote) {
+			return false
+		}
+	}
+	return true
+}
+
 type CurationJob struct {
 	CaptureProcess bool            `json:"capture_process,omitempty"`
 	CaptureProfile bool            `json:"capture_profile,omitempty"`
@@ -34,9 +48,11 @@ type CurationJob struct {
 
 func (s *Store) ClaimCuration(ctx context.Context, project int64, review, supportsDeadline bool) (*CurationJob, error) {
 	role := "curator"
+	modelRole, attemptKind := "curator", "extract"
 	pending, lease, until := "extraction IS NULL", "extraction_lease", "extraction_until"
 	if review {
 		role = "curation_review"
+		modelRole, attemptKind = "management", "curation_review"
 		pending, lease, until = "extraction IS NOT NULL AND jsonb_array_length(extraction->'facts')>0 AND review IS NULL", "review_lease", "review_until"
 	}
 	tx, err := s.beginRoleClaim(ctx)
@@ -48,10 +64,15 @@ func (s *Store) ClaimCuration(ctx context.Context, project int64, review, suppor
 	if err != nil || !available || (pool.Valid && !supportsDeadline) {
 		return nil, err
 	}
+	if allowed, err := knowledgeModelAllowed(ctx, tx.Tx, project, modelRole); err != nil || !allowed {
+		return nil, err
+	}
 	var job CurationJob
 	var extraction []byte
 	err = tx.QueryRowContext(ctx, `WITH candidate AS (
-		SELECT id FROM material_curations WHERE project_id=$1 AND `+pending+` AND (`+until+` IS NULL OR `+until+`<=now())
+		SELECT id FROM material_curations WHERE project_id=$1 `+knowledgeAttemptEligible(ctx, "material_curations.id", attemptKind)+` AND `+pending+` AND (`+until+` IS NULL OR `+until+`<=now())
+		AND (experience_change_id IS NULL OR EXISTS (SELECT 1 FROM experience_changes d JOIN experience_entries e ON e.id=d.entry_id
+		    WHERE d.id=experience_change_id AND d.discarded_at IS NULL AND e.withdrawn_at IS NULL AND coalesce(e.current_revision,0)=d.expected_revision))
 		ORDER BY `+until+` NULLS FIRST,id LIMIT 1 FOR UPDATE SKIP LOCKED)
 		UPDATE material_curations c SET `+lease+`=gen_random_uuid(),`+until+`=clock_timestamp()+interval '6 minutes',model_budget=$2
 		FROM candidate,curation_sources s WHERE c.id=candidate.id AND s.curation_id=c.id
@@ -102,6 +123,9 @@ func (s *Store) RecordExtraction(ctx context.Context, project, id int64, lease s
 		return err
 	}
 	defer tx.Rollback()
+	if err = requireKnowledgeModelResult(ctx, tx, project, "curator", "extract", id, lease); err != nil {
+		return err
+	}
 	var locked int64
 	err = tx.QueryRowContext(ctx, `SELECT id FROM material_curations WHERE project_id=$1 AND id=$2 AND extraction_lease::text=$3 FOR UPDATE`, project, id, lease).Scan(&locked)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -142,6 +166,9 @@ func (s *Store) ReviewCuration(ctx context.Context, project, id int64, lease str
 		return err
 	}
 	defer tx.Rollback()
+	if err = requireKnowledgeModelResult(ctx, tx, project, "management", "curation_review", id, lease); err != nil {
+		return err
+	}
 	var locked int64
 	err = tx.QueryRowContext(ctx, `SELECT id FROM material_curations WHERE project_id=$1 AND id=$2 AND review_lease::text=$3 FOR UPDATE`, project, id, lease).Scan(&locked)
 	if errors.Is(err, sql.ErrNoRows) {

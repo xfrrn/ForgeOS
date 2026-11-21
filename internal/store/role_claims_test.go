@@ -121,6 +121,24 @@ func TestRoleClaimAtomicReplay(t *testing.T) {
 	if err = s.db.QueryRow("SELECT count(*) FROM role_claim_receipts").Scan(&count); err != nil || count != 3 {
 		t.Fatal("receipt count", count, err)
 	}
+	// Previously allocated inputs should also stop replaying when an Owner
+	// disables either role. An old request key never allocates another job.
+	for _, role := range []string{"curator", "management"} {
+		if _, err = s.SetKnowledgeModel(ctx, p.ID, role, 0, nil); err != nil {
+			t.Fatal(err)
+		}
+		var request []byte
+		if role == "curator" {
+			request = []byte("same request")
+		}
+		status, body, err := s.RoleClaim(ctx, p.ID, role, "node", key, request, func(context.Context) (int, []byte, error) {
+			t.Fatal("old receipt allocated a new job")
+			return 0, nil, nil
+		})
+		if err != nil || status != 204 || len(body) != 0 {
+			t.Fatalf("disabled %s replayed old input: %d %v", role, status, err)
+		}
+	}
 }
 
 func TestRoleClaimEmptyPollCanLaterAllocate(t *testing.T) {

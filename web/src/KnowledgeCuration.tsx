@@ -87,7 +87,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
         review.verdict === 'revise' ? '建议已退回' : '需要 Owner 决定'}</p>
       <ManagementProcesses request={request} processes={receipt?.extraction_processes} title="Curator 提取进程"/>
       <ManagementProcesses request={request} processes={receipt?.review_processes} title="Management 知识审核进程"/>
-      {extraction && <><p>提取会话 · <code>{extraction.session}</code></p>
+      {extraction && <><p>{extraction.session.startsWith('api-') ? '提取模型 API 调用' : '提取会话'} · <code>{extraction.session}</code></p>
         {extraction.profile && <RolePermissions role="Curator" profile={extraction.profile}/>}
         {extraction.facts.map((f,i) => {
           const fact = i + 1
@@ -104,7 +104,7 @@ export function KnowledgeCuration({project, path, request}: {project: number; pa
           </div>
         })}</>}
       {saveError && <p role="alert">{saveError}</p>}
-      {review && <><p>Management 审核 · {review.level} · <code>{review.session_id}</code></p>
+      {review && <><p>Management 审核 · {review.level} · {review.session_id.startsWith('api-') ? '模型 API 调用' : '审核会话'} · <code>{review.session_id}</code></p>
         {receipt?.review_event && <details><summary>审核事件回执</summary>
           <p>消息编号 · <code>{receipt.review_event.message_id}</code></p>
           <p>关联编号 · <code>{receipt.review_event.correlation_id}</code></p>

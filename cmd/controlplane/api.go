@@ -136,6 +136,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		respond(w, http.StatusNoContent, nil, data.RecordHeartbeat(r.Context(), input))
 	}))
 	registerCheckpoints(mux, data, owner, workers)
+	registerExecutionKnowledge(mux, data, root, workers)
 	registerHistory(mux, data, owner, workers)
 	registerRepositoryInventory(mux, data, root, owner)
 	registerDocumentChanges(mux, data, root, owner, workers)
@@ -370,6 +371,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		input.ClaudePlanning = r.URL.Query().Get("claude_planning") == "1"
 		input.AgentSettings = r.URL.Query().Get("agent_settings") == "1"
+		input.SupportsKnowledgeTools = r.URL.Query().Get("supports_knowledge_tools") == "1"
 		input.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"
 		input.SupportsPlannerPause = r.URL.Query().Get("supports_planner_pause") == "1"
 		input.SupportsReworkAnswers = input.SupportsReworkAnswers || r.URL.Query().Get("supports_rework_answers") == "1"

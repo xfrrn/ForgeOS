@@ -189,3 +189,23 @@ func (s *Store) Decision(ctx context.Context, project, id int64) (json.RawMessag
 	}
 	return doc, err
 }
+
+// Follow the replacement chain in both directions, including pending alternatives.
+// The plan reference still identifies the exact decision named in the plan.
+func (s *Store) DecisionWithVersions(ctx context.Context, project, id int64) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := s.db.QueryRowContext(ctx, `WITH RECURSIVE ancestors AS (
+		SELECT id,supersedes FROM project_decisions WHERE project_id=$1 AND id=$2
+		UNION ALL SELECT d.id,d.supersedes FROM project_decisions d JOIN ancestors a ON d.id=a.supersedes WHERE d.project_id=$1
+	), family(id) AS (
+		SELECT id FROM ancestors WHERE supersedes IS NULL
+		UNION ALL SELECT d.id FROM project_decisions d JOIN family f ON d.supersedes=f.id WHERE d.project_id=$1
+	) SELECT to_jsonb(d)||jsonb_build_object('versions',(SELECT jsonb_agg(jsonb_build_object(
+		'id',v.id,'status',v.status,'statement',v.statement,'supersedes',v.supersedes) ORDER BY v.id DESC)
+		FROM family f JOIN project_decision_index v ON f.id=v.id))
+		FROM project_decision_index d WHERE d.project_id=$1 AND d.id=$2`, project, id).Scan(&result)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return result, err
+}

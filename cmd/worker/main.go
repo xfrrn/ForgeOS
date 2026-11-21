@@ -272,6 +272,10 @@ func (w *worker) authenticatedWithClient(req *http.Request, client *http.Client)
 }
 
 func (w *worker) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
+	return w.postJSONWithClient(ctx, path, body, w.client)
+}
+
+func (w *worker) postJSONWithClient(ctx context.Context, path string, body any, client *http.Client) (*http.Response, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -281,7 +285,7 @@ func (w *worker) postJSON(ctx context.Context, path string, body any) (*http.Res
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return w.authenticatedRequest(req)
+	return w.authenticatedWithClient(req, client)
 }
 
 func (w *worker) post(ctx context.Context, path string, body any, out any) (int, error) {
@@ -478,7 +482,7 @@ func (w *worker) run(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-const workerCapabilityQuery = "claude_planning=1&agent_settings=1&supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1&supports_go_test_archive=1"
+const workerCapabilityQuery = "claude_planning=1&agent_settings=1&supports_model_pause=1&supports_planner_pause=1&supports_rework_answers=1&supports_archive_digests=1&supports_archive_upload=1&supports_startup_archive=1&supports_go_test_archive=1&supports_knowledge_tools=1"
 
 func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities) error {
 	ctx, stop := context.WithCancelCause(parent)

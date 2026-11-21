@@ -77,6 +77,22 @@ func (s *Store) RoleClaim(ctx context.Context, project int64, role, node, key st
 		if !bytes.Equal(saved, digest[:]) {
 			return 0, nil, ErrConflict
 		}
+		// A worker can retry a receipt after the Owner switched its knowledge
+		// role to an API model. Do not hand the old input to the worker again.
+		knowledge := role == "curator"
+		if role == "management" {
+			var target struct{ Curation, Share *struct{} }
+			if err := json.Unmarshal(body, &target); err != nil {
+				return 0, nil, err
+			}
+			knowledge = target.Curation != nil || target.Share != nil
+		}
+		if knowledge {
+			allowed, err := knowledgeModelAllowed(ctx, tx, project, role)
+			if err != nil || !allowed {
+				return 204, nil, err
+			}
+		}
 		return 200, body, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {

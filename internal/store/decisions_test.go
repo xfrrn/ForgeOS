@@ -110,6 +110,27 @@ func TestConcurrentDecisionReplacement(t *testing.T) {
 	if winners != 1 || conflicts != 1 {
 		t.Fatal(winners, conflicts)
 	}
+	// A historical link and either competing proposal show the same family.
+	for _, id := range []int64{base, a, b} {
+		raw, err := s.DecisionWithVersions(ctx, p.ID, id)
+		var detail struct {
+			ID       int64
+			Versions []struct {
+				ID     int64
+				Status string
+			}
+		}
+		if err != nil || json.Unmarshal(raw, &detail) != nil || detail.ID != id || len(detail.Versions) != 3 {
+			t.Fatalf("missing replacement family for %d: %s, %v", id, raw, err)
+		}
+		status := map[string]int{}
+		for _, v := range detail.Versions {
+			status[v.Status]++
+		}
+		if status["CONFIRMED"] != 1 || status["SUPERSEDED"] != 1 || status["PROPOSED"] != 1 {
+			t.Fatalf("unexpected replacement family: %s", raw)
+		}
+	}
 	again, err := s.Decide(ctx, p.ID, base, "CONFIRMED")
 	if err != nil {
 		t.Fatal(err)

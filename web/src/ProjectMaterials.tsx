@@ -7,7 +7,7 @@ import { KnowledgeCuration } from './KnowledgeCuration'
 import { ExperienceSearch } from './ExperienceSearch'
 import { RepositoryDocumentChanges } from './RepositoryDocumentChanges'
 import { ProjectGit } from './ProjectGit'
-import { ShareDraft } from './ProjectShares'
+import { ShareDraft } from './ShareDraft'
 import { Icon, formatTime, projectHref, type ApiRequest } from './shared'
 import { PageHeading } from './ui'
 import './project-materials.css'
@@ -213,7 +213,8 @@ export function ProjectMaterials({ project, initialKey, initialRevision, initial
         <details className="panel materials-tools" onToggle={e=>setToolsOpen(e.currentTarget.open)}><summary>资料管理与历史</summary>
           {toolsOpen && <div className="project-setup"><div className="detail-actions">
             <button className="button" onClick={()=>newDraft(false)}>手动建档</button>
-            <button className="button" onClick={()=>newDraft(true)}>记住一条项目经验</button></div>
+            <button className="button" onClick={()=>newDraft(true)}>记住一条项目经验</button>
+            <a className="button" href={projectHref(project,'/knowledge/experience')}>在知识库维护项目经验</a></div>
             <ExperienceSearch project={project} request={request}/><RepositoryDocumentChanges project={project} request={request}/>
             <ProjectGit projectId={project} request={request} onUpdated={refreshGit}/></div>}
         </details>

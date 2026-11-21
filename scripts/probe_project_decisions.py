@@ -20,10 +20,9 @@ def main():
 
         def login():
             page = browser.new_context().new_page()
-            page.goto(args.url.rstrip("/") + "/#/projects")
+            page.goto(args.url.rstrip("/") + f"/#/projects/{args.project}/knowledge")
             login_to_workbench(page)
-            project = page.locator("article").filter(has=page.get_by_role("heading", name=f"项目 #{args.project}", exact=True))
-            project.get_by_role("link", name="项目决策").click()
+            page.get_by_role("navigation", name="知识库导航").get_by_role("link", name="项目决策").click()
             return page
 
         def card(page, statement):
@@ -60,6 +59,7 @@ def main():
         card(first, initial).get_by_role("button", name="确认决策").click()
         expect(card(first, initial).get_by_role("button", name="提议替代")).to_be_visible()
         second = login()
+        second.goto(args.url.rstrip("/") + f"/#/projects/{args.project}/decisions/{original}")
         for page, suffix in [(first, "-left"), (second, "-right")]:
             card(page, initial).get_by_role("button", name="提议替代").click()
             fill(page, prefix + suffix)
@@ -73,7 +73,9 @@ def main():
         expect(card(second, prefix + "-right").get_by_text("已拒绝 · owner")).to_be_visible()
         card(first, prefix + "-left").get_by_role("button", name="标记失效").click()
         expect(card(first, prefix + "-left").get_by_text("已失效 · owner")).to_be_visible()
-        first.get_by_label("决策状态").select_option("SUPERSEDED")
+        first.get_by_role("combobox", name="决策状态").click()
+        first.get_by_role("option", name="已替代").click()
+        first.get_by_role("region", name="决策列表").get_by_role("link").filter(has_text=initial).click()
         record = card(first, initial)
         record.get_by_text("证据与历史").click()
         expect(record.get_by_text("docs/testing.md", exact=True)).to_be_visible()

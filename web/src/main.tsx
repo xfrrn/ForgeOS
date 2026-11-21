@@ -11,8 +11,6 @@ import { DecisionQuestions } from './DecisionQuestions'
 import { GlobalRules } from './GlobalRules'
 import { ProjectInbox } from './ProjectInbox'
 import { Projects } from './Projects'
-import { ProjectShares } from './ProjectShares'
-import { ProjectDecisions } from './ProjectDecisions'
 import { ProjectCodeReviews } from './ProjectCodeReviews'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { SkillLibrary } from './SkillLibrary'
@@ -27,6 +25,10 @@ import { credentialsHref, workbenchRoute, workbenchTitle, type ProjectRoute, typ
 import './style.css'
 
 const ProjectMaterials = lazy(() => import('./ProjectMaterials').then(module => ({default:module.ProjectMaterials})))
+const ProjectDecisions = lazy(() => import('./ProjectDecisions').then(module => ({default:module.ProjectDecisions})))
+const ProjectExperience = lazy(() => import('./ProjectExperience').then(module => ({default:module.ProjectExperience})))
+const ProjectShares = lazy(() => import('./ProjectShares').then(module => ({default:module.ProjectShares})))
+const KnowledgeModelSettings = lazy(() => import('./KnowledgeModelSettings').then(module => ({default:module.KnowledgeModelSettings})))
 
 type OwnerSession = { email: string }
 
@@ -127,11 +129,18 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
     </>
     case 'notifications': return <Notifications projectId={projectId} request={request} onRead={onChanged}/>
     case 'inbox': return <ProjectInbox project={projectId} request={request}/>
+    case 'model-settings': return <Suspense fallback={<p role="status">正在打开模型设置…</p>}>
+      <KnowledgeModelSettings projectId={projectId} request={request}/></Suspense>
     case 'materials': return <Suspense fallback={<p role="status">正在打开资料库…</p>}>
       <ProjectMaterials project={projectId}
         initialKey={page.key} initialRevision={page.revision} initialPath={page.path} request={request}/></Suspense>
-    case 'decisions': return <ProjectDecisions key={page.record} project={projectId} decision={page.record} request={request}/>
-    case 'shares': return <ProjectShares key={page.record} project={projectId} receipt={page.record} request={request}/>
+    case 'decisions':
+    case 'experience':
+    case 'shares': return <Suspense fallback={<p role="status">正在打开知识库…</p>}>
+      {page.view==='decisions' ? <ProjectDecisions key={page.record} project={projectId} decision={page.record} request={request}/> :
+        page.view==='experience' ? <ProjectExperience project={projectId} entry={page.record} request={request}/> :
+        page.view==='shares' && <ProjectShares key={String(page.received)} project={projectId} receipt={page.record} received={page.received} request={request}/>}
+    </Suspense>
     case 'task': return page.task.preview ?
       <PreviewFeedback key={page.task.preview + page.captureQuery} projectId={projectId} task={page.task.id} preview={page.task.preview} captureQuery={page.captureQuery} request={request}/> :
       <TaskDetail key={page.task.id} projectId={projectId} id={page.task.id} planRevision={page.task.planRevision} questionID={page.task.questionId}
@@ -278,7 +287,7 @@ function App() {
         page.kind === 'legacy-task' ? <LegacyTaskLink key={route} page={page} request={request}/> :
         page.kind === 'notifications' ? <Notifications request={request} onRead={onChanged}/> :
         page.kind === 'skills' ? <SkillLibrary request={request}/> :
-        page.kind === 'credentials' ? <RepositoryCredentials request={request} projectId={page.projectId}/> :
+        page.kind === 'credentials' ? <RepositoryCredentials request={request} projectId={page.projectId} fromKnowledge={page.fromKnowledge}/> :
         page.kind === 'agents' ? <AgentSettings request={request}/> :
         page.kind === 'system' ? <><WorkerNodes request={request}/><GlobalRules request={request}/></> :
         <MissingPage/>}

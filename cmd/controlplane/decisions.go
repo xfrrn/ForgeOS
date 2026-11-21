@@ -44,6 +44,11 @@ func registerDecisions(mux *http.ServeMux, data *store.Store, owner string, work
 			problem(w, 400, "invalid decision id")
 			return
 		}
+		if r.URL.Query().Get("versions") == "1" {
+			out, err := data.DecisionWithVersions(r.Context(), project, id)
+			respond(w, 200, out, err)
+			return
+		}
 		out, err := data.Decision(r.Context(), project, id)
 		respond(w, 200, out, err)
 	})

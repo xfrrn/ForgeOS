@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"forgeos/internal/agents"
 	"forgeos/internal/store"
 )
 
-const extractionSchema = `{"type":"object","additionalProperties":false,"required":["facts"],"properties":{"facts":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["statement","quote"],"properties":{"statement":{"type":"string"},"quote":{"type":"string"}}}}}}`
+const extractionSchema = agents.ExtractionSchema
 
 func (w *worker) runCurator(ctx context.Context) error {
 	for ctx.Err() == nil {
@@ -93,14 +92,7 @@ func (w *worker) extractFacts(ctx context.Context, job store.CurationJob) (store
 			return out, err
 		}
 		out.Session = session
-		valid := out.Facts != nil
-		for _, f := range out.Facts {
-			if f.Quote == "" || !strings.Contains(source.Content, f.Quote) {
-				valid = false
-				break
-			}
-		}
-		if valid {
+		if out.HasSourceQuotes(source.Content) {
 			return out, nil
 		}
 		prompt = "The previous extraction did not supply a contiguous source quote for every finding. Select one exact uninterrupted phrase from content for each finding, without combining separated passages. Omit a finding if unsupported.\n" + prompt

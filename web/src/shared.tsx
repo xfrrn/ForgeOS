@@ -55,16 +55,18 @@ export class ApiError extends Error {
 
 export function requestWith(onUnauthorized: () => void): ApiRequest {
   return async <T,>(path: string, init: RequestInit = {}, format?: 'blob') => {
-    const agentPath = path === '/projects/agent-settings' || path === '/projects/agent-models' || path === '/projects/agent-skills' || /^\/projects\/[1-9]\d*\/agents$/.test(path)
+    const agentPath = path === '/projects/agent-settings' || path === '/projects/agent-models' || path === '/projects/agent-skills' || /^\/projects\/[1-9]\d*\/agents$/.test(path) ||
+      ((!init.method || init.method === 'GET' || init.method === 'PUT') && /^\/projects\/[1-9]\d*\/knowledge\/model-settings$/.test(path))
     const globalRulesPath = /^\/global-rules(?:\?revision=[1-9]\d*)?$/.test(path)
     const materialPath = /^\/projects\/[1-9]\d*\/(?:experience(?:\?(?:q=[^&#]+|before=[1-9]\d*))?|materials(?:\?[^#]*|\/[^/?#\\]+(?:\?revision=[1-9]\d*|\/revisions\/[1-9]\d*\/curation)?)?)$/.test(path)
     const libraryPath = (!init.method || init.method === 'GET') && /^\/projects\/[1-9]\d*\/documents(?:\/tree|\/read)?(?:\?[^#]*)?$/.test(path)
     const documentPath = libraryPath || /^\/projects\/[1-9]\d*\/document-changes(?:\?before=[1-9]\d*|\/[1-9]\d*\/curation(?:\?part=[1-9]\d*)?)?$/.test(path)
     const taskEventPath = /^\/projects\/[1-9]\d*\/tasks\/[1-9]\d*\/events\/[1-9]\d*(?:\/curation)?$/.test(path)
-    const decisionPath = /^\/projects\/[1-9]\d*\/decisions(?:\?[^#]*|\/search\?status=[A-Z]+&q=[^&#]+|\/[1-9]\d*(?:\/(?:status|curation))?)?$/.test(path)
-    const sharePath = /^\/projects\/[1-9]\d*\/(?:shares(?:\/[1-9]\d*(?:\/publication)?)?|shared-experience)(?:\?before=[1-9]\d*)?$/.test(path)
+    const decisionPath = /^\/projects\/[1-9]\d*\/decisions(?:\?[^#]*|\/search\?status=[A-Z]+&q=[^&#]+|\/[1-9]\d*(?:\?versions=1|\/(?:status|curation))?)?$/.test(path)
+    const experienceLibraryPath = /^\/projects\/[1-9]\d*\/knowledge\/experience(?:\?status=(?:current|pending|history|all)(?:&q=[^&#]+)?(?:&before=[1-9]\d*)?|\/[1-9]\d*(?:\/withdraw|\/changes(?:\/[1-9]\d*\/(?:adopt|discard|curation))?)?)?$/.test(path)
+    const sharePath = /^\/projects\/[1-9]\d*\/shares(?:\?(?:latest=1(?:&q=[^&#]+)?(?:&before=[1-9]\d*)?|before=[1-9]\d*)|\/[1-9]\d*(?:\/publication|\/versions(?:\?before=[1-9]\d*)?)?)?$/.test(path)
     const roleArchivePath = /^\/role-processes\/[1-9]\d*\/instances\/[1-9]\d*\/archive$/.test(path)
-    const shareSearchPath = /^\/projects\/[1-9]\d*\/shared-experience\/search\?q=[^&#]+$/.test(path)
+    const receivedSharePath = /^\/projects\/[1-9]\d*\/shared-experience(?:\?(?:versions=1(?:&before=[1-9]\d*)?|before=[1-9]\d*)|\/search\?(?:versions=1&)?q=[^&#]+|\/[1-9]\d*)?$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
     const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:overview-context|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
@@ -73,7 +75,7 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull|identity)$/.test(path)
     const issuePreviewPath = (!init.method || init.method === 'GET') && /^\/projects\/[1-9]\d*\/issues\/[1-9]\d*$/.test(path)
     const projectPath = /^\/projects(?:\?[^#]*|\/[1-9]\d*(?:\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?)?$/.test(path)
-    if (!agentPath && !nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !projectGitPath && !shareSearchPath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !decisionPath && !materialPath && !projectPath && !workerPath && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
+    if (!agentPath && !nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !projectGitPath && !receivedSharePath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !experienceLibraryPath && !decisionPath && !materialPath && !projectPath && !workerPath && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
     let response: Response

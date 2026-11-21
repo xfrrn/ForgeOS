@@ -87,6 +87,8 @@ function AgentForm({entry,project,path,request,onSaved,onReload,catalog}: {entry
   }
   return <form onSubmit={e=>{e.preventDefault();void save(false)}}>
     <p>当前生效版本　<strong>{version(current)}</strong></p>
+    {project && ['curator','knowledge-review','share'].includes(entry.key) && <p>本页配置用于 CLI。项目的直连模型在
+      <a href={path.replace(/\/agents$/, '/knowledge/model-settings').replace(/^\//, '#/')}>知识库模型设置</a>中选择。</p>}
     {entry.key==='management-chat' ? <p>项目聊天使用 ForgeOS 内核。{project ? <a href={path.replace(/^\/projects\/(\d+)\/agents$/, '#/settings/credentials?project=$1')}>管理共享聊天模型</a> : <a href="#/settings/credentials">管理共享聊天模型</a>}</p> : <>
     <div className="agent-fields"><ThemedSelect label="执行 Harness" value={harness}
       options={entry.harnesses.map(value=>({value,label:harnessNames[value]}))}

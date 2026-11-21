@@ -11,9 +11,9 @@ import (
 const experienceFacts = `WITH facts AS MATERIALIZED (
 	SELECT e.id,e.project_id,e.key,e.decision_id,e.event_id,e.revision,e.title,e.kind,e.source,e.receipt_path,
 		e.content_sha256,e.reviewed_at,'approved'::text AS status,'D1'::text AS level,
-		f.ordinality::integer AS fact_number,f.value->>'statement' AS statement,f.value->>'quote' AS quote,
+		(f.value->>'fact_number')::integer AS fact_number,f.value->>'statement' AS statement,f.value->>'quote' AS quote,
 		strpos(e.content,f.value->>'quote')-1 AS start_char
-	FROM current_project_experience e CROSS JOIN LATERAL jsonb_array_elements(e.facts) WITH ORDINALITY f
+	FROM current_project_experience e CROSS JOIN LATERAL jsonb_array_elements(e.facts) f
 	WHERE e.project_id=$1)`
 
 func (s *Store) indexExperience(ctx context.Context, project int64, dimensions int) error {
@@ -57,7 +57,8 @@ func (s *Store) indexExperience(ctx context.Context, project int64, dimensions i
 				return errors.New("experience embedding dimensions differ from query")
 			}
 			_, err = s.db.ExecContext(ctx, `INSERT INTO experience_embeddings(curation_id,fact_number,model,embedding)
-				SELECT id,$3,$4,$5 FROM current_project_experience WHERE project_id=$1 AND id=$2
+				SELECT curation_id,fact_number,$4,$5 FROM experience_revision_facts
+				WHERE project_id=$1 AND curation_id=$2 AND fact_number=$3 AND is_effective
 				ON CONFLICT DO NOTHING`, project, f.id, f.number, s.embeddings.model, pq.Array(v))
 			if err != nil {
 				return err

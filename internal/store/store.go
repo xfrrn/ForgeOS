@@ -425,6 +425,24 @@ var chatCreateIssueSchema string
 //go:embed 142_chat_task_progress.sql
 var chatTaskProgressSchema string
 
+//go:embed 143_execution_knowledge.sql
+var executionKnowledgeSchema string
+
+//go:embed 144_experience_entries.sql
+var experienceEntriesSchema string
+
+//go:embed 145_share_series.sql
+var shareSeriesSchema string
+
+//go:embed 146_shared_citation_status.sql
+var sharedCitationStatusSchema string
+
+//go:embed 147_knowledge_model_settings.sql
+var knowledgeModelSettingsSchema string
+
+//go:embed 148_knowledge_model_attempts.sql
+var knowledgeModelAttemptsSchema string
+
 //go:embed 119_document_embeddings.sql
 var documentEmbeddingsSchema string
 
@@ -487,6 +505,8 @@ type Task struct {
 }
 
 type Execution struct {
+	KnowledgeReferences []json.RawMessage `json:"knowledge_references,omitempty"`
+
 	SteerableInstance      int64            `json:"steerable_instance,omitempty"`
 	CommandApprovals       json.RawMessage  `json:"command_approvals,omitempty"`
 	TurnInputs             json.RawMessage  `json:"turn_inputs,omitempty"`
@@ -548,6 +568,7 @@ type Job struct {
 	RecoverWriterPause    bool               `json:"recover_writer_pause,omitempty"`
 	ProjectID             int64              `json:"project_id,omitempty"`
 	DecisionLookups       bool               `json:"decision_lookups,omitempty"`
+	KnowledgeTools        bool               `json:"knowledge_tools,omitempty"`
 	DecisionProtocol      string             `json:"decision_protocol,omitempty"`
 	InstructionProtocol   string             `json:"instruction_protocol,omitempty"`
 	CheckpointWorktrees   bool               `json:"checkpoint_worktrees,omitempty"`
@@ -627,7 +648,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema, repositoryCredentialsSchema, sharedChatModelsSchema, chatCreateIssueSchema, chatTaskProgressSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema, repositoryCredentialsSchema, sharedChatModelsSchema, chatCreateIssueSchema, chatTaskProgressSchema, executionKnowledgeSchema, experienceEntriesSchema, shareSeriesSchema, sharedCitationStatusSchema, knowledgeModelSettingsSchema, knowledgeModelAttemptsSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -701,6 +722,7 @@ func (s *Store) Task(ctx context.Context, id int64) (Task, error) {
                 'turn_inputs',(SELECT jsonb_agg(to_jsonb(i)-'execution_id'-'claim_key' ORDER BY i.id) FROM native_turn_inputs i WHERE i.execution_id=e.id),
                 'observed_process',CASE WHEN e.result IS NULL THEN e.observed_process END,'ci_candidate',e.ci_candidate,'ci_pause_requested_at',e.ci_pause_requested_at,'ci_resumed_at',e.ci_resumed_at,
 		        'abandoned_at', e.abandoned_at,'owner_cancel_requested_at', e.owner_cancel_requested_at,'decision_context',e.decision_context,'global_rules',to_jsonb(gr),
+		        'knowledge_references',cited_knowledge(e.id),
 		        'review_feedback',(SELECT jsonb_agg(jsonb_build_object('id',f.id,'preview_id',f.preview_id,'decision',f.decision,'note',f.note) ORDER BY f.id)
 		            FROM candidate_review_feedback f WHERE f.execution_id=e.id AND t.status='WAITING_ACCEPTANCE'
 		            AND e.id=(SELECT max(id) FROM executions WHERE task_id=t.id)),
@@ -951,6 +973,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.ReportLiveCILog = j.ReportCICandidate && (j.Spec.Validation == "go-test" || j.Spec.Validation == "auto" || validation.ValidLevel(j.Spec.Validation))
 		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
 		j.RuntimeQuestions = j.SupportsCheckpoints && j.Spec.Mode != "plan"
+		j.KnowledgeTools = j.RuntimeQuestions && caps.SupportsKnowledgeTools
 		j.CheckpointWorktrees = j.RuntimeQuestions
 		j.ResumeQuestions = j.RuntimeQuestions
 		if j.RuntimeQuestions {
@@ -1015,10 +1038,10 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 	}
 	var rules []byte
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until,decision_context,global_rules_revision,supports_model_pause,native_approvals)
+		INSERT INTO executions(id, task_id, worker, workspace, lease_hash, requirement_id, uses_checkpoints, resource_managed, lease_until,decision_context,global_rules_revision,supports_model_pause,native_approvals,knowledge_tools)
 		VALUES ($1, $2, $3, $4, $5, (SELECT requirement_id FROM work_items WHERE id=$2),$7,$8,
-		    clock_timestamp() + $6 * interval '1 second',NULLIF($9,'')::jsonb->'decisions',NULLIF($10,0),$11,$12)
-		RETURNING (SELECT to_jsonb(r) FROM global_rule_revisions r WHERE r.revision=global_rules_revision)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources, string(j.GoalContext), globalRevision, j.ModelPause, j.NativeApprovals).Scan(&rules)
+		    clock_timestamp() + $6 * interval '1 second',NULLIF($9,'')::jsonb->'decisions',NULLIF($10,0),$11,$12,$13)
+		RETURNING (SELECT to_jsonb(r) FROM global_rule_revisions r WHERE r.revision=global_rules_revision)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources, string(j.GoalContext), globalRevision, j.ModelPause, j.NativeApprovals, j.KnowledgeTools).Scan(&rules)
 	if err != nil {
 		return nil, err
 	}

@@ -74,6 +74,7 @@ func registerCurationReview(mux *http.ServeMux, data *store.Store, project int64
 }
 
 func registerCurationReads(mux *http.ServeMux, data *store.Store, owner string, workers *workerRegistry) {
+	registerExperienceLibrary(mux, data, owner)
 	mux.HandleFunc("GET /projects/{id}/tasks/{task}/events/{event}/curation", authorized(owner, taskEventRead(data.EventCuration)))
 	mux.HandleFunc("GET /projects/{id}/decisions/{decision}/curation", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)

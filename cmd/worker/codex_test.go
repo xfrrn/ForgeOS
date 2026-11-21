@@ -176,6 +176,9 @@ func TestMain(m *testing.M) {
 	}
 	body, err := io.ReadAll(os.Stdin)
 	args := strings.Join(os.Args[1:], " ")
+	if strings.Contains(string(body), "SIMULATED_KNOWLEDGE_FLOW") {
+		os.Exit(testKnowledgeProcess(string(body), false))
+	}
 
 	if strings.HasPrefix(string(body), "SIMULATED_FILE_CHANGE") {
 		out := json.NewEncoder(os.Stdout)

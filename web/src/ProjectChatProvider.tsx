@@ -36,7 +36,7 @@ export function useChatModels(request: ApiRequest) {
   return {models, error, refresh}
 }
 
-export function ProjectModelSettings({request, projectId}: {request: ApiRequest; projectId?: number}) {
+export function ProjectModelSettings({request, projectId, fromKnowledge}: {request: ApiRequest; projectId?: number; fromKnowledge?:boolean}) {
   const {models, error, refresh} = useChatModels(request)
   const [editing, setEditing] = useState<ChatModel | 'new'>()
   const [removing, setRemoving] = useState<ChatModel>()
@@ -51,19 +51,19 @@ export function ProjectModelSettings({request, projectId}: {request: ApiRequest;
     finally {setBusy(false)}
   }
 
-  return <section className="panel detail-card" aria-label="聊天模型">
-    <h2>聊天模型</h2>
-    <p>选择模型并保存 API Key 后，即可在各项目的聊天中使用。</p>
+  return <section className="panel detail-card" aria-label="模型连接">
+    <h2>模型连接</h2>
+    <p>模型连接由各项目共用。保存后，可在项目聊天和知识库中选择。</p>
     <div className="detail-actions"><button className="button" disabled={!models || !!editing || busy} onClick={() => {setRemoving(undefined); setEditing('new'); setProblem('')}}>添加模型</button>
-      {projectId && <a className="button" href={projectHref(projectId, '/chat')}>返回项目聊天</a>}</div>
+      {projectId && <a className="button" href={projectHref(projectId, fromKnowledge ? '/knowledge/model-settings' : '/chat')}>{fromKnowledge ? '返回知识库模型设置' : '返回项目聊天'}</a>}</div>
     {error && <p role="alert">{error} <button className="button" onClick={refresh}>重新读取</button></p>}
     {!models && !error && <p role="status">正在读取模型…</p>}
-    {models?.length === 0 && !editing && <p>尚未添加聊天模型。</p>}
+    {models?.length === 0 && !editing && <p>尚未添加模型连接。</p>}
     {editing && <ModelForm key={editing === 'new' ? 'new' : editing.id} model={editing === 'new' ? undefined : editing} models={models || []} request={request}
       onCancel={() => {setEditing(undefined); refresh()}} onSaved={() => {setEditing(undefined); refresh()}}/>}
     {models?.map(model => <article className="credential-row" key={model.id}>
       <h3>{model.model}</h3><p>{model.base_url}</p>
-      {model.id === removing?.id ? <><p>移除后，新的消息将无法选择此连接。</p>
+      {model.id === removing?.id ? <><p>移除将影响使用此连接的项目聊天和知识库。</p>
         <div className="detail-actions"><button className="button" disabled={busy} onClick={() => void remove(removing)}>确认移除</button>
           <button className="button" disabled={busy} onClick={() => setRemoving(undefined)}>取消</button></div></> :
         <div className="detail-actions"><button className="button" disabled={!!editing || busy} onClick={() => {setEditing(model); setRemoving(undefined); setProblem('')}}>编辑</button>

@@ -40,7 +40,7 @@ func (w *worker) runJobTurn(ctx context.Context, adapter harnessAdapter, job sto
 		process.handoffFrom = handoffFrom
 		process.question = question
 		if question != nil {
-			*question = nativeQuestion{}
+			question.reset()
 		}
 		return adapter.runTurn(w.agentContext(ctx, job.Agent), process, job.Workspace, prompt, session)
 	}

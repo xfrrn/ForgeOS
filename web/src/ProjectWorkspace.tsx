@@ -20,12 +20,14 @@ const workspaceTabs = [
   { key: 'tasks', href: '/tasks', label: '任务' },
   { key: 'reviews', href: '/reviews', label: '审核与验收' },
   { key: 'materials', href: '/materials', label: '项目资料' },
+  { key: 'knowledge', href: '/knowledge', label: '知识库' },
 ] as const
 
-const materialSections = [
-  { href: '/materials', label: '项目资料' },
-  { href: '/decisions', label: '项目决策' },
-  { href: '/shares', label: '共享经验' },
+const knowledgeSections = [
+  { key: 'decisions', href: '/knowledge/decisions', label: '项目决策' },
+  { key: 'experience', href: '/knowledge/experience', label: '项目经验' },
+  { key: 'shares', href: '/knowledge/shares/received', label: '共享经验' },
+  { key: 'model-settings', href: '/knowledge/model-settings', label: '模型设置' },
 ] as const
 
 export type ProjectWorkspaceTab = typeof workspaceTabs[number]['key']
@@ -90,9 +92,9 @@ export function ProjectWorkspace({ projectId, currentTab, taskId, section, taskQ
         {workspaceTabs.map(tab => <a key={tab.key} href={base + tab.href}
           aria-current={currentTab === tab.key ? 'page' : undefined}>{tab.label}</a>)}
       </nav>
-      {currentTab === 'materials' && <nav className="project-secondary-links" aria-label="项目资料导航">
-        {materialSections.map(item => <a key={item.href} href={base + item.href}
-          aria-current={(section || 'materials') === item.href.slice(1) ? 'page' : undefined}>{item.label}</a>)}
+      {currentTab === 'knowledge' && <nav className="project-secondary-links" aria-label="知识库导航">
+        {knowledgeSections.map(item => <a key={item.key} href={base + item.href}
+          aria-current={section === item.key ? 'page' : undefined}>{item.label}</a>)}
       </nav>}
       {currentTab === 'tasks' && !taskId && <nav className="project-secondary-links" aria-label="任务导航">
         <a href={base + '/tasks'} aria-current={!taskQueue && section !== 'inbox' ? 'page' : undefined}>任务列表</a>

@@ -18,8 +18,8 @@ const pendingApprovalCandidates = `
 		LEFT JOIN material_curations c ON (c.project_id,c.id)=(d.project_id,d.curation_id)
 		WHERE i.status='PROPOSED'
 		UNION ALL
-		SELECT 'share',id,project_id,title,revision,review->>'verdict',review->>'effective_level',recipient,digest,NULL,NULL
-		FROM knowledge_shares WHERE review->>'verdict'='approve' AND published_at IS NULL AND revoked_at IS NULL
+		SELECT 'share',id,project_id,title,coalesce(revision,experience_revision),review->>'verdict',review->>'effective_level',recipient,digest,NULL,NULL
+		FROM knowledge_share_receipts WHERE review->>'verdict'='approve' AND published_at IS NULL AND revoked_at IS NULL AND NOT stale
 		UNION ALL
 		SELECT 'question',q.id,t.project_id,q.question,NULL,NULL,q.management_advice->>'level',NULL,NULL,NULL,t.id
 		FROM decision_questions q JOIN work_items t ON t.id=q.task_id JOIN executions e ON e.id=q.execution_id

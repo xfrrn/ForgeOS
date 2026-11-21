@@ -130,6 +130,7 @@ func run(ctx context.Context) error {
 		}
 	}
 	registerProjectChat(mux, data, root, owner, chatNodes, ghRead, clones.credentials, clones.chatIssueAPI)
+	registerKnowledgeModelSettings(mux, data, owner)
 	clones.register(mux, owner)
 	clones.registerCredentials(mux, owner)
 	clones.registerProjectGit(mux, owner)
@@ -242,6 +243,13 @@ func run(ctx context.Context) error {
 	var notices sync.WaitGroup
 	defer notices.Wait()
 	defer stopSweep()
+	if clones.credentials != nil {
+		notices.Add(1)
+		go func() {
+			defer notices.Done()
+			runKnowledgeModels(sweepCtx, data, clones.credentials)
+		}()
+	}
 	for _, channel := range channels {
 		notices.Add(1)
 		go func() {

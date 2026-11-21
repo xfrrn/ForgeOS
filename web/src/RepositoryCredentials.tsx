@@ -101,7 +101,7 @@ export function CredentialForm({request, initialURL = '', credential, onSaved, o
   </form>
 }
 
-export function RepositoryCredentials({request, projectId}: {request: ApiRequest; projectId?: number}) {
+export function RepositoryCredentials({request, projectId, fromKnowledge}: {request: ApiRequest; projectId?: number; fromKnowledge?: boolean}) {
   const {catalog, error, refresh} = useRepositoryCredentials(request)
   const [editing, setEditing] = useState<number>()
   const [confirm, setConfirm] = useState<number>()
@@ -120,7 +120,7 @@ export function RepositoryCredentials({request, projectId}: {request: ApiRequest
   return <div className="credential-page">
     <PageHeading title="密钥与凭据" actions={<button className="button primary" disabled={!catalog?.configured || editing !== undefined || busy}
       onClick={() => {setEditing(0); setConfirm(undefined); setMessage('')}}>添加仓库凭据</button>}/>
-    <ProjectModelSettings request={request} projectId={projectId}/>
+    <ProjectModelSettings request={request} projectId={projectId} fromKnowledge={fromKnowledge}/>
     <section className="panel detail-card"><h2>本机身份</h2>
       <p>默认沿用 ForgeOS 控制面服务账号的身份。访问 GitHub 时使用该账号的 gh 登录。</p></section>
     <section className="panel detail-card"><h2>仓库访问凭据</h2>

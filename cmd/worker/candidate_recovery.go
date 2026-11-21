@@ -106,7 +106,7 @@ func (w *worker) readWriterInputs(ctx context.Context, q *parkedCheckpoint, reco
 	if err := verifyWriterDraft(ctx, q); err != nil {
 		return page, err
 	}
-	if (q.InitialTip != "" || len(page.Comments) > 0 || len(page.OwnerInstructions) > 0) && q.Version != w.nativeVersion(q.Job) {
+	if (q.InitialTip != "" || q.Knowledge.Pending != nil || len(page.Comments) > 0 || len(page.OwnerInstructions) > 0) && q.Version != w.nativeVersion(q.Job) {
 		return page, errors.New("native harness version changed before writer startup")
 	}
 	// Keep the receipt while the next model reservation is queued or its response is in flight.

@@ -47,6 +47,19 @@ func registerShares(mux *http.ServeMux, data *store.Store, owner string, workers
 		out, err := data.ShareReceipt(r.Context(), id, share)
 		respond(w, 200, out, err)
 	}))
+	mux.HandleFunc("POST /projects/{id}/shares/{share}/versions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, share, ok := ids(w, r)
+		var in store.ShareVersionDraft
+		if !ok || !decodeLimited(w, r, &in, 64<<10) {
+			return
+		}
+		if !in.Valid() {
+			problem(w, 400, "provide a redacted title and content and the expected publication")
+			return
+		}
+		out, err := data.DraftShareVersion(r.Context(), id, share, in)
+		respond(w, 200, out, err)
+	}))
 	mux.HandleFunc("POST /projects/{id}/shares/{share}/publication", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, share, ok := ids(w, r)
 		if !ok {
@@ -85,22 +98,46 @@ func registerShares(mux *http.ServeMux, data *store.Store, owner string, workers
 			return
 		}
 		if before, ok := beforeID(w, r); ok {
-			out, err := data.OutgoingShares(r.Context(), id, before)
+			q := strings.TrimSpace(r.URL.Query().Get("q"))
+			if len(q) > 512 || strings.ContainsRune(q, 0) || !utf8.ValidString(q) {
+				problem(w, 400, "invalid share query")
+				return
+			}
+			out, err := data.OutgoingSharePage(r.Context(), id, before, q, r.URL.Query().Get("latest") == "1")
 			respond(w, 200, out, err)
 		}
 	}))
-	registerProjectRead(mux, "shared-experience/search", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
+	mux.HandleFunc("GET /projects/{id}/shares/{share}/versions", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+		id, share, ok := ids(w, r)
+		if !ok {
+			return
+		}
+		if before, ok := beforeID(w, r); ok {
+			out, err := data.ShareVersions(r.Context(), id, share, before)
+			respond(w, 200, out, err)
+		}
+	}))
+	registerProjectRead(mux, "shared-experience/{series}", owner, workers, func(w http.ResponseWriter, r *http.Request, project int64) {
+		series, err := strconv.ParseInt(r.PathValue("series"), 10, 64)
+		if err != nil || series < 1 {
+			problem(w, 400, "invalid shared experience series")
+			return
+		}
+		out, err := data.ReceivedShare(r.Context(), project, series)
+		respond(w, 200, out, err)
+	})
+	registerIndexedSearch(mux, "shared-experience/search", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		if q == "" || len(q) > 512 || strings.ContainsRune(q, 0) || !utf8.ValidString(q) || r.URL.Query().Has("before") {
 			problem(w, 400, "invalid shared experience search query or cursor")
 			return
 		}
-		out, err := data.SearchSharedExperience(r.Context(), id, q)
+		out, err := data.SearchReceivedShares(r.Context(), id, q, r.URL.Query().Get("versions") == "1")
 		respond(w, 200, out, err)
 	})
 	registerProjectRead(mux, "shared-experience", owner, workers, func(w http.ResponseWriter, r *http.Request, id int64) {
 		if before, ok := beforeID(w, r); ok {
-			out, err := data.SharedExperience(r.Context(), id, before)
+			out, err := data.ReceivedSharePage(r.Context(), id, before, r.URL.Query().Get("versions") == "1")
 			respond(w, 200, out, err)
 		}
 	})

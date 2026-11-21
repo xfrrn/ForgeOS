@@ -77,8 +77,16 @@ func (s *Store) indexDocumentBlob(ctx context.Context, project int64, repo, blob
 }
 
 func (s *Store) SearchDocuments(ctx context.Context, project int64, repo, revision, query string) (localrepo.DocumentSearch, error) {
+	commit, err := localrepo.DocumentRevision(ctx, repo, revision)
+	if err != nil {
+		return localrepo.DocumentSearch{}, err
+	}
+	return s.SearchDocumentCommit(ctx, project, repo, commit, query)
+}
+
+func (s *Store) SearchDocumentCommit(ctx context.Context, project int64, repo, commit, query string) (localrepo.DocumentSearch, error) {
 	if s.embeddings == nil {
-		return localrepo.SearchDocuments(ctx, repo, revision, query, nil)
+		return localrepo.SearchDocumentCommit(ctx, repo, commit, query, nil)
 	}
 	type file struct {
 		Path    string `json:"path"`
@@ -88,7 +96,7 @@ func (s *Store) SearchDocuments(ctx context.Context, project int64, repo, revisi
 	var vector []float32
 	var files []file
 	literals := map[string]localrepo.DocumentMatch{}
-	result, err := localrepo.SearchDocuments(ctx, repo, revision, query, func(hit localrepo.DocumentMatch) error {
+	result, err := localrepo.SearchDocumentCommit(ctx, repo, commit, query, func(hit localrepo.DocumentMatch) error {
 		files = append(files, file{hit.Path, hit.Blob, hit.Excerpt != ""})
 		if hit.Excerpt != "" {
 			literals[hit.Path] = hit

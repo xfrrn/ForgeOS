@@ -121,22 +121,39 @@ func (w *worker) readCheckpoint(ctx context.Context, job store.Job, seq int, ses
 	return batch, ctx.Err()
 }
 
-// Only the adapter's final assistant message may ask for a business decision.
+// Only the adapter's final assistant message may request a checkpoint operation.
 type nativeQuestion struct {
 	Question            string `json:"forgeos_question"`
 	Evidence            string `json:"evidence"`
 	ReferenceDecisionID int64
+	knowledgeEnabled    bool
+	knowledge           *writerKnowledgeRequest
 	requested           bool
 }
 
+func (q *nativeQuestion) reset() {
+	*q = nativeQuestion{knowledgeEnabled: q.knowledgeEnabled}
+}
+
 func (q *nativeQuestion) read(message string) {
-	*q = nativeQuestion{}
+	q.reset()
 	message = strings.TrimSpace(message)
 	if strings.HasPrefix(message, "```json") && strings.HasSuffix(message, "```") {
 		message = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(message, "```json"), "```"))
 	}
 	var fields map[string]json.RawMessage
 	if !strings.HasPrefix(message, "{") || json.Unmarshal([]byte(message), &fields) != nil {
+		return
+	}
+	if raw := fields["forgeos_knowledge"]; q.knowledgeEnabled && raw != nil {
+		q.knowledge = &writerKnowledgeRequest{}
+		if len(fields) == 1 && len(raw) <= 64<<10 {
+			decoder := json.NewDecoder(strings.NewReader(string(raw)))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(q.knowledge) != nil || !q.knowledge.valid() {
+				q.knowledge = &writerKnowledgeRequest{}
+			}
+		}
 		return
 	}
 	if ref := fields["forgeos_lookup_decision"]; ref != nil {

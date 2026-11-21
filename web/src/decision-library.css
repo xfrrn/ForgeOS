@@ -1,0 +1,16 @@
+.decision-library-toolbar { display: flex; flex-flow: row wrap; align-items: center; gap: .65rem; }
+.decision-library-toolbar form { flex: 1 1 16rem; }
+.decision-library-toolbar input { flex: 1; min-width: 8rem; }
+.decision-library-layout { display: grid; grid-template-columns: minmax(15rem, 1fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
+.decision-library-list, .decision-library-record { min-width: 0; overflow-wrap: anywhere; }
+.decision-library-list .decision-list-item { display: grid; gap: .3rem; padding: .75rem; color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }
+.decision-list-item small { color: var(--muted); }
+.decision-list-item[aria-current="page"] { background: var(--accent); border-radius: var(--radius-control); }
+.decision-library-record .detail-actions, .decision-library-record details { margin-top: .85rem; }
+.decision-library-record h2 { margin-top: .5rem; }
+.decision-library-record .decision-back { display: none; }
+@media (max-width: 700px) {
+  .decision-library-layout { display: block; }
+  .decision-show-list .decision-library-record, .decision-show-record .decision-library-list { display: none; }
+  .decision-library-record .decision-back { display: inline-block; margin-bottom: .5rem; }
+}

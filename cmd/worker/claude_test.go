@@ -29,6 +29,9 @@ func testClaudeProcess() int {
 	if err != nil || !slices.Contains(os.Args, "--restricted") || !slices.Contains(os.Args, "--safe-mode") {
 		return 2
 	}
+	if strings.Contains(string(body), "SIMULATED_KNOWLEDGE_FLOW") {
+		return testKnowledgeProcess(string(body), true)
+	}
 	fmt.Printf(`{"type":"system","subtype":"init","session_id":"%s"}`+"\n", testClaudeID)
 	if string(body) == "SIMULATED_PUBLIC_OUTPUT" {
 		fmt.Printf(`{"type":"assistant","session_id":"%s","message":{"content":[{"type":"tool_use","id":"tool-1","name":"Read","input":{"file_path":"private-input"}}]}}`+"\n", testClaudeID)

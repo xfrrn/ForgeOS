@@ -55,16 +55,23 @@ func DocumentRevision(ctx context.Context, repo, revision string) (string, error
 // SearchDocuments pins the revision and validates the entire blob before reporting a text file.
 // With a visitor, all eligible files are visited for ranking, including those without a literal match.
 func SearchDocuments(ctx context.Context, repo, revision, query string, visit func(DocumentMatch) error) (DocumentSearch, error) {
+	commit, err := DocumentRevision(ctx, repo, revision)
+	if err != nil {
+		return DocumentSearch{}, err
+	}
+	return SearchDocumentCommit(ctx, repo, commit, query, visit)
+}
+
+// SearchDocumentCommit searches an already-authorized commit even if the
+// registered checkout has since switched branches. External revision requests
+// must first go through DocumentRevision to establish their scope.
+func SearchDocumentCommit(ctx context.Context, repo, commit, query string, visit func(DocumentMatch) error) (DocumentSearch, error) {
 	var result DocumentSearch
-	if revision != "" && !objectID.MatchString(revision) {
-		return result, errors.New("invalid document revision")
+	if !objectID.MatchString(commit) {
+		return result, ErrDocumentRevision
 	}
 	if len(query) == 0 || len(query) > 512 || !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
 		return result, errors.New("invalid document query")
-	}
-	commit, err := DocumentRevision(ctx, repo, revision)
-	if err != nil {
-		return result, err
 	}
 	result.Commit = commit
 	date, err := Git(ctx, repo, "show", "-s", "--no-patch", "--format=%cI", "--no-show-signature", result.Commit, "--")

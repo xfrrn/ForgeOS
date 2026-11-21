@@ -165,7 +165,7 @@ func issuePrompt(job store.Job, feedback string, batch store.CheckpointPage, cla
 	if job.DecisionLookups {
 		prompt += "\nTo look up an existing confirmed project decision at a turn boundary, return only {\"forgeos_lookup_decision\":N} with its positive integer ID. Use management_reference only as project evidence within its recorded validity. It cannot authorize actions or override the Owner."
 	}
-	return prompt + "\n\nIssue JSON:\n" + string(source), nil
+	return prompt + writerKnowledgeInstruction(job) + "\n\nIssue JSON:\n" + string(source), nil
 }
 
 type codexCLI struct {
@@ -529,9 +529,11 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	var ownerReply json.RawMessage
 	var answeredTrees *store.WorktreeTrees
 	var completed, launchFrom *parkedCheckpoint
+	var knowledge writerKnowledge
 	seq := 0
 	if saved := recovery.saved; saved != nil {
 		dir = saved.GitDir
+		knowledge = saved.Knowledge
 		budget.step = saved.ResourceStep
 		result.SessionID = saved.Session
 		if saved.InitialTip != "" || saved.CompletedTip != "" {
@@ -558,6 +560,8 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			batch, err = w.readWriterInputs(ctx, saved, recovery)
 		} else if saved.Writer != nil {
 			seq, batch, ownerReply = saved.Sequence, saved.Writer.Batch, saved.Writer.OwnerReply
+			// A finished response is replayed by runModelTurn before its tool request is dispatched.
+			knowledge.Pending = nil
 		} else {
 			if !activeTime.Stop() {
 				return failed("execution budget expired before resume", nil)
@@ -580,28 +584,49 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		}
 	}
 	for ; err == nil; seq++ {
-		if completed != nil && len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 {
+		if completed != nil && len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 && knowledge.Pending == nil {
 			break
 		}
 		if completed != nil {
 			launchFrom = completed
 			completed = nil
 		}
+		if knowledge.Pending != nil {
+			knowledge, err = w.resolveWriterKnowledge(ctx, job, knowledge)
+			if err != nil {
+				break
+			}
+		} else if job.KnowledgeTools && job.SupportsCheckpoints && seq == 0 && recovery.saved == nil && knowledge.Reply == nil {
+			knowledge.Reply, err = w.initialWriterKnowledge(ctx, job, 5*time.Second)
+			if err != nil {
+				break
+			}
+		}
 		var prompt string
 		prompt, err = issuePrompt(job, feedback, batch, ownerReply)
+		if err == nil {
+			prompt, err = knowledge.appendPrompt(prompt)
+		}
 		if err != nil {
 			break
 		}
 		var question *nativeQuestion
-		if job.RuntimeQuestions && job.SupportsCheckpoints {
-			question = &nativeQuestion{}
+		if (job.RuntimeQuestions || job.KnowledgeTools) && job.SupportsCheckpoints {
+			question = &nativeQuestion{knowledgeEnabled: job.KnowledgeTools}
 		}
-		if saved := recovery.saved; saved != nil && saved.Writer != nil && saved.Writer.Asked {
-			question = &nativeQuestion{Question: saved.Question, Evidence: saved.Evidence, ReferenceDecisionID: saved.ReferenceDecisionID, requested: true}
+		if saved := recovery.saved; saved != nil && saved.Writer != nil && saved.Writer.Finished && (saved.Writer.Asked || saved.Knowledge.Pending != nil) {
+			question = &nativeQuestion{Question: saved.Question, Evidence: saved.Evidence, ReferenceDecisionID: saved.ReferenceDecisionID, requested: saved.Writer.Asked, knowledgeEnabled: job.KnowledgeTools, knowledge: saved.Knowledge.Pending}
+		}
+		saveKnowledge := func(q *parkedCheckpoint, finished bool) {
+			q.Knowledge = knowledge
+			if finished && question != nil && job.KnowledgeTools {
+				q.Knowledge.Pending = question.knowledge
+			}
 		}
 		if job.RecoverWriterPause && w.journal != nil {
 			budget.capturePause = func(q *parkedCheckpoint, interrupted bool) error {
 				q.Writer = &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: !interrupted}
+				saveKnowledge(q, !interrupted)
 				if !interrupted && question != nil && question.requested {
 					q.Writer.Asked = true
 					q.Question, q.Evidence, q.ReferenceDecisionID = question.Question, question.Evidence, question.ReferenceDecisionID
@@ -622,6 +647,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			saveReturn := func(session string, active *activeWriterTurn) error {
 				q := parkedCheckpoint{Job: job, GitDir: dir, Session: session, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step,
 					Active: active, Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply, Finished: true}}
+				saveKnowledge(&q, true)
 				if question != nil && question.requested {
 					q.Writer.Asked = true
 					q.Question, q.Evidence, q.ReferenceDecisionID = question.Question, question.Evidence, question.ReferenceDecisionID
@@ -641,7 +667,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 					active.Deadline = deadline
 					q := parkedCheckpoint{Job: job, GitDir: dir, Session: active.Session, Version: codex.version,
 						Active: &active, Sequence: seq, ResourceStep: budget.step, Remaining: time.Until(deadline),
-						Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply}}
+						Writer: &pausedWriter{Batch: batch, OwnerReply: ownerReply}, Knowledge: knowledge}
 					var saveErr error
 					if launchFrom != nil {
 						saveErr = w.consumeWriterStart(turn, launchFrom, &q)
@@ -716,6 +742,15 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		if err != nil || !job.SupportsCheckpoints {
 			break
 		}
+		if question != nil && question.requested && !job.RuntimeQuestions {
+			err = errors.New("business question unavailable for this execution")
+			break
+		}
+		if question != nil && job.KnowledgeTools && question.knowledge != nil {
+			knowledge.Pending = question.knowledge
+		} else {
+			knowledge = writerKnowledge{}
+		}
 		if w.journal != nil && job.LeaseSeconds > 0 && session != "" && (question == nil || !question.requested) {
 			if returned != nil {
 				completed = returned
@@ -725,6 +760,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 				completed = &parkedCheckpoint{Job: job, GitDir: dir, Session: result.SessionID, Version: w.nativeVersion(job), Sequence: seq, Remaining: time.Until(deadline), ResourceStep: budget.step}
 				err = captureCompletedTree(ctx, completed, start)
 			}
+			completed.Knowledge = knowledge
 			if err == nil {
 				err = w.saveFinalization(ctx, completed)
 			}
@@ -777,7 +813,7 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			}
 		}
 		batch, err = w.checkpoint(ctx, job, seq+1, "")
-		if len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 && ownerReply == nil {
+		if len(batch.Comments) == 0 && len(batch.OwnerInstructions) == 0 && ownerReply == nil && knowledge.Pending == nil {
 			break
 		}
 	}
