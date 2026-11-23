@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
 import { approvalLabels, approvalPath, type ApprovalItem } from './Approvals'
 import { noticeLabels, noticePath, type Notice } from './Notifications'
 import { ProjectOverviewContext } from './ProjectOverviewContext'
+import { ProjectPreview } from './ProjectPreview'
 import { QueueReason, queueTaskHref, RoleQueueList, taskRoles, type ExecutionQueuePage } from './ProjectExecutionQueue'
 import { formatTime, Icon, projectHref, Status, type ApiRequest } from './shared'
 import { MetricCard, PageHeading } from './ui'
@@ -100,6 +101,7 @@ export function Overview({projectId, request}: {projectId: number; request: ApiR
       actions={<button className="button" disabled={refreshing} onClick={() => { setRefreshing(true); setRevision(n => n + 1) }}>
         <Icon name="RefreshCw" size={15}/>{refreshing ? '刷新中…' : '刷新'}
       </button>}/>
+    <ProjectPreview key={projectId} projectId={projectId} request={request}/>
     {errors.counts && <p className="detail-problem" role="alert">{errors.counts}{data.counts ? '，显示上次结果。' : '。'}</p>}
     <nav className="metrics" aria-label="任务状态">
       {queues.map(q => <MetricCard key={q.status} label={q.name} value={data.counts ? data.counts[q.status] ?? 0 : '—'}

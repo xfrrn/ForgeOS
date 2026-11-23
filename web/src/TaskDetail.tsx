@@ -702,7 +702,7 @@ function Detail({ projectId, id, planRevision, questionID, executionID, category
     }
   }
   const listCategory = category ?? (task?.kind === 'git_head' ? 'git-head' :
-    task?.kind === 'environment_check' ? 'environment-check' : taskCategory(task?.spec?.issue?.work_type ?? null))
+    task?.kind === 'environment_check' ? 'environment-check' : task?.kind === 'project_preview' ? 'operations' : taskCategory(task?.spec?.issue?.work_type ?? null))
   const taskList = projectHref(projectId, '/tasks?category=' + listCategory)
   if (!task) return <>
     <BackLink href={taskList}>返回任务列表</BackLink>
@@ -731,7 +731,7 @@ function Detail({ projectId, id, planRevision, questionID, executionID, category
     <BackLink href={taskList}>返回任务列表</BackLink>
     <div className="detail-heading">
       <div className="detail-heading-meta"><span className="mono">T-{task.id}</span><Status value={task.status} /></div>
-      <h1>{issue?.title || (task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>
+      <h1>{issue?.title || (task.kind === 'project_preview' ? '项目预览操作' : task.startup ? '本地环境启动检查' : 'Git HEAD 检查')}</h1>
       {workTypeName(issue?.work_type) && <p>任务类型 · {workTypeName(issue?.work_type)}（{issue?.owner_classified ? 'Owner 确认' : 'GitHub 规则'}）</p>}
       {task.spec?.project_config_blob && <details><summary>项目执行配置</summary><dl className="detail-facts">
         <Fact label="实现 Harness">{(task.spec.child_harness || task.spec.harness) === 'claude' ? 'Claude Code' : 'Codex'}</Fact>

@@ -33,6 +33,7 @@ import (
 )
 
 type worker struct {
+	projectPreviews                         sync.Map
 	fixed                                   *residentPool
 	pool                                    *processPool
 	roleAgent                               *agents.Assignment
@@ -345,6 +346,7 @@ func temporary(status int) bool {
 }
 
 func (w *worker) run(ctx context.Context) error {
+	defer w.closeProjectPreviews()
 	journal, err := w.openJournal(ctx)
 	if err != nil {
 		return err
@@ -362,6 +364,7 @@ func (w *worker) run(ctx context.Context) error {
 	caps := store.WorkerCapabilities{CommandApprovalProject: w.commandPolicy.Project,
 		SupportsGlobalRules: true, SupportsResources: true, SupportsValidation: true, SupportsDeclaredChecks: true, SupportsRiskPolicy: true,
 		ClaudePlanning: w.claude.bin != "", SupportsCodex: w.codex != "", SupportsClaude: w.claude.bin != "", SupportsPlanner: w.planner, SupportsRework: writer, SupportsCheckpoints: writer}
+	caps.SupportsProjectPreview = runtime.GOOS == "windows" && w.codex != "" && w.planner
 	caps.SupportsStartup = os.Getenv("FORGEOS_STARTUP_IMAGE") != ""
 	if caps.SupportsStartup && os.Getenv("FORGEOS_STARTUP_NETWORK") != "" && os.Getenv("FORGEOS_STARTUP_PROJECT_ID") != "" {
 		caps.StartupIntegratedProject, err = strconv.ParseInt(os.Getenv("FORGEOS_STARTUP_PROJECT_ID"), 10, 64)
@@ -582,6 +585,12 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 				case <-ctx.Done():
 				}
 			}()
+			if work.Job.Kind == store.ProjectPreviewKind {
+				if err := work.run(ctx, w); err != nil && ctx.Err() == nil {
+					log.Printf("project preview execution %d failed: %v", work.Job.ExecutionID, err)
+				}
+				return
+			}
 			if w.fixed != nil {
 				if err := w.fixed.execute(ctx, work); err != nil && ctx.Err() == nil {
 					log.Printf("resident execution %d failed: %v", max(work.Follow, work.Job.ExecutionID), err)
@@ -606,6 +615,10 @@ func (w *worker) runQueue(parent context.Context, caps store.WorkerCapabilities)
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "project-preview-process" {
+		showProjectPreviewProcess(os.Stdin, os.Stdout)
+		return
+	}
 	if len(os.Args) >= 4 && os.Args[1] == "skill-files" {
 		if err := skilllib.Serve(os.Stdin, os.Stdout, os.Args[2], os.Args[3:]); err != nil {
 			log.Fatal(err)

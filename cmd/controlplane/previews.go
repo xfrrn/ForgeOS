@@ -93,7 +93,11 @@ func previewAssets(data *store.Store, root string, port int, backend *previewBac
 		defer cancel()
 		source, err := data.PreviewSource(ctx, match[1], port)
 		if err != nil {
-			http.NotFound(w, r)
+			if errors.Is(err, store.ErrNotFound) {
+				serveProjectPreview(w, r, data, match[1], gateway)
+				return
+			}
+			http.Error(w, "preview unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("X-ForgeOS-Commit", source.Commit)
@@ -168,6 +172,7 @@ func startPreviews(mux *http.ServeMux, data *store.Store, root, owner, addr stri
 		}()
 		done = func() { server.Close() }
 	}
+	registerProjectPreview(mux, data, owner, gateway, port)
 	mux.HandleFunc("GET /tasks/{id}/previews", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {

@@ -12,6 +12,8 @@ export function CandidatePreviews({ projectId, task, execution, commit, request 
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
   const api = `/tasks/${task}/previews`
+  const gateway = listing?.gateway
+  const viaGateway = gateway !== undefined && location.host === `forgeos.${gateway}`
   useEffect(() => {
     if (!open) return
     const controller = new AbortController()
@@ -37,12 +39,15 @@ export function CandidatePreviews({ projectId, task, execution, commit, request 
         <button className="button" disabled={busy || !directory.trim()} onClick={() => void change()}>启动预览</button>
         {listing.applications && <button className="button" disabled={busy} onClick={() => void change(undefined, true)}>启动应用预览（local-mock）</button>}</>
         : listing && <p>控制面尚未配置本机预览端口。</p>}
-      {listing?.previews.map(p => <div key={p.id}><strong>{p.environment === 'local-mock' ? '应用预览（local-mock）' : p.directory}</strong> · {p.state === 'active' ? '运行中' : p.state === 'stopped' ? '已停止' : '已到期'} · 到期时间 {formatTime(p.expires_at)}
-        {' '}<a href={projectHref(projectId, `/tasks/${task}/previews/${p.id}/feedback`)}>预览反馈</a>
-        {p.state === 'active' && <> <a href={p.url} target="_blank" rel="noreferrer">打开预览</a>
-          {listing.gateway && <> · <a href={`https://p-${p.id}.${listing.gateway}/`} target="_blank" rel="noreferrer">打开私网预览</a></>}
-          {' '}<button className="button" disabled={busy} onClick={() => void change(p.id)}>停止预览</button></>}
-      </div>)}
+      {listing?.previews.map(p => {
+        const gatewayURL = gateway ? `https://p-${p.id}.${gateway}/` : undefined
+        return <div key={p.id}><strong>{p.environment === 'local-mock' ? '应用预览（local-mock）' : p.directory}</strong> · {p.state === 'active' ? '运行中' : p.state === 'stopped' ? '已停止' : '已到期'} · 到期时间 {formatTime(p.expires_at)}
+          {' '}<a href={projectHref(projectId, `/tasks/${task}/previews/${p.id}/feedback`)}>预览反馈</a>
+          {p.state === 'active' && <> <a href={viaGateway ? gatewayURL : p.url} target="_blank" rel="noreferrer">打开预览</a>
+            {gatewayURL && !viaGateway && <> · <a href={gatewayURL} target="_blank" rel="noreferrer">打开私网预览</a></>}
+            {' '}<button className="button" disabled={busy} onClick={() => void change(p.id)}>停止预览</button></>}
+        </div>
+      })}
       <button className="detail-text-button" onClick={() => { setError(''); setRevision(n => n + 1) }}>刷新预览状态</button>
     </div>}
   </section>

@@ -76,6 +76,7 @@ func (s *Store) RenewExecutionLease(ctx context.Context, id int64, token string)
 }
 
 type WorkerCapabilities struct {
+	SupportsProjectPreview   bool  `json:"supports_project_preview,omitempty"`
 	ClaudePlanning           bool  `json:"supports_claude_planning,omitempty"`
 	PlannerDiscussion        bool  `json:"-"`
 	AgentSettings            bool  `json:"-"`
@@ -115,6 +116,7 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 		SupportsPlannerPause:   c.SupportsPlannerPause && node.SupportsPlannerPause,
 		SupportsReworkAnswers:  c.SupportsReworkAnswers && node.SupportsReworkAnswers,
 		SupportsGlobalRules:    c.SupportsGlobalRules && node.SupportsGlobalRules,
+		SupportsProjectPreview: c.SupportsProjectPreview && node.SupportsProjectPreview,
 		SupportsStartup:        c.SupportsStartup && node.SupportsStartup, StartupIntegratedProject: integrated,
 		SupportsResources:      c.SupportsResources && node.SupportsResources,
 		SupportsCodex:          c.SupportsCodex && node.SupportsCodex,

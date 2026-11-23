@@ -172,7 +172,7 @@ func TestClaudePlannerIsClaimedOnlyByCapableNodes(t *testing.T) {
 func TestAgentPurposesAcceptSupportedHarnesses(t *testing.T) {
 	for _, d := range agents.Definitions {
 		for _, h := range []string{"codex", "claude"} {
-			want := d.Key != "management-chat" || h == "codex"
+			want := (d.Key != "management-chat" && d.Key != "preview-lifecycle") || h == "codex"
 			if got := d.Valid(agents.Settings{Prompt: d.Prompt, Harness: h}); got != want {
 				t.Errorf("valid harness %s for %s = %t, want %t", h, d.Key, got, want)
 			}

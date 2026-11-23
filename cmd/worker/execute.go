@@ -30,6 +30,9 @@ func (w *worker) execute(ctx context.Context, job store.Job) store.Result {
 }
 
 func (w *worker) executeAttempt(ctx context.Context, job store.Job, recovery *checkpointRecovery) store.Result {
+	if job.Kind == store.ProjectPreviewKind {
+		return w.executeProjectPreview(ctx, job)
+	}
 	timeout := time.Minute
 	if job.Kind == "codex_issue" || job.Kind == "planner_discussion" {
 		timeout = 20 * time.Minute

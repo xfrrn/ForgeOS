@@ -18,6 +18,33 @@ $env:FORGEOS_WORKER_TOKEN = [Convert]::ToHexString([Security.Cryptography.Random
 
 ## 启动与验收
 
+### 从项目概览按需预览
+
+在同机 Windows 部署的控制面配置 `FORGEOS_PROJECT_PREVIEW_WORKER`，值为运行 Codex CLI 的现有 Worker ID。使用现有 `FORGEOS_PREVIEW_ADDR` 和私网网关。Worker 使用 PATH 中的 PowerShell 7，或使用 `FORGEOS_PROJECT_PREVIEW_POWERSHELL` 指定其绝对路径。
+
+在要预览的 Git 提交中加入 `forgeos-preview.json`，并提交该文件引用的启动脚本：
+
+```json
+{"script":"scripts/preview.ps1","health_path":"/health","timeout_seconds":60}
+```
+
+脚本从项目快照根目录运行，读取 `HOST` 和 `PORT` 环境变量，在分配的 IPv4 回环地址启动应用，并保持在前台。健康检查必须返回 HTTP 2xx。Worker 在自己的账户下运行项目脚本，因此项目维护者应为预览使用独立的测试配置和数据。脚本退出后，该预览的 Windows 进程组会一并关闭。
+
+前后端分别运行时，可以给预览增加一个 API 服务：
+
+```json
+{
+  "script": "scripts/preview.ps1",
+  "health_path": "/health",
+  "timeout_seconds": 60,
+  "api": { "prefix": "/api", "health_path": "/health" }
+}
+```
+
+脚本在 `HOST` 上分别使用 `PORT` 和 `API_PORT` 启动前端和 API，两者都通过检查后才发布链接。后端需要固定端口时，可显式设置 `api.port`。Worker 只转发给本次预览进程组拥有的监听端口。浏览器使用 `fetch('/api/orders')`，预览会把原请求路径和查询转给项目的 API。其余请求仍交给前端服务。网页中硬编码的 `http://127.0.0.1:...` 需要改成相对路径，因为该地址在手机上指向手机。
+
+Owner 在「项目概览 → 项目预览」点击「启动预览」，等待 Worker 回报后点击「打开预览」。重复启动会复用通过健康检查的实例。「检查实例」从 Worker 读取实际状态，「停止预览」关闭该次预览的进程组。再次启动仍使用同一个私网入口，并读取项目当前提交。工作台显示结构化错误。启动日志保存在节点对应的执行工作区。
+
 ### 验证项目的本地启动环境
 
 项目可在 `project.yaml` 的 `local_environments` 声明 `local-mock`、`local-integrated` 或两者。各环境包含受 Git 跟踪的仓库相对路径 `start_script`、应用监听的 `port`、`health_path` 和 1–300 秒的 `timeout_seconds`。提交脚本和配置后运行工作台的 HEAD 检查，并使用其完整提交号。[配置示例](../schemas/project.yaml.example)

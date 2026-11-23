@@ -48,7 +48,7 @@ type TaskPage struct {
 	CategoryCounts map[string]int64 `json:"category_counts,omitempty"`
 }
 
-const taskSummaryTitle = `COALESCE(NULLIF(t.spec->'issue'->>'title',''), CASE WHEN t.kind='environment_check' THEN '本地环境启动检查' ELSE 'Git HEAD 检查' END)`
+const taskSummaryTitle = `COALESCE(NULLIF(t.spec->'issue'->>'title',''), CASE t.kind WHEN 'environment_check' THEN '本地环境启动检查' WHEN 'project_preview' THEN '项目预览操作' ELSE 'Git HEAD 检查' END)`
 
 func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, error) {
 	if f.Limit == 0 {
@@ -66,7 +66,7 @@ func (s *Store) ListTasks(ctx context.Context, f TaskListFilter) (TaskPage, erro
 		           `+taskSummaryTitle+` AS title,
 		           COALESCE(t.spec->'issue'->>'repository', '') AS repository,
 		           t.spec->'issue'->'number' AS issue_number,
-		           CASE t.kind WHEN 'git_head' THEN 'git-head' WHEN 'environment_check' THEN 'environment-check'
+		           CASE t.kind WHEN 'git_head' THEN 'git-head' WHEN 'environment_check' THEN 'environment-check' WHEN 'project_preview' THEN 'operations'
 		               ELSE COALESCE(NULLIF(g.spec->'issue'->>'work_type',''), NULLIF(t.spec->'issue'->>'work_type',''), 'development')
 		           END AS category
 		    FROM work_items t LEFT JOIN work_items g ON g.id=t.goal_id AND g.project_id=t.project_id

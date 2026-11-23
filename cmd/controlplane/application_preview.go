@@ -77,8 +77,7 @@ func (b *previewBackend) forward(w http.ResponseWriter, r *http.Request, id, gat
 	switch r.Method {
 	case "GET", "HEAD", "OPTIONS":
 	case "POST", "PUT", "DELETE", "PATCH":
-		origin := r.Header.Get("Origin")
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (origin != "" && origin != "http://"+r.Host && (gateway == "" || origin != "https://p-"+id+"."+gateway)) {
+		if !sameOriginPreview(r, id, gateway) {
 			http.Error(w, "cross-origin preview mutation", 403)
 			return
 		}
