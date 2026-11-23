@@ -72,20 +72,22 @@ export function ProjectPreview({ projectId, request }: { projectId: number; requ
     preview?.state === 'unknown' ? '待核对' : '已停止'
 
   if (preview && !preview.enabled) return null
-  return <section className="panel overview-card" aria-labelledby="project-preview-heading">
-    <div className="overview-heading">
-      <h2 id="project-preview-heading"><Icon name="ExternalLink" size={17}/> 项目预览</h2>
-      <span role="status">{preview ? status : '正在读取…'}</span>
+  return <section className="project-preview-bar" aria-labelledby="project-preview-heading">
+    <div className="project-preview-info">
+      <h2 id="project-preview-heading"><Icon name="Zap" size={16}/> 项目预览</h2>
+      <span className={'project-preview-status' + (preview?.state === 'running' && !working ? ' running' : '')} role="status">
+        {preview ? status : '正在读取…'}
+      </span>
+      {preview?.report?.commit && <span className="project-preview-commit">版本 <code>{preview.report.commit.slice(0, 12)}</code></span>}
     </div>
     {preview && <div className="detail-actions">
       {preview.url
-        ? <a className="button primary" href={preview.url} target="_blank" rel="noreferrer">打开预览</a>
+        ? <a className="button primary" href={preview.url} target="_blank" rel="noreferrer"><Icon name="ExternalLink" size={14}/>打开预览</a>
         : <button className="button primary" type="button" disabled={busy} onClick={() => void send('start')}>启动预览</button>}
       {(preview.state !== 'stopped' || preview.phase === 'FAILED') &&
-        <button className="button" type="button" disabled={busy} onClick={() => void send('stop')}>停止预览</button>}
+        <button className="button" type="button" disabled={busy} onClick={() => void send('stop')}>停止</button>}
       <button className="button" type="button" disabled={busy} onClick={() => void send('status')}>检查实例</button>
     </div>}
-    {preview?.report?.commit && <p className="muted">当前版本 <code>{preview.report.commit.slice(0, 12)}</code></p>}
     {(error || loadError) && <p className="detail-problem" role="alert">{error || loadError}</p>}
     {!working && preview?.report?.error && <p className="detail-problem" role="alert">{preview.report.error.message}</p>}
   </section>

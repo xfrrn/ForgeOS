@@ -1,68 +1,110 @@
 import { useEffect, useRef, useState } from 'react'
-import { projectHref, formatTime, type ApiRequest } from './shared'
+import { Icon, projectHref, formatTime, type ApiRequest } from './shared'
 import { ProjectChat } from './ProjectChat'
 import { useDiscussionModels } from './ProjectChatProvider'
 import { ThemedSelect } from './ThemedSelect'
+import { EmptyState } from './ui'
 import './feature-topics.css'
 
-type Topic = {id:number; title:string; profile_id:string; updated_at:string}
+type Topic = { id: number; title: string; profile_id: string; updated_at: string }
 
-export function FeatureTopics({projectId,selected,request}:{projectId:number;selected?:number;request:ApiRequest}) {
-  const path = '/projects/'+projectId+'/features'
-  const href = projectHref(projectId,'/features')
-  const [topics,setTopics] = useState<Topic[]>()
-  const [creating,setCreating] = useState(false)
-  const [title,setTitle] = useState('')
-  const [model,setModel] = useState('')
-  const [error,setError] = useState('')
-  const [busy,setBusy] = useState(false)
-  const [refresh,setRefresh] = useState(0)
-  const intent = useRef({key:'',id:''})
-  const {models,error:modelError} = useDiscussionModels(request,projectId)
+export function FeatureTopics({ projectId, selected, request }: { projectId: number; selected?: number; request: ApiRequest }) {
+  const path = '/projects/' + projectId + '/features'
+  const href = projectHref(projectId, '/features')
+  const [topics, setTopics] = useState<Topic[]>()
+  const [creating, setCreating] = useState(false)
+  const [title, setTitle] = useState('')
+  const [model, setModel] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [refresh, setRefresh] = useState(0)
+  const intent = useRef({ key: '', id: '' })
+  const { models, error: modelError } = useDiscussionModels(request, projectId)
   const profile = model || models?.[0]?.id || ''
-  const topic = topics?.find(item=>item.id===selected)
-  useEffect(()=>{
+  const topic = topics?.find(item => item.id === selected)
+
+  useEffect(() => {
     const controller = new AbortController()
     setError('')
-    request<Topic[]>(path,{signal:controller.signal}).then(items=>{
+    request<Topic[]>(path, { signal: controller.signal }).then(items => {
       if (!controller.signal.aborted) setTopics(items)
-    }).catch(e=>{if (!controller.signal.aborted) setError(e.message)})
-    return ()=>controller.abort()
-  },[path,selected,refresh,request])
+    }).catch(e => { if (!controller.signal.aborted) setError(e.message) })
+    return () => controller.abort()
+  }, [path, selected, refresh, request])
+
   async function create() {
     if (!title.trim() || !profile || busy) return
-    const key = JSON.stringify([title.trim(),profile])
-    if (intent.current.key!==key) intent.current={key,id:crypto.randomUUID()}
-    setBusy(true);setError('')
+    const key = JSON.stringify([title.trim(), profile])
+    if (intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() }
+    setBusy(true); setError('')
     try {
-      const item = await request<Topic>(path,{method:'POST',body:JSON.stringify({title:title.trim(),profile_id:profile,client_id:intent.current.id})})
-      setTopics(old=>[item,...(old||[]).filter(t=>t.id!==item.id)])
-      setCreating(false);setTitle('');intent.current={key:'',id:''}
-      window.location.hash=href+'/'+item.id
-    } catch(e) {setError(e instanceof Error?e.message:'创建话题失败。')}
-    finally {setBusy(false)}
+      const item = await request<Topic>(path, { method: 'POST', body: JSON.stringify({ title: title.trim(), profile_id: profile, client_id: intent.current.id }) })
+      setTopics(old => [item, ...(old || []).filter(t => t.id !== item.id)])
+      setCreating(false); setTitle(''); intent.current = { key: '', id: '' }
+      window.location.hash = href + '/' + item.id
+    } catch (e) { setError(e instanceof Error ? e.message : '创建话题失败。') }
+    finally { setBusy(false) }
   }
-  return <div className={'feature-room'+(selected||creating?' feature-open':'')}>
-    <aside className="feature-list panel" aria-label="功能话题">
-      <div className="feature-list-head"><h2>功能话题</h2><button className="button" onClick={()=>setCreating(true)}>新建话题</button></div>
-      {topics?.map(item=><a key={item.id} className="feature-link" aria-current={item.id===selected?'page':undefined} href={href+'/'+item.id} onClick={()=>setCreating(false)}>{item.title}<small>{formatTime(item.updated_at)}</small></a>)}
-      {topics?.length===0 && <p>还没有功能话题。</p>}
-      <details className="feature-clients"><summary>本机讨论客户端</summary>
-        {(models || []).filter(m=>m.output_format==='native').map(client=><div key={client.id}><strong>{client.name}</strong><small>{client.base_url} · 节点已连接</small></div>)}
-        {!models?.some(m=>m.output_format==='native') && <p>尚未收到可用客户端的节点报告。</p>}
+
+  const nativeClients = (models || []).filter(m => m.output_format === 'native')
+
+  return <div className={'feature-room' + (selected || creating ? ' feature-open' : '')}>
+    <aside className="feature-list" aria-label="功能话题">
+      <div className="feature-list-head">
+        <h2>功能话题</h2>
+        <button className="button" type="button" onClick={() => setCreating(true)}>
+          <Icon name="Plus" size={14}/>新建
+        </button>
+      </div>
+      <div className="feature-items">
+        {topics?.map(item => <a key={item.id} className="feature-link" aria-current={item.id === selected ? 'page' : undefined}
+          href={href + '/' + item.id} onClick={() => setCreating(false)}>
+          <span>{item.title}</span>
+          <small>{formatTime(item.updated_at)}</small>
+        </a>)}
+        {topics?.length === 0 && <p className="feature-empty-hint">还没有功能话题，点击右上角新建。</p>}
+      </div>
+      <details className="feature-clients" open={nativeClients.length > 0}>
+        <summary>本机讨论客户端 <span className="muted">{nativeClients.length}</span></summary>
+        {nativeClients.map(client => <div key={client.id} className="feature-client-row">
+          <strong><span className="feature-client-dot" aria-hidden="true"/>{client.name}</strong>
+          <small>{client.base_url} · 已连接</small>
+        </div>)}
+        {!nativeClients.length && <p className="feature-empty-hint">尚未收到可用客户端的节点报告。</p>}
       </details>
     </aside>
+
     <section className="feature-detail">
-      {error && <p role="alert">{error} <button className="button" onClick={()=>setRefresh(r=>r+1)}>重新读取</button></p>}
-      {creating ? <form className="panel feature-form" onSubmit={e=>{e.preventDefault();void create()}}>
-        <h2>新建功能话题</h2>
-        <label>功能名称<input required maxLength={120} value={title} onChange={e=>setTitle(e.target.value)}/></label>
-        <ThemedSelect label="讨论模型" value={profile} options={(models||[]).map(m=>({value:m.id,label:m.name || m.model}))} onChange={setModel}/>
-        {modelError && <p role="alert">{modelError}</p>}
-        {models?.length===0 && <p>请先在账号设置中添加模型连接。</p>}
-        <div><button className="button primary" disabled={busy||!profile||!title.trim()}>创建并开始讨论</button> <button className="button" type="button" disabled={busy} onClick={()=>setCreating(false)}>取消</button></div>
-      </form> : topic ? <><a className="feature-back" href={href}>返回功能话题</a><ProjectChat key={topic.id} projectId={projectId} request={request} feature={topic}/></> :
-        <p role="status">{!topics?'正在读取功能话题…':selected?'此项目中找不到这个话题。':'选择一个话题继续讨论，或新建功能话题。'}</p>}
+      {error && <p className="detail-problem feature-error" role="alert">{error}{' '}
+        <button className="button" type="button" onClick={() => setRefresh(r => r + 1)}>重新读取</button>
+      </p>}
+      {creating ? <div className="feature-form-wrap">
+        <form className="feature-form" onSubmit={e => { e.preventDefault(); void create() }}>
+          <h2>新建功能话题</h2>
+          <label>功能名称
+            <input required maxLength={120} placeholder="例如：支持工作台多模型方案对比" value={title} onChange={e => setTitle(e.target.value)}/>
+          </label>
+          <ThemedSelect label="讨论模型" value={profile} options={(models || []).map(m => ({ value: m.id, label: m.name || m.model }))} onChange={setModel}/>
+          {modelError && <p className="detail-problem" role="alert">{modelError}</p>}
+          {models?.length === 0 && <p className="muted">请先在账号设置中添加模型连接。</p>}
+          <div className="feature-form-actions">
+            <button className="button primary" disabled={busy || !profile || !title.trim()}>创建并开始讨论</button>
+            <button className="button" type="button" disabled={busy} onClick={() => setCreating(false)}>取消</button>
+          </div>
+        </form>
+      </div> : topic ? <>
+        <a className="feature-back" href={href}><Icon name="ArrowLeft" size={14}/>返回功能话题</a>
+        <ProjectChat key={topic.id} projectId={projectId} request={request} feature={topic}/>
+      </> : <div className="feature-placeholder">
+        <EmptyState
+          icon="Sparkles"
+          title={!topics ? '正在读取功能话题…' : selected ? '找不到这个功能话题' : '围绕功能与多个 AI 模型持续协作'}
+          description={!topics ? undefined : selected ? '请从左侧选择已有话题，或新建一个功能话题。' : '选择左侧话题继续讨论，或开启新的功能构思。'}>
+          {topics && <button className="button primary" type="button" onClick={() => setCreating(true)}>
+            <Icon name="Plus" size={15}/>新建功能话题
+          </button>}
+        </EmptyState>
+      </div>}
     </section>
   </div>
 }

@@ -1,16 +1,22 @@
 import type { ReactNode } from 'react'
 import {
-  Activity, AlertCircle, ArrowRight, Bell, Check, CheckCircle2, ChevronDown, ChevronRight,
-  Circle, ClipboardCheck, ExternalLink, FileCode2, GitBranch, GitPullRequest,
+  Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, BookOpen, Bot, BrainCircuit,
+  Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardCheck,
+  Compass, Cpu, ExternalLink, FileCode2, FolderKanban, GitBranch, GitPullRequest,
   History, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
-  MessageSquare, RefreshCw, Search, SlidersHorizontal, Terminal, X,
+  MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, Server,
+  ShieldCheck, SlidersHorizontal, Sparkles, Terminal, X, Zap,
   type LucideProps,
 } from 'lucide-react'
 
-const icons = { Activity, AlertCircle, ArrowRight, Bell, Check, CheckCircle2, ChevronDown, ChevronRight,
-  Circle, ClipboardCheck, ExternalLink, FileCode2, GitBranch, GitPullRequest, History, Inbox,
-  KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu, MessageSquare,
-  RefreshCw, Search, SlidersHorizontal, Terminal, X }
+const icons = {
+  Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, BookOpen, Bot, BrainCircuit,
+  Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardCheck,
+  Compass, Cpu, ExternalLink, FileCode2, FolderKanban, GitBranch, GitPullRequest,
+  History, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
+  MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, Server,
+  ShieldCheck, SlidersHorizontal, Sparkles, Terminal, X, Zap,
+}
 
 export function Icon({ name, size = 17, ...props }: LucideProps & { name: keyof typeof icons }) {
   const Glyph = icons[name]

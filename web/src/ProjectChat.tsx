@@ -3,7 +3,7 @@ import { formatTime, Icon, projectHref, type ApiRequest } from './shared'
 import { ThemedSelect } from './ThemedSelect'
 import { useDiscussionModels } from './ProjectChatProvider'
 import { credentialsHref } from './workbenchRoutes'
-import { EmptyState, PageHeading } from './ui'
+import { EmptyState } from './ui'
 import { workTypeName, workTypes } from './workTypes'
 import './project-chat.css'
 
@@ -384,8 +384,13 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
 
   const ready = enabled !== undefined
   return <div className="project-chat">
-    <PageHeading title={feature?.title || "聊天"} description={feature ? "功能讨论 · 本话题保留模型选择和讨论记录" : "向 Management Agent 查询当前项目，或发起需要确认的操作。"}
-      actions={<a className="button" href={projectHref(projectId, '/agents')}>查看 Agent 配置</a>}/>
+    <header className="chat-studio-header">
+      <div>
+        <h1>{feature?.title || '项目聊天'}</h1>
+        <p>{feature ? '功能话题 · 跨模型持续讨论并保留上下文' : '向 Management Agent 查询当前项目，或发起需要确认的操作'}</p>
+      </div>
+      <a className="button" href={projectHref(projectId, '/agents')}><Icon name="Bot" size={14}/>Agent 配置</a>
+    </header>
     <div className="panel project-chat-panel">
       <div ref={transcript} className="chat-scroll" role="region" aria-label="对话历史" tabIndex={0}
         onWheel={event => { if (event.deltaY < 0 && event.currentTarget.scrollTop > 0) followLatest.current = false }}
@@ -397,13 +402,13 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
           setAtBottom(bottom)
         }}>
       <div className="project-chat-content">
-        {!ready && !readError && <p role="status">正在读取聊天…</p>}
+        {!ready && !readError && <p className="muted" role="status">正在读取聊天…</p>}
         {readError && <div className="chat-read-problem" role="alert">
           <p>{readError}</p><button className="button" type="button" onClick={refresh}>重新读取</button>
         </div>}
         {ready && !enabled && <p className="chat-agent-unavailable" role="status"><Icon name="AlertCircle" size={17}/>此项目暂未启用聊天 Agent。</p>}
-        {ready && !messages.length && <EmptyState icon="MessageSquare" title={feature ? "开始讨论这个功能" : "暂无项目对话"}
-          description={enabled ? '从当前项目的任务、验收或资料问起。' : undefined}>
+        {ready && !messages.length && <EmptyState icon="Sparkles" title={feature ? '开始讨论这个功能' : '有什么我可以协助你的？'}
+          description={enabled ? '从当前项目的任务、架构、验收或资料问起。' : undefined}>
           {!feature && enabled && providerReady && <div className="chat-prompts">{quickPrompts.map(prompt => <button className="button" key={prompt} type="button"
             disabled={sendBusy || !!draft.text.trim()} onClick={() => focusComposer(prompt)}>{prompt}</button>)}</div>}
         </EmptyState>}
@@ -429,18 +434,20 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
             if (view) { followLatest.current = true; view.scrollTop = view.scrollHeight; view.focus({preventScroll: true}) }
           }}><Icon name="ChevronDown" size={15}/>最新消息</button>}
         {enabled && !!models?.length && <form className="chat-composer" onSubmit={e => { e.preventDefault(); void send() }}>
-          <div className="chat-composer-tools"><label htmlFor={field}>{feature ? "讨论模型" : "发给 Management Agent"}</label>
-            <ThemedSelect label="聊天模型" value={selected?.id || ''} disabled={sendBusy}
-              options={[...(!selected ? [{value: '', label: '选择模型'}] : []), ...models.map(m => ({value: m.id, label: m.output_format==='native' ? m.name : m.model, group: models.some(other => other.id !== m.id && other.model === m.model) ? m.base_url : undefined}))]} onChange={chooseModel}/>
-          </div>
-          <div className="chat-composer-fields">
-            <textarea id={field} ref={input} rows={2} maxLength={4000} aria-describedby={sendError ? `${field}-error` : undefined}
-              value={draft.text} readOnly={sendBusy} onChange={e => editDraft(e.currentTarget.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); void send() }
-              }}/>
-            <button className="button primary" type="submit" disabled={!providerReady || !draft.text.trim() || sendBusy} aria-keyshortcuts="Control+Enter Meta+Enter">
-              {sendBusy ? '发送中…' : sendError ? '重试发送' : '发送消息'}<Icon name="ArrowRight" size={15}/>
+          <label className="sr-only" htmlFor={field}>{feature ? '讨论内容' : '发给 Management Agent'}</label>
+          <textarea id={field} ref={input} rows={2} maxLength={4000} aria-describedby={sendError ? `${field}-error` : undefined}
+            placeholder={feature ? '输入你的想法、追问或方案要求…（Ctrl+Enter 发送）' : '向 Management Agent 提问或下达指令…（Ctrl+Enter 发送）'}
+            value={draft.text} readOnly={sendBusy} onChange={e => editDraft(e.currentTarget.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); void send() }
+            }}/>
+          <div className="chat-composer-bottom">
+            <div className="chat-composer-tools">
+              <ThemedSelect label="讨论模型" hideLabel value={selected?.id || ''} disabled={sendBusy}
+                options={[...(!selected ? [{value: '', label: '选择模型'}] : []), ...models.map(m => ({value: m.id, label: m.output_format==='native' ? m.name : m.model, group: models.some(other => other.id !== m.id && other.model === m.model) ? m.base_url : undefined}))]} onChange={chooseModel}/>
+            </div>
+            <button className="button primary chat-send-btn" type="submit" disabled={!providerReady || !draft.text.trim() || sendBusy} aria-keyshortcuts="Control+Enter Meta+Enter">
+              {sendBusy ? '发送中…' : sendError ? '重试' : '发送'}<Icon name="ArrowRight" size={14}/>
             </button>
           </div>
           {sendError && <p className="detail-problem" id={`${field}-error`} role="alert">{sendError}</p>}

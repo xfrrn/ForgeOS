@@ -1,43 +1,74 @@
+/* Editorial Markdown & Document Reader Typography */
 .material-reader { min-width: 0; }
-.material-reader-modes { display: flex; gap: var(--space-1); margin-bottom: var(--space-4); }
+.material-reader-modes {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: var(--space-4);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+.material-reader-modes .button {
+  min-height: 28px;
+  padding: 3px 11px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-soft);
+}
 .material-reader-modes .button[aria-pressed="true"] {
-  background: var(--accent);
-  border-color: var(--accent-line);
-  color: var(--accent-ink);
+  background: var(--surface-solid);
+  color: var(--ink);
+  font-weight: 620;
+  box-shadow: var(--shadow-pill);
 }
 .material-reader-original, .material-reader-prose pre {
   margin: 0;
-  padding: var(--space-3);
+  padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--surface-muted);
-  font: 13px/1.65 var(--font-mono);
+  border-radius: var(--radius-md);
+  background: #f7f9fc;
+  font: 12.8px/1.68 var(--font-mono);
   tab-size: 4;
 }
 .material-reader-original { white-space: pre-wrap; overflow-wrap: anywhere; }
-.material-reader-prose { min-width: 0; line-height: 1.8; overflow-wrap: anywhere; }
-.material-reader-prose :where(p, ul, ol, blockquote, pre, .material-reader-table) { margin: 0 0 var(--space-3); }
+.material-reader-prose { min-width: 0; line-height: 1.82; color: var(--ink); overflow-wrap: anywhere; }
+.material-reader-prose :where(p, ul, ol, blockquote, pre, .material-reader-table) { margin: 0 0 14px; }
 .material-reader-prose :where(h1, h2, h3, h4, h5, h6) {
-  margin: var(--space-5) 0 var(--space-2);
-  font-weight: 650;
-  line-height: 1.45;
+  margin: 22px 0 8px;
+  font-weight: 660;
+  letter-spacing: -0.015em;
+  line-height: 1.42;
+  color: var(--ink);
 }
-.material-reader-prose h1 { font-size: 21px; }
-.material-reader-prose h2 { font-size: 18px; }
-.material-reader-prose h3 { font-size: 16px; }
+.material-reader-prose h1 { font-size: 20px; }
+.material-reader-prose h2 { font-size: 17px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.material-reader-prose h3 { font-size: 15px; }
 .material-reader-prose > :first-child { margin-top: 0; }
 .material-reader-prose > :last-child, .material-reader-prose blockquote > :last-child { margin-bottom: 0; }
 .material-reader-prose [data-material-anchor] { scroll-margin-block-start: var(--space-6); }
 .material-reader-prose span[data-material-anchor] { display: block; }
-.material-reader-prose :where(ul, ol) { padding-inline-start: 1.7em; }
+.material-reader-prose :where(ul, ol) { padding-inline-start: 1.65em; }
 .material-reader-prose :where(li > ul, li > ol) { margin-bottom: 0; }
-.material-reader-prose blockquote { padding-inline-start: var(--space-3); border-inline-start: 3px solid var(--accent-line); color: var(--muted); }
+.material-reader-prose blockquote {
+  padding: 8px 14px;
+  border-inline-start: 3px solid var(--accent-line);
+  border-radius: 0 8px 8px 0;
+  background: var(--surface-subtle);
+  color: var(--ink-soft);
+}
 .material-reader-prose pre { max-width: 100%; overflow-x: auto; white-space: pre; }
-.material-reader-prose :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--surface-muted); }
-.material-reader-prose a, .material-reader-link { color: var(--link); text-decoration: underline; text-underline-offset: 3px; }
+.material-reader-prose :not(pre) > code {
+  padding: 1.5px 5px;
+  border-radius: 5px;
+  background: var(--surface-muted);
+  color: #2b4596;
+  font-size: 0.9em;
+}
+.material-reader-prose a, .material-reader-link { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
 .material-reader-link { display: inline; padding: 0; border: 0; background: none; font: inherit; text-align: inherit; }
 .material-reader-image { color: var(--muted); }
-.material-reader-table { max-width: 100%; overflow-x: auto; }
-.material-reader-table table { width: max-content; min-width: min(100%, 16rem); border-collapse: collapse; font-size: 13px; }
-.material-reader-table th, .material-reader-table td { padding: var(--space-2) var(--space-3); border: 1px solid var(--line); }
-.material-reader-table th { background: var(--surface-muted); }
+.material-reader-table { max-width: 100%; overflow-x: auto; border-radius: 10px; border: 1px solid var(--line); }
+.material-reader-table table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
+.material-reader-table th, .material-reader-table td { padding: 9px 13px; border-bottom: 1px solid var(--line); }
+.material-reader-table tr:last-child td { border-bottom: 0; }
+.material-reader-table th { background: var(--surface-subtle); font-weight: 600; color: var(--ink-soft); text-align: left; }

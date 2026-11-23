@@ -6,7 +6,18 @@
 .material-batch .batch-heading > div { min-width: 0; overflow-wrap: anywhere; }
 .material-batch .batch-heading h2, .material-batch .batch-heading p, .material-batch .batch-drop p { margin: 0; }
 .material-batch .batch-heading p, .material-batch .batch-drop p { color: var(--muted); font-size: 13px; }
-.material-batch .batch-drop { margin-block: var(--space-3); padding: var(--space-4); border: 1px dashed var(--control-line); border-radius: var(--radius-control); background: var(--surface-muted); }
+.material-batch .batch-drop {
+  margin-block: var(--space-3);
+  padding: 20px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface-subtle);
+  transition: border-color var(--dur-fast) var(--ease-spring), background-color var(--dur-fast) var(--ease-spring);
+}
+.material-batch .batch-drop:hover {
+  border-color: var(--accent-line);
+  background: #f5f8ff;
+}
 .material-batch .batch-drop > div { flex: 1 1 200px; }
 .material-batch .batch-file { border-top: 1px solid var(--line); padding-block: var(--space-3); }
 .material-batch .batch-file .themed-select { margin-top: var(--space-2); }
