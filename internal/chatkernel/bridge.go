@@ -389,3 +389,15 @@ func (c *Config) FailureCode() string {
 	}
 	return ""
 }
+
+// ProposalAnswer uses one frozen input and exposes no tool servers or prior conversation.
+func (c *Config) ProposalAnswer(ctx context.Context, prompt string) (string, error) {
+	reply, err := c.complete(ctx, completionClient(4*time.Minute), obj{"model": c.provider.Model, "stream": false, "messages": []obj{{"role": "user", "content": prompt}}})
+	if err != nil {
+		return "", err
+	}
+	if len(reply.Choices) != 1 || reply.Choices[0].Finish != "stop" || len(reply.Choices[0].Message.Calls) > 0 {
+		return "", errors.New("incomplete proposal reply")
+	}
+	return reply.Choices[0].Message.Content, nil
+}

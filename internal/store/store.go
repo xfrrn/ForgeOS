@@ -455,6 +455,27 @@ var featureTopicsSchema string
 //go:embed 157_feature_clients.sql
 var featureClientsSchema string
 
+//go:embed 158_feature_notes.sql
+var featureNotesSchema string
+
+//go:embed 159_feature_client_operations.sql
+var featureClientOperationsSchema string
+
+//go:embed 160_feature_proposals.sql
+var featureProposalSchema string
+
+//go:embed 161_feature_design.sql
+var featureDesignSchema string
+
+//go:embed 162_feature_builds.sql
+var featureBuildSchema string
+
+//go:embed 163_design_wireframes.sql
+var designWireframeSchema string
+
+//go:embed 164_proposal_wireframes.sql
+var proposalWireframeSchema string
+
 //go:embed 153_goal_discussion.sql
 var goalDiscussionSchema string
 
@@ -583,6 +604,7 @@ type Event struct {
 }
 
 type Job struct {
+	FeatureInputs         []FeatureInput     `json:"feature_inputs,omitempty"`
 	Discussion            *PlannerDiscussion `json:"discussion,omitempty"`
 	Agent                 *agents.Assignment `json:"agent,omitempty"`
 	IssueImportOrigin     string             `json:"issue_import_origin,omitempty"`
@@ -680,7 +702,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM forgeos_schema_versions`).Scan(&version); err != nil {
 		return err
 	}
-	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema, repositoryCredentialsSchema, sharedChatModelsSchema, chatCreateIssueSchema, chatTaskProgressSchema, executionKnowledgeSchema, experienceEntriesSchema, shareSeriesSchema, sharedCitationStatusSchema, knowledgeModelSettingsSchema, knowledgeModelAttemptsSchema, ownerInstructionsSourceSchema, projectPlanningSchema, milestoneDatesSchema, plannedTaskDatesSchema, goalDiscussionSchema, workerGoalDiscussionSchema, projectPreviewSchema, featureTopicsSchema, featureClientsSchema}
+	migrations := []string{initialSchema, issueSchema, deliverySchema, inboxSchema, planSchema, planArchiveSchema, goalItemsSchema, questionSchema, goalClosureSchema, managementSchema, rollingSchema, requirementSchema, commentSchema, checkpointSchema, refreshSchema, decisionSchema, materialSchema, shareSchema, secretSchema, secretGrantsSchema, codeReviewSchema, commitStatusSchema, testPlanTables, testCaseTables, previewTables, feedbackTables, feedbackClassificationTables, feedbackQuestionsTable, feedbackReviewsTable, feedbackRequirementsTable, feedbackWorkItemsTable, feedbackArtifactsTable, workerNodesTable, executionResourcesSchema, ciRetentionSchema, screenshotRetentionSchema, retentionHistorySchema, githubEventsSchema, issueClosuresSchema, projectChecksSchema, inventoriesSchema, startupSchema, repositoryAnalysesSchema, initializationReportsSchema, ownerCancellationSchema, ciPauseSchema, localCIRetentionSchema, feedbackRecordingsSchema, applicationPreviewsSchema, liveProcessSchema, ownerNotificationsSchema, materialCurationSchema, ownerMemorySchema, curationDecisionsSchema, executionDecisionsSchema, confirmedDecisionCurationSchema, mergeCurationSchema, goalCurationSchema, documentCurationSchema, documentPartsSchema, globalRulesSchema, executionGlobalRulesSchema, reviewContextSchema, refreshedReviewContextSchema, candidateImplementationSchema, resumedCandidateIdentitySchema, checkpointQuestionSchema, reworkQuestionSchema, rejectedIdentitySchema, checkpointWorktreesSchema, checkpointResumesSchema, questionAdviceSchema, decisionLookupsSchema, candidateDecisionReferencesSchema, liveCILogSchema, modelBudgetsSchema, reviewerModelBudgetsSchema, testPlanModelBudgetsSchema, curationModelBudgetsSchema, ownerInstructionsSchema, candidateOwnerInstructionsSchema, planReviewModelBudgetsSchema, shareReviewModelBudgetsSchema, analysisModelBudgetsSchema, feedbackModelBudgetsSchema, questionAdviceModelBudgetsSchema, modelPauseSchema, modelResumeClaimSchema, writerCheckpointHandoffSchema, answeredQuestionHandoffSchema, interruptedWriterHandoffSchema, materialEmbeddingSchema, experienceEmbeddingSchema, testPlanProfilesSchema, planReviewContextSchema, questionRuleContextSchema, feedbackCandidateContextSchema, planReviewProcessesSchema, shareReviewProcessesSchema, analysisProcessesSchema, adviceProcessesSchema, feedbackProcessesSchema, curationProcessesSchema, testPlanProcessesSchema, reviewerProcessesSchema, roleClaimReceiptsSchema, roleSessionProcessesSchema, roleSessionHandoffsSchema, externalNotificationsSchema, issueOutcomeFeedbackSchema, decisionEmbeddingSchema, discussionWorkTypesSchema, issueClassificationsSchema, processArchiveTransfersSchema, roleArchiveTransfersSchema, shareEmbeddingsSchema, turnInputsSchema, historyEmbeddingsSchema, documentEmbeddingsSchema, nativeInputObservationSchema, nativeCommandSchema, nativeFileApprovalSchema, eventOriginsSchema, feedbackEventSourcesSchema, requirementEventVersionsSchema, dependencyReleaseEvidenceSchema, modelPauseEventInstancesSchema, plannerEventRevisionSchema, acceptanceApprovalBasisSchema, projectChatSchema, projectCloningSchema, agentSettingsSchema, chatModelSchema, agentRoleLeaseSchema, agentSkillsSchema, skillPackagesSchema, workerPoolSchema, fixedWorkersSchema, repositoryCredentialsSchema, sharedChatModelsSchema, chatCreateIssueSchema, chatTaskProgressSchema, executionKnowledgeSchema, experienceEntriesSchema, shareSeriesSchema, sharedCitationStatusSchema, knowledgeModelSettingsSchema, knowledgeModelAttemptsSchema, ownerInstructionsSourceSchema, projectPlanningSchema, milestoneDatesSchema, plannedTaskDatesSchema, goalDiscussionSchema, workerGoalDiscussionSchema, projectPreviewSchema, featureTopicsSchema, featureClientsSchema, featureNotesSchema, featureClientOperationsSchema, featureProposalSchema, featureDesignSchema, featureBuildSchema, designWireframeSchema, proposalWireframeSchema}
 	if version < 0 || version > len(migrations) {
 		return fmt.Errorf("unsupported database schema version %d", version)
 	}
@@ -970,9 +992,8 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		  AND ($12 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM rework_question_ids(candidate.id,candidate.requirement_id)))
 		  AND (candidate.spec->>'mode' IS DISTINCT FROM 'plan' OR CASE WHEN candidate.spec->>'harness'='claude' THEN $13::boolean ELSE $3::boolean END)
 		  AND ($2 OR candidate.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=candidate.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM candidate.requirement_id))
-		  AND NOT EXISTS (
-		    SELECT 1 FROM work_items running WHERE running.project_id = p.id AND (running.status = 'RUNNING' OR running.waiting_execution_id IS NOT NULL))
-		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers, caps.ClaudePlanning).Scan(&projectID, &j.RepoPath)
+		  `+featureClaimFilter("candidate")+`
+		ORDER BY candidate.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, pq.Array(projects), caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers, caps.ClaudePlanning, caps.FeatureBuild && caps.AgentSettings, worker, caps.SupportsClaude, caps.SupportsCodex).Scan(&projectID, &j.RepoPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -998,11 +1019,10 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		            AND ($12 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM rework_question_ids(w.id,w.requirement_id)))
 		            AND (w.spec->>'mode' IS DISTINCT FROM 'plan' OR CASE WHEN w.spec->>'harness'='claude' THEN $13::boolean ELSE $4::boolean END)
 		            AND ($3 OR w.spec ? 'verify_commit' OR NOT EXISTS (SELECT 1 FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id WHERE r.task_id=w.id AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM w.requirement_id))
-		            ORDER BY w.id LIMIT 1)
-		AND NOT EXISTS (SELECT 1 FROM work_items WHERE project_id = $1 AND (status = 'RUNNING' OR waiting_execution_id IS NOT NULL))
+		            `+featureClaimFilter("w")+` ORDER BY w.id LIMIT 1)
 		RETURNING id, kind, spec, goal_id IS NOT NULL,
 		    COALESCE((SELECT v.origin FROM task_events v WHERE v.task_id=work_items.id AND v.type='issue_imported' ORDER BY v.id LIMIT 1),''),
-		    nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers, caps.ClaudePlanning).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.IssueImportOrigin, &j.ExecutionID)
+		    nextval(pg_get_serial_sequence('executions','id'))`, projectID, caps.SupportsCodex, caps.SupportsRework, caps.SupportsPlanner, caps.SupportsCheckpoints, caps.SupportsValidation, caps.SupportsDeclaredChecks, canAssess, caps.SupportsClaude, canStart, caps.StartupIntegratedProject, caps.SupportsReworkAnswers, caps.ClaudePlanning, caps.FeatureBuild && caps.AgentSettings, worker, caps.SupportsClaude, caps.SupportsCodex).Scan(&j.TaskID, &j.Kind, &spec, &child, &j.IssueImportOrigin, &j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -1021,15 +1041,55 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		if err = json.Unmarshal(spec, &j.Spec); err != nil {
 			return nil, err
 		}
+		if j.Spec.FeatureIntegration || j.Spec.FeatureStep != nil {
+			parent := j.TaskID
+			if j.Spec.FeatureStep != nil {
+				parent = j.Spec.FeatureStep.Parent
+				if rev := j.Spec.FeatureStep.Revision; rev != nil {
+					j.Spec.Issue.Body += "\n\n合成修订要求：" + rev.Note + "\n上次合成结果：" + rev.Failure + "\n对照以下提交调整自己的实现范围："
+					for _, in := range rev.Inputs {
+						j.Spec.Issue.Body += fmt.Sprintf("\n%s (T-%d): %s", in.Name, in.Task, in.Commit)
+					}
+				}
+			}
+			if _, err = tx.ExecContext(ctx, "UPDATE feature_builds SET worker=$2 WHERE task_id=$1 AND worker IS NULL", parent, worker); err != nil {
+				return nil, err
+			}
+			if j.Spec.FeatureIntegration {
+				if err = loadFeatureInputs(ctx, tx, &j); err != nil {
+					return nil, err
+				}
+			}
+		}
+		// Existing GitHub issues retain their original source snapshot. Attach the
+		// authorized design to the worker input every time the task is claimed.
+		sourceTask := j.TaskID
+		if j.Spec.FeatureStep != nil {
+			sourceTask = j.Spec.FeatureStep.Parent
+		}
+		var design string
+		var visual []byte
+		err = tx.QueryRowContext(ctx, `SELECT coalesce(CASE WHEN a.kind='dispatch_issue' AND a.task_id=$2 THEN a.issue_body END,''), a.design_wireframe
+ FROM (SELECT 1) seed LEFT JOIN (project_chat_actions a JOIN project_chat_turns t ON t.id=a.turn_id AND t.proposal_role='design_final')
+ ON a.project_id=$1 AND a.task_id=$3 AND a.status='confirmed'`, projectID, j.TaskID, sourceTask).Scan(&design, &visual)
+		if err != nil {
+			return nil, err
+		}
+		if design != "" {
+			j.Spec.Issue.Body += "\n\n" + design
+		}
+		if len(visual) > 0 {
+			j.Spec.Issue.Body += "\n\n设计定稿中的界面布局\n" + string(visual)
+		}
 		if child && j.Spec.VerifyCommit == "" {
 			j.GoalContext, err = childContext(ctx, tx, projectID, j.TaskID)
 			if err != nil {
 				return nil, err
 			}
 		}
-		j.ReportCICandidate = j.Spec.Mode != "plan"
+		j.ReportCICandidate = j.Spec.Mode != "plan" && j.Spec.FeatureStep == nil
 		j.ReportLiveCILog = j.ReportCICandidate && (j.Spec.Validation == "go-test" || j.Spec.Validation == "auto" || validation.ValidLevel(j.Spec.Validation))
-		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == ""
+		j.SupportsCheckpoints = caps.SupportsCheckpoints && j.Spec.VerifyCommit == "" && !j.Spec.FeatureIntegration
 		j.RuntimeQuestions = j.SupportsCheckpoints && j.Spec.Mode != "plan"
 		j.KnowledgeTools = j.RuntimeQuestions && caps.SupportsKnowledgeTools
 		j.CheckpointWorktrees = j.RuntimeQuestions
@@ -1059,8 +1119,9 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 		j.QuestionHandoff = j.CheckpointHandoff && j.ResumeQuestions && j.CheckpointWorktrees
 		j.InterruptedHandoff = j.CheckpointHandoff && j.RecordProcesses
 		var review []byte
+		inputs, _ := json.Marshal(j.FeatureInputs)
 		err = tx.QueryRowContext(ctx, `SELECT to_jsonb(r) FROM acceptance_reviews r JOIN executions e ON e.id=r.execution_id JOIN work_items t ON t.id=r.task_id WHERE r.task_id=$1
-			AND r.decision='reject' AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID).Scan(&review)
+			AND r.decision='reject' AND (NOT (t.spec ? 'feature_integration') OR e.feature_inputs=$2::jsonb) AND e.requirement_id IS NOT DISTINCT FROM t.requirement_id ORDER BY r.execution_id DESC LIMIT 1`, j.TaskID, string(inputs)).Scan(&review)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -1070,7 +1131,7 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 			}
 		}
 	}
-	if caps.AgentSettings && j.Kind == "codex_issue" && j.Spec != nil && j.Spec.VerifyCommit == "" {
+	if caps.AgentSettings && j.Kind == "codex_issue" && j.Spec != nil && j.Spec.VerifyCommit == "" && (!j.Spec.FeatureIntegration || j.Rework != nil) {
 		key := "implementation"
 		if j.Spec.Mode == "plan" {
 			key = "planner"
@@ -1078,7 +1139,11 @@ func (s *Store) ClaimForProjects(ctx context.Context, worker, workspaceRoot stri
 				key = "operations"
 			}
 		}
-		j.Agent, err = freezeAgent(ctx, tx, projectID, key, worker, "", "")
+		model, harness := "", ""
+		if s := j.Spec.FeatureStep; s != nil {
+			model, harness = s.Model, s.Harness
+		}
+		j.Agent, err = freezeAgent(ctx, tx, projectID, key, worker, model, harness)
 		if err != nil {
 			return nil, err
 		}
@@ -1106,6 +1171,15 @@ func leaseClaimedJob(ctx context.Context, tx *sql.Tx, worker, workspaceRoot stri
 		RETURNING (SELECT to_jsonb(r) FROM global_rule_revisions r WHERE r.revision=global_rules_revision)`, j.ExecutionID, j.TaskID, worker, j.Workspace, hash[:], j.LeaseSeconds, j.SupportsCheckpoints, j.ManageResources, string(j.GoalContext), globalRevision, j.ModelPause, j.NativeApprovals, j.KnowledgeTools).Scan(&rules)
 	if err != nil {
 		return nil, err
+	}
+	if len(j.FeatureInputs) > 0 {
+		data, err := json.Marshal(j.FeatureInputs)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE executions SET feature_inputs=$2 WHERE id=$1", j.ExecutionID, string(data)); err != nil {
+			return nil, err
+		}
 	}
 	j.GlobalRules = rules
 	if j.Rework != nil && j.Spec.VerifyCommit == "" {
@@ -1239,8 +1313,8 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 	if spec == nil && result.Processes != nil {
 		return ErrConflict
 	}
+	var issue IssueSpec
 	if spec != nil {
-		var issue IssueSpec
 		if err = json.Unmarshal(spec, &issue); err != nil {
 			return err
 		}
@@ -1377,7 +1451,7 @@ func (s *Store) CompleteWithChecks(ctx context.Context, id int64, token string, 
 		if _, err = tx.ExecContext(ctx, `INSERT INTO plan_revisions(task_id,revision,plan) VALUES ($1,1,$2)`, taskID, string(plan)); err != nil {
 			return err
 		}
-	} else if spec != nil {
+	} else if spec != nil && issue.FeatureStep == nil {
 		status = "WAITING_ACCEPTANCE"
 	}
 	return finishTask(ctx, tx, taskID, id, status, eventType)
@@ -1440,6 +1514,18 @@ func finishTask(ctx context.Context, tx *sql.Tx, taskID, executionID int64, stat
 	}
 	if err != nil {
 		return err
+	}
+	if status == "DONE" {
+		var parent int64
+		err = tx.QueryRowContext(ctx, "SELECT p.id FROM work_items c JOIN work_items p ON p.id=c.feature_parent WHERE c.id=$1 FOR UPDATE OF p", taskID).Scan(&parent)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			if _, err = tx.ExecContext(ctx, "UPDATE work_items SET status='READY' WHERE id=$1 AND status='BLOCKED' AND NOT EXISTS(SELECT 1 FROM work_items WHERE feature_parent=$1 AND status<>'DONE')", parent); err != nil {
+				return err
+			}
+		}
 	}
 	return tx.Commit()
 }

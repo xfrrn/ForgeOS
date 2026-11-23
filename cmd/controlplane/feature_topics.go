@@ -27,6 +27,7 @@ func requestedFeature(w http.ResponseWriter, r *http.Request, data *store.Store,
 }
 
 func registerFeatureTopics(mux *http.ServeMux, data *store.Store, owner string) {
+	registerFeatureNotes(mux, data, owner)
 	mux.HandleFunc("GET /projects/{id}/features", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
@@ -63,6 +64,7 @@ func registerFeatureTopics(mux *http.ServeMux, data *store.Store, owner string) 
 }
 
 func registerFeatureClients(mux *http.ServeMux, data *store.Store, owner string, nodes chatNodes) {
+	registerFeatureOperations(mux, data, owner, nodes)
 	mux.HandleFunc("GET /projects/{id}/features/clients", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
@@ -73,22 +75,25 @@ func registerFeatureClients(mux *http.ServeMux, data *store.Store, owner string,
 	}))
 	mux.HandleFunc("POST /internal/management-chat/feature-clients", nodes.authorize(func(project int64, w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Node    string
-			Clients []store.FeatureClient
+			Node         string
+			Resource     string `json:"resource_worker"`
+			ConfigFailed bool   `json:"config_failed"`
+			Generation   int64
+			Clients      []store.FeatureClient
 		}
 		if !decodeLimited(w, r, &in, 16<<10) {
 			return
 		}
-		if in.Node == "" || len(in.Node) > 128 || len(in.Clients) > 32 {
+		if in.Node == "" || len(in.Node) > 128 || len(in.Clients) > 32 || len(in.Resource) > 128 || in.Generation < 0 {
 			problem(w, 400, "invalid client report")
 			return
 		}
 		for _, c := range in.Clients {
-			if (c.Backend != "claude" && c.Backend != "codex") || c.Instance == "" || len(c.Instance) > 128 || c.Model == "" || len(c.Model) > 160 {
+			if !validProbeStatus(c.Status) || (c.Backend != "claude" && c.Backend != "codex") || c.Instance == "" || len(c.Instance) > 128 || c.Model == "" || len(c.Model) > 160 {
 				problem(w, 400, "invalid client identity")
 				return
 			}
 		}
-		respond(w, 204, nil, data.ReportFeatureClients(r.Context(), project, in.Node, in.Clients))
+		respond(w, 204, nil, data.RecordFeatureProbe(r.Context(), project, in.Node, in.Resource, in.Clients, in.Generation, in.ConfigFailed))
 	}))
 }

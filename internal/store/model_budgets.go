@@ -89,6 +89,11 @@ func (s *Store) SetModelBudgets(ctx context.Context, budgets []ModelBudget) erro
 			return err
 		}
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE project_chat_turns t SET model_budget=b.name FROM model_budgets b
+     WHERE t.native_client IS NOT NULL AND t.resource_worker=ANY(b.workers) AND t.requested_harness=b.harness AND t.model_budget IS NULL
+     AND t.status='running' AND t.lease_until>clock_timestamp()`); err != nil {
+		return err
+	}
 	// Include work already running at first configuration. Subsequent moves keep its original account until release.
 	_, err = tx.ExecContext(ctx, `UPDATE executions e SET model_budget=b.name FROM work_items t,model_budgets b
 		WHERE t.id=e.task_id AND t.kind='codex_issue' AND e.worker=ANY(b.workers)

@@ -30,10 +30,12 @@ type ChatActivity struct {
 }
 
 type ChatAction struct {
-	Body            string     `json:"body,omitempty"`
-	CreationStarted *time.Time `json:"creation_started_at,omitempty"`
-	PlanMode        string     `json:"-"`
-	CreateKey       string     `json:"-"`
+	Steps           json.RawMessage `json:"steps,omitempty"`
+	Design          bool            `json:"-"`
+	Body            string          `json:"body,omitempty"`
+	CreationStarted *time.Time      `json:"creation_started_at,omitempty"`
+	PlanMode        string          `json:"-"`
+	CreateKey       string          `json:"-"`
 
 	ID          int64  `json:"id"`
 	Kind        string `json:"kind"`
@@ -51,6 +53,9 @@ type ChatAction struct {
 }
 
 type ChatTurn struct {
+	CancelRequested  bool           `json:"cancel_requested,omitempty"`
+	SessionMissing   bool           `json:"session_missing,omitempty"`
+	RecoveryOf       int64          `json:"recovery_of,omitempty"`
 	NativeBackend    string         `json:"native_backend,omitempty"`
 	ModelProfileName string         `json:"model_profile_name,omitempty"`
 	RequestedHarness string         `json:"requested_harness,omitempty"`
@@ -68,6 +73,10 @@ type ChatTurn struct {
 }
 
 type ChatJob struct {
+	ProposalID       int64          `json:"proposal_id,omitempty"`
+	CancelRequested  bool           `json:"cancel_requested,omitempty"`
+	Generation       int64          `json:"session_generation,omitempty"`
+	ExpectSession    bool           `json:"expect_session,omitempty"`
 	Native           *FeatureClient `json:"native,omitempty"`
 	FeatureID        int64          `json:"feature_id,omitempty"`
 	RequestedHarness string         `json:"requested_harness,omitempty"`
@@ -81,7 +90,7 @@ type ChatJob struct {
 	Text             string         `json:"-"`
 }
 
-const chatTurnFields = `CASE WHEN t.native_client IS NOT NULL THEN t.requested_harness ELSE '' END,t.id,t.client_id,t.text,t.requested_model,t.requested_harness,t.requested_model,t.created_at,
+const chatTurnFields = `t.cancel_requested,t.session_missing,COALESCE(t.recovery_of,0),CASE WHEN t.native_client IS NOT NULL THEN t.requested_harness ELSE '' END,t.id,t.client_id,t.text,t.requested_model,t.requested_harness,t.requested_model,t.created_at,
 	CASE WHEN t.status='running' AND t.lease_until<=now()
 			THEN CASE WHEN t.attempts>=3 OR t.created_at<=now()-interval '30 minutes' THEN 'failed' ELSE 'queued' END
 		WHEN t.status='queued' AND t.created_at<=now()-interval '30 minutes' THEN 'failed'
@@ -94,7 +103,7 @@ const chatTurnFields = `CASE WHEN t.native_client IS NOT NULL THEN t.requested_h
 func scanChatTurn(row interface{ Scan(...any) error }) (ChatTurn, error) {
 	var turn ChatTurn
 	var citations, action []byte
-	err := row.Scan(&turn.NativeBackend, &turn.ID, &turn.ClientID, &turn.Text, &turn.RequestedModel, &turn.RequestedHarness, &turn.ModelProfileName, &turn.CreatedAt, &turn.Status, &turn.Answer, &turn.Error, &citations, &action)
+	err := row.Scan(&turn.CancelRequested, &turn.SessionMissing, &turn.RecoveryOf, &turn.NativeBackend, &turn.ID, &turn.ClientID, &turn.Text, &turn.RequestedModel, &turn.RequestedHarness, &turn.ModelProfileName, &turn.CreatedAt, &turn.Status, &turn.Answer, &turn.Error, &citations, &action)
 	if errors.Is(err, sql.ErrNoRows) {
 		return turn, ErrNotFound
 	}
@@ -123,7 +132,7 @@ func (s *Store) ChatHistory(ctx context.Context, project, before int64, limit in
 
 func (s *Store) FeatureHistory(ctx context.Context, project, feature, before int64, limit int) ([]ChatTurn, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+chatTurnFields+` FROM project_chat_turns t
-		WHERE project_id=$1 AND feature_id IS NOT DISTINCT FROM NULLIF($4::bigint,0) AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT $3`, project, before, limit, feature)
+		WHERE project_id=$1 AND proposal_id IS NULL AND feature_id IS NOT DISTINCT FROM NULLIF($4::bigint,0) AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT $3`, project, before, limit, feature)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +176,10 @@ func (s *Store) ClaimChat(ctx context.Context, project int64, supportsModel bool
 }
 
 func (s *Store) ClaimFeatureAwareChat(ctx context.Context, project int64, supportsModel bool, node string) (*ChatJob, error) {
+	return s.ClaimDiscussionJob(ctx, project, supportsModel, node, false)
+}
+
+func (s *Store) ClaimDiscussionJob(ctx context.Context, project int64, supportsModel bool, node string, proposals bool) (*ChatJob, error) {
 	tx, err := s.beginRoleClaim(ctx)
 	if err != nil {
 		return nil, err
@@ -187,26 +200,64 @@ func (s *Store) ClaimFeatureAwareChat(ctx context.Context, project int64, suppor
 	}
 	job := ChatJob{ProjectID: project, Lease: uuid.NewString(), Recover: true}
 	var native uuid.NullUUID
-	err = tx.QueryRowContext(ctx, `UPDATE project_chat_turns SET status='running', answer='', attempts=attempts+1,
+	err = tx.QueryRowContext(ctx, `UPDATE project_chat_turns SET status='running',resource_worker=NULL,model_budget=NULL, answer='', attempts=attempts+1,
 		lease=$2,lease_until=now()+interval '6 minutes',evidence='[]',progress_task_ids='{}'
-		WHERE id=(SELECT id FROM project_chat_turns
-			WHERE project_id=$1 AND ($3 OR requested_model='') AND status IN ('queued','running') AND attempts<3
-			AND (native_client IS NULL OR native_client IN (SELECT id FROM feature_clients WHERE project_id=$1 AND node=$4 AND seen_at>now()-interval '3 minutes'))
+		WHERE id=(SELECT candidate.id FROM project_chat_turns candidate
+			WHERE project_id=$1 AND ($5 OR proposal_id IS NULL) AND ($3 OR requested_model='') AND status IN ('queued','running') AND attempts<3
+			AND (native_client IS NULL OR native_client IN (SELECT fc.id FROM feature_clients fc WHERE fc.project_id=$1 AND fc.node=$4 AND fc.seen_at>now()-interval '3 minutes'
+            AND NOT EXISTS(SELECT 1 FROM model_budget_usage b WHERE fc.resource_worker=ANY(b.workers) AND b.harness=fc.backend AND b.reserved>=b.slots AND candidate.status='queued')))
  AND created_at>now()-interval '30 minutes' AND (lease_until IS NULL OR lease_until<=now())
-			AND NOT EXISTS (SELECT 1 FROM project_chat_turns WHERE project_id=$1 AND status='running' AND lease_until>now())
+			AND NOT EXISTS (SELECT 1 FROM project_chat_turns active WHERE active.project_id=$1 AND active.feature_id IS NOT DISTINCT FROM candidate.feature_id AND (candidate.proposal_id IS NULL AND active.proposal_id IS NULL) AND active.status='running' AND active.lease_until>now())
 			ORDER BY id LIMIT 1)
-		RETURNING id,text,lease_until,requested_model,requested_harness,COALESCE(feature_id,0),native_client`, project, job.Lease, supportsModel, node).Scan(&job.ID, &job.Text, &job.Until, &job.RequestedModel, &job.RequestedHarness, &job.FeatureID, &native)
+		RETURNING id,text,lease_until,requested_model,requested_harness,COALESCE(feature_id,0),native_client,cancel_requested,coalesce(proposal_id,0),coalesce(proposal_prompt,'')`, project, job.Lease, supportsModel, node, proposals).Scan(&job.ID, &job.Text, &job.Until, &job.RequestedModel, &job.RequestedHarness, &job.FeatureID, &native, &job.CancelRequested, &job.ProposalID, &job.Prompt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	if !native.Valid && job.FeatureID != 0 && node != "" {
+		var resource string
+		err = tx.QueryRowContext(ctx, `SELECT coalesce((SELECT resource_worker FROM feature_clients WHERE project_id=$1 AND node=$2 AND resource_worker<>'' ORDER BY checked_at DESC NULLS LAST LIMIT 1),'')`, project, node).Scan(&resource)
+		if err != nil {
+			return nil, err
+		}
+		if resource != "" {
+			if err = reserveDiscussionSlot(ctx, tx.Tx, job.ID, resource, ""); errors.Is(err, errDiscussionBusy) {
+				return nil, nil
+			} else if err != nil {
+				return nil, err
+			}
+		}
+	}
 	if native.Valid {
 		c := FeatureClient{ID: native.UUID}
 		err = tx.QueryRowContext(ctx, "SELECT instance,backend,model FROM feature_clients WHERE id=$1", native.UUID).Scan(&c.Instance, &c.Backend, &c.Model)
 		if err != nil {
 			return nil, err
+		}
+		var resource string
+		if err = tx.QueryRowContext(ctx, "SELECT resource_worker FROM feature_clients WHERE id=$1", c.ID).Scan(&resource); err != nil {
+			return nil, err
+		}
+		if resource != "" {
+			if err = reserveDiscussionSlot(ctx, tx.Tx, job.ID, resource, c.Backend); errors.Is(err, errDiscussionBusy) {
+				return nil, nil
+			} else if err != nil {
+				return nil, err
+			}
+		}
+		err = tx.QueryRowContext(ctx, `SELECT coalesce(max(id) FILTER(WHERE recovery_of IS NOT NULL),0)
+         FROM project_chat_turns WHERE project_id=$1 AND feature_id=$2 AND native_client=$3 AND proposal_id IS NULL AND id<=$4`, project, job.FeatureID, c.ID, job.ID).Scan(&job.Generation)
+		if err != nil {
+			return nil, err
+		}
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM project_chat_turns WHERE project_id=$1 AND feature_id=$2 AND native_client=$3 AND proposal_id IS NULL AND id>=$4 AND id<$5 AND status='completed')`, project, job.FeatureID, c.ID, job.Generation, job.ID).Scan(&job.ExpectSession)
+		if err != nil {
+			return nil, err
+		}
+		if job.ProposalID != 0 {
+			job.ExpectSession = false
 		}
 		job.Native = &c
 	}
@@ -265,15 +316,23 @@ func (s *Store) CompleteChat(ctx context.Context, project, id int64, lease, answ
 	}
 	defer tx.Rollback()
 	var status string
-	var feature bool
+	var feature, cancelRequested bool
 	var evidence []byte
-	err = tx.QueryRowContext(ctx, `SELECT status,evidence,feature_id IS NOT NULL FROM project_chat_turns WHERE project_id=$1 AND id=$2 AND lease=$3
-		AND (status IN ('completed','failed') OR lease_until>now()) FOR UPDATE`, project, id, lease).Scan(&status, &evidence, &feature)
+	err = tx.QueryRowContext(ctx, `SELECT status,evidence,feature_id IS NOT NULL,cancel_requested FROM project_chat_turns WHERE project_id=$1 AND id=$2 AND lease=$3
+		AND (status IN ('completed','failed') OR lease_until>now()) FOR UPDATE`, project, id, lease).Scan(&status, &evidence, &feature, &cancelRequested)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrConflict
 	}
 	if err != nil || status == "completed" || status == "failed" {
 		return err
+	}
+	if cancelRequested {
+		answer = ""
+		keys = nil
+		action = nil
+		if failure != FeatureCancelUnconfirmed {
+			failure = FeatureCancelled
+		}
 	}
 	var allowed []ChatSource
 	if err := json.Unmarshal(evidence, &allowed); err != nil {
@@ -297,8 +356,8 @@ func (s *Store) CompleteChat(ctx context.Context, project, id int64, lease, answ
 	if failure != "" {
 		status = "failed"
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE project_chat_turns SET status=$2,answer=$3,error=$4,citations=$5 WHERE id=$1`,
-		id, status, answer, failure, raw); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE project_chat_turns SET status=$2,answer=$3,error=$4,citations=$5,session_missing=$6 WHERE id=$1`,
+		id, status, answer, failure, raw, failure == FeatureSessionMissing); err != nil {
 		return err
 	}
 	if action != nil && !feature {
@@ -310,16 +369,23 @@ func (s *Store) CompleteChat(ctx context.Context, project, id int64, lease, answ
 			return err
 		}
 	}
+	if status == "completed" {
+		if err = completeProposalTurn(ctx, tx, id); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
 const chatActionSelect = `SELECT id,turn_id,kind,label,repository,issue_number,work_type,COALESCE(task_id,0),status,
-	repository_id,source_digest,head_retry,issue_body,create_key,create_started_at,plan_mode FROM project_chat_actions WHERE project_id=$1 AND id=$2`
+	repository_id,source_digest,head_retry,issue_body,create_key,create_started_at,plan_mode,EXISTS(SELECT 1 FROM project_chat_turns t WHERE t.id=turn_id AND t.proposal_role='design_final'),implementation_steps FROM project_chat_actions WHERE project_id=$1 AND id=$2`
 
 func scanChatAction(row interface{ Scan(...any) error }) (ChatAction, error) {
 	var a ChatAction
+	var steps []byte
 	err := row.Scan(&a.ID, &a.TurnID, &a.Kind, &a.Label, &a.Repository, &a.IssueNumber, &a.WorkType, &a.TaskID, &a.Status,
-		&a.RepositoryID, &a.SourceDigest, &a.HeadRetry, &a.Body, &a.CreateKey, &a.CreationStarted, &a.PlanMode)
+		&a.RepositoryID, &a.SourceDigest, &a.HeadRetry, &a.Body, &a.CreateKey, &a.CreationStarted, &a.PlanMode, &a.Design, &steps)
+	a.Steps = steps
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -343,6 +409,24 @@ func (s *Store) ConfirmChatAction(ctx context.Context, project, id int64, spec *
 		return ChatTurn{}, err
 	}
 	if a.Status == "pending" {
+		if a.Design && spec != nil && a.Kind == "dispatch_issue" {
+			// Claims and imports lock the project before assigning work. Under that lock an
+			// existing task may acquire a design only before its first execution.
+			var projectLock int64
+			if err = tx.QueryRowContext(ctx, "SELECT id FROM projects WHERE id=$1 FOR UPDATE", project).Scan(&projectLock); err != nil {
+				return ChatTurn{}, err
+			}
+			var available bool
+			err = tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM work_items w WHERE w.project_id=$1 AND w.github_issue_id=$2 AND
+                (w.status<>'READY' OR w.goal_id IS NOT NULL OR coalesce(w.spec->>'mode','')<>'' OR coalesce(w.spec->'issue'->>'work_type','development')<>'development' OR
+                 EXISTS(SELECT 1 FROM executions e WHERE e.task_id=w.id) OR EXISTS(SELECT 1 FROM project_chat_actions other JOIN project_chat_turns t ON t.id=other.turn_id WHERE other.task_id=w.id AND t.proposal_role='design_final')))`, project, spec.Issue.ID).Scan(&available)
+			if err != nil {
+				return ChatTurn{}, err
+			}
+			if !available {
+				spec = nil
+			}
+		}
 		status := "confirmed"
 		var task int64
 		switch {
@@ -357,6 +441,11 @@ func (s *Store) ConfirmChatAction(ctx context.Context, project, id int64, spec *
 		}
 		if err != nil {
 			return ChatTurn{}, err
+		}
+		if status == "confirmed" && len(a.Steps) > 0 {
+			if err = startFeatureBuild(ctx, tx, project, task, a); err != nil {
+				return ChatTurn{}, err
+			}
 		}
 		workType := a.WorkType
 		if status == "confirmed" && spec != nil {

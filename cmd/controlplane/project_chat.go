@@ -109,6 +109,7 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 	registerChatProvider(mux, data, owner, nodes, providers)
 	registerChatStream(mux, data, owner, nodes)
 	registerFeatureTopics(mux, data, owner)
+	registerFeatureProposals(mux, chat, owner, nodes)
 	registerFeatureClients(mux, data, owner, nodes)
 	history := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
@@ -220,7 +221,7 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			if r.URL.Query().Get("feature_native") == "1" {
 				node = r.Header.Get("X-ForgeOS-Node")
 			}
-			job, err := data.ClaimFeatureAwareChat(ctx, project, r.URL.Query().Get("agent_settings") == "1" && r.URL.Query().Get("supports_role_resume") == "1", node)
+			job, err := data.ClaimDiscussionJob(ctx, project, r.URL.Query().Get("agent_settings") == "1" && r.URL.Query().Get("supports_role_resume") == "1", node, r.URL.Query().Get("proposal_jobs") == "1")
 			if err != nil {
 				respond(w, 0, nil, err)
 				return
@@ -229,7 +230,9 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-			job.Prompt, err = chat.prompt(ctx, *job)
+			if job.ProposalID == 0 {
+				job.Prompt, err = chat.prompt(ctx, *job)
+			}
 			if err != nil {
 				respond(w, 0, nil, err)
 				return
@@ -281,6 +284,12 @@ func (c projectChat) result(project int64, w http.ResponseWriter, r *http.Reques
 	if in.Error != "" {
 		in.Answer, in.Citations = "", nil
 		switch in.Error {
+		case "feature_session_missing":
+			failure = store.FeatureSessionMissing
+		case "feature_cancel_unconfirmed":
+			failure = store.FeatureCancelUnconfirmed
+		case "feature_cancelled":
+			failure = store.FeatureCancelled
 		case "native_reply_unconfirmed":
 			failure = "原生客户端未返回可确认的回复。请核对节点会话及当前回合状态。"
 		case "provider_unreachable":
@@ -381,6 +390,16 @@ func (c projectChat) confirm(w http.ResponseWriter, r *http.Request) {
 		respond(w, 0, nil, err)
 		return
 	}
+	if action.Design {
+		problem(w, 409, "请在功能话题通过设计定稿派工")
+		return
+	}
+	c.confirmAction(w, r, project, action, in)
+}
+
+func (c projectChat) confirmAction(w http.ResponseWriter, r *http.Request, project int64, action store.ChatAction, in chatIssueDraft) {
+	ctx := r.Context()
+	id := action.ID
 	if action.Kind == "create_issue" && action.Status == "pending" {
 		c.confirmNewIssue(w, r, project, action, in)
 		return
@@ -403,6 +422,10 @@ func (c projectChat) confirm(w http.ResponseWriter, r *http.Request) {
 			} else if in.WorkType != "" && in.WorkType != action.WorkType {
 				problem(w, http.StatusConflict, "work type differs from the current GitHub Issue")
 				return
+			}
+			if action.Design && issue.WorkType == "" {
+				issue.OwnerClassified = true
+				issue.WorkType = action.WorkType
 			}
 			frozen := repo.spec(issue, "auto", "", validation.Policy{})
 			frozen.ImportOrigin = "owner"

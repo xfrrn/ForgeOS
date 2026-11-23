@@ -75,13 +75,16 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const receivedSharePath = /^\/projects\/[1-9]\d*\/shared-experience(?:\?(?:versions=1(?:&before=[1-9]\d*)?|before=[1-9]\d*)|\/search\?(?:versions=1&)?q=[^&#]+|\/[1-9]\d*)?$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
+    const featureOperationPath = /^\/projects\/[1-9]\d*\/features\/(?:clients\/(?:status|[0-9a-f-]{36}\/recheck)|[1-9]\d*\/messages\/[1-9]\d*\/(?:cancel|recover))$/.test(path)
+    const proposalPath = /^\/projects\/[1-9]\d*\/features\/[1-9]\d*\/proposals(?:\/[1-9]\d*(?:\/(?:actions|delivery|dispatch))?)?$/.test(path)
+    const featureNotePath = /^\/projects\/[1-9]\d*\/features\/[1-9]\d*\/notes(?:\/[1-9]\d*\/(?:close|source))?$/.test(path)
     const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:features(?:\/clients|\/[1-9]\d*\/messages(?:\?before=[1-9]\d*)?)?|planning(?:\/tasks\/[1-9]\d*)?|overview-context|preview|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
     const workerPath = /^\/workers(?:\/(?:control-plane|model-budgets|process-pool|fixed-pool))?$/.test(path)
     const clonePath = /^\/projects\/(?:chat-models(?:\/test)?|clone-settings|clone-check|repository-credentials|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
     const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull|identity)$/.test(path)
     const issuePreviewPath = (!init.method || init.method === 'GET') && /^\/projects\/[1-9]\d*\/issues\/[1-9]\d*$/.test(path)
     const projectPath = /^\/projects(?:\?[^#]*|\/[1-9]\d*(?:\/(?:check|inbox(?:\?before=[1-9]\d*)?|issues\/[1-9]\d*|classifications\/[1-9]\d*\/processes))?)?$/.test(path)
-    if (!agentPath && !nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !projectGitPath && !receivedSharePath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !experienceLibraryPath && !decisionPath && !materialPath && !projectPath && !workerPath && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
+    if (!proposalPath && !featureOperationPath && !featureNotePath && !agentPath && !nativeApprovalPath && !codeReviewPath && !projectWorkPath && !clonePath && !projectGitPath && !receivedSharePath && !roleArchivePath && !globalRulesPath && !documentPath && !taskEventPath && !sharePath && !experienceLibraryPath && !decisionPath && !materialPath && !projectPath && !workerPath && !/^\/executions\/[1-9]\d*\/(?:abandon|retry|cancel|pause-ci|resume-ci|pause-model|resume-model|instructions|turn-inputs)$/.test(path) && !/^\/tasks(?:[/?]|$)/.test(path)) throw new Error('无效的工作台接口')
     const headers = new Headers(init.headers)
     if (typeof init.body === 'string') headers.set('Content-Type', 'application/json')
     let response: Response
@@ -97,6 +100,9 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
         response.status === 409 && info?.error === 'select an Issue work type before dispatch' ? '请先为这条 Issue 选择工作类型。' :
         response.status === 409 && info?.error === 'work type differs from the current GitHub Issue' ? '所选工作类型与 GitHub Issue 声明的类型不一致。' :
         response.status === 409 && /^\/projects\/\d+\/planning$/.test(path) ? '规划已更新或操作条件已变化，请刷新后再保存。' :
+        response.status === 409 && proposalPath && path.endsWith('/dispatch') ? '设计版本、派工回执或 Issue 内容已变化。请核对当前定稿与 Issue 后重试。' :
+        response.status === 409 && featureOperationPath ? '回合状态或客户端可用性已变化，请核对最新记录。' :
+        response.status === 409 && featureNotePath ? '记录来源或提交内容已变化，请重新打开该轮讨论。' :
         response.status === 409 && libraryPath ? '登记的仓库当前不可用，请检查本地仓库后重试。' :
         response.status === 404 && libraryPath && path.includes('/documents/read?') ? '当前仓库版本中找不到此文档路径。' :
         response.status === 409 && !agentPath && !clonePath && !projectGitPath && !issuePreviewPath && !/^\/projects\/\d+\/chat$/.test(path) ? '任务状态或候选版本已变化，请刷新记录。' :

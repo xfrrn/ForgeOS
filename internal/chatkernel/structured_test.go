@@ -55,3 +55,29 @@ func TestKnowledgeModelKeepsCredentialsOnOriginalEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProposalAnswerUsesOnlyFrozenInput(t *testing.T) {
+	const prompt = "one frozen proposal"
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model    string
+			Messages []struct{ Role, Content string }
+			Tools    json.RawMessage
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if body.Model != "proposal-model" || len(body.Messages) != 1 || body.Messages[0].Role != "user" || body.Messages[0].Content != prompt || body.Tools != nil {
+			t.Error("unexpected proposal request")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"draft"}}]}`))
+	}))
+	defer service.Close()
+	cfg := Config{provider: Provider{Model: "proposal-model", BaseURL: service.URL + "/v1", APIKey: "local-test"}}
+	answer, err := cfg.ProposalAnswer(context.Background(), prompt)
+	if err != nil || answer != "draft" {
+		t.Fatal(answer, err)
+	}
+}

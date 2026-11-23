@@ -21,7 +21,7 @@ func (s *Store) RecordCICandidate(ctx context.Context, id int64, lease, sha, ses
 		AND (e.ci_candidate IS NULL OR e.ci_candidate=$3) AND (e.ci_candidate_session IS NULL OR e.ci_candidate_session=$4)
 		AND COALESCE(t.spec->>'mode','')<>'plan' AND length(t.spec->>'base_commit')=length($3) AND t.spec->>'base_commit'<>$3
 		AND (CASE WHEN t.spec ? 'verify_commit' THEN t.spec->>'verify_commit'=$3 AND $4=''
-		     ELSE $4<>'' END)
+		     WHEN t.spec ? 'feature_integration' AND e.feature_inputs IS NOT NULL THEN true ELSE $4<>'' END)
 		AND (NOT e.uses_checkpoints OR EXISTS (
 			SELECT 1 FROM execution_checkpoints turn JOIN execution_checkpoints next
 			ON next.execution_id=turn.execution_id AND next.sequence=turn.sequence+1

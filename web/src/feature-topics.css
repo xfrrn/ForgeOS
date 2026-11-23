@@ -228,3 +228,9 @@
     color: var(--ink-soft);
   }
 }
+
+.feature-link-meta {display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap}
+.feature-link-meta strong {font-weight:550;color:var(--ink-soft)}
+.feature-link-meta [data-tone="attention"] {color:var(--warning);background:var(--warning-bg);padding:1px 6px;border-radius:var(--radius-sm)}
+.feature-link-meta [data-tone="active"] {color:var(--brand)}
+.feature-link-meta [data-tone="done"] {color:var(--positive)}

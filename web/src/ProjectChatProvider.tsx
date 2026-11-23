@@ -51,8 +51,9 @@ export function useDiscussionModels(request:ApiRequest,projectId?:number) {
       } catch(e){if (!controller.signal.aborted) setClientError(e instanceof Error?e.message:'无法读取节点客户端')}
     }
     void refresh()
+    window.addEventListener('forgeos-discussion-clients', refresh)
     const timer=window.setInterval(refresh,30000)
-    return ()=>{window.clearInterval(timer);controller.abort()}
+    return ()=>{window.removeEventListener('forgeos-discussion-clients',refresh);window.clearInterval(timer);controller.abort()}
   },[projectId,request])
   const native=clients.map(c=>({id:c.id,name:(c.backend==='claude'?'Claude Code':'Codex')+' · '+c.model,model:c.model,base_url:c.instance,revision:'',output_format:'native'}))
   return {...catalog,error:catalog.error||clientError,models:projectId && (native.length||catalog.models)?[...native,...catalog.models||[]]:catalog.models}

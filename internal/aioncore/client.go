@@ -72,7 +72,7 @@ func (c *Client) request(ctx context.Context, method, path string, body, out any
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("AionCore HTTP %d", res.StatusCode)
+		return HTTPError(res.StatusCode)
 	}
 	decoder := json.NewDecoder(io.LimitReader(res.Body, 8<<20))
 	if path == "/login" {
@@ -94,20 +94,79 @@ func (c *Client) request(ctx context.Context, method, path string, body, out any
 	return nil
 }
 
-func (c *Client) Available(ctx context.Context, backend string) bool {
+type HTTPError int
+
+func (e HTTPError) Error() string { return fmt.Sprintf("AionCore HTTP %d", int(e)) }
+func ProbeFailure(err error) string {
+	var status HTTPError
+	if errors.As(err, &status) && (status == 401 || status == 403) {
+		return "auth"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	return "unreachable"
+}
+func (c *Client) Probe(ctx context.Context, backend string) string {
 	var agents []struct {
 		Backend            string
 		Installed, Enabled bool
 	}
-	if c.request(ctx, "GET", "/api/agents/management", nil, &agents) != nil {
-		return false
+	if err := c.request(ctx, "GET", "/api/agents/management", nil, &agents); err != nil {
+		return ProbeFailure(err)
 	}
 	for _, a := range agents {
-		if a.Backend == backend && a.Installed && a.Enabled {
-			return true
+		if a.Backend == backend && a.Installed {
+			if a.Enabled {
+				return "ready"
+			}
+			return "disabled"
 		}
 	}
-	return false
+	return "not_installed"
+}
+func (c *Client) Available(ctx context.Context, backend string) bool {
+	return c.Probe(ctx, backend) == "ready"
+}
+
+var ErrSessionMissing = errors.New("saved discussion session is missing")
+
+func (c *Client) CheckSession(ctx context.Context, id string) error {
+	err := c.request(ctx, "GET", "/api/conversations/"+url.PathEscape(id), nil, nil)
+	if errors.Is(err, HTTPError(404)) {
+		return ErrSessionMissing
+	}
+	return err
+}
+func (c *Client) Cancel(ctx context.Context, id, turn string) error {
+	if turn == "" {
+		return errors.New("missing native turn receipt")
+	}
+	base := "/api/conversations/" + url.PathEscape(id)
+	var result struct {
+		Runtime *struct {
+			State      string
+			Processing bool   `json:"is_processing"`
+			Turn       string `json:"turn_id"`
+		} `json:"runtime"`
+	}
+	if err := c.request(ctx, "POST", base+"/cancel", map[string]string{"turn_id": turn}, &result); err != nil {
+		return err
+	}
+	for {
+		if result.Runtime != nil && !result.Runtime.Processing && result.Runtime.State == "idle" {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+		result.Runtime = nil
+		if err := c.request(ctx, "GET", base, nil, &result); err != nil {
+			return err
+		}
+	}
 }
 func (c *Client) Create(ctx context.Context, backend, workspace, name string) (string, error) {
 	var result struct{ ID string }
@@ -197,9 +256,21 @@ func (c *Client) Send(ctx context.Context, id, prompt string) (Receipt, error) {
 	return r, err
 }
 func (c *Client) Reply(ctx context.Context, id, message, marker string) (string, error) {
+	return c.DocumentReply(ctx, id, message, marker, "", nil)
+}
+
+// Claude may deliver its document as an ExitPlanMode submission. Persist only the
+// plan for this exact message and turn, then stop the isolated conversation.
+func (c *Client) DocumentReply(ctx context.Context, id, message, marker, turn string, save func(string) error) (string, error) {
 	base := "/api/conversations/" + url.PathEscape(id)
 	for {
-		var state struct{ Status string }
+		var state struct {
+			Status  string
+			Runtime struct {
+				State string
+				Turn  string `json:"turn_id"`
+			}
+		}
 		if err := c.request(ctx, "GET", base, nil, &state); err != nil {
 			return "", err
 		}
@@ -230,6 +301,22 @@ func (c *Client) Reply(ctx context.Context, id, message, marker string) (string,
 			if !started || item.Position != "left" {
 				continue
 			}
+			if save != nil && turn != "" && state.Runtime.Turn == turn && state.Runtime.State == "waiting_confirmation" && item.Type == "tool_call" && item.Status == "work" {
+				var submission struct {
+					Name  string
+					Input struct{ Plan string }
+				}
+				if json.Unmarshal(item.Content, &submission) == nil && submission.Name == "ExitPlanMode" && strings.TrimSpace(submission.Input.Plan) != "" {
+					plan := strings.TrimSpace(submission.Input.Plan)
+					if len(plan) > 16<<10 {
+						return "", errors.New("submitted design exceeds reply limit")
+					}
+					if err := save(plan); err != nil {
+						return "", err
+					}
+					return plan, c.StopDocumentTurn(ctx, id, turn)
+				}
+			}
 			if item.Type == "tips" && value.Type == "error" {
 				return "", errors.New("AionCore upstream turn failed")
 			}
@@ -246,4 +333,27 @@ func (c *Client) Reply(ctx context.Context, id, message, marker string) (string,
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// On receipt replay, the prior process may already have stopped the native turn.
+func (c *Client) StopDocumentTurn(ctx context.Context, id, turn string) error {
+	var state struct {
+		Runtime struct {
+			State      string
+			Processing bool   `json:"is_processing"`
+			Turn       string `json:"turn_id"`
+		}
+	}
+	if err := c.request(ctx, "GET", "/api/conversations/"+url.PathEscape(id), nil, &state); err != nil {
+		return err
+	}
+	if !state.Runtime.Processing && state.Runtime.State == "idle" {
+		return nil
+	}
+	if turn == "" || state.Runtime.Turn != turn {
+		return errors.New("document turn identity changed")
+	}
+	stop, done := context.WithTimeout(ctx, 15*time.Second)
+	defer done()
+	return c.Cancel(stop, id, turn)
 }

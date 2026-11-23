@@ -462,12 +462,20 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 			return w.validateIssueCandidate(ctx, job, repo, workspace, candidate, spec)
 		})
 	}
-	if spec != nil && spec.VerifyCommit != "" {
-		result := store.Result{BaseCommit: spec.BaseCommit, Commit: spec.VerifyCommit}
-		if _, err := checkedWorktree(ctx, repo, workspace, spec.VerifyCommit); err != nil {
+	if spec != nil && (spec.VerifyCommit != "" || (spec.FeatureIntegration && job.Rework == nil)) {
+		candidate := spec.VerifyCommit
+		if candidate == "" {
+			var err error
+			candidate, err = assembleFeature(ctx, repo, job)
+			if err != nil {
+				return failed(err.Error(), err)
+			}
+		}
+		result := store.Result{BaseCommit: spec.BaseCommit, Commit: candidate}
+		if _, err := checkedWorktree(ctx, repo, workspace, candidate); err != nil {
 			return failed("could not check out refreshed candidate", err)
 		}
-		report, err := validate(spec.VerifyCommit, "")
+		report, err := validate(candidate, "")
 		if report.Commit != "" {
 			result.Validation = &report
 		}
@@ -511,6 +519,13 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 		return result
 	}
 	start, feedback := spec.BaseCommit, ""
+	if step := spec.FeatureStep; step != nil && step.Revision != nil {
+		start = step.Revision.Start
+		parents, err := localrepo.Git(ctx, repo, "rev-list", "-1", "--parents", start, "--")
+		if err != nil || strings.TrimSpace(string(parents)) != start+" "+spec.BaseCommit {
+			return failed("无法核实上一次实现提交", err)
+		}
+	}
 	if review := job.Rework; review != nil {
 		raw, err := hex.DecodeString(review.Commit)
 		if err != nil || (len(raw) != 20 && len(raw) != 32) || review.Decision != "reject" ||
@@ -835,7 +850,9 @@ func (w *worker) executeIssue(leaseCtx context.Context, repo, workspace string, 
 	} else if err == nil {
 		result.Commit, err = commitChanges(ctx, workspace, spec.BaseCommit, start, spec.Issue.Number, dir)
 	}
-	if err == nil {
+	if err == nil && spec.FeatureStep != nil {
+		err = pinFeatureStep(ctx, repo, job, result.Commit)
+	} else if err == nil {
 		var report store.ValidationResult
 		report, err = validate(result.Commit, result.SessionID)
 		if report.Commit != "" {

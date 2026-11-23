@@ -343,6 +343,13 @@ func (w *worker) finishCandidate(parent context.Context, repo string, q *parkedC
 			return fail(err)
 		}
 	}
+	if job.Spec.FeatureStep != nil {
+		if err = pinFeatureStep(ctx, repo, job, saved.Result.Commit); err != nil {
+			return fail(err)
+		}
+		recovery.waiting, recovery.leaveUnsettled = false, false
+		return saved.Result
+	}
 	b := executionResources{worker: w, job: job, step: q.ResourceStep}
 	if saved.Validated {
 		if job.ManageResources {

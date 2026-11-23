@@ -364,6 +364,7 @@ func routes(data *store.Store, root, owner string, workers *workerRegistry, deli
 		}
 		input.ClaudePlanning = r.URL.Query().Get("claude_planning") == "1"
 		input.PlannerDiscussion = r.URL.Query().Get("planner_discussion") == "1"
+		input.FeatureBuild = r.URL.Query().Get("feature_build") == "1"
 		input.AgentSettings = r.URL.Query().Get("agent_settings") == "1"
 		input.SupportsKnowledgeTools = r.URL.Query().Get("supports_knowledge_tools") == "1"
 		input.SupportsModelPause = r.URL.Query().Get("supports_model_pause") == "1"

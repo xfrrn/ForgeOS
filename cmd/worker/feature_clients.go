@@ -40,16 +40,25 @@ func featureConfig() ([]aioncore.Config, error) {
 	return conf, nil
 }
 func (w *worker) featureClientHeartbeat(ctx context.Context) {
-	ticker := time.NewTicker(40 * time.Second)
+	node := w.id
+	if node == "" {
+		node, _ = os.Hostname()
+	}
+	ticker := time.NewTicker(4 * time.Second)
 	defer ticker.Stop()
+	var next time.Time
 	for ctx.Err() == nil {
-		configs, err := featureConfig()
-		if err != nil {
-			log.Print("feature client configuration unavailable")
-		}
-		// An unreadable configuration withdraws the earlier report.
-		if err = w.reportFeatureClients(ctx, configs); err != nil && ctx.Err() == nil {
-			log.Print("feature client status report unavailable")
+		var gen int64
+		_, err := w.post(ctx, "/internal/management-chat/probe-request", map[string]string{"node": node}, &gen)
+		if time.Now().After(next) || (err == nil && gen > 0) {
+			configs, configErr := featureConfig()
+			if configErr != nil {
+				log.Print("feature client configuration unavailable")
+			}
+			if err := w.reportFeatureClients(ctx, node, configs, gen, configErr != nil); err != nil && ctx.Err() == nil {
+				log.Print("feature client status report unavailable")
+			}
+			next = time.Now().Add(40 * time.Second)
 		}
 		select {
 		case <-ctx.Done():
@@ -58,26 +67,19 @@ func (w *worker) featureClientHeartbeat(ctx context.Context) {
 		}
 	}
 }
-
-func (w *worker) reportFeatureClients(ctx context.Context, configs []aioncore.Config) error {
-	node := w.id
-	if node == "" {
-		var err error
-		node, err = os.Hostname()
-		if err != nil {
-			return err
-		}
-	}
+func (w *worker) reportFeatureClients(ctx context.Context, node string, configs []aioncore.Config, gen int64, configFailed bool) error {
 	clients := []store.FeatureClient{}
 	for _, c := range configs {
 		probe, cancel := context.WithTimeout(ctx, 4*time.Second)
 		core, err := aioncore.Login(probe, c)
-		if err == nil && core.Available(probe, c.Backend) {
-			clients = append(clients, store.FeatureClient{Instance: c.Instance, Backend: c.Backend, Model: c.Model})
+		reason := aioncore.ProbeFailure(err)
+		if err == nil {
+			reason = core.Probe(probe, c.Backend)
 		}
+		clients = append(clients, store.FeatureClient{Instance: c.Instance, Backend: c.Backend, Model: c.Model, Status: reason})
 		cancel()
 	}
-	status, err := w.post(ctx, "/internal/management-chat/feature-clients", map[string]any{"node": node, "clients": clients}, nil)
+	status, err := w.post(ctx, "/internal/management-chat/feature-clients", map[string]any{"node": node, "clients": clients, "generation": gen, "config_failed": configFailed, "resource_worker": os.Getenv("FORGEOS_FEATURE_RESOURCE_WORKER")}, nil)
 	if err == nil && status != 204 {
 		err = fmt.Errorf("feature client heartbeat HTTP %d", status)
 	}
@@ -102,21 +104,38 @@ func (w *worker) nativeFeatureReply(ctx context.Context, job managementChatJob) 
 				return "", err
 			}
 			defer db.Close()
-			return w.resumeFeatureReply(ctx, db, core, job, c)
+			answer, err := w.resumeFeatureReply(ctx, db, core, job, c)
+			if !job.CancelRequested && errors.Is(context.Cause(ctx), errOwnerCancel) {
+				return "", w.cancelSavedFeatureTurn(ctx, db, core, job)
+			}
+			return answer, err
 		}
 	}
 	return "", errors.New("native client binding unavailable")
 }
 func (w *worker) resumeFeatureReply(ctx context.Context, db *sql.DB, core *aioncore.Client, job managementChatJob, c aioncore.Config) (string, error) {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS feature_sessions(project INTEGER,feature INTEGER,profile TEXT,conversation TEXT NOT NULL,PRIMARY KEY(project,feature,profile));
- CREATE TABLE IF NOT EXISTS feature_sends(project INTEGER,turn INTEGER,conversation TEXT NOT NULL,marker TEXT NOT NULL,message TEXT NOT NULL DEFAULT '',PRIMARY KEY(project,turn))`); err != nil {
+ CREATE TABLE IF NOT EXISTS feature_sends(project INTEGER,turn INTEGER,conversation TEXT NOT NULL,marker TEXT NOT NULL,message TEXT NOT NULL DEFAULT '',PRIMARY KEY(project,turn));
+ CREATE TABLE IF NOT EXISTS feature_plan_documents(project INTEGER,turn INTEGER,plan TEXT NOT NULL,PRIMARY KEY(project,turn));
+ CREATE TABLE IF NOT EXISTS feature_native_receipts(project INTEGER,turn INTEGER,upstream_turn TEXT NOT NULL,PRIMARY KEY(project,turn))`); err != nil {
 		return "", err
 	}
+	if job.CancelRequested {
+		return "", w.cancelSavedFeatureTurn(ctx, db, core, job)
+	}
 	profile := job.Native.ID.String()
+	if job.ProposalID != 0 {
+		profile = fmt.Sprintf("%s-proposal-%d", profile, job.ID)
+	} else if job.Generation > 0 {
+		profile = fmt.Sprintf("%s-%d", profile, job.Generation)
+	}
 	var conversation string
 	lookup := "SELECT conversation FROM feature_sessions WHERE project=? AND feature=? AND profile=?"
 	err := db.QueryRowContext(ctx, lookup, job.ProjectID, job.FeatureID, profile).Scan(&conversation)
 	if errors.Is(err, sql.ErrNoRows) {
+		if job.ExpectSession {
+			return "", aioncore.ErrSessionMissing
+		}
 		root, err := os.UserCacheDir()
 		if err != nil {
 			return "", err
@@ -139,6 +158,9 @@ func (w *worker) resumeFeatureReply(ctx context.Context, db *sql.DB, core *aionc
 	} else if err != nil {
 		return "", err
 	}
+	if err = core.CheckSession(ctx, conversation); err != nil {
+		return "", err
+	}
 	var marker, message string
 	err = db.QueryRowContext(ctx, "SELECT marker,message FROM feature_sends WHERE project=? AND turn=? AND conversation=?", job.ProjectID, job.ID, conversation).Scan(&marker, &message)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -159,12 +181,71 @@ func (w *worker) resumeFeatureReply(ctx context.Context, db *sql.DB, core *aionc
 		r, sendErr := core.Send(ctx, conversation, marker+"\n"+job.Prompt)
 		if sendErr == nil {
 			message = r.Message
-			if _, err = db.ExecContext(ctx, "UPDATE feature_sends SET message=? WHERE project=? AND turn=?", message, job.ProjectID, job.ID); err != nil {
+			receiptCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			defer done()
+			if _, err = db.ExecContext(receiptCtx, "INSERT OR REPLACE INTO feature_native_receipts VALUES(?,?,?)", job.ProjectID, job.ID, r.Turn); err != nil {
+				return "", err
+			}
+			if _, err = db.ExecContext(receiptCtx, "UPDATE feature_sends SET message=? WHERE project=? AND turn=?", message, job.ProjectID, job.ID); err != nil {
 				return "", err
 			}
 		}
 	} else if err != nil {
 		return "", err
 	}
+	if job.ProposalID != 0 && c.Backend == "claude" {
+		var upstream, plan string
+		err = db.QueryRowContext(ctx, `SELECT r.upstream_turn,coalesce(d.plan,'') FROM feature_native_receipts r LEFT JOIN feature_plan_documents d USING(project,turn) WHERE r.project=? AND r.turn=?`, job.ProjectID, job.ID).Scan(&upstream, &plan)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if upstream != "" {
+			if plan != "" {
+				return plan, core.StopDocumentTurn(ctx, conversation, upstream)
+			}
+			return core.DocumentReply(ctx, conversation, message, marker, upstream, func(document string) error {
+				_, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO feature_plan_documents(project,turn,plan) VALUES(?,?,?)", job.ProjectID, job.ID, document)
+				return err
+			})
+		}
+	}
 	return core.Reply(ctx, conversation, message, marker)
+}
+func (w *worker) cancelSavedFeatureTurn(ctx context.Context, db *sql.DB, core *aioncore.Client, job managementChatJob) error {
+	stopCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
+	defer done()
+	var conversation, upstream string
+	err := db.QueryRowContext(stopCtx, `SELECT s.conversation,coalesce(r.upstream_turn,'') FROM feature_sends s LEFT JOIN feature_native_receipts r USING(project,turn) WHERE s.project=? AND s.turn=?`, job.ProjectID, job.ID).Scan(&conversation, &upstream)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errOwnerCancel
+	}
+	if err != nil || upstream == "" || core.Cancel(stopCtx, conversation, upstream) != nil {
+		return errStopUnconfirmed
+	}
+	return errOwnerCancel
+}
+
+var errOwnerCancel = errors.New("owner cancelled this turn")
+var errStopUnconfirmed = errors.New("native cancellation unconfirmed")
+
+func (w *worker) watchFeatureTurn(ctx context.Context, stop context.CancelCauseFunc, job managementChatJob) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for ctx.Err() == nil {
+		var requested bool
+		status, err := w.post(ctx, "/internal/management-chat/feature-turn-control", map[string]any{"id": job.ID, "lease": job.Lease}, &requested)
+		if err == nil && status == 200 && requested {
+			stop(errOwnerCancel)
+			return
+		}
+		if status == 409 {
+			stop(errors.New("feature turn lease expired"))
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }

@@ -114,3 +114,128 @@ func TestFeatureNativeScheduling(t *testing.T) {
 		t.Fatal("offline selection", err)
 	}
 }
+
+func TestFeatureClientOperations(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.Open(t)
+	s := New(db)
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	project, err := s.CreateProject(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO worker_nodes(worker,os,arch,cpus,slots,capabilities,model_slots) VALUES('host','windows','amd64',1,2,'[]',1)`); err != nil {
+		t.Fatal(err)
+	}
+	clients := []FeatureClient{{Instance: "local", Backend: "codex", Model: "test", Status: "ready"}}
+	report := func(gen int64) {
+		t.Helper()
+		if err := s.RecordFeatureProbe(ctx, project.ID, "chat", "host", clients, gen, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report(0)
+	live, err := s.FeatureClients(ctx, project.ID)
+	if err != nil || len(live) != 1 {
+		t.Fatal(live, err)
+	}
+	client := live[0].ID
+	if err = s.RequestFeatureProbe(ctx, project.ID, client); err != nil {
+		t.Fatal(err)
+	}
+	gen, err := s.PendingFeatureProbe(ctx, project.ID, "chat")
+	if err != nil || gen != 1 {
+		t.Fatal(gen, err)
+	}
+	clients[0].Status = "auth"
+	report(gen)
+	health, err := s.ClientHealth(ctx, project.ID)
+	if err != nil || len(health) != 1 || health[0].Pending || health[0].Status != "auth" || health[0].CheckedAt == nil {
+		t.Fatal(health, err)
+	}
+	live, err = s.FeatureClients(ctx, project.ID)
+	if err != nil || len(live) != 0 {
+		t.Fatal(live, err)
+	}
+	clients[0].Status = "ready"
+	report(0)
+	create := func() FeatureTopic {
+		t.Helper()
+		f, err := s.CreateFeature(ctx, project.ID, uuid.New(), client, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	send := func(f FeatureTopic) ChatTurn {
+		t.Helper()
+		r, err := s.SendFeatureChat(ctx, project.ID, f.ID, uuid.NewString(), "hello", client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	claim := func() *ChatJob {
+		t.Helper()
+		j, err := s.ClaimFeatureAwareChat(ctx, project.ID, true, "chat")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}
+	a, b := create(), create()
+	first := send(a)
+	second := send(b)
+	j := claim()
+	if j == nil || j.ID != first.ID {
+		t.Fatal(j)
+	}
+	if err = s.SetModelBudgets(ctx, []ModelBudget{{Name: "lab", Harness: "codex", Workers: []string{"host"}, Slots: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	var reservations int
+	if err = db.QueryRowContext(ctx, "SELECT reserved FROM model_budget_usage WHERE name='lab'").Scan(&reservations); err != nil || reservations != 1 {
+		t.Fatal("configured budget omitted running discussion", reservations, err)
+	}
+	if claim() != nil {
+		t.Fatal("machine model slot overcommitted")
+	}
+	if err = s.CancelFeatureTurn(ctx, project.ID, b.ID, first.ID); !errors.Is(err, ErrConflict) {
+		t.Fatal(err)
+	}
+	if err = s.CancelFeatureTurn(ctx, project.ID, a.ID, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	stop, err := s.FeatureCancelRequested(ctx, project.ID, j.ID, j.Lease)
+	if !stop || err != nil {
+		t.Fatal(stop, err)
+	}
+	if err = s.CompleteChat(ctx, project.ID, j.ID, j.Lease, "late reply", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	row, err := s.ChatTurn(ctx, project.ID, j.ID)
+	if err != nil || row.Answer != "" || row.Error != FeatureCancelled {
+		t.Fatal(row, err)
+	}
+	j = claim()
+	if j == nil || j.ID != second.ID {
+		t.Fatal(j)
+	}
+	if err = s.CompleteChat(ctx, project.ID, j.ID, j.Lease, "", FeatureSessionMissing, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	recovery, err := s.RecoverFeatureTurn(ctx, project.ID, b.ID, j.ID)
+	if err != nil || recovery.RecoveryOf != j.ID {
+		t.Fatal(recovery, err)
+	}
+	again, err := s.RecoverFeatureTurn(ctx, project.ID, b.ID, j.ID)
+	if err != nil || again.ID != recovery.ID {
+		t.Fatal(again, err)
+	}
+	j = claim()
+	if j == nil || j.Generation != recovery.ID || j.ExpectSession {
+		t.Fatal(j)
+	}
+}

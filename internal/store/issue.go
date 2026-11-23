@@ -37,17 +37,19 @@ func ValidWorkType(value string) bool {
 }
 
 type IssueSpec struct {
-	ExplicitHarness   bool               `json:"-"`
-	ImportOrigin      string             `json:"-"`
-	ProjectConfigBlob string             `json:"project_config_blob,omitempty"`
-	ChildHarness      string             `json:"child_harness,omitempty"`
-	Harness           string             `json:"harness,omitempty"`
-	VerifyCommit      string             `json:"verify_commit,omitempty"`
-	Mode              string             `json:"mode,omitempty"`
-	Issue             Issue              `json:"issue"`
-	BaseCommit        string             `json:"base_commit"`
-	Validation        string             `json:"validation"`
-	Policy            *validation.Policy `json:"policy,omitempty"`
+	FeatureStep        *FeatureStep       `json:"feature_step,omitempty"`
+	FeatureIntegration bool               `json:"feature_integration,omitempty"`
+	ExplicitHarness    bool               `json:"-"`
+	ImportOrigin       string             `json:"-"`
+	ProjectConfigBlob  string             `json:"project_config_blob,omitempty"`
+	ChildHarness       string             `json:"child_harness,omitempty"`
+	Harness            string             `json:"harness,omitempty"`
+	VerifyCommit       string             `json:"verify_commit,omitempty"`
+	Mode               string             `json:"mode,omitempty"`
+	Issue              Issue              `json:"issue"`
+	BaseCommit         string             `json:"base_commit"`
+	Validation         string             `json:"validation"`
+	Policy             *validation.Policy `json:"policy,omitempty"`
 }
 
 type ValidationResult struct {
@@ -127,7 +129,7 @@ func planningHarness(ctx context.Context, tx *sql.Tx, project int64, workType st
 
 func importIssueTask(ctx context.Context, tx *sql.Tx, projectID int64, spec IssueSpec, sources ...FeedbackSource) (int64, error) {
 	issue := spec.Issue
-	if spec.ImportOrigin != "" && spec.ImportOrigin != "owner" && spec.ImportOrigin != "github" ||
+	if spec.FeatureStep != nil || spec.FeatureIntegration || spec.ImportOrigin != "" && spec.ImportOrigin != "owner" && spec.ImportOrigin != "github" ||
 		issue.WorkType != "" && !ValidWorkType(issue.WorkType) || issue.OwnerClassified && issue.WorkType == "" ||
 		issue.WorkType != "" && issue.WorkType != "development" && spec.Mode != "plan" ||
 		len(sources) > 1 || spec.VerifyCommit != "" || issue.ID <= 0 || issue.RepositoryID <= 0 || issue.Number <= 0 || !validCommit(spec.BaseCommit) ||
@@ -320,7 +322,7 @@ func (spec IssueSpec) acceptsResult(r Result, discussion bool) bool {
 	if r.Harness != "" && (r.Harness != expected || spec.VerifyCommit != "") {
 		return false
 	}
-	if spec.Harness == "claude" && spec.VerifyCommit == "" && (r.ExitCode == 0 || r.SessionID != "") && r.Harness != "claude" {
+	if spec.Harness == "claude" && (!spec.FeatureIntegration || r.SessionID != "") && spec.VerifyCommit == "" && (r.ExitCode == 0 || r.SessionID != "") && r.Harness != "claude" {
 		return false
 	}
 	if spec.Mode == "plan" {
@@ -384,6 +386,12 @@ func (spec IssueSpec) acceptsResult(r Result, discussion bool) bool {
 		return false
 	}
 	validTurn := strings.TrimSpace(r.SessionID) != ""
+	if spec.FeatureStep != nil {
+		return validTurn && r.Error == "" && r.BaseCommit == spec.BaseCommit && r.Commit != "" && v == nil
+	}
+	if spec.FeatureIntegration && r.SessionID == "" {
+		validTurn = r.Harness == ""
+	}
 	if spec.VerifyCommit != "" {
 		validTurn = r.SessionID == "" && r.Commit == spec.VerifyCommit
 	}

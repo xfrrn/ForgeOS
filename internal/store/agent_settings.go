@@ -162,8 +162,8 @@ func freezeAgent(ctx context.Context, tx *sql.Tx, project int64, key, node, requ
 		return nil, err
 	}
 	a := agents.Assignment{Config: entry.Effective, Ticket: uuid.NewString()}
-	if requestedModel != "" {
-		if key != "management-chat" || !agents.ValidModel(requestedModel) {
+	if requestedModel != "" || (key == "implementation" && requestedHarness != "") {
+		if (key != "management-chat" && key != "implementation") || !agents.ValidModel(requestedModel) {
 			return nil, ErrConflict
 		}
 		if requestedHarness != "codex" && requestedHarness != "claude" {

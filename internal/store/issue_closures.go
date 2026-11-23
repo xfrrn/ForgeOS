@@ -60,7 +60,7 @@ func (s *Store) CloseSourceIssue(ctx context.Context, project, repository int64,
 	}
 	_, err = tx.ExecContext(ctx, `WITH stopped AS (
 		UPDATE work_items SET source_closure_id=$1,waiting_execution_id=NULL,status=CASE WHEN status='RUNNING' OR waiting_execution_id IS NOT NULL THEN 'RUNNING' ELSE 'CANCELLED' END
-		WHERE (id=$1 OR goal_id=$1) AND status IN ('READY','RUNNING','PLANNING','ACTIVE','BLOCKED','WAITING_INPUT','WAITING_ACCEPTANCE','PAUSED','FAILED')
+		WHERE (id=$1 OR goal_id=$1 OR feature_parent=$1) AND status IN ('READY','RUNNING','PLANNING','ACTIVE','BLOCKED','WAITING_INPUT','WAITING_ACCEPTANCE','PAUSED','FAILED')
 		RETURNING id,status
 	) INSERT INTO task_events(task_id,execution_id,type,origin)
 	SELECT id,(SELECT max(e.id) FROM executions e WHERE e.task_id=stopped.id),

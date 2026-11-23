@@ -9,7 +9,8 @@ import (
 
 // A live pre-upgrade Issue has no phase information. Reserve both budgets until it settles.
 const workerUsage = `SELECT count(*) AS reserved,
-	count(*) FILTER (WHERE e.resource_kind='model' OR (NOT e.resource_managed AND t.kind='codex_issue')) AS model_reserved,
+	count(*) FILTER (WHERE e.resource_kind='model' OR (NOT e.resource_managed AND t.kind='codex_issue')) + (SELECT count(*) FROM project_chat_turns c WHERE c.resource_worker=n.worker
+       AND c.status='running' AND c.lease_until>clock_timestamp()) AS model_reserved,
 	count(*) FILTER (WHERE e.resource_kind='ci' OR (NOT e.resource_managed AND t.kind='codex_issue')) AS ci_reserved
 	FROM executions e JOIN work_items t ON e.task_id=t.id
 	WHERE e.worker=n.worker AND e.result IS NULL AND e.abandoned_at IS NULL`

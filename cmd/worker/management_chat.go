@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"forgeos/internal/aioncore"
 	"log"
 	"net/http"
 	"os"
@@ -57,13 +59,17 @@ const managementChatSchema = `{
 }`
 
 type managementChatJob struct {
-	Native     *store.FeatureClient `json:"native,omitempty"`
-	FeatureID  int64                `json:"feature_id,omitempty"`
-	ID         int64                `json:"id"`
-	ProjectID  int64                `json:"project_id"`
-	Lease      string               `json:"lease"`
-	LeaseUntil time.Time            `json:"lease_until"`
-	Prompt     string               `json:"prompt"`
+	ProposalID      int64                `json:"proposal_id,omitempty"`
+	CancelRequested bool                 `json:"cancel_requested,omitempty"`
+	Generation      int64                `json:"session_generation,omitempty"`
+	ExpectSession   bool                 `json:"expect_session,omitempty"`
+	Native          *store.FeatureClient `json:"native,omitempty"`
+	FeatureID       int64                `json:"feature_id,omitempty"`
+	ID              int64                `json:"id"`
+	ProjectID       int64                `json:"project_id"`
+	Lease           string               `json:"lease"`
+	LeaseUntil      time.Time            `json:"lease_until"`
+	Prompt          string               `json:"prompt"`
 }
 
 type managementChatAction struct {
@@ -102,7 +108,7 @@ func (w *worker) runManagementChat(ctx context.Context) error {
 			return err
 		}
 		var job managementChatJob
-		status, err := w.claimRole(ctx, managementChatRole, "/internal/management-chat/claim?project_kernel=1&agent_settings=1&supports_role_resume=1"+nativeParam, struct{}{}, &job)
+		status, err := w.claimRole(ctx, managementChatRole, "/internal/management-chat/claim?proposal_jobs=1&project_kernel=1&agent_settings=1&supports_role_resume=1"+nativeParam, struct{}{}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue
@@ -130,12 +136,29 @@ func (w *worker) answerManagementChat(ctx context.Context, job managementChatJob
 	var providerFailure, providerKey string
 	if time.Now().Before(job.LeaseUntil) {
 		turn, cancel := managementTurn(ctx, &job.LeaseUntil)
+		if job.FeatureID != 0 && !job.CancelRequested {
+			watched, stop := context.WithCancelCause(turn)
+			go w.watchFeatureTurn(watched, stop, job)
+			defer stop(nil)
+			turn = watched
+		}
 		if job.Native != nil {
 			result.Answer, turnErr = w.nativeFeatureReply(turn, job)
 			if turnErr != nil {
-				providerFailure = "native_reply_unconfirmed"
+				switch {
+				case errors.Is(turnErr, aioncore.ErrSessionMissing):
+					providerFailure = "feature_session_missing"
+				case errors.Is(turnErr, errOwnerCancel):
+					providerFailure = "feature_cancelled"
+				case job.CancelRequested || errors.Is(turnErr, errStopUnconfirmed) || errors.Is(context.Cause(turn), errOwnerCancel):
+					providerFailure = "feature_cancel_unconfirmed"
+				default:
+					providerFailure = "native_reply_unconfirmed"
+				}
 				log.Printf("feature chat %d: %v", job.ID, turnErr)
 			}
+		} else if job.CancelRequested {
+			providerFailure = "feature_cancelled"
 		} else {
 			var provider chatkernel.Provider
 			status, err := w.post(turn, "/internal/management-chat/provider", map[string]any{"id": job.ID, "lease": job.Lease}, &provider)
@@ -145,17 +168,21 @@ func (w *worker) answerManagementChat(ctx context.Context, job managementChatJob
 				if err != nil {
 					turnErr = err
 				} else {
-					cfg.TaskTool = func(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
-						var out json.RawMessage
-						status, err := w.post(ctx, "/internal/management-chat/task-tool", map[string]any{"id": job.ID, "lease": job.Lease, "name": name, "arguments": args}, &out)
-						if err != nil || status != 200 {
-							return nil, fmt.Errorf("project task lookup unavailable (HTTP %d)", status)
+					if job.ProposalID != 0 {
+						result.Answer, turnErr = cfg.ProposalAnswer(turn, job.Prompt)
+					} else {
+						cfg.TaskTool = func(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
+							var out json.RawMessage
+							status, err := w.post(ctx, "/internal/management-chat/task-tool", map[string]any{"id": job.ID, "lease": job.Lease, "name": name, "arguments": args}, &out)
+							if err != nil || status != 200 {
+								return nil, fmt.Errorf("project task lookup unavailable (HTTP %d)", status)
+							}
+							return out, nil
 						}
-						return out, nil
+						cfg.Preview = w.chatPreview(turn, job, append(outputSecrets(job.Lease), provider.APIKey))
+						turn = context.WithValue(turn, chatProjectKey{}, cfg)
+						_, turnErr = w.roleJSONTurn(turn, true, store.ManagementProcessReport{Lease: job.Lease}, managementChatSchema, prompt, 32<<10, &result.managementChatAnswer)
 					}
-					cfg.Preview = w.chatPreview(turn, job, append(outputSecrets(job.Lease), provider.APIKey))
-					turn = context.WithValue(turn, chatProjectKey{}, cfg)
-					_, turnErr = w.roleJSONTurn(turn, true, store.ManagementProcessReport{Lease: job.Lease}, managementChatSchema, prompt, 32<<10, &result.managementChatAnswer)
 					providerFailure = cfg.FailureCode()
 				}
 			}

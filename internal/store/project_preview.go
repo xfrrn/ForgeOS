@@ -160,15 +160,20 @@ func claimProjectPreview(ctx context.Context, tx *sql.Tx, worker string, project
 	var j Job
 	j.Preview = &ProjectPreviewJob{}
 	err := tx.QueryRowContext(ctx, `
-		WITH next AS (
-		    SELECT t.id, p.project_id, p.secret, o.action, pr.path
-		    FROM project_previews p JOIN projects pr ON pr.id=p.project_id
-		    JOIN work_items t ON t.id=p.latest_task_id JOIN project_preview_operations o ON o.task_id=t.id
-		    WHERE t.status='READY' AND p.worker=$1 AND ($2::bigint[] IS NULL OR p.project_id=ANY($2))
-		    ORDER BY t.id LIMIT 1 FOR UPDATE OF t SKIP LOCKED)
-		UPDATE work_items w SET status='RUNNING' FROM next WHERE w.id=next.id
-		RETURNING w.id,nextval(pg_get_serial_sequence('executions','id')),next.path,next.project_id,next.action,next.secret`, worker, pq.Array(projects)).
-		Scan(&j.TaskID, &j.ExecutionID, &j.RepoPath, &j.Preview.ProjectID, &j.Preview.Action, &j.Preview.Secret)
+		SELECT t.id, pr.path,p.project_id,o.action,p.secret
+        FROM project_previews p JOIN projects pr ON pr.id=p.project_id
+        JOIN work_items t ON t.id=p.latest_task_id JOIN project_preview_operations o ON o.task_id=t.id
+        WHERE t.status='READY' AND p.worker=$1 AND ($2::bigint[] IS NULL OR p.project_id=ANY($2))
+        AND NOT EXISTS(SELECT 1 FROM work_items a WHERE a.project_id=p.project_id AND (a.status='RUNNING' OR a.waiting_execution_id IS NOT NULL))
+        ORDER BY t.id LIMIT 1 FOR UPDATE OF pr,t SKIP LOCKED`, worker, pq.Array(projects)).
+		Scan(&j.TaskID, &j.RepoPath, &j.Preview.ProjectID, &j.Preview.Action, &j.Preview.Secret)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = tx.QueryRowContext(ctx, "UPDATE work_items SET status='RUNNING' WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM work_items WHERE project_id=$2 AND (status='RUNNING' OR waiting_execution_id IS NOT NULL)) RETURNING nextval(pg_get_serial_sequence('executions','id'))", j.TaskID, j.Preview.ProjectID).Scan(&j.ExecutionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

@@ -5,6 +5,8 @@ import { useDiscussionModels } from './ProjectChatProvider'
 import { credentialsHref } from './workbenchRoutes'
 import { EmptyState } from './ui'
 import { workTypeName, workTypes } from './workTypes'
+import { FeatureNotes, RecordFeatureNote } from './FeatureNotes'
+import { FeatureProposals } from './FeatureProposals'
 import './project-chat.css'
 
 type ChatSource = { key: string; label: string; path: string }
@@ -16,6 +18,7 @@ type ChatAction = {
 type IssueDraft = {title: string; body: string}
 type ChatTurn = {
   id: number; client_id: string; text: string; created_at: string; model_profile_name?: string; requested_model?: string; requested_harness?: string; native_backend?: string
+  cancel_requested?: boolean; session_missing?: boolean; recovery_of?: number
   status: 'queued' | 'running' | 'completed' | 'failed'; answer?: string; error?: string
   sources?: ChatSource[]; action?: ChatAction; activities?: ChatActivity[]
 }
@@ -131,10 +134,20 @@ function ChatActionCard({ action, enabled, projectId, onConfirm }: {
   </section>
 }
 
-function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
+function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry, noteEditor, onOperation }: {
   turn: ChatTurn; projectId: number; enabled: boolean; onConfirm: (id: number, workType: string, draft?: IssueDraft) => Promise<void>
+  onOperation?: (id:number, action:"cancel"|"recover")=>Promise<void>
+  noteEditor?: React.ReactNode
   onRetry?: (text: string) => void
 }) {
+  const [working,setWorking]=useState(false)
+  const [problem,setProblem]=useState('')
+  async function operate(action:'cancel'|'recover'){
+    if (!onOperation || working)return
+    setWorking(true);setProblem('')
+    try{await onOperation(turn.id,action)}catch(e){setProblem(e instanceof Error?e.message:'操作失败，请重试。')}
+    finally{setWorking(false)}
+  }
   return <li id={'chat-turn-' + turn.id} className="chat-exchange">
     <div className="chat-message chat-owner">
       <div className="chat-message-meta"><strong>你</strong><time dateTime={turn.created_at}>{formatTime(turn.created_at)}</time></div>
@@ -143,11 +156,15 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
     <div className="chat-message chat-agent">
       <div className="chat-message-meta"><span className="chat-agent-icon"><Icon name="MessageSquare" size={15}/></span><strong>{turn.native_backend === "claude" ? "Claude Code" : turn.native_backend === "codex" ? "Codex" : "Management Agent"}</strong>{turn.requested_model && <span title={turn.requested_model}>所选模型 · {turn.requested_model}</span>}</div>
       <div className="chat-message-body">
+        {turn.recovery_of && <small>从话题记录恢复 · 原回合 #{turn.recovery_of}</small>}
+        {onOperation && (turn.status==='queued' || turn.status==='running') && <button className="button" type="button" disabled={working || turn.cancel_requested} onClick={()=>void operate('cancel')}>{turn.cancel_requested?'等待取消回执':'取消本轮'}</button>}
+        {problem && <p role="alert">{problem}</p>}
         {turn.status === 'queued' && <span className="status status-pending"><i/>等待 Agent 领取</span>}
-        {turn.status === 'running' && <span className="status status-running"><i/>{turn.answer ? '正在回复' : '正在处理'}</span>}
-        {turn.status === 'failed' && <div className="chat-failed">
+        {turn.status === 'running' && !turn.cancel_requested && <span className="status status-running"><i/>{turn.answer ? '正在回复' : '正在处理'}</span>}
+        {turn.status === 'failed' && <div className={turn.cancel_requested?'chat-stopped':'chat-failed'}>
           <p>{turn.error || 'Agent 未能完成这次回复。'}</p>
-          {onRetry && <button className="button" type="button" onClick={() => onRetry(turn.text)}>重新提问</button>}
+          {turn.session_missing && onOperation && <button className="button" disabled={working} onClick={()=>void operate('recover')}>从话题记录恢复并重试</button>}
+          {onRetry && !turn.session_missing && <button className="button" type="button" onClick={() => onRetry(turn.text)}>重新提问</button>}
         </div>}
         {turn.answer && <p className={'chat-message-text' + (turn.status === 'running' ? ' chat-streaming' : '')}>{turn.answer}</p>}
         {!!turn.sources?.length && <section className="chat-evidence" aria-label="回答依据">
@@ -168,12 +185,15 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
         </section>}
       </div>
     </div>
+    {noteEditor}
   </li>
 }
 
-export function ProjectChat({ projectId, request, feature }: { projectId: number; request: ApiRequest; feature?:{id:number;title:string;profile_id:string} }) {
+export function ProjectChat({ projectId, request, feature, showProposals=false, delivery=false }: { delivery?:boolean; showProposals?:boolean; projectId: number; request: ApiRequest; feature?:{id:number;title:string;profile_id:string} }) {
   const chatPath = `/projects/${projectId}/chat`
   const path = feature ? `/projects/${projectId}/features/${feature.id}/messages` : chatPath
+  const notesPath = feature ? `/projects/${projectId}/features/${feature.id}/notes` : ''
+  const [noteVersion, setNoteVersion] = useState(0)
   const field = useId()
   const input = useRef<HTMLTextAreaElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
@@ -370,6 +390,11 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
     }
   }
 
+  async function operateTurn(id:number,action:'cancel'|'recover') {
+    const result=await request<ChatTurn | undefined>(path+'/'+id+'/'+action,{method:'POST',signal:lifetime.current?.signal})
+    if (result) setMessages(old=>mergeTurns(old,[result]))
+    refresh()
+  }
   async function confirm(actionId: number, workType: string, draft?: IssueDraft) {
     const signal = lifetime.current?.signal
     try {
@@ -391,6 +416,13 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
       </div>
       <a className="button" href={projectHref(projectId, '/agents')}><Icon name="Bot" size={14}/>Agent 配置</a>
     </header>
+    {feature && <nav className="proposal-tabs" aria-label="话题视图">
+      <button className="button" aria-pressed={!showProposals && !delivery} onClick={() => {window.location.hash=projectHref(projectId,'/features/'+feature.id)}}>讨论</button>
+      <button className="button" aria-pressed={showProposals} onClick={() => {window.location.hash=projectHref(projectId,'/features/'+feature.id+'?view=proposal')}}>方案与拍板</button>
+      <button className="button" aria-pressed={delivery} onClick={()=>{window.location.hash=projectHref(projectId,'/features/'+feature.id+'?view=delivery')}}>设计与交付</button>
+    </nav>}
+    {feature && (showProposals || delivery) ? <FeatureProposals key={delivery?"delivery":"proposals"} delivery={delivery} project={projectId} feature={feature.id} profile={feature.profile_id} request={request} models={models || []}/> : <>
+    {feature && <FeatureNotes path={notesPath} request={request} version={noteVersion}/>}
     <div className="panel project-chat-panel">
       <div ref={transcript} className="chat-scroll" role="region" aria-label="对话历史" tabIndex={0}
         onWheel={event => { if (event.deltaY < 0 && event.currentTarget.scrollTop > 0) followLatest.current = false }}
@@ -420,6 +452,8 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
         </div>}
         {!!messages.length && <div role="log" aria-label="项目聊天记录" aria-relevant="additions text">
           <ol className="chat-transcript">{messages.map(turn => <ChatExchange key={turn.id} turn={turn} projectId={projectId}
+            onOperation={feature ? operateTurn : undefined}
+            noteEditor={feature && turn.status === 'completed' && <RecordFeatureNote path={notesPath} request={request} turn={turn.id} onSaved={()=>setNoteVersion(n=>n+1)}/>}
             enabled={!!enabled} onConfirm={confirm} onRetry={enabled && providerReady && !sendBusy && !draft.text.trim() ? focusComposer : undefined}/>)}</ol>
         </div>}
       </div>
@@ -453,6 +487,6 @@ export function ProjectChat({ projectId, request, feature }: { projectId: number
           {sendError && <p className="detail-problem" id={`${field}-error`} role="alert">{sendError}</p>}
         </form>}
       </section>
-    </div>
+    </div></>}
   </div>
 }

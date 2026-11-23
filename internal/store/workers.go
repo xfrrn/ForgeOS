@@ -79,6 +79,7 @@ type WorkerCapabilities struct {
 	SupportsProjectPreview   bool  `json:"supports_project_preview,omitempty"`
 	ClaudePlanning           bool  `json:"supports_claude_planning,omitempty"`
 	PlannerDiscussion        bool  `json:"-"`
+	FeatureBuild             bool  `json:"-"`
 	AgentSettings            bool  `json:"-"`
 	SupportsKnowledgeTools   bool  `json:"-"`
 	CommandApprovalProject   int64 `json:"command_approval_project,omitempty"`
@@ -109,7 +110,7 @@ func (c WorkerCapabilities) intersect(node WorkerCapabilities) WorkerCapabilitie
 		approvals = 0
 	}
 	return WorkerCapabilities{
-		PlannerDiscussion: c.PlannerDiscussion, AgentSettings: c.AgentSettings, ClaudePlanning: c.ClaudePlanning && node.ClaudePlanning,
+		PlannerDiscussion: c.PlannerDiscussion, FeatureBuild: c.FeatureBuild && c.AgentSettings, AgentSettings: c.AgentSettings, ClaudePlanning: c.ClaudePlanning && node.ClaudePlanning,
 		SupportsKnowledgeTools: c.SupportsKnowledgeTools,
 		CommandApprovalProject: approvals,
 		SupportsModelPause:     c.SupportsModelPause && node.SupportsModelPause,

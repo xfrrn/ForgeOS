@@ -1,14 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon, projectHref, formatTime, type ApiRequest } from './shared'
+import { FeatureClientHealth } from './FeatureClientHealth'
 import { ProjectChat } from './ProjectChat'
 import { useDiscussionModels } from './ProjectChatProvider'
 import { ThemedSelect } from './ThemedSelect'
 import { EmptyState } from './ui'
 import './feature-topics.css'
 
-type Topic = { id: number; title: string; profile_id: string; updated_at: string }
+const deliveryStages:Record<string,[string,string]> = {
+  implementation_queued:['等待实现',''],implementing:['实现中','active'],
+  implementation_failed:['实现失败 · 需要处理','attention'],step_cancelled:['子任务已取消','attention'],
+  integration_queued:['等待合成',''],integrating:['合成验证中','active'],integration_failed:['合成失败 · 需要处理','attention'],
+  rework_queued:['验收退回 · 待返工','attention'],reworking:['返工中','active'],
+  waiting_input:['等你答复','attention'],paused:['已暂停',''],acceptance:['等你验收','attention'],
+  accepted:['已验收','done'],delivery:['已验收 · 交付中','active'],merged:['已合并','done'],cancelled:['已取消',''],superseded:['已替代',''],
+}
+const phases:Record<string,string>={handoff:'待派工',execution:'已派工',design:'设计中',review:'待拍板',proposals:'方案中',discussion:'讨论中'}
+type Topic = { delivery_stage?:string; total_steps?:number; finished_steps?:number; phase?:string; id: number; title: string; profile_id: string; updated_at: string }
 
-export function FeatureTopics({ projectId, selected, request }: { projectId: number; selected?: number; request: ApiRequest }) {
+export function FeatureTopics({ projectId, selected, proposals, delivery, request }: { projectId: number; selected?: number; proposals?:boolean; delivery?:boolean; request: ApiRequest }) {
   const path = '/projects/' + projectId + '/features'
   const href = projectHref(projectId, '/features')
   const [topics, setTopics] = useState<Topic[]>()
@@ -32,6 +42,13 @@ export function FeatureTopics({ projectId, selected, request }: { projectId: num
     return () => controller.abort()
   }, [path, selected, refresh, request])
 
+  useEffect(() => {
+    const changed = () => setRefresh(v => v + 1)
+    window.addEventListener('forgeos-proposal-changed', changed)
+    const timer=window.setInterval(()=>{if(!document.hidden)changed()},15000)
+    return () => {window.removeEventListener('forgeos-proposal-changed', changed);window.clearInterval(timer)}
+  }, [])
+
   async function create() {
     if (!title.trim() || !profile || busy) return
     const key = JSON.stringify([title.trim(), profile])
@@ -46,7 +63,6 @@ export function FeatureTopics({ projectId, selected, request }: { projectId: num
     finally { setBusy(false) }
   }
 
-  const nativeClients = (models || []).filter(m => m.output_format === 'native')
 
   return <div className={'feature-room' + (selected || creating ? ' feature-open' : '')}>
     <aside className="feature-list" aria-label="功能话题">
@@ -58,20 +74,13 @@ export function FeatureTopics({ projectId, selected, request }: { projectId: num
       </div>
       <div className="feature-items">
         {topics?.map(item => <a key={item.id} className="feature-link" aria-current={item.id === selected ? 'page' : undefined}
-          href={href + '/' + item.id} onClick={() => setCreating(false)}>
+          href={href + '/' + item.id + (item.phase==='review'?'?view=proposal':['design','handoff','execution'].includes(item.phase||'')?'?view=delivery':'')} onClick={() => setCreating(false)}>
           <span>{item.title}</span>
-          <small>{formatTime(item.updated_at)}</small>
+          <small className="feature-link-meta"><strong data-tone={deliveryStages[item.delivery_stage||'']?.[1]}>{deliveryStages[item.delivery_stage||'']?.[0] || phases[item.phase||'discussion']}{!!item.total_steps && ' · '+(item.finished_steps||0)+'/'+item.total_steps}</strong><time dateTime={item.updated_at}>{formatTime(item.updated_at)}</time></small>
         </a>)}
         {topics?.length === 0 && <p className="feature-empty-hint">还没有功能话题，点击右上角新建。</p>}
       </div>
-      <details className="feature-clients" open={nativeClients.length > 0}>
-        <summary>本机讨论客户端 <span className="muted">{nativeClients.length}</span></summary>
-        {nativeClients.map(client => <div key={client.id} className="feature-client-row">
-          <strong><span className="feature-client-dot" aria-hidden="true"/>{client.name}</strong>
-          <small>{client.base_url} · 已连接</small>
-        </div>)}
-        {!nativeClients.length && <p className="feature-empty-hint">尚未收到可用客户端的节点报告。</p>}
-      </details>
+      <FeatureClientHealth projectId={projectId} request={request}/>
     </aside>
 
     <section className="feature-detail">
@@ -94,7 +103,7 @@ export function FeatureTopics({ projectId, selected, request }: { projectId: num
         </form>
       </div> : topic ? <>
         <a className="feature-back" href={href}><Icon name="ArrowLeft" size={14}/>返回功能话题</a>
-        <ProjectChat key={topic.id} projectId={projectId} request={request} feature={topic}/>
+        <ProjectChat key={topic.id} projectId={projectId} request={request} feature={topic} showProposals={proposals} delivery={delivery}/>
       </> : <div className="feature-placeholder">
         <EmptyState
           icon="Sparkles"

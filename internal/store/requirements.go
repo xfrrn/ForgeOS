@@ -203,7 +203,7 @@ func (s *Store) AdoptRequirement(ctx context.Context, id, revision int64) (Task,
 	var status string
 	var bound, project int64
 	var planMode, planned bool
-	err = tx.QueryRowContext(ctx, `SELECT status,requirement_id,project_id,COALESCE(spec->>'mode','')='plan',EXISTS(SELECT 1 FROM plan_revisions WHERE task_id=t.id)
+	err = tx.QueryRowContext(ctx, `SELECT status,requirement_id,project_id,COALESCE(spec->>'mode','')='plan',(EXISTS(SELECT 1 FROM plan_revisions WHERE task_id=t.id) OR spec ? 'feature_integration')
 		FROM work_items t WHERE id=$1 AND github_issue_id IS NOT NULL FOR UPDATE`, id).Scan(&status, &bound, &project, &planMode, &planned)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Task{}, ErrNotFound
