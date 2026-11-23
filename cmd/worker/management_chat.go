@@ -57,11 +57,13 @@ const managementChatSchema = `{
 }`
 
 type managementChatJob struct {
-	ID         int64     `json:"id"`
-	ProjectID  int64     `json:"project_id"`
-	Lease      string    `json:"lease"`
-	LeaseUntil time.Time `json:"lease_until"`
-	Prompt     string    `json:"prompt"`
+	Native     *store.FeatureClient `json:"native,omitempty"`
+	FeatureID  int64                `json:"feature_id,omitempty"`
+	ID         int64                `json:"id"`
+	ProjectID  int64                `json:"project_id"`
+	Lease      string               `json:"lease"`
+	LeaseUntil time.Time            `json:"lease_until"`
+	Prompt     string               `json:"prompt"`
 }
 
 type managementChatAction struct {
@@ -88,12 +90,19 @@ type managementChatResult struct {
 }
 
 func (w *worker) runManagementChat(ctx context.Context) error {
+	nativeParam := ""
+	if os.Getenv("FORGEOS_FEATURE_CLIENTS_FILE") != "" {
+		nativeParam = "&feature_native=1"
+		reportCtx, stop := context.WithCancel(ctx)
+		defer stop()
+		go w.featureClientHeartbeat(reportCtx)
+	}
 	for ctx.Err() == nil {
 		if err := w.replayRoleReceipts(ctx, managementChatRole); err != nil {
 			return err
 		}
 		var job managementChatJob
-		status, err := w.claimRole(ctx, managementChatRole, "/internal/management-chat/claim?project_kernel=1&agent_settings=1&supports_role_resume=1", struct{}{}, &job)
+		status, err := w.claimRole(ctx, managementChatRole, "/internal/management-chat/claim?project_kernel=1&agent_settings=1&supports_role_resume=1"+nativeParam, struct{}{}, &job)
 		if status == http.StatusNoContent || temporary(status) {
 			wait(ctx)
 			continue
@@ -121,26 +130,34 @@ func (w *worker) answerManagementChat(ctx context.Context, job managementChatJob
 	var providerFailure, providerKey string
 	if time.Now().Before(job.LeaseUntil) {
 		turn, cancel := managementTurn(ctx, &job.LeaseUntil)
-		var provider chatkernel.Provider
-		status, err := w.post(turn, "/internal/management-chat/provider", map[string]any{"id": job.ID, "lease": job.Lease}, &provider)
-		if err == nil && status == 200 && w.roleHarness("codex") == "codex" {
-			providerKey = provider.APIKey
-			cfg, err := chatkernel.ForProject(os.Getenv("FORGEOS_CHAT_KERNEL_CONFIG"), job.ProjectID, provider)
-			if err != nil {
-				turnErr = err
-			} else {
-				cfg.TaskTool = func(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
-					var out json.RawMessage
-					status, err := w.post(ctx, "/internal/management-chat/task-tool", map[string]any{"id": job.ID, "lease": job.Lease, "name": name, "arguments": args}, &out)
-					if err != nil || status != 200 {
-						return nil, fmt.Errorf("project task lookup unavailable (HTTP %d)", status)
+		if job.Native != nil {
+			result.Answer, turnErr = w.nativeFeatureReply(turn, job)
+			if turnErr != nil {
+				providerFailure = "native_reply_unconfirmed"
+				log.Printf("feature chat %d: %v", job.ID, turnErr)
+			}
+		} else {
+			var provider chatkernel.Provider
+			status, err := w.post(turn, "/internal/management-chat/provider", map[string]any{"id": job.ID, "lease": job.Lease}, &provider)
+			if err == nil && status == 200 && w.roleHarness("codex") == "codex" {
+				providerKey = provider.APIKey
+				cfg, err := chatkernel.ForProject(os.Getenv("FORGEOS_CHAT_KERNEL_CONFIG"), job.ProjectID, provider)
+				if err != nil {
+					turnErr = err
+				} else {
+					cfg.TaskTool = func(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
+						var out json.RawMessage
+						status, err := w.post(ctx, "/internal/management-chat/task-tool", map[string]any{"id": job.ID, "lease": job.Lease, "name": name, "arguments": args}, &out)
+						if err != nil || status != 200 {
+							return nil, fmt.Errorf("project task lookup unavailable (HTTP %d)", status)
+						}
+						return out, nil
 					}
-					return out, nil
+					cfg.Preview = w.chatPreview(turn, job, append(outputSecrets(job.Lease), provider.APIKey))
+					turn = context.WithValue(turn, chatProjectKey{}, cfg)
+					_, turnErr = w.roleJSONTurn(turn, true, store.ManagementProcessReport{Lease: job.Lease}, managementChatSchema, prompt, 32<<10, &result.managementChatAnswer)
+					providerFailure = cfg.FailureCode()
 				}
-				cfg.Preview = w.chatPreview(turn, job, append(outputSecrets(job.Lease), provider.APIKey))
-				turn = context.WithValue(turn, chatProjectKey{}, cfg)
-				_, turnErr = w.roleJSONTurn(turn, true, store.ManagementProcessReport{Lease: job.Lease}, managementChatSchema, prompt, 32<<10, &result.managementChatAnswer)
-				providerFailure = cfg.FailureCode()
 			}
 		}
 		cancel()

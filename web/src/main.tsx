@@ -16,6 +16,7 @@ import { ProjectWorkspace } from './ProjectWorkspace'
 import { SkillLibrary } from './SkillLibrary'
 import { RepositoryCredentials } from './RepositoryCredentials'
 import { AgentSettings } from './AgentSettings'
+import { FeatureTopics } from './FeatureTopics'
 import { ProjectChat } from './ProjectChat'
 import { ProjectExecutionQueue } from './ProjectExecutionQueue'
 import { ProjectTestChecks } from './ProjectTestChecks'
@@ -114,6 +115,7 @@ function ProjectContent({page, request, onChanged}: {page: ProjectRoute; request
   switch (page.view) {
     case 'overview': return <Overview projectId={projectId} request={request}/>
     case 'agents': return <AgentSettings projectId={projectId} request={request}/>
+    case 'features': return <FeatureTopics key={projectId} projectId={projectId} selected={page.feature} request={request}/>
     case 'chat': return <ProjectChat projectId={projectId} request={request}/>
     case 'tasks': return page.queue ? <ProjectExecutionQueue projectId={projectId} request={request}/> :
       <TaskList key={page.category + '/' + (page.status ?? '')} projectId={projectId}

@@ -16,6 +16,7 @@ export type WorkspaceProject = {
 
 const workspaceTabs = [
   { key: 'overview', href: '', label: '概览' },
+  { key: 'features', href:'/features', label:'功能' },
   { key: 'chat', href: '/chat', label: '聊天' },
   { key: 'agents', href: '/agents', label: 'Agent 管理' },
   { key: 'planning', href: '/planning', label: '项目规划' },

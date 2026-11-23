@@ -71,7 +71,7 @@ func idempotentRoleClaim(data *store.Store, project int64, role string, next htt
 				if err := json.Unmarshal(buffer.body.Bytes(), &job); err != nil {
 					return 0, nil, err
 				}
-				if r.URL.Query().Get("agent_settings") == "1" {
+				if r.URL.Query().Get("agent_settings") == "1" && !(role == "management-chat" && job["native"] != nil) {
 					var model, harness string
 					if raw := job["requested_harness"]; raw != nil {
 						if err := json.Unmarshal(raw, &harness); err != nil {

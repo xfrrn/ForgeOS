@@ -108,7 +108,9 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 	registerProjectPlanning(mux, chat, owner)
 	registerChatProvider(mux, data, owner, nodes, providers)
 	registerChatStream(mux, data, owner, nodes)
-	mux.HandleFunc("GET /projects/{id}/chat", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+	registerFeatureTopics(mux, data, owner)
+	registerFeatureClients(mux, data, owner, nodes)
+	history := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
 			return
@@ -127,7 +129,11 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			respond(w, 0, nil, err)
 			return
 		}
-		turns, err := data.ChatHistory(ctx, project, before, 21)
+		feature, ok := requestedFeature(w, r, data, project)
+		if !ok {
+			return
+		}
+		turns, err := data.FeatureHistory(ctx, project, feature, before, 21)
 		if err != nil {
 			respond(w, 0, nil, err)
 			return
@@ -151,8 +157,10 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			Messages   []store.ChatTurn `json:"messages"`
 			NextBefore int64            `json:"next_before,omitempty"`
 		}{harness, enabled, turns, next}, err)
-	}))
-	mux.HandleFunc("POST /projects/{id}/chat", authorized(owner, func(w http.ResponseWriter, r *http.Request) {
+	})
+	mux.HandleFunc("GET /projects/{id}/chat", history)
+	mux.HandleFunc("GET /projects/{id}/features/{feature}/messages", history)
+	send := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
 			return
@@ -179,13 +187,19 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			problem(w, 409, "请先选择聊天模型。")
 			return
 		}
-		turn, err := data.SendChat(r.Context(), project, id.String(), in.Text, in.ProfileID)
+		feature, ok := requestedFeature(w, r, data, project)
+		if !ok {
+			return
+		}
+		turn, err := data.SendFeatureChat(r.Context(), project, feature, id.String(), in.Text, in.ProfileID)
 		if errors.Is(err, store.ErrConflict) {
 			problem(w, 409, "模型选择已失效，或该消息已使用其他模型发送。请刷新模型列表后重试。")
 			return
 		}
 		respond(w, http.StatusCreated, turn, err)
-	}))
+	})
+	mux.HandleFunc("POST /projects/{id}/chat", send)
+	mux.HandleFunc("POST /projects/{id}/features/{feature}/messages", send)
 	mux.HandleFunc("POST /projects/{id}/chat/actions/{action}/confirm", authorized(owner, chat.confirm))
 	mux.HandleFunc("POST /internal/management-chat/claim", nodes.authorize(func(project int64, w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-ForgeOS-Claim-Key") == "" || r.Header.Get("X-ForgeOS-Node") == "" {
@@ -202,7 +216,11 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 				return
 			}
 			ctx := r.Context()
-			job, err := data.ClaimChat(ctx, project, r.URL.Query().Get("agent_settings") == "1" && r.URL.Query().Get("supports_role_resume") == "1")
+			node := ""
+			if r.URL.Query().Get("feature_native") == "1" {
+				node = r.Header.Get("X-ForgeOS-Node")
+			}
+			job, err := data.ClaimFeatureAwareChat(ctx, project, r.URL.Query().Get("agent_settings") == "1" && r.URL.Query().Get("supports_role_resume") == "1", node)
 			if err != nil {
 				respond(w, 0, nil, err)
 				return
@@ -263,6 +281,8 @@ func (c projectChat) result(project int64, w http.ResponseWriter, r *http.Reques
 	if in.Error != "" {
 		in.Answer, in.Citations = "", nil
 		switch in.Error {
+		case "native_reply_unconfirmed":
+			failure = "原生客户端未返回可确认的回复。请核对节点会话及当前回合状态。"
 		case "provider_unreachable":
 			failure = "聊天节点无法连接模型服务，请检查项目的 Base URL。"
 		case "provider_auth":

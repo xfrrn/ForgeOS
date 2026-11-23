@@ -1,6 +1,6 @@
 import { taskCategory, type TaskCategory } from './workTypes'
 
-export type ProjectTab = 'overview' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials' | 'knowledge' | 'planning'
+export type ProjectTab = 'overview' | 'features' | 'chat' | 'agents' | 'tasks' | 'reviews' | 'materials' | 'knowledge' | 'planning'
 
 type TaskRoute = {
   id: number
@@ -12,6 +12,7 @@ type TaskRoute = {
 }
 
 type ProjectPage =
+  | {view:'features'; feature?:number}
   | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' | 'model-settings' }
   | { view: 'planning' | 'retrospectives'; selected?: number; item?: number }
   | { view: 'materials'; key?: string; revision?: number; path?: string }
@@ -74,6 +75,8 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   if (!projectId || !scope) return { kind: 'missing' }
   const root = { kind: 'project' as const, projectId }
   const subpath = scope[2] ?? '/'
+  const feature = /^\/features(?:\/([1-9]\d*))?$/.exec(subpath)
+  if (feature && (!feature[1] || positiveId(feature[1]))) return {...root,view:'features',projectTab:'features',feature:positiveId(feature[1])}
   switch (subpath) {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
     case '/planning': return { ...root, view: 'planning', projectTab: 'planning', selected: positiveId(params.get('milestone') ?? undefined), item: positiveId(params.get('item') ?? undefined) }
@@ -127,7 +130,7 @@ export function workbenchTitle(route: WorkbenchRoute): string {
   if (route.view === 'reviews') return { approvals: '待审批', acceptance: '待验收', 'code-reviews': '代码审查', checks: '测试与检查' }[route.tab]
   if (route.view === 'tasks' && route.queue) return '执行队列'
   return {
-    planning: '项目规划', retrospectives: '项目复盘', overview: '项目概览', agents: 'Agent 管理', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
+    features:'功能', planning: '项目规划', retrospectives: '项目复盘', overview: '项目概览', agents: 'Agent 管理', chat: '项目聊天', tasks: '项目任务', inbox: '讨论收件箱', materials: '项目资料',
     decisions: '项目决策', experience: '项目经验', shares: '共享经验', 'model-settings': '知识库模型设置', questions: '待答问题', notifications: '项目通知',
   }[route.view]
 }

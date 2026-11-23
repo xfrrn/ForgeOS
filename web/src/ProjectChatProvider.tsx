@@ -36,6 +36,28 @@ export function useChatModels(request: ApiRequest) {
   return {models, error, refresh}
 }
 
+type FeatureClient = {id:string;instance:string;backend:'claude'|'codex';model:string}
+export function useDiscussionModels(request:ApiRequest,projectId?:number) {
+  const catalog=useChatModels(request)
+  const [clients,setClients]=useState<FeatureClient[]>([])
+  const [clientError,setClientError]=useState('')
+  useEffect(()=>{
+    if (!projectId) return
+    const controller=new AbortController()
+    async function refresh() {
+      try {
+        const items=await request<FeatureClient[]>('/projects/'+projectId+'/features/clients',{signal:controller.signal})
+        if (!controller.signal.aborted){setClients(items);setClientError('')}
+      } catch(e){if (!controller.signal.aborted) setClientError(e instanceof Error?e.message:'无法读取节点客户端')}
+    }
+    void refresh()
+    const timer=window.setInterval(refresh,30000)
+    return ()=>{window.clearInterval(timer);controller.abort()}
+  },[projectId,request])
+  const native=clients.map(c=>({id:c.id,name:(c.backend==='claude'?'Claude Code':'Codex')+' · '+c.model,model:c.model,base_url:c.instance,revision:'',output_format:'native'}))
+  return {...catalog,error:catalog.error||clientError,models:projectId && (native.length||catalog.models)?[...native,...catalog.models||[]]:catalog.models}
+}
+
 export function ProjectModelSettings({request, projectId, fromKnowledge}: {request: ApiRequest; projectId?: number; fromKnowledge?:boolean}) {
   const {models, error, refresh} = useChatModels(request)
   const [editing, setEditing] = useState<ChatModel | 'new'>()

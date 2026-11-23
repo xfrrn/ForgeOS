@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { formatTime, Icon, projectHref, type ApiRequest } from './shared'
 import { ThemedSelect } from './ThemedSelect'
-import { useChatModels } from './ProjectChatProvider'
+import { useDiscussionModels } from './ProjectChatProvider'
 import { credentialsHref } from './workbenchRoutes'
 import { EmptyState, PageHeading } from './ui'
 import { workTypeName, workTypes } from './workTypes'
@@ -15,7 +15,7 @@ type ChatAction = {
 }
 type IssueDraft = {title: string; body: string}
 type ChatTurn = {
-  id: number; client_id: string; text: string; created_at: string; model_profile_name?: string; requested_model?: string; requested_harness?: string
+  id: number; client_id: string; text: string; created_at: string; model_profile_name?: string; requested_model?: string; requested_harness?: string; native_backend?: string
   status: 'queued' | 'running' | 'completed' | 'failed'; answer?: string; error?: string
   sources?: ChatSource[]; action?: ChatAction; activities?: ChatActivity[]
 }
@@ -141,7 +141,7 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
       <p className="chat-message-text">{turn.text}</p>
     </div>
     <div className="chat-message chat-agent">
-      <div className="chat-message-meta"><span className="chat-agent-icon"><Icon name="MessageSquare" size={15}/></span><strong>Management Agent</strong>{turn.requested_model && <span title={turn.requested_model}>所选模型 · {turn.requested_model}</span>}</div>
+      <div className="chat-message-meta"><span className="chat-agent-icon"><Icon name="MessageSquare" size={15}/></span><strong>{turn.native_backend === "claude" ? "Claude Code" : turn.native_backend === "codex" ? "Codex" : "Management Agent"}</strong>{turn.requested_model && <span title={turn.requested_model}>所选模型 · {turn.requested_model}</span>}</div>
       <div className="chat-message-body">
         {turn.status === 'queued' && <span className="status status-pending"><i/>等待 Agent 领取</span>}
         {turn.status === 'running' && <span className="status status-running"><i/>{turn.answer ? '正在回复' : '正在处理'}</span>}
@@ -171,8 +171,9 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry }: {
   </li>
 }
 
-export function ProjectChat({ projectId, request }: { projectId: number; request: ApiRequest }) {
-  const path = `/projects/${projectId}/chat`
+export function ProjectChat({ projectId, request, feature }: { projectId: number; request: ApiRequest; feature?:{id:number;title:string;profile_id:string} }) {
+  const chatPath = `/projects/${projectId}/chat`
+  const path = feature ? `/projects/${projectId}/features/${feature.id}/messages` : chatPath
   const field = useId()
   const input = useRef<HTMLTextAreaElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
@@ -190,12 +191,35 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
   const [olderError, setOlderError] = useState('')
   const [readError, setReadError] = useState('')
   const [reload, setReload] = useState(0)
-  const [draft, setDraft] = useState(blankDraft)
-  const {models, error: providerError, refresh: refreshModels} = useChatModels(request)
+  const draftKey = feature ? 'forgeos.feature.draft.' + projectId + '.' + feature.id : ''
+  const [draft, setDraft] = useState<ChatDraft>(() => {
+    if (!draftKey) return blankDraft
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(draftKey) || 'null')
+      if (typeof saved?.text === 'string' && typeof saved.clientID === 'string') return saved
+    } catch { /* The composer also works without browser storage. */ }
+    return blankDraft
+  })
+  const {models, error: providerError, refresh: refreshModels} = useDiscussionModels(request,feature ? projectId : undefined)
   const selectionKey = 'forgeos.chat.model.' + projectId
   const [selection, setSelection] = useState(() => {
+    if (feature) {
+      try {return sessionStorage.getItem(draftKey + '.model') || feature.profile_id} catch {return feature.profile_id}
+    }
     try {return localStorage.getItem(selectionKey) || ''} catch {return ''}
   })
+  useEffect(() => {
+    if (!draftKey) return
+    try {
+      if (draft.text) {
+        sessionStorage.setItem(draftKey, JSON.stringify(draft))
+        sessionStorage.setItem(draftKey + '.model',selection)
+      } else {
+        sessionStorage.removeItem(draftKey)
+        sessionStorage.removeItem(draftKey + '.model')
+      }
+    } catch { /* An unavailable browser store does not prevent sending. */ }
+  }, [draftKey, draft, selection])
   const selected = models?.find(m => m.id === selection)
   const providerReady = !!selected
   useEffect(() => {
@@ -203,7 +227,7 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
   }, [models, selection])
   function chooseModel(id: string) {
     setSelection(id)
-    try {localStorage.setItem(selectionKey, id)} catch { /* Selection still applies in this tab. */ }
+    try {if (!feature) localStorage.setItem(selectionKey, id)} catch { /* Selection still applies in this tab. */ }
     setDraft(old => ({...old, clientID: ''}))
     setSendError('')
   }
@@ -247,7 +271,7 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
   const activeId = (messages.find(turn => turn.status === 'running') ?? messages.find(turn => turn.status === 'queued'))?.id
   useEffect(() => {
     if (!activeId || typeof EventSource === 'undefined') return
-    const events = new EventSource(path + '/turns/' + activeId + '/stream')
+    const events = new EventSource(chatPath + '/turns/' + activeId + '/stream')
     events.onmessage = event => {
       const turn: ChatTurn = JSON.parse(event.data)
       if (turn.id !== activeId) return
@@ -259,7 +283,7 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
       }
     }
     return () => events.close()
-  }, [path, activeId])
+  }, [chatPath, activeId])
 
   useEffect(() => {
     if (!sendBusy && draft.clientID && messages.some(turn => turn.client_id === draft.clientID)) {
@@ -360,7 +384,7 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
 
   const ready = enabled !== undefined
   return <div className="project-chat">
-    <PageHeading title="聊天" description="向 Management Agent 查询当前项目，或发起需要确认的操作。"
+    <PageHeading title={feature?.title || "聊天"} description={feature ? "功能讨论 · 本话题保留模型选择和讨论记录" : "向 Management Agent 查询当前项目，或发起需要确认的操作。"}
       actions={<a className="button" href={projectHref(projectId, '/agents')}>查看 Agent 配置</a>}/>
     <div className="panel project-chat-panel">
       <div ref={transcript} className="chat-scroll" role="region" aria-label="对话历史" tabIndex={0}
@@ -378,9 +402,9 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
           <p>{readError}</p><button className="button" type="button" onClick={refresh}>重新读取</button>
         </div>}
         {ready && !enabled && <p className="chat-agent-unavailable" role="status"><Icon name="AlertCircle" size={17}/>此项目暂未启用聊天 Agent。</p>}
-        {ready && !messages.length && <EmptyState icon="MessageSquare" title="暂无项目对话"
+        {ready && !messages.length && <EmptyState icon="MessageSquare" title={feature ? "开始讨论这个功能" : "暂无项目对话"}
           description={enabled ? '从当前项目的任务、验收或资料问起。' : undefined}>
-          {enabled && providerReady && <div className="chat-prompts">{quickPrompts.map(prompt => <button className="button" key={prompt} type="button"
+          {!feature && enabled && providerReady && <div className="chat-prompts">{quickPrompts.map(prompt => <button className="button" key={prompt} type="button"
             disabled={sendBusy || !!draft.text.trim()} onClick={() => focusComposer(prompt)}>{prompt}</button>)}</div>}
         </EmptyState>}
         {before && <div className="chat-earlier">
@@ -405,9 +429,9 @@ export function ProjectChat({ projectId, request }: { projectId: number; request
             if (view) { followLatest.current = true; view.scrollTop = view.scrollHeight; view.focus({preventScroll: true}) }
           }}><Icon name="ChevronDown" size={15}/>最新消息</button>}
         {enabled && !!models?.length && <form className="chat-composer" onSubmit={e => { e.preventDefault(); void send() }}>
-          <div className="chat-composer-tools"><label htmlFor={field}>发给 Management Agent</label>
+          <div className="chat-composer-tools"><label htmlFor={field}>{feature ? "讨论模型" : "发给 Management Agent"}</label>
             <ThemedSelect label="聊天模型" value={selected?.id || ''} disabled={sendBusy}
-              options={[...(!selected ? [{value: '', label: '选择模型'}] : []), ...models.map(m => ({value: m.id, label: m.model, group: models.some(other => other.id !== m.id && other.model === m.model) ? m.base_url : undefined}))]} onChange={chooseModel}/>
+              options={[...(!selected ? [{value: '', label: '选择模型'}] : []), ...models.map(m => ({value: m.id, label: m.output_format==='native' ? m.name : m.model, group: models.some(other => other.id !== m.id && other.model === m.model) ? m.base_url : undefined}))]} onChange={chooseModel}/>
           </div>
           <div className="chat-composer-fields">
             <textarea id={field} ref={input} rows={2} maxLength={4000} aria-describedby={sendError ? `${field}-error` : undefined}

@@ -69,7 +69,7 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const receivedSharePath = /^\/projects\/[1-9]\d*\/shared-experience(?:\?(?:versions=1(?:&before=[1-9]\d*)?|before=[1-9]\d*)|\/search\?(?:versions=1&)?q=[^&#]+|\/[1-9]\d*)?$/.test(path)
     const nativeApprovalPath = /^\/native-approvals\/[1-9]\d*$/.test(path)
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
-    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:planning(?:\/tasks\/[1-9]\d*)?|overview-context|preview|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
+    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:features(?:\/clients|\/[1-9]\d*\/messages(?:\?before=[1-9]\d*)?)?|planning(?:\/tasks\/[1-9]\d*)?|overview-context|preview|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
     const workerPath = /^\/workers(?:\/(?:control-plane|model-budgets|process-pool|fixed-pool))?$/.test(path)
     const clonePath = /^\/projects\/(?:chat-models(?:\/test)?|clone-settings|clone-check|repository-credentials|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
     const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull|identity)$/.test(path)

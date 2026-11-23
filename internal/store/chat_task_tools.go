@@ -65,14 +65,14 @@ func (s *Store) ResolveChatTask(ctx context.Context, project, turn int64, ref Ta
 		// which one the Owner meant when the latest mention has several matches.
 		query = `WITH last_mention AS (
             SELECT h.id,h.created_at,h.citations,h.progress_task_ids FROM project_chat_turns h
-            WHERE h.project_id=$1 AND h.id<$2 AND h.status='completed' AND $3='recent' AND (cardinality(h.progress_task_ids)>0
+            WHERE h.project_id=$1 AND h.id<$2 AND h.feature_id IS NOT DISTINCT FROM (SELECT feature_id FROM project_chat_turns WHERE id=$2 AND project_id=$1) AND h.status='completed' AND $3='recent' AND (cardinality(h.progress_task_ids)>0
                 OR EXISTS (SELECT 1 FROM jsonb_array_elements(h.citations) c WHERE c->>'key' ~ '^task:[0-9]+$'))
             ORDER BY h.id DESC LIMIT 1
         ), refs AS (
             SELECT a.task_id,a.label,CASE WHEN a.status='pending' THEN 'draft' END AS draft,
                 a.issue_number,COALESCE(a.confirmed_at,h.created_at) AS at,h.id AS turn_id
             FROM project_chat_actions a JOIN project_chat_turns h ON h.id=a.turn_id
-            WHERE a.project_id=$1 AND h.id<$2 AND a.kind IN ('dispatch_issue','create_issue')
+            WHERE a.project_id=$1 AND h.id<$2 AND h.feature_id IS NOT DISTINCT FROM (SELECT feature_id FROM project_chat_turns WHERE id=$2 AND project_id=$1) AND a.kind IN ('dispatch_issue','create_issue')
               AND a.status IN ('confirmed','pending')
             UNION ALL
             SELECT t.id,'',NULL,0,h.created_at,h.id FROM last_mention h JOIN work_items t ON t.project_id=$1 AND
