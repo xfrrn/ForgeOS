@@ -81,7 +81,7 @@ func registerFeatureClients(mux *http.ServeMux, data *store.Store, owner string,
 			Generation   int64
 			Clients      []store.FeatureClient
 		}
-		if !decodeLimited(w, r, &in, 16<<10) {
+		if !decodeLimited(w, r, &in, 64<<10) {
 			return
 		}
 		if in.Node == "" || len(in.Node) > 128 || len(in.Clients) > 32 || len(in.Resource) > 128 || in.Generation < 0 {
@@ -89,9 +89,15 @@ func registerFeatureClients(mux *http.ServeMux, data *store.Store, owner string,
 			return
 		}
 		for _, c := range in.Clients {
-			if !validProbeStatus(c.Status) || (c.Backend != "claude" && c.Backend != "codex") || c.Instance == "" || len(c.Instance) > 128 || c.Model == "" || len(c.Model) > 160 {
+			if !validProbeStatus(c.Status) || (c.Backend != "claude" && c.Backend != "codex") || c.Instance == "" || len(c.Instance) > 128 || c.Model == "" || len(c.Model) > 160 || len(c.AvailableModels) > 64 {
 				problem(w, 400, "invalid client identity")
 				return
+			}
+			for _, m := range c.AvailableModels {
+				if m.ID == "" || len(m.ID) > 160 || len(m.Label) > 200 || strings.ContainsRune(m.ID, 0) || strings.ContainsRune(m.Label, 0) {
+					problem(w, 400, "invalid client model option")
+					return
+				}
 			}
 		}
 		respond(w, 204, nil, data.RecordFeatureProbe(r.Context(), project, in.Node, in.Resource, in.Clients, in.Generation, in.ConfigFailed))

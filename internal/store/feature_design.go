@@ -20,7 +20,7 @@ func startFeatureDesign(ctx context.Context, tx *sql.Tx, round int64, version in
 	if err != nil {
 		return err
 	}
-	prompt := "请基于拍板方案出一份设计稿，写明界面或组件位置、交互及文案、数据接口、异常情况、交付物与可测试的验收条目。保持在已确认范围内。直接在聊天中交稿，使用随附资料，无需探索工作区或创建文件。只输出设计文档，限 1800 字。\n需求与依据\n" + snapshot + "\n拍板方案\n" + approved
+	prompt := "请基于拍板方案出一份设计稿，写明界面或组件位置、交互及文案、数据接口、异常情况、交付物与可测试的验收条目。保持在已确认范围内。可只读检索并查阅项目源码以核实组件、接口、路由与数据结构，严禁修改或创建任何文件，直接在聊天中交稿。只输出设计文档，限 1800 字。\n需求与依据\n" + snapshot + "\n拍板方案\n" + approved
 	if previous != 0 {
 		var final string
 		var visual []byte
@@ -63,7 +63,7 @@ func completeDesignTurn(ctx context.Context, tx *sql.Tx, round, turn int64, role
 		if err != nil {
 			return err
 		}
-		prompt := "请审阅下列设计稿是否落实拍板方案。每条意见给出对应位置、交互或文案问题、影响及修改建议。检查接口和验收是否可验证。仅输出审阅意见，限 1200 字。\n拍板方案\n" + approved + "\n设计稿\n" + answer
+		prompt := "请审阅下列设计稿是否落实拍板方案。如当前会话挂载了只读项目代码库，可只读查阅源码核实接口、组件与约束（严禁修改文件）。每条意见给出对应位置、交互或文案问题、影响及修改建议。检查接口和验收是否可验证。仅输出审阅意见，限 1200 字。\n拍板方案\n" + approved + "\n设计稿\n" + answer
 		return enqueueDesign(ctx, tx, round, version, "design_review", "顾问审阅设计稿", prompt, profileTurn, turn, uuid.New())
 	}
 	var draft string
@@ -71,7 +71,7 @@ func completeDesignTurn(ctx context.Context, tx *sql.Tx, round, turn int64, role
 	if err != nil {
 		return err
 	}
-	prompt := "请针对每条顾问意见写明处理结果和理由，并交付一份能直接派给开发的设计定稿。写清功能范围、界面交互、接口约定、交付物及逐项可测试的验收标准。直接在聊天中返回中文定稿，无需写入文件或执行操作，限 1800 字。\n已拍板方案\n" + approved + "\n设计稿\n" + draft + "\n顾问意见\n" + answer
+	prompt := "请针对每条顾问意见写明处理结果和理由，并交付一份能直接派给开发的设计定稿。写清功能范围、界面交互、接口约定、交付物及逐项可测试的验收标准。可只读查阅项目源码核实细节，严禁修改或创建任何文件，直接在聊天中返回中文定稿，限 1800 字。\n已拍板方案\n" + approved + "\n设计稿\n" + draft + "\n顾问意见\n" + answer
 	return enqueueDesign(ctx, tx, round, version, "design_final", "主控整理设计定稿", prompt+visualFormat, profileTurn, turn, uuid.New())
 }
 

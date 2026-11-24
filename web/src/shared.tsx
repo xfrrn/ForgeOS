@@ -2,8 +2,8 @@ import type { ReactNode } from 'react'
 import {
   Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, BookOpen, Bot, BrainCircuit,
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardCheck,
-  Compass, Cpu, ExternalLink, FileCode2, FolderKanban, GitBranch, GitPullRequest,
-  History, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
+  Compass, Copy, Cpu, ExternalLink, FileCode2, FolderKanban, GitBranch, GitPullRequest,
+  History, ImagePlus, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
   MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, Server,
   ShieldCheck, SlidersHorizontal, Sparkles, Terminal, X, Zap,
   type LucideProps,
@@ -12,8 +12,8 @@ import {
 const icons = {
   Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, BookOpen, Bot, BrainCircuit,
   Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, ClipboardCheck,
-  Compass, Cpu, ExternalLink, FileCode2, FolderKanban, GitBranch, GitPullRequest,
-  History, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
+  Compass, Copy, Cpu, ExternalLink, FileCode2, FolderKanban, GitBranch, GitPullRequest,
+  History, ImagePlus, Inbox, KeyRound, Layers3, LayoutList, ListChecks, LogOut, Menu,
   MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, Server,
   ShieldCheck, SlidersHorizontal, Sparkles, Terminal, X, Zap,
 }
@@ -77,8 +77,8 @@ export function requestWith(onUnauthorized: () => void): ApiRequest {
     const codeReviewPath = /^\/projects\/[1-9]\d*\/code-reviews(?:\?before=[1-9]\d*)?$/.test(path)
     const featureOperationPath = /^\/projects\/[1-9]\d*\/features\/(?:clients\/(?:status|[0-9a-f-]{36}\/recheck)|[1-9]\d*\/messages\/[1-9]\d*\/(?:cancel|recover))$/.test(path)
     const proposalPath = /^\/projects\/[1-9]\d*\/features\/[1-9]\d*\/proposals(?:\/[1-9]\d*(?:\/(?:actions|delivery|dispatch))?)?$/.test(path)
-    const featureNotePath = /^\/projects\/[1-9]\d*\/features\/[1-9]\d*\/notes(?:\/[1-9]\d*\/(?:close|source))?$/.test(path)
-    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:features(?:\/clients|\/[1-9]\d*\/messages(?:\?before=[1-9]\d*)?)?|planning(?:\/tasks\/[1-9]\d*)?|overview-context|preview|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm)?)$/.test(path)
+    const featureNotePath = /^\/projects\/[1-9]\d*\/features\/[1-9]\d*\/(?:notes(?:\/(?:[1-9]\d*\/(?:close|source)|batch|extract(?:\/[1-9]\d*\/status)?))?|brief(?:\/generate)?)$/.test(path)
+    const projectWorkPath = /^\/projects\/[1-9]\d*\/(?:features(?:\/clients|\/[1-9]\d*\/messages(?:\?before=[1-9]\d*)?)?|planning(?:\/tasks\/[1-9]\d*)?|overview-context|preview|execution-queue|test-checks(?:\?before=[1-9]\d*)?|chat(?:\/provider|\?before=[1-9]\d*|\/actions\/[1-9]\d*\/confirm|\/attachments(?:\/[1-9]\d*)?)?)$/.test(path)
     const workerPath = /^\/workers(?:\/(?:control-plane|model-budgets|process-pool|fixed-pool))?$/.test(path)
     const clonePath = /^\/projects\/(?:chat-models(?:\/test)?|clone-settings|clone-check|repository-credentials|clone(?:\/jobs\/[1-9]\d*)?)$/.test(path)
     const projectGitPath = /^\/projects\/[1-9]\d*\/git\/(?:local|remote|pull|identity)$/.test(path)

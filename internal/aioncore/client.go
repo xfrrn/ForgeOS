@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -179,11 +180,42 @@ func (c *Client) Create(ctx context.Context, backend, workspace, name string) (s
 
 type option struct {
 	ID      string
-	Current string                   `json:"current_value"`
-	Choices []struct{ Value string } `json:"options"`
+	Current string                         `json:"current_value"`
+	Choices []struct{ Value, Name string } `json:"options"`
 }
 type runtime struct {
 	Options []option `json:"config_options"`
+}
+
+type ModelChoice struct {
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
+}
+
+func (c *Client) ProbeModels(ctx context.Context, id string) ([]ModelChoice, error) {
+	base := "/api/conversations/" + url.PathEscape(id)
+	var state runtime
+	if err := c.request(ctx, "POST", base+"/runtime/ensure", nil, &state); err != nil {
+		return nil, err
+	}
+	opt := state.get("model")
+	seen := make(map[string]bool, len(opt.Choices)+1)
+	out := make([]ModelChoice, 0, len(opt.Choices)+1)
+	for _, ch := range opt.Choices {
+		if ch.Value == "" || seen[ch.Value] {
+			continue
+		}
+		seen[ch.Value] = true
+		label := strings.TrimSpace(ch.Name)
+		if label == "" {
+			label = ch.Value
+		}
+		out = append(out, ModelChoice{ID: ch.Value, Label: label})
+	}
+	if opt.Current != "" && !seen[opt.Current] {
+		out = append([]ModelChoice{{ID: opt.Current, Label: opt.Current}}, out...)
+	}
+	return out, nil
 }
 
 func (r runtime) get(key string) option {
@@ -247,9 +279,80 @@ type Receipt struct {
 	Turn    string `json:"turn_id"`
 }
 
+type ChatFileRef struct {
+	Kind string `json:"kind"`
+	Path string `json:"path"`
+}
+
+func (c *Client) UploadFile(ctx context.Context, conversationID, filename string, data []byte) (string, error) {
+	if filename == "" {
+		filename = "image.png"
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("file_name", filename); err != nil {
+		return "", err
+	}
+	if conversationID != "" {
+		if err := writer.WriteField("conversation_id", conversationID); err != nil {
+			return "", err
+		}
+	}
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(data); err != nil {
+		return "", err
+	}
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.base.String()+"/api/fs/upload", &body)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	for _, cookie := range c.http.Jar.Cookies(c.base) {
+		if cookie.Name == "aionui-csrf-token" {
+			req.Header.Set("x-csrf-token", cookie.Value)
+		}
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return "", HTTPError(res.StatusCode)
+	}
+	var envelope struct {
+		Success bool
+		Data    string
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&envelope); err != nil {
+		return "", err
+	}
+	if !envelope.Success || envelope.Data == "" {
+		return "", errors.New("AionCore rejected file upload")
+	}
+	return envelope.Data, nil
+}
+
 func (c *Client) Send(ctx context.Context, id, prompt string) (Receipt, error) {
+	return c.SendWithFiles(ctx, id, prompt, nil)
+}
+
+func (c *Client) SendWithFiles(ctx context.Context, id, prompt string, files []ChatFileRef) (Receipt, error) {
 	var r Receipt
-	err := c.request(ctx, "POST", "/api/conversations/"+url.PathEscape(id)+"/messages", map[string]string{"content": prompt}, &r)
+	payload := struct {
+		Content string        `json:"content"`
+		Files   []ChatFileRef `json:"files,omitempty"`
+	}{Content: prompt, Files: files}
+	err := c.request(ctx, "POST", "/api/conversations/"+url.PathEscape(id)+"/messages", payload, &r)
 	if err == nil && (r.Message == "" || r.Turn == "") {
 		err = errors.New("missing AionCore send receipt")
 	}

@@ -125,7 +125,7 @@ function ProjectContent({ page, request, onChanged }: { page: ProjectRoute; requ
   switch (page.view) {
     case 'overview': return <Overview projectId={projectId} request={request}/>
     case 'agents': return <AgentSettings projectId={projectId} request={request}/>
-    case 'features': return <FeatureTopics key={projectId} projectId={projectId} selected={page.feature} proposals={page.proposals} delivery={page.delivery} request={request}/>
+    case 'features': return <FeatureTopics key={projectId} projectId={projectId} selected={page.feature} proposals={page.proposals} delivery={page.delivery} compose={page.compose} request={request}/>
     case 'chat': return <ProjectChat projectId={projectId} request={request}/>
     case 'tasks': return page.queue ? <ProjectExecutionQueue projectId={projectId} request={request}/> :
       <TaskList key={page.category + '/' + (page.status ?? '')} projectId={projectId}

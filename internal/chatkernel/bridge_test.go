@@ -146,3 +146,25 @@ func TestJSONObjectAndToolScope(t *testing.T) {
 		t.Fatal("JSON object fallback lost the output contract")
 	}
 }
+
+func TestAttachImagesMultimodalUserMessage(t *testing.T) {
+	body := obj{
+		"messages": []obj{
+			{"role": "system", "content": "sys"},
+			{"role": "user", "content": "check screenshot"},
+		},
+	}
+	attachImages(body, []ImageAttachment{{MIME: "image/png", Data: []byte("abc")}})
+	msgs := body["messages"].([]obj)
+	parts, ok := msgs[1]["content"].([]obj)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("expected 2 multimodal parts, got %#v", msgs[1]["content"])
+	}
+	if parts[0]["type"] != "text" || parts[0]["text"] != "check screenshot" {
+		t.Fatalf("unexpected text part: %#v", parts[0])
+	}
+	imgURL := parts[1]["image_url"].(obj)["url"].(string)
+	if parts[1]["type"] != "image_url" || imgURL != "data:image/png;base64,YWJj" {
+		t.Fatalf("unexpected image part: %#v", parts[1])
+	}
+}

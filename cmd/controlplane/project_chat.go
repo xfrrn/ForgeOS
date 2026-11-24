@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"forgeos/internal/localrepo"
 	"forgeos/internal/store"
 	"forgeos/internal/validation"
 	"github.com/google/uuid"
@@ -103,6 +104,24 @@ type projectChat struct {
 	get         githubGET
 }
 
+func (c projectChat) projectWorkspace(ctx context.Context, project int64) string {
+	p, err := c.data.Project(ctx, project)
+	if err != nil || p.Path == "" {
+		return ""
+	}
+	if c.root != "" {
+		if repo, err := localrepo.ResolveRepo(ctx, c.root, p.Path); err == nil {
+			return repo
+		}
+	}
+	if filepath.IsAbs(p.Path) {
+		if info, err := os.Stat(p.Path); err == nil && info.IsDir() {
+			return filepath.Clean(p.Path)
+		}
+	}
+	return ""
+}
+
 func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner string, nodes chatNodes, get githubGET, providers chatProviders, issueClient chatIssueClient) {
 	chat := projectChat{data: data, root: root, get: get, issueClient: issueClient}
 	registerProjectPlanning(mux, chat, owner)
@@ -111,6 +130,8 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 	registerFeatureTopics(mux, data, owner)
 	registerFeatureProposals(mux, chat, owner, nodes)
 	registerFeatureClients(mux, data, owner, nodes)
+	registerChatAttachments(mux, data, owner, nodes)
+	registerFeatureAssist(mux, data, owner, nodes)
 	history := authorized(owner, func(w http.ResponseWriter, r *http.Request) {
 		project, ok := pathID(w, r)
 		if !ok {
@@ -171,17 +192,28 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 			return
 		}
 		var in struct {
-			ProfileID uuid.UUID `json:"profile_id"`
-			ClientID  string    `json:"client_id"`
-			Text      string    `json:"text"`
+			ProfileID     uuid.UUID `json:"profile_id"`
+			Model         string    `json:"model"`
+			ClientID      string    `json:"client_id"`
+			Text          string    `json:"text"`
+			AttachmentIDs []int64   `json:"attachment_ids"`
 		}
 		if !decodeLimited(w, r, &in, 32<<10) {
 			return
 		}
 		in.Text = strings.TrimSpace(in.Text)
+		in.Model = strings.TrimSpace(in.Model)
 		id, err := uuid.Parse(in.ClientID)
-		if err != nil || id == uuid.Nil || in.Text == "" || strings.ContainsRune(in.Text, 0) || utf8.RuneCountInString(in.Text) > 4000 {
-			problem(w, http.StatusBadRequest, "请输入 1 至 4000 个字符。")
+		if err != nil || id == uuid.Nil || (in.Text == "" && len(in.AttachmentIDs) == 0) || strings.ContainsRune(in.Text, 0) || utf8.RuneCountInString(in.Text) > 4000 {
+			problem(w, http.StatusBadRequest, "请输入 1 至 4000 个字符，或附带至少一张图片。")
+			return
+		}
+		if len(in.Model) > 160 || strings.ContainsRune(in.Model, 0) {
+			problem(w, http.StatusBadRequest, "无效的模型标识。")
+			return
+		}
+		if len(in.AttachmentIDs) > chatAttachmentMaxCount {
+			problem(w, http.StatusBadRequest, "单条消息最多附带 6 张图片。")
 			return
 		}
 		if in.ProfileID == uuid.Nil {
@@ -192,9 +224,9 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 		if !ok {
 			return
 		}
-		turn, err := data.SendFeatureChat(r.Context(), project, feature, id.String(), in.Text, in.ProfileID)
+		turn, err := data.SendFeatureChatMessage(r.Context(), project, feature, id.String(), in.Text, in.ProfileID, in.Model, in.AttachmentIDs)
 		if errors.Is(err, store.ErrConflict) {
-			problem(w, 409, "模型选择已失效，或该消息已使用其他模型发送。请刷新模型列表后重试。")
+			problem(w, 409, "模型选择或图片附件已失效，或该消息已使用其他内容发送。请刷新后重试。")
 			return
 		}
 		respond(w, http.StatusCreated, turn, err)
@@ -230,7 +262,10 @@ func registerProjectChat(mux *http.ServeMux, data *store.Store, root, owner stri
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-			if job.ProposalID == 0 {
+			if job.FeatureID != 0 && job.AssistKind != "turn_notes" && job.AssistKind != "topic_notes" {
+				job.ProjectPath = chat.projectWorkspace(ctx, project)
+			}
+			if job.ProposalID == 0 && job.AssistKind == "" {
 				job.Prompt, err = chat.prompt(ctx, *job)
 			}
 			if err != nil {

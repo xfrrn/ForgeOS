@@ -12,7 +12,7 @@ type TaskRoute = {
 }
 
 type ProjectPage =
-  | {view:'features'; feature?:number; proposals?:boolean; delivery?:boolean}
+  | {view:'features'; feature?:number; proposals?:boolean; delivery?:boolean; compose?:boolean}
   | { view: 'overview' | 'chat' | 'agents' | 'inbox' | 'questions' | 'notifications' | 'model-settings' }
   | { view: 'planning' | 'retrospectives'; selected?: number; item?: number }
   | { view: 'materials'; key?: string; revision?: number; path?: string }
@@ -76,7 +76,7 @@ export function workbenchRoute(location: string): WorkbenchRoute {
   const root = { kind: 'project' as const, projectId }
   const subpath = scope[2] ?? '/'
   const feature = /^\/features(?:\/([1-9]\d*))?$/.exec(subpath)
-  if (feature && (!feature[1] || positiveId(feature[1]))) return {...root,view:'features',projectTab:'features',feature:positiveId(feature[1]),proposals:params.get('view')==='proposal',delivery:params.get('view')==='delivery'}
+  if (feature && (!feature[1] || positiveId(feature[1]))) return {...root,view:'features',projectTab:'features',feature:positiveId(feature[1]),proposals:params.get('view')==='proposal',delivery:params.get('view')==='delivery',compose:params.get('compose')==='1'}
   switch (subpath) {
     case '/': return { ...root, view: 'overview', projectTab: 'overview' }
     case '/planning': return { ...root, view: 'planning', projectTab: 'planning', selected: positiveId(params.get('milestone') ?? undefined), item: positiveId(params.get('item') ?? undefined) }

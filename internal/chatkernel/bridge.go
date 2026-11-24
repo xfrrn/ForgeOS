@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -324,6 +325,7 @@ func (c *Config) exchange(turn, request context.Context, client *http.Client, w 
 	if err != nil {
 		return err
 	}
+	attachImages(body, c.Images)
 	reply, err := c.complete(ctx, client, body)
 	if err != nil {
 		return err
@@ -388,6 +390,37 @@ func (c *Config) FailureCode() string {
 		return "provider_limit"
 	}
 	return ""
+}
+
+func attachImages(body obj, images []ImageAttachment) {
+	if len(images) == 0 {
+		return
+	}
+	messages, ok := body["messages"].([]obj)
+	if !ok {
+		return
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i]["role"] != "user" {
+			continue
+		}
+		text, _ := messages[i]["content"].(string)
+		parts := make([]obj, 0, 1+len(images))
+		if text != "" {
+			parts = append(parts, obj{"type": "text", "text": text})
+		}
+		for _, img := range images {
+			if img.MIME == "" || len(img.Data) == 0 {
+				continue
+			}
+			parts = append(parts, obj{
+				"type":      "image_url",
+				"image_url": obj{"url": "data:" + img.MIME + ";base64," + base64.StdEncoding.EncodeToString(img.Data)},
+			})
+		}
+		messages[i]["content"] = parts
+		return
+	}
 }
 
 // ProposalAnswer uses one frozen input and exposes no tool servers or prior conversation.

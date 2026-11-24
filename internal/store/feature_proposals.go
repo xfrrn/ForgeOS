@@ -78,7 +78,7 @@ func (s *Store) StartFeatureProposal(ctx context.Context, project, feature int64
 	var snapshot string
 	err = tx.QueryRowContext(ctx, `WITH materials AS (
  SELECT m.key,m.revision,m.title,m.content,m.content_sha256 FROM project_materials m WHERE m.project_id=$1 AND (m.key,m.revision) IN (SELECT key,revision FROM jsonb_to_recordset($4::jsonb) x(key text,revision int))
- ), turns AS (SELECT id,text,answer,requested_model AS model,requested_harness AS harness FROM project_chat_turns WHERE feature_id=$2 AND proposal_id IS NULL AND status='completed' ORDER BY id DESC LIMIT 24),
+ ), turns AS (SELECT id,text,answer,requested_model AS model,requested_harness AS harness FROM project_chat_turns WHERE feature_id=$2 AND proposal_id IS NULL AND assist_kind='' AND status='completed' ORDER BY id DESC LIMIT 24),
  notes AS (SELECT id,turn_id,kind,body FROM feature_notes WHERE feature_id=$2 AND NOT closed)
  INSERT INTO feature_proposals(project_id,feature_id,version,client_id,request,snapshot)
  SELECT f.project_id,f.id,$8::int+1,$6,$7,jsonb_build_object('title',f.title,'brief',$3::text,'head',$5::text,
@@ -92,7 +92,7 @@ func (s *Store) StartFeatureProposal(ctx context.Context, project, feature int64
 	if len(snapshot) > 512*1024 {
 		return 0, ErrConflict
 	}
-	prompt := "根据以下冻结的需求和资料，独立提出功能方案。说明主要取舍、验收标准和待决定事项。仅输出中文方案，限 1800 字。\n" + snapshot
+	prompt := "根据以下冻结的需求和资料，独立提出功能方案。如果当前会话挂载了只读项目代码仓库，请先检索并阅读相关源码核实现有架构、接口与约束，再给出落地方案（引用核实过的文件路径与符号；严格只读，严禁修改或创建任何文件）。说明主要取舍、验收标准和待决定事项。仅输出中文方案，限 1800 字。\n" + snapshot
 	for _, part := range []struct {
 		role, label string
 		profile     uuid.UUID
@@ -157,7 +157,7 @@ func completeProposalTurn(ctx context.Context, tx *sql.Tx, turn int64) error {
 		if err != nil {
 			return err
 		}
-		prompt := fmt.Sprintf("逐项比较两份原稿。每项注明采用主控、顾问或双方及原因，说明未采纳意见和理由。列出待决定事项、综合方案和验收标准。仅输出中文，限 2200 字。\n需求快照\n%s\n主控原稿\n%s\n顾问原稿\n%s", snapshot, first, second)
+		prompt := fmt.Sprintf("逐项比较两份原稿。每项注明采用主控、顾问或双方及原因，说明未采纳意见和理由。如有需要可只读查阅项目源码核实分歧点（严禁修改文件）。列出待决定事项、综合方案和验收标准。仅输出中文，限 2200 字。\n需求快照\n%s\n主控原稿\n%s\n顾问原稿\n%s", snapshot, first, second)
 		return enqueueProposal(ctx, tx, round, "comparison", "比较两案并综合", prompt, uuid.Nil, lead, 0, uuid.New())
 	}
 	return nil
@@ -314,7 +314,7 @@ func proposalJobAction(ctx context.Context, tx *sql.Tx, round int64, a ProposalA
 			return ErrConflict
 		}
 		role = "followup"
-		prompt = fmt.Sprintf("根据冻结需求及所指回合回答追问，限 1200 字。\n需求\n%s\n该回合问题\n%s\n该回合原文\n%s\n追问\n%s", snapshot, label, answer, a.Body)
+		prompt = fmt.Sprintf("根据冻结需求及所指回合回答追问（可只读查阅项目源码核实细节，严禁修改文件），限 1200 字。\n需求\n%s\n该回合问题\n%s\n该回合原文\n%s\n追问\n%s", snapshot, label, answer, a.Body)
 		label = a.Body
 		if len(prompt) > 1024*1024 {
 			return ErrConflict

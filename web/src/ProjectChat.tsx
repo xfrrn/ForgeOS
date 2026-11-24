@@ -6,7 +6,9 @@ import { credentialsHref } from './workbenchRoutes'
 import { EmptyState } from './ui'
 import { workTypeName, workTypes } from './workTypes'
 import { FeatureNotes, RecordFeatureNote } from './FeatureNotes'
+import { FeatureBrief } from './FeatureBrief'
 import { FeatureProposals } from './FeatureProposals'
+import { ChatMarkdown } from './ChatMarkdown'
 import './project-chat.css'
 
 type ChatSource = { key: string; label: string; path: string }
@@ -16,16 +18,21 @@ type ChatAction = {
   issue_number?: number; work_type?: string; task_id?: number; status: 'pending' | 'confirmed' | 'stale'
 }
 type IssueDraft = {title: string; body: string}
+type ChatAttachment = { id: number; name: string; mime: string; bytes: number }
 type ChatTurn = {
   id: number; client_id: string; text: string; created_at: string; model_profile_name?: string; requested_model?: string; requested_harness?: string; native_backend?: string
   cancel_requested?: boolean; session_missing?: boolean; recovery_of?: number
   status: 'queued' | 'running' | 'completed' | 'failed'; answer?: string; error?: string
-  sources?: ChatSource[]; action?: ChatAction; activities?: ChatActivity[]
+  sources?: ChatSource[]; action?: ChatAction; activities?: ChatActivity[]; attachments?: ChatAttachment[]
 }
 type ChatPage = { harness?: 'codex' | 'claude'; enabled: boolean; messages: ChatTurn[]; next_before?: number }
-type ChatDraft = { text: string; clientID: string }
+type ChatDraft = { text: string; clientID: string; attachments: ChatAttachment[] }
 
-const blankDraft: ChatDraft = {text: '', clientID: ''}
+const blankDraft: ChatDraft = {text: '', clientID: '', attachments: []}
+const maxAttachments = 6
+function attachmentURL(projectId: number, id: number) {
+  return `/projects/${projectId}/chat/attachments/${id}`
+}
 const issueOptions = [{value: '', label: '请选择工作类型'}, ...Object.entries(workTypes).map(([value, label]) => ({value, label}))]
 const quickPrompts = ['查看本项目的任务队列', '有哪些任务待验收？', '列出可查阅的项目资料']
 const linkedProjectPages = [
@@ -114,7 +121,7 @@ function ChatActionCard({ action, enabled, projectId, onConfirm }: {
       <label>Issue 正文<textarea rows={7} value={body} onChange={e => setBody(e.target.value)}/></label>
       <ThemedSelect label="工作类型" value={choice} options={issueOptions.slice(1)} disabled={busy || !enabled} onChange={setChoice}/>
     </fieldset>}
-    {creating && !editable && <details><summary>查看 Issue 正文</summary><p className="chat-message-text">{action.body}</p></details>}
+    {creating && !editable && <details><summary>查看 Issue 正文</summary><ChatMarkdown content={action.body || ''}/></details>}
     {creating && action.status === 'stale' && <p>Issue 内容或状态已改变，本次派发已停止。</p>}
     {creating && pending && action.creation_started_at && <p>{action.issue_number ? 'Issue 已创建，等待完成派发。' : '正在核对 GitHub 创建结果。'}</p>}
     {pending && <div className="chat-action-controls">
@@ -151,7 +158,12 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry, noteEditor
   return <li id={'chat-turn-' + turn.id} className="chat-exchange">
     <div className="chat-message chat-owner">
       <div className="chat-message-meta"><strong>你</strong><time dateTime={turn.created_at}>{formatTime(turn.created_at)}</time></div>
-      <p className="chat-message-text">{turn.text}</p>
+      {!!turn.attachments?.length && <div className="chat-owner-attachments">
+        {turn.attachments.map(att => <a key={att.id} className="chat-owner-image" href={attachmentURL(projectId, att.id)} target="_blank" rel="noreferrer" title={att.name}>
+          <img src={attachmentURL(projectId, att.id)} alt={att.name} loading="lazy"/>
+        </a>)}
+      </div>}
+      {turn.text && <p className="chat-message-text">{turn.text}</p>}
     </div>
     <div className="chat-message chat-agent">
       <div className="chat-message-meta"><span className="chat-agent-icon"><Icon name="MessageSquare" size={15}/></span><strong>{turn.native_backend === "claude" ? "Claude Code" : turn.native_backend === "codex" ? "Codex" : "Management Agent"}</strong>{turn.requested_model && <span title={turn.requested_model}>所选模型 · {turn.requested_model}</span>}</div>
@@ -166,7 +178,7 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry, noteEditor
           {turn.session_missing && onOperation && <button className="button" disabled={working} onClick={()=>void operate('recover')}>从话题记录恢复并重试</button>}
           {onRetry && !turn.session_missing && <button className="button" type="button" onClick={() => onRetry(turn.text)}>重新提问</button>}
         </div>}
-        {turn.answer && <p className={'chat-message-text' + (turn.status === 'running' ? ' chat-streaming' : '')}>{turn.answer}</p>}
+        {turn.answer && <ChatMarkdown content={turn.answer} streaming={turn.status === 'running'}/>}
         {!!turn.sources?.length && <section className="chat-evidence" aria-label="回答依据">
           <h2>回答依据</h2>
           <ul>{turn.sources.map(source => <li key={source.key}><SourceLink projectId={projectId} source={source}/></li>)}</ul>
@@ -189,13 +201,17 @@ function ChatExchange({ turn, projectId, enabled, onConfirm, onRetry, noteEditor
   </li>
 }
 
-export function ProjectChat({ projectId, request, feature, showProposals=false, delivery=false }: { delivery?:boolean; showProposals?:boolean; projectId: number; request: ApiRequest; feature?:{id:number;title:string;profile_id:string} }) {
+export function ProjectChat({ projectId, request, feature, showProposals=false, delivery=false, compose=false, pickedModel, onModelChange }: {
+  delivery?:boolean; showProposals?:boolean; compose?:boolean; projectId: number; request: ApiRequest; feature?:{id:number;title:string;profile_id:string}
+  pickedModel?: {id: string; model?: string; seq: number}; onModelChange?: (id: string, model?: string) => void
+}) {
   const chatPath = `/projects/${projectId}/chat`
   const path = feature ? `/projects/${projectId}/features/${feature.id}/messages` : chatPath
   const notesPath = feature ? `/projects/${projectId}/features/${feature.id}/notes` : ''
   const [noteVersion, setNoteVersion] = useState(0)
   const field = useId()
   const input = useRef<HTMLTextAreaElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const transcript = useRef<HTMLDivElement>(null)
   const followLatest = useRef(true)
   const pinnedTop = useRef(0)
@@ -216,10 +232,16 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
     if (!draftKey) return blankDraft
     try {
       const saved = JSON.parse(sessionStorage.getItem(draftKey) || 'null')
-      if (typeof saved?.text === 'string' && typeof saved.clientID === 'string') return saved
+      if (typeof saved?.text === 'string' && typeof saved.clientID === 'string') {
+        const attachments = Array.isArray(saved.attachments) ? saved.attachments.filter((a: unknown): a is ChatAttachment =>
+          !!a && typeof a === 'object' && typeof (a as ChatAttachment).id === 'number' && typeof (a as ChatAttachment).name === 'string') : []
+        return { text: saved.text, clientID: saved.clientID, attachments }
+      }
     } catch { /* The composer also works without browser storage. */ }
     return blankDraft
   })
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const {models, error: providerError, refresh: refreshModels} = useDiscussionModels(request,feature ? projectId : undefined)
   const selectionKey = 'forgeos.chat.model.' + projectId
   const [selection, setSelection] = useState(() => {
@@ -228,26 +250,61 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
     }
     try {return localStorage.getItem(selectionKey) || ''} catch {return ''}
   })
+  const [modelOverride, setModelOverride] = useState(() => {
+    if (!feature) return ''
+    try {return sessionStorage.getItem(draftKey + '.variant') || ''} catch {return ''}
+  })
   useEffect(() => {
     if (!draftKey) return
     try {
-      if (draft.text) {
+      if (draft.text || draft.attachments.length > 0) {
         sessionStorage.setItem(draftKey, JSON.stringify(draft))
-        sessionStorage.setItem(draftKey + '.model',selection)
       } else {
         sessionStorage.removeItem(draftKey)
-        sessionStorage.removeItem(draftKey + '.model')
       }
+      if (selection) sessionStorage.setItem(draftKey + '.model', selection)
+      else sessionStorage.removeItem(draftKey + '.model')
+      if (modelOverride) sessionStorage.setItem(draftKey + '.variant', modelOverride)
+      else sessionStorage.removeItem(draftKey + '.variant')
     } catch { /* An unavailable browser store does not prevent sending. */ }
-  }, [draftKey, draft, selection])
+  }, [draftKey, draft, selection, modelOverride])
   const selected = models?.find(m => m.id === selection)
+  const nativeChoices = selected?.output_format === 'native' ? (selected.available_models || []) : []
+  const effectiveModel = selected?.output_format === 'native'
+    ? (modelOverride && nativeChoices.some(o => o.id === modelOverride) ? modelOverride : selected.model)
+    : ''
   const providerReady = !!selected
+  const lastPickSeq = useRef(pickedModel?.seq || 0)
   useEffect(() => {
     if (!selection && models?.length) setSelection(models[0].id)
   }, [models, selection])
+  useEffect(() => {
+    if (pickedModel && pickedModel.seq !== lastPickSeq.current && models?.some(m => m.id === pickedModel.id)) {
+      lastPickSeq.current = pickedModel.seq
+      setSelection(pickedModel.id)
+      setModelOverride(pickedModel.model || '')
+      setDraft(old => ({...old, clientID: ''}))
+      setSendError('')
+    }
+  }, [pickedModel, models])
+  const onModelChangeRef = useRef(onModelChange)
+  onModelChangeRef.current = onModelChange
+  useEffect(() => {
+    if (selected?.id) onModelChangeRef.current?.(selected.id, effectiveModel || selected.model)
+  }, [selected?.id, selected?.model, effectiveModel])
   function chooseModel(id: string) {
     setSelection(id)
+    const next = models?.find(m => m.id === id)
+    const nextModel = next?.output_format === 'native' ? next.model : ''
+    setModelOverride(nextModel)
+    onModelChange?.(id, nextModel || next?.model)
     try {if (!feature) localStorage.setItem(selectionKey, id)} catch { /* Selection still applies in this tab. */ }
+    setDraft(old => ({...old, clientID: ''}))
+    setSendError('')
+  }
+  function chooseVariant(model: string) {
+    setModelOverride(model)
+    if (selected?.id) onModelChange?.(selected.id, model)
     setDraft(old => ({...old, clientID: ''}))
     setSendError('')
   }
@@ -312,6 +369,8 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
     }
   }, [messages, draft.clientID, sendBusy])
 
+  const lastTurn = messages.at(-1)
+  const scrollSignal = `${messages.length}:${lastTurn?.id ?? 0}:${lastTurn?.answer?.length ?? 0}:${lastTurn?.status ?? ''}:${messages[0]?.id ?? 0}`
   useLayoutEffect(() => {
     const view = transcript.current
     if (!view) return
@@ -330,7 +389,7 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
         pinnedTop.current = view.scrollTop
       }
     }
-  }, [messages])
+  }, [scrollSignal])
 
   useEffect(() => {
     const refreshVisible = () => { if (!document.hidden) setReload(value => value + 1) }
@@ -360,7 +419,7 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
   }
 
   function editDraft(text: string) {
-    setDraft(old => ({text, clientID: text.trim() === old.text.trim() ? old.clientID : ''}))
+    setDraft(old => ({...old, text, clientID: text.trim() === old.text.trim() ? old.clientID : ''}))
     setSendError('')
   }
 
@@ -369,17 +428,72 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
     input.current?.focus({preventScroll: true})
   }
 
+  async function uploadImages(files: File[]) {
+    const signal = lifetime.current?.signal
+    if (!signal || !files.length || sendBusy) return
+    const images = files.filter(f => f.type.startsWith('image/'))
+    if (!images.length) {
+      setSendError('仅支持上传或粘贴 PNG、JPEG、WebP 或 GIF 图片。')
+      return
+    }
+    const available = maxAttachments - draft.attachments.length
+    if (available <= 0) {
+      setSendError(`单条消息最多附带 ${maxAttachments} 张图片。`)
+      return
+    }
+    const batch = images.slice(0, available)
+    setUploadBusy(true)
+    setSendError(images.length > available ? `单条消息最多附带 ${maxAttachments} 张图片，已保留前 ${available} 张。` : '')
+    try {
+      const uploaded: ChatAttachment[] = []
+      for (const file of batch) {
+        const form = new FormData()
+        form.append('file', file, file.name || 'screenshot.png')
+        const item = await request<ChatAttachment>(`${chatPath}/attachments`, {method: 'POST', body: form, signal})
+        if (signal.aborted) return
+        uploaded.push(item)
+      }
+      if (uploaded.length) {
+        setDraft(old => ({...old, clientID: '', attachments: [...old.attachments, ...uploaded]}))
+      }
+    } catch (e) {
+      if (!signal.aborted) setSendError(e instanceof Error ? e.message : '上传图片失败，请重试。')
+    } finally {
+      if (!signal.aborted) setUploadBusy(false)
+    }
+  }
+
+  async function removeAttachment(id: number) {
+    if (sendBusy) return
+    setDraft(old => ({...old, clientID: '', attachments: old.attachments.filter(a => a.id !== id)}))
+    setSendError('')
+    try {
+      await request(`${chatPath}/attachments/${id}`, {method: 'DELETE'})
+    } catch { /* Best-effort cleanup of unattached draft image. */ }
+  }
+
   async function send() {
     const signal = lifetime.current?.signal
     const text = draft.text.trim()
-    if (!signal || !enabled || !providerReady || !text || sendBusy) return
+    const attachmentIDs = draft.attachments.map(a => a.id)
+    if (!signal || !enabled || !providerReady || (!text && attachmentIDs.length === 0) || sendBusy || uploadBusy) return
     if (input.current?.form?.contains(document.activeElement)) input.current.focus({preventScroll: true})
     const clientID = draft.clientID || crypto.randomUUID()
-    setDraft({text: draft.text, clientID})
+    setDraft(old => ({...old, clientID}))
     setSendBusy(true)
     setSendError('')
     try {
-      const turn = await request<ChatTurn>(path, {method: 'POST', body: JSON.stringify({client_id: clientID, text, profile_id: selection}), signal})
+      const turn = await request<ChatTurn>(path, {
+        method: 'POST',
+        body: JSON.stringify({
+          client_id: clientID,
+          text,
+          profile_id: selection,
+          model: effectiveModel || undefined,
+          attachment_ids: attachmentIDs.length ? attachmentIDs : undefined,
+        }),
+        signal,
+      })
       if (signal.aborted) return
       setMessages(old => mergeTurns(old, [turn]))
       setDraft(blankDraft)
@@ -408,6 +522,8 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
   }
 
   const ready = enabled !== undefined
+  const completedCount = messages.filter(t => t.status === 'completed').length
+  const briefVersion = noteVersion * 10000 + completedCount
   return <div className="project-chat">
     <header className="chat-studio-header">
       <div>
@@ -421,14 +537,15 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
       <button className="button" aria-pressed={showProposals} onClick={() => {window.location.hash=projectHref(projectId,'/features/'+feature.id+'?view=proposal')}}>方案与拍板</button>
       <button className="button" aria-pressed={delivery} onClick={()=>{window.location.hash=projectHref(projectId,'/features/'+feature.id+'?view=delivery')}}>设计与交付</button>
     </nav>}
-    {feature && (showProposals || delivery) ? <FeatureProposals key={delivery?"delivery":"proposals"} delivery={delivery} project={projectId} feature={feature.id} profile={feature.profile_id} request={request} models={models || []}/> : <>
-    {feature && <FeatureNotes path={notesPath} request={request} version={noteVersion}/>}
+    {feature && (showProposals || delivery) ? <FeatureProposals key={delivery?"delivery":"proposals"} delivery={delivery} compose={compose} project={projectId} feature={feature.id} profile={selected?.id || feature.profile_id} preferredModel={effectiveModel || selected?.model} request={request} models={models || []}/> : <>
+    {feature && <FeatureNotes path={notesPath} request={request} version={noteVersion} profileId={selected?.id} model={effectiveModel || selected?.model} enabled={!!enabled && providerReady} hasTurns={completedCount > 0} onChanged={() => setNoteVersion(n => n + 1)}/>}
+    {feature && <FeatureBrief projectId={projectId} featureId={feature.id} request={request} version={briefVersion} profileId={selected?.id} model={effectiveModel || selected?.model} enabled={!!enabled && providerReady} hasTurns={completedCount > 0}/>}
     <div className="panel project-chat-panel">
       <div ref={transcript} className="chat-scroll" role="region" aria-label="对话历史" tabIndex={0}
-        onWheel={event => { if (event.deltaY < 0 && event.currentTarget.scrollTop > 0) followLatest.current = false }}
+        onWheel={event => { if (event.deltaY < 0) followLatest.current = false }}
         onScroll={event => {
           const view = event.currentTarget
-          const bottom = view.scrollHeight - view.clientHeight - view.scrollTop <= 2
+          const bottom = view.scrollHeight - view.clientHeight - view.scrollTop <= 8
           if (bottom) pinnedTop.current = view.scrollTop
           followLatest.current = bottom
           setAtBottom(bottom)
@@ -453,7 +570,7 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
         {!!messages.length && <div role="log" aria-label="项目聊天记录" aria-relevant="additions text">
           <ol className="chat-transcript">{messages.map(turn => <ChatExchange key={turn.id} turn={turn} projectId={projectId}
             onOperation={feature ? operateTurn : undefined}
-            noteEditor={feature && turn.status === 'completed' && <RecordFeatureNote path={notesPath} request={request} turn={turn.id} onSaved={()=>setNoteVersion(n=>n+1)}/>}
+            noteEditor={feature && turn.status === 'completed' && <RecordFeatureNote path={notesPath} request={request} turn={turn.id} profileId={selected?.id} model={effectiveModel || selected?.model} enabled={!!enabled && providerReady} onSaved={()=>setNoteVersion(n=>n+1)}/>}
             enabled={!!enabled} onConfirm={confirm} onRetry={enabled && providerReady && !sendBusy && !draft.text.trim() ? focusComposer : undefined}/>)}</ol>
         </div>}
       </div>
@@ -467,20 +584,63 @@ export function ProjectChat({ projectId, request, feature, showProposals=false, 
             const view = transcript.current
             if (view) { followLatest.current = true; view.scrollTop = view.scrollHeight; view.focus({preventScroll: true}) }
           }}><Icon name="ChevronDown" size={15}/>最新消息</button>}
-        {enabled && !!models?.length && <form className="chat-composer" onSubmit={e => { e.preventDefault(); void send() }}>
+        {enabled && !!models?.length && <form className={'chat-composer' + (dragging ? ' chat-composer-drag' : '')}
+          onSubmit={e => { e.preventDefault(); void send() }}
+          onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true) } }}
+          onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false) }}
+          onDrop={e => {
+            e.preventDefault()
+            setDragging(false)
+            const dropped = Array.from(e.dataTransfer.files || [])
+            if (dropped.length) void uploadImages(dropped)
+          }}>
+          {!!draft.attachments.length && <div className="chat-draft-attachments" aria-label="已添加图片">
+            {draft.attachments.map(att => <figure key={att.id} className="chat-draft-thumb">
+              <img src={attachmentURL(projectId, att.id)} alt={att.name}/>
+              <button type="button" className="chat-draft-remove" aria-label={`移除图片 ${att.name}`} disabled={sendBusy} onClick={() => void removeAttachment(att.id)}>
+                <Icon name="X" size={12}/>
+              </button>
+            </figure>)}
+          </div>}
           <label className="sr-only" htmlFor={field}>{feature ? '讨论内容' : '发给 Management Agent'}</label>
           <textarea id={field} ref={input} rows={2} maxLength={4000} aria-describedby={sendError ? `${field}-error` : undefined}
-            placeholder={feature ? '输入你的想法、追问或方案要求…（Ctrl+Enter 发送）' : '向 Management Agent 提问或下达指令…（Ctrl+Enter 发送）'}
+            placeholder={feature ? '输入你的想法、追问或方案要求，支持粘贴或拖入截图…（Ctrl+Enter 发送）' : '向 Management Agent 提问或下达指令，支持粘贴截图…（Ctrl+Enter 发送）'}
             value={draft.text} readOnly={sendBusy} onChange={e => editDraft(e.currentTarget.value)}
+            onPaste={e => {
+              const files = Array.from(e.clipboardData?.items || [])
+                .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+                .map(item => item.getAsFile())
+                .filter((f): f is File => !!f)
+              if (files.length) {
+                if (!e.clipboardData?.getData('text')) e.preventDefault()
+                void uploadImages(files)
+              }
+            }}
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); void send() }
             }}/>
+          <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden
+            onChange={e => {
+              const picked = Array.from(e.currentTarget.files || [])
+              e.currentTarget.value = ''
+              if (picked.length) void uploadImages(picked)
+            }}/>
           <div className="chat-composer-bottom">
             <div className="chat-composer-tools">
-              <ThemedSelect label="讨论模型" hideLabel value={selected?.id || ''} disabled={sendBusy}
-                options={[...(!selected ? [{value: '', label: '选择模型'}] : []), ...models.map(m => ({value: m.id, label: m.output_format==='native' ? m.name : m.model, group: models.some(other => other.id !== m.id && other.model === m.model) ? m.base_url : undefined}))]} onChange={chooseModel}/>
+              <ThemedSelect label="讨论客户端" hideLabel value={selected?.id || ''} disabled={sendBusy}
+                options={[...(!selected ? [{value: '', label: '选择模型'}] : []), ...models.map(m => ({
+                  value: m.id,
+                  label: m.output_format==='native' ? (m.available_models && m.available_models.length > 1 ? (m.backend==='claude' ? 'Claude Code' : 'Codex') : m.name) : m.model,
+                  group: models.some(other => other.id !== m.id && other.model === m.model) ? m.base_url : undefined,
+                }))]} onChange={chooseModel}/>
+              {nativeChoices.length > 1 && <ThemedSelect label="模型版本" hideLabel value={effectiveModel} disabled={sendBusy}
+                options={nativeChoices.map(o => ({value: o.id, label: o.label || o.id}))} onChange={chooseVariant}/>}
+              <button type="button" className="button chat-attach-btn" disabled={sendBusy || uploadBusy || draft.attachments.length >= maxAttachments}
+                onClick={() => fileInput.current?.click()} title="上传图片（支持 Ctrl+V 粘贴截图）">
+                <Icon name="ImagePlus" size={14}/>{uploadBusy ? '上传中…' : '图片'}
+              </button>
             </div>
-            <button className="button primary chat-send-btn" type="submit" disabled={!providerReady || !draft.text.trim() || sendBusy} aria-keyshortcuts="Control+Enter Meta+Enter">
+            <button className="button primary chat-send-btn" type="submit" disabled={!providerReady || (!draft.text.trim() && draft.attachments.length === 0) || sendBusy || uploadBusy} aria-keyshortcuts="Control+Enter Meta+Enter">
               {sendBusy ? '发送中…' : sendError ? '重试' : '发送'}<Icon name="ArrowRight" size={14}/>
             </button>
           </div>

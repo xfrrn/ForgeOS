@@ -809,6 +809,11 @@ time { font-variant-numeric: tabular-nums; }
   overflow-x: hidden;
   scroll-behavior: smooth;
 }
+.app-scroll:has(> .content-studio) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .content {
   width: 100%;
   max-width: 1320px;
@@ -818,13 +823,27 @@ time { font-variant-numeric: tabular-nums; }
 .content:focus { outline: none; }
 .content.content-studio {
   max-width: none;
+  flex: 1;
   height: 100%;
+  min-height: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .view-stage {
   min-width: 0;
   height: 100%;
   animation: stage-enter 320ms var(--ease-spring) both;
+}
+.content.content-studio > .view-stage,
+.content.content-studio .project-workspace {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Silky staggered micro-choreography for cards & list items */

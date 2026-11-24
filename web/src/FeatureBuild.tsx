@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChatMarkdown } from './ChatMarkdown'
 import { ThemedSelect } from './ThemedSelect'
 import { projectHref, Status, type ApiRequest } from './shared'
 
@@ -27,7 +28,7 @@ export function StepEditor({steps,hints,change}:{steps:Step[];hints:ModelHint[];
     {steps.map((s,i)=><fieldset className="proposal-form" key={i}>
       <legend>实现任务 {i+1}</legend>
       <label>任务名称<input value={s.name} maxLength={60} onChange={e=>edit(i,{name:e.target.value})}/></label>
-      <label>实现范围与交付要求<textarea rows={2} value={s.scope} maxLength={1800} onChange={e=>edit(i,{scope:e.target.value})}/></label>
+      <label>实现范围与交付要求<textarea rows={4} value={s.scope} maxLength={1800} onChange={e=>edit(i,{scope:e.target.value})}/></label>
       <ThemedSelect label="执行客户端" value={s.harness} options={[{value:'codex',label:'Codex'},{value:'claude',label:'Claude Code'}]} onChange={harness=>edit(i,{harness,model:''})}/>
       <StepModel key={s.harness} step={s} hints={hints} onChange={model=>edit(i,{model})}/>
       {steps.length>2 && <button type="button" className="button" onClick={()=>change(steps.filter((_,at)=>at!==i))}>移除此任务</button>}
@@ -53,16 +54,18 @@ export function BuildProgress({steps,inputs,project,execution,failed,path,reques
     {steps.map(s=><details className="proposal-job" key={s.task} open={s.status==='FAILED'||selected===s.task}>
       <summary>{s.name} · <Status value={s.status}/></summary>
       <p>{s.harness==='claude'?'Claude Code':'Codex'} · {s.model||'客户端默认模型'}</p>
-      <p className="chat-message-text">{s.scope}</p>
+      <ChatMarkdown content={s.scope}/>
       {s.revision && <p>修订要求 · {s.revision.note}</p>}
       <a href={projectHref(project,'/tasks/'+s.task)}>任务 T-{s.task}</a>
       {s.commit && <p>实现提交 <code>{s.commit.slice(0,12)}</code></p>}
       {s.error && <p className="detail-problem">{s.error}</p>}
       {s.status==='FAILED' && <button type="button" className="button" disabled={busy} onClick={()=>void submit(s,false)}>重试此任务</button>}
       {failed && s.status==='DONE' && (selected===s.task?<div className="proposal-form">
-        <label>修订要求<textarea value={note} maxLength={1500} onChange={e=>setNote(e.target.value)}/></label>
-        <button className="button" disabled={busy||!note.trim()} onClick={()=>void submit(s,true)}>重新派发此任务</button>
-        <button className="button" onClick={()=>select(undefined)}>取消</button></div>:
+        <label>修订要求<textarea rows={4} value={note} maxLength={1500} onChange={e=>setNote(e.target.value)}/></label>
+        <div className="detail-actions">
+          <button className="button primary" disabled={busy||!note.trim()} onClick={()=>void submit(s,true)}>重新派发此任务</button>
+          <button className="button" type="button" onClick={()=>select(undefined)}>取消</button>
+        </div></div>:
         <button className="button" onClick={()=>{select(s.task);setNote('')}}>修订此任务并重新合成</button>)}
     </details>)}
     {inputs?.length ? <details><summary>本次合成采用的提交</summary>{inputs.map(i=><p key={i.task}>{i.name} · <a href={projectHref(project,'/tasks/'+i.task+'?execution='+i.execution)}>执行 #{i.execution}</a> · <code>{i.commit.slice(0,12)}</code></p>)}</details>:null}

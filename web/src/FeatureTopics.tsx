@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon, projectHref, formatTime, type ApiRequest } from './shared'
 import { FeatureClientHealth } from './FeatureClientHealth'
 import { ProjectChat } from './ProjectChat'
@@ -18,13 +18,15 @@ const deliveryStages:Record<string,[string,string]> = {
 const phases:Record<string,string>={handoff:'待派工',execution:'已派工',design:'设计中',review:'待拍板',proposals:'方案中',discussion:'讨论中'}
 type Topic = { delivery_stage?:string; total_steps?:number; finished_steps?:number; phase?:string; id: number; title: string; profile_id: string; updated_at: string }
 
-export function FeatureTopics({ projectId, selected, proposals, delivery, request }: { projectId: number; selected?: number; proposals?:boolean; delivery?:boolean; request: ApiRequest }) {
+export function FeatureTopics({ projectId, selected, proposals, delivery, compose, request }: { projectId: number; selected?: number; proposals?:boolean; delivery?:boolean; compose?:boolean; request: ApiRequest }) {
   const path = '/projects/' + projectId + '/features'
   const href = projectHref(projectId, '/features')
   const [topics, setTopics] = useState<Topic[]>()
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
   const [model, setModel] = useState('')
+  const [activeModel, setActiveModel] = useState<{id: string; model?: string}>({id: ''})
+  const [pickedModel, setPickedModel] = useState<{id: string; model?: string; seq: number}>()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [refresh, setRefresh] = useState(0)
@@ -32,6 +34,21 @@ export function FeatureTopics({ projectId, selected, proposals, delivery, reques
   const { models, error: modelError } = useDiscussionModels(request, projectId)
   const profile = model || models?.[0]?.id || ''
   const topic = topics?.find(item => item.id === selected)
+  const sidebarModel = creating || !topic ? profile : activeModel.id
+  const sidebarVariant = creating || !topic ? undefined : activeModel.model
+
+  const handleModelChange = useCallback((id: string, chosen?: string) => {
+    setActiveModel(old => (old.id === id && old.model === chosen ? old : { id, model: chosen }))
+  }, [])
+
+  function selectClientModel(id: string, chosenModel?: string) {
+    if (creating || !topic) {
+      setModel(id)
+    } else {
+      handleModelChange(id, chosenModel)
+      setPickedModel(old => ({ id, model: chosenModel, seq: (old?.seq || 0) + 1 }))
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -80,7 +97,7 @@ export function FeatureTopics({ projectId, selected, proposals, delivery, reques
         </a>)}
         {topics?.length === 0 && <p className="feature-empty-hint">还没有功能话题，点击右上角新建。</p>}
       </div>
-      <FeatureClientHealth projectId={projectId} request={request}/>
+      <FeatureClientHealth projectId={projectId} request={request} selectedModel={sidebarModel} selectedVariant={sidebarVariant} onSelectModel={selectClientModel}/>
     </aside>
 
     <section className="feature-detail">
@@ -103,7 +120,8 @@ export function FeatureTopics({ projectId, selected, proposals, delivery, reques
         </form>
       </div> : topic ? <>
         <a className="feature-back" href={href}><Icon name="ArrowLeft" size={14}/>返回功能话题</a>
-        <ProjectChat key={topic.id} projectId={projectId} request={request} feature={topic} showProposals={proposals} delivery={delivery}/>
+        <ProjectChat key={topic.id} projectId={projectId} request={request} feature={topic} showProposals={proposals} delivery={delivery} compose={compose}
+          pickedModel={pickedModel} onModelChange={handleModelChange}/>
       </> : <div className="feature-placeholder">
         <EmptyState
           icon="Sparkles"

@@ -62,7 +62,7 @@ const featureFields = `SELECT CASE WHEN task.id IS NOT NULL THEN 'execution'
  LEFT JOIN LATERAL (SELECT max(last_event.at) at FROM
  (SELECT task.id UNION ALL SELECT id FROM work_items WHERE feature_parent=task.id) scope
  CROSS JOIN LATERAL (SELECT at FROM task_events WHERE task_id=scope.id ORDER BY id DESC LIMIT 1) last_event) event ON true
- LEFT JOIN LATERAL (SELECT model_profile_id,created_at FROM project_chat_turns WHERE project_id=f.project_id AND feature_id=f.id AND proposal_id IS NULL ORDER BY id DESC LIMIT 1) last_turn ON true
+ LEFT JOIN LATERAL (SELECT model_profile_id,created_at FROM project_chat_turns WHERE project_id=f.project_id AND feature_id=f.id AND proposal_id IS NULL AND assist_kind='' ORDER BY id DESC LIMIT 1) last_turn ON true
  WHERE f.project_id=$1`
 
 func (s *Store) Feature(ctx context.Context, project, id int64) (FeatureTopic, error) {

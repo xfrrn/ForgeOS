@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ChatMarkdown } from './ChatMarkdown'
 import { DesignWireframe, GenerateWireframe, type WireElement } from './DesignWireframe'
 import { StepEditor, BuildProgress, emptyStep, type StepReceipt, type BuildInput, type Step } from './FeatureBuild'
 import { formatTime, projectHref, Status, type ApiRequest } from './shared'
@@ -76,7 +77,7 @@ export function FeatureDesign({round,current,receipt,project,models,path,request
   return <>
     <h2>设计与交付 · 第 {round.version} 轮</h2>
     {!round.approved_revision ? <p>确认这一轮的综合方案后，即可开始设计。</p>:<>
-      <details><summary>已拍板方案 v{round.approved_revision} · {round.approved_by}</summary><p className="chat-message-text">{round.revisions.find(r=>r.revision===round.approved_revision)?.body}</p></details>
+      <details><summary>已拍板方案 v{round.approved_revision} · {round.approved_by}</summary><ChatMarkdown content={round.revisions.find(r=>r.revision===round.approved_revision)?.body || ''}/></details>
       {!last && current && <button className="button primary" disabled={busy} onClick={()=>void post({operation:'start_design',revision:round.approved_revision},true)}>从已拍板方案生成设计稿</button>}
       {jobs.map(j=><details key={j.id} className="proposal-job" open={j.id===last?.id}>
         <summary>设计 v{j.design_version} · {stages[j.role]} · {states[j.status]}</summary>
@@ -85,8 +86,8 @@ export function FeatureDesign({round,current,receipt,project,models,path,request
         {j.status==='completed' && (j.role==='design_draft'||j.role==='design_final') ? <>
           {j.wireframe ? <DesignWireframe frame={j.wireframe} selected={revising && j.id===final?.id?element?.id:undefined} onSelect={canEdit && j.id===final?.id?e=>editDesign(j.id,e):undefined}/>:
             <GenerateWireframe models={models} turn={j.id} revision={round.approved_revision} visual={round.jobs.filter(v=>v.role==='design_visual' && v.parent===j.id).at(-1)} busy={busy} post={post}/>}
-          <details open={!j.wireframe}><summary>设计说明</summary><p className="chat-message-text">{j.wireframe?j.answer.replace(/```forgeos-ui[\s\S]*?```/,'').trim():j.answer}</p></details>
-        </>:j.answer && <p className="chat-message-text">{j.answer}</p>}{j.status==='failed' && <p>{j.error||'此回合已超时。'}</p>}
+          <details open={!j.wireframe}><summary>设计说明</summary><ChatMarkdown content={j.wireframe?j.answer.replace(/```forgeos-ui[\s\S]*?```/,'').trim():j.answer}/></details>
+        </>:j.answer && <ChatMarkdown content={j.answer}/>}{j.status==='failed' && <p>{j.error||'此回合已超时。'}</p>}
       </details>)}
       {current && last?.status==='failed' && <div className="proposal-form"><ThemedSelect label="重试模型" value={model} options={[{value:'',label:'原模型'},...models.map(m=>({value:m.id,label:m.name||m.model}))]} onChange={setModel}/>
         <button className="button" disabled={busy} onClick={()=>void post({operation:'retry_design',turn_id:last.id,revision:round.approved_revision,profile_id:model||undefined},true)}>仅重试{stages[last.role]}</button></div>}

@@ -18,11 +18,16 @@ type ToolServer struct {
 	Args    []string `json:"args"`
 	Tools   []string `json:"tools"`
 }
+type ImageAttachment struct {
+	MIME string
+	Data []byte
+}
 type Config struct {
 	TaskTool TaskToolCall `json:"-"`
 	// Preview receives only the top-level answer text as it becomes available.
-	Preview        func(string) `json:"-"`
-	ProjectID      int64        `json:"project_id"`
+	Preview        func(string)      `json:"-"`
+	Images         []ImageAttachment `json:"-"`
+	ProjectID      int64             `json:"project_id"`
 	provider       Provider
 	providerStatus atomic.Int32
 	Servers        map[string]ToolServer `json:"mcp_servers"`

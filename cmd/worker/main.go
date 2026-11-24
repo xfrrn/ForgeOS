@@ -34,6 +34,7 @@ import (
 
 type worker struct {
 	projectPreviews                         sync.Map
+	featureModels                           sync.Map
 	fixed                                   *residentPool
 	pool                                    *processPool
 	roleAgent                               *agents.Assignment

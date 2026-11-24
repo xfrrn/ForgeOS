@@ -3,7 +3,11 @@ import { ThemedSelect } from './ThemedSelect'
 import { projectHref, type ApiRequest } from './shared'
 
 const endpoint = '/projects/chat-models'
-export type ChatModel = {id: string; revision: string; name: string; model: string; base_url: string; output_format: string}
+export type NativeModelOption = {id: string; label?: string}
+export type ChatModel = {
+  id: string; revision: string; name: string; model: string; base_url: string; output_format: string
+  backend?: 'claude' | 'codex'; available_models?: NativeModelOption[]
+}
 
 const presets = [
   {model: 'deepseek-flash', provider: 'DeepSeek', base_url: 'https://api.deepseek.com', output_format: 'json_object'},
@@ -36,7 +40,7 @@ export function useChatModels(request: ApiRequest) {
   return {models, error, refresh}
 }
 
-type FeatureClient = {id:string;instance:string;backend:'claude'|'codex';model:string}
+type FeatureClient = {id:string;instance:string;backend:'claude'|'codex';model:string;available_models?:NativeModelOption[]}
 export function useDiscussionModels(request:ApiRequest,projectId?:number) {
   const catalog=useChatModels(request)
   const [clients,setClients]=useState<FeatureClient[]>([])
@@ -55,7 +59,16 @@ export function useDiscussionModels(request:ApiRequest,projectId?:number) {
     const timer=window.setInterval(refresh,30000)
     return ()=>{window.removeEventListener('forgeos-discussion-clients',refresh);window.clearInterval(timer);controller.abort()}
   },[projectId,request])
-  const native=clients.map(c=>({id:c.id,name:(c.backend==='claude'?'Claude Code':'Codex')+' · '+c.model,model:c.model,base_url:c.instance,revision:'',output_format:'native'}))
+  const native=clients.map(c=>({
+    id:c.id,
+    name:(c.backend==='claude'?'Claude Code':'Codex')+' · '+c.model,
+    model:c.model,
+    base_url:c.instance,
+    revision:'',
+    output_format:'native',
+    backend:c.backend,
+    available_models:c.available_models?.length ? c.available_models : [{id:c.model,label:c.model}],
+  }))
   return {...catalog,error:catalog.error||clientError,models:projectId && (native.length||catalog.models)?[...native,...catalog.models||[]]:catalog.models}
 }
 

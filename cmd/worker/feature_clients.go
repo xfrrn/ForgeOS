@@ -67,6 +67,80 @@ func (w *worker) featureClientHeartbeat(ctx context.Context) {
 		}
 	}
 }
+func (w *worker) probeClientModels(ctx context.Context, core *aioncore.Client, c aioncore.Config, force bool) []store.FeatureModelOption {
+	key := c.Instance + "\x00" + c.Backend
+	if !force {
+		if cached, ok := w.featureModels.Load(key); ok {
+			if items, ok := cached.([]store.FeatureModelOption); ok && len(items) > 0 {
+				return items
+			}
+		}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	db, _, err := w.openRoleJournal(probeCtx, managementChatRole)
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	if _, err = db.ExecContext(probeCtx, `CREATE TABLE IF NOT EXISTS feature_model_probes(instance TEXT,backend TEXT,conversation TEXT NOT NULL,PRIMARY KEY(instance,backend))`); err != nil {
+		return nil
+	}
+	var conv string
+	err = db.QueryRowContext(probeCtx, `SELECT conversation FROM feature_model_probes WHERE instance=? AND backend=?`, c.Instance, c.Backend).Scan(&conv)
+	createProbe := func() (string, error) {
+		root, err := os.UserCacheDir()
+		if err != nil {
+			return "", err
+		}
+		dir := filepath.Join(root, "ForgeOS", "discussion-workspaces", "model-probe", c.Instance+"-"+c.Backend)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return "", err
+		}
+		id, err := core.Create(probeCtx, c.Backend, dir, "ForgeOS · model probe")
+		if err != nil {
+			return "", err
+		}
+		_, _ = db.ExecContext(probeCtx, `INSERT OR REPLACE INTO feature_model_probes(instance,backend,conversation) VALUES(?,?,?)`, c.Instance, c.Backend, id)
+		return id, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) || conv == "" {
+		conv, err = createProbe()
+		if err != nil {
+			return nil
+		}
+	} else if err != nil {
+		return nil
+	}
+	choices, err := core.ProbeModels(probeCtx, conv)
+	if err != nil {
+		if errors.Is(err, aioncore.HTTPError(404)) {
+			if conv, err = createProbe(); err == nil {
+				choices, err = core.ProbeModels(probeCtx, conv)
+			}
+		}
+		if err != nil {
+			return nil
+		}
+	}
+	out := make([]store.FeatureModelOption, 0, len(choices)+1)
+	seen := make(map[string]bool, len(choices)+1)
+	for _, ch := range choices {
+		if ch.ID == "" || seen[ch.ID] {
+			continue
+		}
+		seen[ch.ID] = true
+		out = append(out, store.FeatureModelOption{ID: ch.ID, Label: ch.Label})
+	}
+	if c.Model != "" && !seen[c.Model] {
+		out = append([]store.FeatureModelOption{{ID: c.Model, Label: c.Model}}, out...)
+	}
+	if len(out) > 0 {
+		w.featureModels.Store(key, out)
+	}
+	return out
+}
+
 func (w *worker) reportFeatureClients(ctx context.Context, node string, configs []aioncore.Config, gen int64, configFailed bool) error {
 	clients := []store.FeatureClient{}
 	for _, c := range configs {
@@ -76,8 +150,12 @@ func (w *worker) reportFeatureClients(ctx context.Context, node string, configs 
 		if err == nil {
 			reason = core.Probe(probe, c.Backend)
 		}
-		clients = append(clients, store.FeatureClient{Instance: c.Instance, Backend: c.Backend, Model: c.Model, Status: reason})
 		cancel()
+		var models []store.FeatureModelOption
+		if err == nil && reason == "ready" {
+			models = w.probeClientModels(ctx, core, c, gen > 0)
+		}
+		clients = append(clients, store.FeatureClient{Instance: c.Instance, Backend: c.Backend, Model: c.Model, Status: reason, AvailableModels: models})
 	}
 	status, err := w.post(ctx, "/internal/management-chat/feature-clients", map[string]any{"node": node, "clients": clients, "generation": gen, "config_failed": configFailed, "resource_worker": os.Getenv("FORGEOS_FEATURE_RESOURCE_WORKER")}, nil)
 	if err == nil && status != 204 {
@@ -113,59 +191,109 @@ func (w *worker) nativeFeatureReply(ctx context.Context, job managementChatJob) 
 	}
 	return "", errors.New("native client binding unavailable")
 }
+func discussionWorkspace(job managementChatJob, profile string) (string, error) {
+	if job.ProjectPath != "" && filepath.IsAbs(job.ProjectPath) {
+		if info, err := os.Stat(job.ProjectPath); err == nil && info.IsDir() {
+			return filepath.Clean(job.ProjectPath), nil
+		}
+	}
+	root, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	workspace := filepath.Join(root, "ForgeOS", "discussion-workspaces", profile, fmt.Sprintf("%d-%d", job.ProjectID, job.FeatureID))
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		return "", err
+	}
+	return workspace, nil
+}
+
 func (w *worker) resumeFeatureReply(ctx context.Context, db *sql.DB, core *aioncore.Client, job managementChatJob, c aioncore.Config) (string, error) {
-	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS feature_sessions(project INTEGER,feature INTEGER,profile TEXT,conversation TEXT NOT NULL,PRIMARY KEY(project,feature,profile));
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS feature_sessions(project INTEGER,feature INTEGER,profile TEXT,conversation TEXT NOT NULL,workspace TEXT NOT NULL DEFAULT '',PRIMARY KEY(project,feature,profile));
  CREATE TABLE IF NOT EXISTS feature_sends(project INTEGER,turn INTEGER,conversation TEXT NOT NULL,marker TEXT NOT NULL,message TEXT NOT NULL DEFAULT '',PRIMARY KEY(project,turn));
  CREATE TABLE IF NOT EXISTS feature_plan_documents(project INTEGER,turn INTEGER,plan TEXT NOT NULL,PRIMARY KEY(project,turn));
  CREATE TABLE IF NOT EXISTS feature_native_receipts(project INTEGER,turn INTEGER,upstream_turn TEXT NOT NULL,PRIMARY KEY(project,turn))`); err != nil {
 		return "", err
 	}
+	// Existing SQLite journals created before workspace tracking need the column added once.
+	_, _ = db.ExecContext(ctx, `ALTER TABLE feature_sessions ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`)
 	if job.CancelRequested {
 		return "", w.cancelSavedFeatureTurn(ctx, db, core, job)
 	}
 	profile := job.Native.ID.String()
 	if job.ProposalID != 0 {
 		profile = fmt.Sprintf("%s-proposal-%d", profile, job.ID)
+	} else if job.AssistKind != "" {
+		profile = fmt.Sprintf("%s-assist-%d", profile, job.ID)
 	} else if job.Generation > 0 {
 		profile = fmt.Sprintf("%s-%d", profile, job.Generation)
 	}
-	var conversation string
-	lookup := "SELECT conversation FROM feature_sessions WHERE project=? AND feature=? AND profile=?"
-	err := db.QueryRowContext(ctx, lookup, job.ProjectID, job.FeatureID, profile).Scan(&conversation)
-	if errors.Is(err, sql.ErrNoRows) {
-		if job.ExpectSession {
-			return "", aioncore.ErrSessionMissing
-		}
-		root, err := os.UserCacheDir()
-		if err != nil {
-			return "", err
-		}
-		workspace := filepath.Join(root, "ForgeOS", "discussion-workspaces", profile, fmt.Sprintf("%d-%d", job.ProjectID, job.FeatureID))
-		if err := os.MkdirAll(workspace, 0700); err != nil {
-			return "", err
-		}
-		id, err := core.Create(ctx, c.Backend, workspace, fmt.Sprintf("ForgeOS · %d/%d", job.ProjectID, job.FeatureID))
-		if err != nil {
-			return "", err
-		}
-		if _, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO feature_sessions VALUES(?,?,?,?)", job.ProjectID, job.FeatureID, profile, id); err != nil {
-			return "", err
-		}
-		err = db.QueryRowContext(ctx, lookup, job.ProjectID, job.FeatureID, profile).Scan(&conversation)
-		if err != nil {
-			return "", err
-		}
-	} else if err != nil {
+	workspace, err := discussionWorkspace(job, profile)
+	if err != nil {
 		return "", err
+	}
+	var conversation, savedWorkspace, marker, message string
+	sentErr := db.QueryRowContext(ctx, "SELECT conversation,marker,message FROM feature_sends WHERE project=? AND turn=?", job.ProjectID, job.ID).Scan(&conversation, &marker, &message)
+	if sentErr != nil && !errors.Is(sentErr, sql.ErrNoRows) {
+		return "", sentErr
+	}
+	if errors.Is(sentErr, sql.ErrNoRows) {
+		lookup := "SELECT conversation,workspace FROM feature_sessions WHERE project=? AND feature=? AND profile=?"
+		err = db.QueryRowContext(ctx, lookup, job.ProjectID, job.FeatureID, profile).Scan(&conversation, &savedWorkspace)
+		needNewSession := false
+		if errors.Is(err, sql.ErrNoRows) {
+			if job.ExpectSession {
+				return "", aioncore.ErrSessionMissing
+			}
+			needNewSession = true
+		} else if err != nil {
+			return "", err
+		} else if job.ProjectPath != "" && savedWorkspace != workspace {
+			// Upgrade legacy empty-directory discussion sessions to the real project repository.
+			needNewSession = true
+		}
+		if needNewSession {
+			id, err := core.Create(ctx, c.Backend, workspace, fmt.Sprintf("ForgeOS · %d/%d", job.ProjectID, job.FeatureID))
+			if err != nil {
+				return "", err
+			}
+			if savedWorkspace != workspace && conversation != "" {
+				if _, err = db.ExecContext(ctx, "INSERT OR REPLACE INTO feature_sessions(project,feature,profile,conversation,workspace) VALUES(?,?,?,?,?)", job.ProjectID, job.FeatureID, profile, id, workspace); err != nil {
+					return "", err
+				}
+			} else {
+				if _, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO feature_sessions(project,feature,profile,conversation,workspace) VALUES(?,?,?,?,?)", job.ProjectID, job.FeatureID, profile, id, workspace); err != nil {
+					return "", err
+				}
+			}
+			err = db.QueryRowContext(ctx, lookup, job.ProjectID, job.FeatureID, profile).Scan(&conversation, &savedWorkspace)
+			if err != nil {
+				return "", err
+			}
+		}
 	}
 	if err = core.CheckSession(ctx, conversation); err != nil {
 		return "", err
 	}
-	var marker, message string
-	err = db.QueryRowContext(ctx, "SELECT marker,message FROM feature_sends WHERE project=? AND turn=? AND conversation=?", job.ProjectID, job.ID, conversation).Scan(&marker, &message)
-	if errors.Is(err, sql.ErrNoRows) {
-		if err = core.Configure(ctx, conversation, c.Backend, c.Model); err != nil {
+	if errors.Is(sentErr, sql.ErrNoRows) {
+		targetModel := c.Model
+		if job.RequestedModel != "" {
+			targetModel = job.RequestedModel
+		}
+		if err = core.Configure(ctx, conversation, c.Backend, targetModel); err != nil {
 			return "", err
+		}
+		var files []aioncore.ChatFileRef
+		for _, att := range job.Attachments {
+			data, dlErr := w.downloadChatAttachment(ctx, att.ID)
+			if dlErr != nil {
+				return "", dlErr
+			}
+			uploaded, upErr := core.UploadFile(ctx, conversation, att.Name, data)
+			if upErr != nil {
+				return "", upErr
+			}
+			files = append(files, aioncore.ChatFileRef{Kind: "upload", Path: uploaded})
 		}
 		marker = "[ForgeOS " + uuid.NewString() + "]"
 		inserted, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO feature_sends(project,turn,conversation,marker) VALUES(?,?,?,?)", job.ProjectID, job.ID, conversation, marker)
@@ -178,7 +306,7 @@ func (w *worker) resumeFeatureReply(ctx context.Context, db *sql.DB, core *aionc
 		}
 		// Commit the local intent before calling upstream. A replay only reads the
 		// original conversation, including when the HTTP response was lost.
-		r, sendErr := core.Send(ctx, conversation, marker+"\n"+job.Prompt)
+		r, sendErr := core.SendWithFiles(ctx, conversation, marker+"\n"+job.Prompt, files)
 		if sendErr == nil {
 			message = r.Message
 			receiptCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
@@ -190,10 +318,8 @@ func (w *worker) resumeFeatureReply(ctx context.Context, db *sql.DB, core *aionc
 				return "", err
 			}
 		}
-	} else if err != nil {
-		return "", err
 	}
-	if job.ProposalID != 0 && c.Backend == "claude" {
+	if (job.ProposalID != 0 || job.AssistKind != "") && c.Backend == "claude" {
 		var upstream, plan string
 		err = db.QueryRowContext(ctx, `SELECT r.upstream_turn,coalesce(d.plan,'') FROM feature_native_receipts r LEFT JOIN feature_plan_documents d USING(project,turn) WHERE r.project=? AND r.turn=?`, job.ProjectID, job.ID).Scan(&upstream, &plan)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {

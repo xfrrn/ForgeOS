@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"forgeos/internal/aioncore"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -59,17 +60,21 @@ const managementChatSchema = `{
 }`
 
 type managementChatJob struct {
-	ProposalID      int64                `json:"proposal_id,omitempty"`
-	CancelRequested bool                 `json:"cancel_requested,omitempty"`
-	Generation      int64                `json:"session_generation,omitempty"`
-	ExpectSession   bool                 `json:"expect_session,omitempty"`
-	Native          *store.FeatureClient `json:"native,omitempty"`
-	FeatureID       int64                `json:"feature_id,omitempty"`
-	ID              int64                `json:"id"`
-	ProjectID       int64                `json:"project_id"`
-	Lease           string               `json:"lease"`
-	LeaseUntil      time.Time            `json:"lease_until"`
-	Prompt          string               `json:"prompt"`
+	ProposalID      int64                  `json:"proposal_id,omitempty"`
+	AssistKind      string                 `json:"assist_kind,omitempty"`
+	CancelRequested bool                   `json:"cancel_requested,omitempty"`
+	Generation      int64                  `json:"session_generation,omitempty"`
+	ExpectSession   bool                   `json:"expect_session,omitempty"`
+	Native          *store.FeatureClient   `json:"native,omitempty"`
+	FeatureID       int64                  `json:"feature_id,omitempty"`
+	ProjectPath     string                 `json:"project_path,omitempty"`
+	RequestedModel  string                 `json:"requested_model,omitempty"`
+	ID              int64                  `json:"id"`
+	ProjectID       int64                  `json:"project_id"`
+	Lease           string                 `json:"lease"`
+	LeaseUntil      time.Time              `json:"lease_until"`
+	Prompt          string                 `json:"prompt"`
+	Attachments     []store.ChatAttachment `json:"attachments,omitempty"`
 }
 
 type managementChatAction struct {
@@ -168,7 +173,22 @@ func (w *worker) answerManagementChat(ctx context.Context, job managementChatJob
 				if err != nil {
 					turnErr = err
 				} else {
-					if job.ProposalID != 0 {
+					var attachErr error
+					if len(job.Attachments) > 0 {
+						var imgs []chatkernel.ImageAttachment
+						for _, att := range job.Attachments {
+							data, dlErr := w.downloadChatAttachment(turn, att.ID)
+							if dlErr != nil {
+								attachErr = dlErr
+								break
+							}
+							imgs = append(imgs, chatkernel.ImageAttachment{MIME: att.MIME, Data: data})
+						}
+						cfg.Images = imgs
+					}
+					if attachErr != nil {
+						turnErr = attachErr
+					} else if job.ProposalID != 0 || job.AssistKind != "" {
 						result.Answer, turnErr = cfg.ProposalAnswer(turn, job.Prompt)
 					} else {
 						cfg.TaskTool = func(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
@@ -233,6 +253,27 @@ func (w *worker) answerManagementChat(ctx context.Context, job managementChatJob
 	}
 	log.Printf("management chat job %d (HTTP %d)", job.ID, status)
 	return nil
+}
+
+func (w *worker) downloadChatAttachment(ctx context.Context, id int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/internal/management-chat/attachments/%d", w.api, id), nil)
+	if err != nil {
+		return nil, err
+	}
+	token, err := w.credential()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := w.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("chat attachment download HTTP %d", res.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(res.Body, 16<<20))
 }
 
 func (r *managementChatResult) fail() {
